@@ -120,7 +120,8 @@ def make_single_bridge(_tgid):
     for _system in CONFIG['SYSTEMS']:
       #  if _system['MODE'] == 'OPENBRIDGE':
       #      continue
-        BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': 240,'TO_TYPE': 'NONE','OFF': [],'ON': [],'RESET': []})
+        BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [],'RESET': [], 'TIMER': time() + 240, 'SINGLE': True})
+        BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [],'RESET': [], 'TIMER': time() + 240, 'SINGLE': True})
         
 
 # Run this every minute for rule timer updates
@@ -495,8 +496,9 @@ class routerHBP(HBSYSTEM):
                     self.STATUS[_slot]['RX_LC'] = LC_OPT + _dst_id + _rf_src
 
             #Create default bridge for unknown TG
-                if _dst_id not in BRIDGES:
-                    logger.info('*** Making single bridge')
+                if str(int_id(_dst_id)) not in BRIDGES:
+                    logger.info(BRIDGES)
+                    logger.info('(%s) Bridge for TG %s does not exist. Creating as User Activated',self._system, int_id(_dst_id))
                     make_single_bridge(_dst_id)
                 
             for _bridge in BRIDGES:
