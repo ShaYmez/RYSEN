@@ -115,12 +115,12 @@ def make_bridges(_rules):
 
 #Make a single bridge - used for on-the-fly UA bridges
 def make_single_bridge(_tgid):
-    BRIDGES[_tgid] = []
+    _tgid_s = str(int_id(_tgid))
+    BRIDGES[_tgid_s] = []
     for _system in CONFIG['SYSTEMS']:
-        if _system['MODE'] == 'OPENBRIDGE':
-            continue
-
-        BRIDGES[_tgid].append = {'SYSTEM': _tgid, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': 240,'TO_TYPE': 'NONE','OFF': [],'ON': [],'RESET': []}
+      #  if _system['MODE'] == 'OPENBRIDGE':
+      #      continue
+        BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': 240,'TO_TYPE': 'NONE','OFF': [],'ON': [],'RESET': []})
         
 
 # Run this every minute for rule timer updates
@@ -406,7 +406,6 @@ class routerHBP(HBSYSTEM):
 
     def __init__(self, _name, _config, _report):
         HBSYSTEM.__init__(self, _name, _config, _report)
-
         # Status information for the system, TS1 & TS2
         # 1 & 2 are "timeslot"
         # In TX_EMB_LC, 2-5 are burst B-E
@@ -496,8 +495,9 @@ class routerHBP(HBSYSTEM):
                     self.STATUS[_slot]['RX_LC'] = LC_OPT + _dst_id + _rf_src
 
             #Create default bridge for unknown TG
-            if _dst_id not in BRIDGES:
-                make_single_bridge(_dst_id)
+                if _dst_id not in BRIDGES:
+                    logger.info('*** Making single bridge')
+                    make_single_bridge(_dst_id)
                 
             for _bridge in BRIDGES:
                 for _system in BRIDGES[_bridge]:
