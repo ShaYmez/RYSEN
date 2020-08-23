@@ -121,14 +121,14 @@ def make_single_bridge(_tgid,_sourcesystem,_slot):
         if CONFIG['SYSTEMS'][system]['MODE'] != 'OPENBRIDGE':
             if _system == _sourcesystem:
                     if _slot == 1:
-                        BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [],'RESET': [], 'TIMER': time() + 240, 'SINGLE': True})
-                        BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [],'RESET': [], 'TIMER': time(), 'SINGLE': True})
+                        BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time() + 240, 'SINGLE': True})
+                        BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time(), 'SINGLE': True})
                     else:
-                        BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [],'RESET': [], 'TIMER': time() + 240, 'SINGLE': True})
-                        BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [],'RESET': [], 'TIMER': time(), 'SINGLE': True})
+                        BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time() + 240, 'SINGLE': True})
+                        BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time(), 'SINGLE': True})
             else:
-                BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [],'RESET': [], 'TIMER': time(), 'SINGLE': True})
-                BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [],'RESET': [], 'TIMER': time(), 'SINGLE': True})
+                BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time(), 'SINGLE': True})
+                BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time(), 'SINGLE': True})
         else:
             BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': '','TO_TYPE': 'NONE','OFF': [],'ON': [],'RESET': [], 'TIMER': time()})
 
@@ -692,9 +692,13 @@ class routerHBP(HBSYSTEM):
                                     logger.info('(%s) Bridge: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
 
                             # TGID matches an DE-ACTIVATION trigger
-                            if (_dst_id in _system['OFF']  or _dst_id in _system['RESET']) and _slot == _system['TS']:
+                            #Single TG mode
+                            if (_dst_id in _system['OFF']  or _dst_id in _system['RESET'] or _dst_id != _system['TGID']) and _slot == _system['TS']:
+                            #if (_dst_id in _system['OFF']  or _dst_id in _system['RESET']) and _slot == _system['TS']:
                                 # Set the matching rule as ACTIVE
-                                if _dst_id in _system['OFF']:
+                                #Single TG mode
+                                if _dst_id in _system['OFF'] or _dst_id != _system['TGID']:
+                                #if _dst_id in _system['OFF']:
                                     if _system['ACTIVE'] == True:
                                         _system['ACTIVE'] = False
                                         logger.info('(%s) Bridge: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
