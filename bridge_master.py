@@ -114,15 +114,23 @@ def make_bridges(_rules):
     return _rules
 
 #Make a single bridge - used for on-the-fly UA bridges
-def make_single_bridge(_tgid):
+def make_single_bridge(_tgid,_sourcesystem,_slot):
     _tgid_s = str(int_id(_tgid))
     BRIDGES[_tgid_s] = []
     for _system in CONFIG['SYSTEMS']:
-      #  if _system['MODE'] == 'OPENBRIDGE':
-      #      continue
-        BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [],'RESET': [], 'TIMER': time() + 240, 'SINGLE': True})
-        BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [],'RESET': [], 'TIMER': time() + 240, 'SINGLE': True})
-        
+        if CONFIG['SYSTEMS'][system]['MODE'] != 'OPENBRIDGE':
+            if _system == _sourcesystem:
+                    if _slot == 1:
+                        BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [],'RESET': [], 'TIMER': time() + 240, 'SINGLE': True})
+                        BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [],'RESET': [], 'TIMER': time(), 'SINGLE': True})
+                    else:
+                        BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [],'RESET': [], 'TIMER': time() + 240, 'SINGLE': True})
+                        BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [],'RESET': [], 'TIMER': time(), 'SINGLE': True})
+            else:
+                BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [],'RESET': [], 'TIMER': time(), 'SINGLE': True})
+                BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [],'RESET': [], 'TIMER': time(), 'SINGLE': True})
+        else:
+            BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': '','TO_TYPE': 'NONE','OFF': [],'ON': [],'RESET': [], 'TIMER': time()})
 
 # Run this every minute for rule timer updates
 def rule_timer_loop():
@@ -497,9 +505,8 @@ class routerHBP(HBSYSTEM):
 
             #Create default bridge for unknown TG
                 if str(int_id(_dst_id)) not in BRIDGES:
-                    logger.info(BRIDGES)
                     logger.info('(%s) Bridge for TG %s does not exist. Creating as User Activated',self._system, int_id(_dst_id))
-                    make_single_bridge(_dst_id)
+                    make_single_bridge(_dst_id,self._system,_slot)
                 
             for _bridge in BRIDGES:
                 for _system in BRIDGES[_bridge]:
@@ -700,7 +707,7 @@ class routerHBP(HBSYSTEM):
                                     _system['TIMER'] = pkt_time + _system['TIMEOUT']
                                     logger.info('(%s) Bridge: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
                                 # Cancel the timer if we've enabled an "ON" type timeout
-                                if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON' and _dst_group in _system['OFF']:
+                                if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON' and _dst_id in _system['OFF']:
                                     _system['TIMER'] = pkt_time
                                     logger.info('(%s) Bridge: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
 
