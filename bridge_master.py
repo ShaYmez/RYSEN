@@ -119,7 +119,7 @@ def make_single_bridge(_tgid,_sourcesystem,_slot):
     BRIDGES[_tgid_s] = []
     for _system in CONFIG['SYSTEMS']:
         logger.debug('***** %s',CONFIG['SYSTEMS'][_system]['MODE'])
-        if CONFIG['SYSTEMS'][_system]['MODE'] not = 'OPENBRIDGE':
+        if CONFIG['SYSTEMS'][_system]['MODE'] is not 'OPENBRIDGE':
             if _system == _sourcesystem:
                     if _slot == 1:
                         BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time() + 240, 'SINGLE': True})
@@ -132,6 +132,7 @@ def make_single_bridge(_tgid,_sourcesystem,_slot):
                 BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time(), 'SINGLE': True})
         else:
             BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': '','TO_TYPE': 'NONE','OFF': [],'ON': [],'RESET': [], 'TIMER': time()})
+            logger.debug('**** %s',BRIDGES[_tgid_s])
 
 # Run this every minute for rule timer updates
 def rule_timer_loop():
