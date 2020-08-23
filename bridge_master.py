@@ -111,6 +111,21 @@ def make_bridges(_rules):
                 _system['TIMER']  = time() + _system['TIMEOUT']
             else:
                 _system['TIMER']  = time()
+        for _confsystem in CONFIG['SYSTEMS']:
+            if _confsystem == 'OBP-BM':
+                continue
+            ts1 = False
+            ts2 = False
+            for i,e in enumerate(_rules[_bridge]):
+                if e['SYSTEM'] == _confsystem and e['TS'] == 1:
+                    ts1 = True
+                if e['SYSTEM'] == _confsystem and e['TS'] == 2:
+                    ts2 = True
+                if ts1 == False:
+                    _rules[_bridge].append({'SYSTEM': _confsystem, 'TS': 1, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
+                if ts2 == False:
+                    _rules[_bridge].append({'SYSTEM': _confsystem, 'TS': 2, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
+                break
     return _rules
 
 #Make a single bridge - used for on-the-fly UA bridges
@@ -118,8 +133,7 @@ def make_single_bridge(_tgid,_sourcesystem,_slot):
     _tgid_s = str(int_id(_tgid))
     BRIDGES[_tgid_s] = []
     for _system in CONFIG['SYSTEMS']:
-        logger.debug('***** %s',CONFIG['SYSTEMS'][_system]['MODE'])
-        if CONFIG['SYSTEMS'][system]['MODE'] != 'OPENBRIDGE':
+        if _system != 'OBP-BM':
             if _system == _sourcesystem:
                     if _slot == 1:
                         BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time() + 240, 'SINGLE': True})
@@ -131,9 +145,8 @@ def make_single_bridge(_tgid,_sourcesystem,_slot):
                 BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time(), 'SINGLE': True})
                 BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time(), 'SINGLE': True})
                 
-        if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
+        if _system == 'OBP-BM':
             BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': '','TO_TYPE': 'NONE','OFF': [],'ON': [],'RESET': [], 'TIMER': time()})
-            logger.debug('************************************************* %s',BRIDGES[_tgid_s])
 
 # Run this every minute for rule timer updates
 def rule_timer_loop():
