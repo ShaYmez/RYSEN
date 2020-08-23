@@ -118,8 +118,8 @@ def make_single_bridge(_tgid,_sourcesystem,_slot):
     _tgid_s = str(int_id(_tgid))
     BRIDGES[_tgid_s] = []
     for _system in CONFIG['SYSTEMS']:
-        logger.debug(_system['MODE'])
-        if _system['MODE'] != 'OPENBRIDGE':
+        logger.debug('***** %s',CONFIG['SYSTEMS'][_system]['MODE'])
+        if CONFIG['SYSTEMS'][_system]['MODE'] != 'OPENBRIDGE':
             if _system == _sourcesystem:
                     if _slot == 1:
                         BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time() + 240, 'SINGLE': True})
