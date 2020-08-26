@@ -111,21 +111,23 @@ def make_bridges(_rules):
                 _system['TIMER']  = time() + _system['TIMEOUT']
             else:
                 _system['TIMER']  = time()
+       
         for _confsystem in CONFIG['SYSTEMS']:
             if _confsystem == 'OBP-BM':
                 continue
-            ts1 = False
+            ts1 = False 
             ts2 = False
             for i,e in enumerate(_rules[_bridge]):
                 if e['SYSTEM'] == _confsystem and e['TS'] == 1:
                     ts1 = True
                 if e['SYSTEM'] == _confsystem and e['TS'] == 2:
                     ts2 = True
-                if ts1 == False:
-                    _rules[_bridge].append({'SYSTEM': _confsystem, 'TS': 1, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
-                if ts2 == False:
-                    _rules[_bridge].append({'SYSTEM': _confsystem, 'TS': 2, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
-                break
+
+            if ts1 == False:
+                _rules[_bridge].append({'SYSTEM': _confsystem, 'TS': 1, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
+            if ts2 == False:
+                _rules[_bridge].append({'SYSTEM': _confsystem, 'TS': 2, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': 240,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
+    
     return _rules
 
 #Make a single bridge - used for on-the-fly UA bridges
