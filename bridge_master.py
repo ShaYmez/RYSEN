@@ -711,27 +711,50 @@ class routerHBP(HBSYSTEM):
 
                             # TGID matches an DE-ACTIVATION trigger
                             #Single TG mode
-                            if (_dst_id in _system['OFF']  or _dst_id in _system['RESET'] or _dst_id != _system['TGID']) and _slot == _system['TS']:
-                            #if (_dst_id in _system['OFF']  or _dst_id in _system['RESET']) and _slot == _system['TS']:
-                                # Set the matching rule as ACTIVE
-                                #Single TG mode
-                                if _dst_id in _system['OFF'] or _dst_id != _system['TGID']:
-                                #if _dst_id in _system['OFF']:
-                                    if _system['ACTIVE'] == True:
-                                        _system['ACTIVE'] = False
-                                        logger.info('(%s) Bridge: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
-                                        # Cancel the timer if we've enabled an "ON" type timeout
+                            if (CONFIG['SYSTEMS'][self._system]['SINGLE_MODE']) == True:
+                                if (_dst_id in _system['OFF']  or _dst_id in _system['RESET'] or _dst_id != _system['TGID']) and _slot == _system['TS']:
+                                #if (_dst_id in _system['OFF']  or _dst_id in _system['RESET']) and _slot == _system['TS']:
+                                    # Set the matching rule as ACTIVE
+                                    #Single TG mode
+                                    if _dst_id in _system['OFF'] or _dst_id != _system['TGID']:
+                                    #if _dst_id in _system['OFF']:
+                                        if _system['ACTIVE'] == True:
+                                            _system['ACTIVE'] = False
+                                            logger.info('(%s) Bridge: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
+                                            # Cancel the timer if we've enabled an "ON" type timeout
                                         if _system['TO_TYPE'] == 'ON':
                                             _system['TIMER'] = pkt_time
                                             logger.info('(%s) Bridge: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
-                                # Reset the timer for the rule
-                                if _system['ACTIVE'] == False and _system['TO_TYPE'] == 'OFF':
-                                    _system['TIMER'] = pkt_time + _system['TIMEOUT']
-                                    logger.info('(%s) Bridge: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
-                                # Cancel the timer if we've enabled an "ON" type timeout
-                                if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON' and _dst_id in _system['OFF']:
-                                    _system['TIMER'] = pkt_time
-                                    logger.info('(%s) Bridge: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
+                                    # Reset the timer for the rule
+                                    if _system['ACTIVE'] == False and _system['TO_TYPE'] == 'OFF':
+                                        _system['TIMER'] = pkt_time + _system['TIMEOUT']
+                                        logger.info('(%s) Bridge: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
+                                    # Cancel the timer if we've enabled an "ON" type timeout
+                                    if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON' and _dst_id in _system['OFF']:
+                                        _system['TIMER'] = pkt_time
+                                        logger.info('(%s) Bridge: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
+                            else:
+                                
+                                if (_dst_id in _system['OFF']  or _dst_id in _system['RESET']) and _slot == _system['TS']:
+                                #if (_dst_id in _system['OFF']  or _dst_id in _system['RESET']) and _slot == _system['TS']:
+                                    # Set the matching rule as ACTIVE
+                                    if _dst_id in _system['OFF']:
+                                    #if _dst_id in _system['OFF']:
+                                        if _system['ACTIVE'] == True:
+                                            _system['ACTIVE'] = False
+                                            logger.info('(%s) Bridge: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
+                                            # Cancel the timer if we've enabled an "ON" type timeout
+                                        if _system['TO_TYPE'] == 'ON':
+                                            _system['TIMER'] = pkt_time
+                                            logger.info('(%s) Bridge: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
+                                    # Reset the timer for the rule
+                                    if _system['ACTIVE'] == False and _system['TO_TYPE'] == 'OFF':
+                                        _system['TIMER'] = pkt_time + _system['TIMEOUT']
+                                        logger.info('(%s) Bridge: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
+                                    # Cancel the timer if we've enabled an "ON" type timeout
+                                    if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON' and _dst_id in _system['OFF']:
+                                        _system['TIMER'] = pkt_time
+                                        logger.info('(%s) Bridge: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
 
             #
             # END IN-BAND SIGNALLING
