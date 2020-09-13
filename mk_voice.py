@@ -56,6 +56,7 @@ def pkt_gen(_rf_src, _dst_id, _peer, _slot, _phrase):
     
     EMBED = []
     EMBED.append(                    BS_VOICE_SYNC                     )
+    EMBED.append(EMB['BURST_A'][:8] +  EMB_LC[1]  + EMB['BURST_A'][-8:])
     EMBED.append(EMB['BURST_B'][:8] +  EMB_LC[1]  + EMB['BURST_B'][-8:])
     EMBED.append(EMB['BURST_C'][:8] +  EMB_LC[2]  + EMB['BURST_C'][-8:])
     EMBED.append(EMB['BURST_D'][:8] +  EMB_LC[3]  + EMB['BURST_D'][-8:])

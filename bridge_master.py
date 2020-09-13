@@ -33,7 +33,7 @@ This program currently only works with group voice calls.
 # Python modules we need
 import sys
 from bitarray import bitarray
-from time import time
+from time import time,sleep
 import importlib.util
 
 # Twisted is pretty important, so I keep it separate
@@ -43,11 +43,13 @@ from twisted.internet import reactor, task
 
 # Things we import from the main hblink module
 from hblink import HBSYSTEM, OPENBRIDGE, systems, hblink_handler, reportFactory, REPORT_OPCODES, mk_aliases
-from dmr_utils3.utils import bytes_3, int_id, get_alias
+from dmr_utils3.utils import bytes_3, int_id, get_alias, bytes_4
 from dmr_utils3 import decode, bptc, const
 import config
 import log
 from const import *
+from mk_voice import pkt_gen
+from voice_lib import words
 
 # Stuff for socket reporting
 import pickle
@@ -526,7 +528,7 @@ class routerHBP(HBSYSTEM):
             if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
                 logger.warning('(%s) Reflector: Private call from %s to %s',self._system, int_id(_rf_src), _int_dst_id)
                 #if _int_dst_id >= 4000 and _int_dst_id <= 5000:
-                if _int_dst_id >= 90 and _int_dst_id <= 99999:
+                if _int_dst_id >= 90 and _int_dst_id <= 999999:
                     _bridgename = '#'+ str(_int_dst_id)
                     if _bridgename not in BRIDGES and not (_int_dst_id >= 4000 and _int_dst_id <= 5000):
                             logger.info('(%s) Reflector for TG %s does not exist. Creating as User Activated',self._system, _int_dst_id)
@@ -581,6 +583,28 @@ class routerHBP(HBSYSTEM):
                                     if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON' and _dst_id in _system['OFF']:
                                         _system['TIMER'] = pkt_time
                                         logger.info('(%s) Reflector: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
+            
+            if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
+                speech = pkt_gen(bytes_3(2342690), bytes_3(9), bytes_4(2342690), 1, [words['all_circuits'],words['enabled']])
+    
+                sleep(1)
+                while True:
+                    try:
+                        pkt = next(speech)
+                    except StopIteration:
+                        break
+                    sleep(.058)
+                    self.send_system(pkt)
+                    #print(bhex(pkt))
+                    sleep(1)
+                    while True:
+                        try:
+                            pkt = next(speech)
+                        except StopIteration:
+                            break
+                        sleep(.058)
+                        self.send_system(pkt)
+                        #print(bhex(pkt))
             
             # Mark status variables for use later
             self.STATUS[_slot]['RX_PEER']      = _peer_id
