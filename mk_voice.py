@@ -86,6 +86,9 @@ def pkt_gen(_rf_src, _dst_id, _peer, _slot, _phrase):
     SEQ = (SEQ + 1) % 0x100
     yield pkt
     
+    if SEQ == 255:
+        SEQ = 0
+    
     # Return False to indicate we're done.
     return False
 

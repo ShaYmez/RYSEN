@@ -595,11 +595,11 @@ class routerHBP(HBSYSTEM):
                 
                 #Speak callsign before message
                 _say = [words['silence']]
-                _systemcs = re.sub(r'\W+', '', self._system)
-                _systemcs.upper()
-                for character in _systemcs:
-                    _say.append(words[character])
-                    _say.append(words['silence'])
+        #        _systemcs = re.sub(r'\W+', '', self._system)
+         #       _systemcs.upper()
+          #      for character in _systemcs:
+           #         _say.append(words[character])
+            #        _say.append(words['silence'])
                 
                 #If disconnection called
                 if _int_dst_id == 4000:
