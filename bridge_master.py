@@ -614,10 +614,8 @@ class routerHBP(HBSYSTEM):
                         for _system in BRIDGES[_bridge]:
                             _dehash_bridge = _bridge[1:]
                             if _system['SYSTEM'] == self._system:
-                                    logger.info('a')
                                     _active = False
                                     if _system['ACTIVE'] == True:
-                                        logger.info('b')
                                         _say.append(words['silence'])
                                         _say.append(words['linked'])
                                         _say.append(words['silence'])
