@@ -49,7 +49,13 @@ import config
 import log
 from const import *
 from mk_voice import pkt_gen
-from voice_lib import words
+#from voice_lib import words
+
+#Read voices
+from read_ambe import readAMBE
+
+#regex
+import re
 
 # Stuff for socket reporting
 import pickle
@@ -534,77 +540,117 @@ class routerHBP(HBSYSTEM):
                             logger.info('(%s) Reflector for TG %s does not exist. Creating as User Activated',self._system, _int_dst_id)
                             make_single_reflector(_dst_id,self._system)
                             
+                    if _int_dst_id > 10 and _int_dst_id != 5000:
+                        for _bridge in BRIDGES:
+                            if _bridge[0:1] != '#':
+                                continue
+                            for _system in BRIDGES[_bridge]:
+                                _dehash_bridge = _bridge[1:]
+                                if _system['SYSTEM'] == self._system:
+                                    # TGID matches a rule source, reset its timer
+                                    if _slot == _system['TS'] and _dst_id == _system['TGID'] and ((_system['TO_TYPE'] == 'ON' and (_system['ACTIVE'] == True)) or (_system['TO_TYPE'] == 'OFF' and _system['ACTIVE'] == False)):
+                                        _system['TIMER'] = pkt_time + _system['TIMEOUT']
+                                        logger.info('(%s) Transmission match for Reflector: %s. Reset timeout to %s', self._system, _bridge, _system['TIMER'])
+                            
+                                # TGID matches an ACTIVATION trigger
+                                if _int_dst_id == int(_dehash_bridge) and _system['SYSTEM'] == self._system and  _slot == _system['TS']:
+                                    # Set the matching rule as ACTIVE
+                                    if _system['ACTIVE'] == False:
+                                        _system['ACTIVE'] = True
+                                        _system['TIMER'] = pkt_time + _system['TIMEOUT']
+                                        logger.info('(%s) Reflector: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
+                                        # Cancel the timer if we've enabled an "OFF" type timeout
+                                        if _system['TO_TYPE'] == 'OFF':
+                                            _system['TIMER'] = pkt_time
+                                            logger.info('(%s) Reflector: %s set to "OFF" with an on timer rule: timeout timer cancelled', self._system, _bridge)
+                                # Reset the timer for the rule
+                                if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON':
+                                    _system['TIMER'] = pkt_time + _system['TIMEOUT']
+                                    logger.info('(%s) Reflector: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
+
+                                # TGID matches an DE-ACTIVATION trigger
+                                #Single TG mode
+                                if (_dst_id in _system['OFF']  or _dst_id in _system['RESET'] or (_int_dst_id != int(_dehash_bridge)) and _system['SYSTEM'] == self._system and _slot == _system['TS']):
+                                        # Set the matching rule as ACTIVE
+                                        #Single TG mode
+                                        if _dst_id in _system['OFF'] or _int_dst_id != int(_dehash_bridge) :
+                                        #if _dst_id in _system['OFF']:
+                                            if _system['ACTIVE'] == True:
+                                                _system['ACTIVE'] = False
+                                                logger.info('(%s) Reflector: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
+                                                # Cancel the timer if we've enabled an "ON" type timeout
+                                                if _system['TO_TYPE'] == 'ON':
+                                                    _system['TIMER'] = pkt_time
+                                                    logger.info('(%s) Reflector: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
+                                        # Reset the timer for the rule
+                                        if _system['ACTIVE'] == False and _system['TO_TYPE'] == 'OFF':
+                                            _system['TIMER'] = pkt_time + _system['TIMEOUT']
+                                            logger.info('(%s) Reflector: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
+                                        # Cancel the timer if we've enabled an "ON" type timeout
+                                        if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON' and _dst_id in _system['OFF']:
+                                            _system['TIMER'] = pkt_time
+                                            logger.info('(%s) Reflector: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
+            
+            if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
+                
+                #Speak callsign before message
+                _say = [words['silence']]
+                _systemcs = re.sub(r'\W+', '', self._system)
+                _systemcs.upper()
+                for character in _systemcs:
+                    _say.append(words[character])
+                    _say.append(words['silence'])
+                
+                #If disconnection called
+                if _int_dst_id == 4000:
+                    _say.append(words['notlinked'])
+                    _say.append(words['silence'])
+                 
+                 #If status called
+                elif _int_dst_id == 5000:
                     for _bridge in BRIDGES:
                         if _bridge[0:1] != '#':
                             continue
                         for _system in BRIDGES[_bridge]:
                             _dehash_bridge = _bridge[1:]
                             if _system['SYSTEM'] == self._system:
-                                # TGID matches a rule source, reset its timer
-                                if _slot == _system['TS'] and _dst_id == _system['TGID'] and ((_system['TO_TYPE'] == 'ON' and (_system['ACTIVE'] == True)) or (_system['TO_TYPE'] == 'OFF' and _system['ACTIVE'] == False)):
-                                    _system['TIMER'] = pkt_time + _system['TIMEOUT']
-                                    logger.info('(%s) Transmission match for Reflector: %s. Reset timeout to %s', self._system, _bridge, _system['TIMER'])
+                                    logger.info('a')
+                                    _active = False
+                                    if _system['ACTIVE'] == True:
+                                        logger.info('b')
+                                        _say.append(words['silence'])
+                                        _say.append(words['linked'])
+                                        _say.append(words['silence'])
+                                        _say.append(words['2'])
+                                        _say.append(words['silence']) 
+                                        
+                                        for num in str(_dehash_bridge):
+                                            _say.append(words[num])
+                                        _active = True
                         
-                            # TGID matches an ACTIVATION trigger
-                            if _int_dst_id == int(_dehash_bridge) and _system['SYSTEM'] == self._system and  _slot == _system['TS']:
-                                # Set the matching rule as ACTIVE
-                                if _system['ACTIVE'] == False:
-                                    _system['ACTIVE'] = True
-                                    _system['TIMER'] = pkt_time + _system['TIMEOUT']
-                                    logger.info('(%s) Reflector: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
-                                    # Cancel the timer if we've enabled an "OFF" type timeout
-                                    if _system['TO_TYPE'] == 'OFF':
-                                        _system['TIMER'] = pkt_time
-                                        logger.info('(%s) Reflector: %s set to "OFF" with an on timer rule: timeout timer cancelled', self._system, _bridge)
-                            # Reset the timer for the rule
-                            if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON':
-                                _system['TIMER'] = pkt_time + _system['TIMEOUT']
-                                logger.info('(%s) Reflector: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
+                    if _active == False:
+                        _say.append(words['notlinked'])
+                
+                #Speak what TG was requested to link
+                else:
+                    _say.append(words['silence'])
+                    _say.append(words['linked'])
+                    _say.append(words['silence'])
+                    _say.append(words['2'])
+                    _say.append(words['silence'])
+                    
+                    for num in str(_int_dst_id):
+                        _say.append(words[num])
+     
+                speech = pkt_gen(bytes_3(9), bytes_3(9), bytes_4(9), 1, _say)
 
-                            # TGID matches an DE-ACTIVATION trigger
-                            #Single TG mode
-                            if (_dst_id in _system['OFF']  or _dst_id in _system['RESET'] or (_int_dst_id != int(_dehash_bridge)) and _system['SYSTEM'] == self._system and _slot == _system['TS']):
-                                    # Set the matching rule as ACTIVE
-                                    #Single TG mode
-                                    if _dst_id in _system['OFF'] or _int_dst_id != int(_dehash_bridge) :
-                                    #if _dst_id in _system['OFF']:
-                                        if _system['ACTIVE'] == True:
-                                            _system['ACTIVE'] = False
-                                            logger.info('(%s) Reflector: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
-                                            # Cancel the timer if we've enabled an "ON" type timeout
-                                            if _system['TO_TYPE'] == 'ON':
-                                                _system['TIMER'] = pkt_time
-                                                logger.info('(%s) Reflector: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
-                                    # Reset the timer for the rule
-                                    if _system['ACTIVE'] == False and _system['TO_TYPE'] == 'OFF':
-                                        _system['TIMER'] = pkt_time + _system['TIMEOUT']
-                                        logger.info('(%s) Reflector: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
-                                    # Cancel the timer if we've enabled an "ON" type timeout
-                                    if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON' and _dst_id in _system['OFF']:
-                                        _system['TIMER'] = pkt_time
-                                        logger.info('(%s) Reflector: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
-            
-            if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
-                speech = pkt_gen(bytes_3(2342690), bytes_3(9), bytes_4(2342690), 1, [words['all_circuits'],words['enabled']])
-    
-                sleep(1)
                 while True:
                     try:
                         pkt = next(speech)
                     except StopIteration:
                         break
-                    sleep(.058)
                     self.send_system(pkt)
-                    #print(bhex(pkt))
-                    sleep(1)
-                    while True:
-                        try:
-                            pkt = next(speech)
-                        except StopIteration:
-                            break
-                        sleep(.058)
-                        self.send_system(pkt)
-                        #print(bhex(pkt))
+
             
             # Mark status variables for use later
             self.STATUS[_slot]['RX_PEER']      = _peer_id
@@ -977,6 +1023,12 @@ if __name__ == '__main__':
     else:
         report_server = None
         logger.info('(REPORT) TCP Socket reporting not configured')
+        
+    #Read AMBE
+    AMBEobj = readAMBE('en_GB','./Audio/')
+    #global words
+    words = AMBEobj.readfiles()
+    logger.info('(AMBE) Read %s words into voice dict',len(words) - 1)
 
     # HBlink instance creation
     logger.info('(GLOBAL) HBlink \'bridge.py\' -- SYSTEM STARTING...')
