@@ -648,6 +648,8 @@ class routerHBP(HBSYSTEM):
                     except StopIteration:
                         break
                     self.send_system(pkt)
+                    #Packet every 60ms
+                    sleep(0.06)
 
             
             # Mark status variables for use later
