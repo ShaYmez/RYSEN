@@ -11,7 +11,7 @@ class readAMBE:
     def _make_bursts(self,data):
         it = iter(data)
         for i in range(0, len(data), 108):
-            yield bitarray([k for k in islice(it, 108)])
+            yield bitarray([k for k in islice(it, 108)] )
     
     def readfiles(self):
         _AMBE_LENGTH = 9
@@ -57,8 +57,8 @@ class readAMBE:
         except IOError:
             return False
         _wordBADict['silence'] = ([
-                [bitarray('000000001010110000000000000000001010101000000000000000000100000000000000000000000010000000000000000000000'),
-                 bitarray('0000000000000000000000001000100000000000000000001000000000000000000000010000000000000000000000010000000')]
+                [bitarray('101011000000101010100000010000000000001000000000000000000000010001000000010000000000100000000000100000000000'),
+                 bitarray('001010110000001010101000000100000000000010000000000000000000000100010000000100000000001000000000001000000000')]
         ])
         return _wordBADict
             

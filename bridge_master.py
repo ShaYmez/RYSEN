@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 #
 ###############################################################################
-#   Copyright (C) 2016-2019 Cortney T. Buffington, N0MJS <n0mjs@me.com>
+# Copyright (C) 2020 Simon Adlem, G7RZU <g7rzu@gb7fr.org.uk>  
+# Copyright (C) 2016-2019 Cortney T. Buffington, N0MJS <n0mjs@me.com>
 #
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -68,7 +69,7 @@ logger = logging.getLogger(__name__)
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Cortney T. Buffington, N0MJS, Forked by Simon Adlem - G7RZU'
 __copyright__  = 'Copyright (c) 2016-2019 Cortney T. Buffington, N0MJS and the K0USY Group, Simon Adlem, G7RZU 2020'
-__credits__    = 'Colin Durbridge, G4EML, Steve Zingman, N4IRS; Mike Zingman, N4IRR; Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT'
+__credits__    = 'Colin Durbridge, G4EML, Steve Zingman, N4IRS; Mike Zingman, N4IRR; Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT; Jon Lee, G4TSN'
 __license__    = 'GNU GPLv3'
 __maintainer__ = 'Simon Adlem G7RZU'
 __email__      = 'simon@gb7fr.org.uk'
@@ -613,7 +614,7 @@ class routerHBP(HBSYSTEM):
                             continue
                         for _system in BRIDGES[_bridge]:
                             _dehash_bridge = _bridge[1:]
-                            if _system['SYSTEM'] == self._system:
+                            if _system['SYSTEM'] == self._system and _slot == _system['TS']:
                                     _active = False
                                     if _system['ACTIVE'] == True:
                                         _say.append(words['silence'])
@@ -624,6 +625,7 @@ class routerHBP(HBSYSTEM):
                                         
                                         for num in str(_dehash_bridge):
                                             _say.append(words[num])
+                                        
                                         _active = True
                         
                     if _active == False:
@@ -642,16 +644,17 @@ class routerHBP(HBSYSTEM):
      
                 speech = pkt_gen(bytes_3(9), bytes_3(9), bytes_4(9), 1, _say)
 
+                sleep(1)
                 while True:
                     try:
                         pkt = next(speech)
                     except StopIteration:
                         break
-                    self.send_system(pkt)
                     #Packet every 60ms
-                    sleep(0.06)
+                    sleep(0.058)
+                    self.send_system(pkt)
+                    #print(len(pkt), pkt[4], pkt)
 
-            
             # Mark status variables for use later
             self.STATUS[_slot]['RX_PEER']      = _peer_id
             self.STATUS[_slot]['RX_SEQ']       = _seq
@@ -849,8 +852,9 @@ class routerHBP(HBSYSTEM):
                 #
 
                 # Iterate the rules dictionary
-
                 for _bridge in BRIDGES:
+                    if _bridge[0:1] == '#':
+                        continue
                     for _system in BRIDGES[_bridge]:
                         if _system['SYSTEM'] == self._system:
 
