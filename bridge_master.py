@@ -538,7 +538,7 @@ class routerHBP(HBSYSTEM):
                 if _int_dst_id >= 90 and _int_dst_id <= 999999:
                     _bridgename = '#'+ str(_int_dst_id)
                     if _bridgename not in BRIDGES and not (_int_dst_id >= 4000 and _int_dst_id <= 5000):
-                            logger.info('(%s) Reflector for TG %s does not exist. Creating as User Activated',self._system, _int_dst_id)
+                            logger.info('(%s) [A] Reflector for TG %s does not exist. Creating as User Activated',self._system, _int_dst_id)
                             make_single_reflector(_dst_id,self._system)
                             
                     if _int_dst_id > 10 and _int_dst_id != 5000:
@@ -551,7 +551,7 @@ class routerHBP(HBSYSTEM):
                                     # TGID matches a rule source, reset its timer
                                     if _slot == _system['TS'] and _dst_id == _system['TGID'] and ((_system['TO_TYPE'] == 'ON' and (_system['ACTIVE'] == True)) or (_system['TO_TYPE'] == 'OFF' and _system['ACTIVE'] == False)):
                                         _system['TIMER'] = pkt_time + _system['TIMEOUT']
-                                        logger.info('(%s) Transmission match for Reflector: %s. Reset timeout to %s', self._system, _bridge, _system['TIMER'])
+                                        logger.info('(%s) [B] Transmission match for Reflector: %s. Reset timeout to %s', self._system, _bridge, _system['TIMER'])
                             
                                 # TGID matches an ACTIVATION trigger
                                 if _int_dst_id == int(_dehash_bridge) and _system['SYSTEM'] == self._system and  _slot == _system['TS']:
@@ -559,15 +559,15 @@ class routerHBP(HBSYSTEM):
                                     if _system['ACTIVE'] == False:
                                         _system['ACTIVE'] = True
                                         _system['TIMER'] = pkt_time + _system['TIMEOUT']
-                                        logger.info('(%s) Reflector: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
+                                        logger.info('(%s) [C] Reflector: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
                                         # Cancel the timer if we've enabled an "OFF" type timeout
                                         if _system['TO_TYPE'] == 'OFF':
                                             _system['TIMER'] = pkt_time
-                                            logger.info('(%s) Reflector: %s set to "OFF" with an on timer rule: timeout timer cancelled', self._system, _bridge)
+                                            logger.info('(%s) [D] Reflector: %s set to "OFF" with an on timer rule: timeout timer cancelled', self._system, _bridge)
                                 # Reset the timer for the rule
                                 if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON':
                                     _system['TIMER'] = pkt_time + _system['TIMEOUT']
-                                    logger.info('(%s) Reflector: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
+                                    logger.info('(%s) [E] Reflector: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
 
                                 # TGID matches an DE-ACTIVATION trigger
                                 #Single TG mode
@@ -578,19 +578,19 @@ class routerHBP(HBSYSTEM):
                                         #if _dst_id in _system['OFF']:
                                             if _system['ACTIVE'] == True:
                                                 _system['ACTIVE'] = False
-                                                logger.info('(%s) Reflector: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
+                                                logger.info('(%s) [F] Reflector: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
                                                 # Cancel the timer if we've enabled an "ON" type timeout
                                                 if _system['TO_TYPE'] == 'ON':
                                                     _system['TIMER'] = pkt_time
-                                                    logger.info('(%s) Reflector: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
+                                                    logger.info('(%s) [G] Reflector: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
                                         # Reset the timer for the rule
                                         if _system['ACTIVE'] == False and _system['TO_TYPE'] == 'OFF':
                                             _system['TIMER'] = pkt_time + _system['TIMEOUT']
-                                            logger.info('(%s) Reflector: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
+                                            logger.info('(%s) [H] Reflector: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
                                         # Cancel the timer if we've enabled an "ON" type timeout
                                         if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON' and _dst_id in _system['OFF']:
                                             _system['TIMER'] = pkt_time
-                                            logger.info('(%s) Reflector: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
+                                            logger.info('(%s) [I] Reflector: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
             
             if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
                 
@@ -861,7 +861,7 @@ class routerHBP(HBSYSTEM):
                             # TGID matches a rule source, reset its timer
                             if _slot == _system['TS'] and _dst_id == _system['TGID'] and ((_system['TO_TYPE'] == 'ON' and (_system['ACTIVE'] == True)) or (_system['TO_TYPE'] == 'OFF' and _system['ACTIVE'] == False)):
                                 _system['TIMER'] = pkt_time + _system['TIMEOUT']
-                                logger.info('(%s) Transmission match for Bridge: %s. Reset timeout to %s', self._system, _bridge, _system['TIMER'])
+                                logger.info('(%s) [1] Transmission match for Bridge: %s. Reset timeout to %s', self._system, _bridge, _system['TIMER'])
 
                             # TGID matches an ACTIVATION trigger
                             if (_dst_id in _system['ON'] or _dst_id in _system['RESET']) and _slot == _system['TS']:
@@ -870,15 +870,15 @@ class routerHBP(HBSYSTEM):
                                     if _system['ACTIVE'] == False:
                                         _system['ACTIVE'] = True
                                         _system['TIMER'] = pkt_time + _system['TIMEOUT']
-                                        logger.info('(%s) Bridge: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
+                                        logger.info('(%s) [2] Bridge: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
                                         # Cancel the timer if we've enabled an "OFF" type timeout
                                         if _system['TO_TYPE'] == 'OFF':
                                             _system['TIMER'] = pkt_time
-                                            logger.info('(%s) Bridge: %s set to "OFF" with an on timer rule: timeout timer cancelled', self._system, _bridge)
+                                            logger.info('(%s) [3] Bridge: %s set to "OFF" with an on timer rule: timeout timer cancelled', self._system, _bridge)
                                 # Reset the timer for the rule
                                 if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON':
                                     _system['TIMER'] = pkt_time + _system['TIMEOUT']
-                                    logger.info('(%s) Bridge: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
+                                    logger.info('(%s) [4] Bridge: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
 
                             # TGID matches an DE-ACTIVATION trigger
                             #Single TG mode
@@ -891,19 +891,19 @@ class routerHBP(HBSYSTEM):
                                     #if _dst_id in _system['OFF']:
                                         if _system['ACTIVE'] == True:
                                             _system['ACTIVE'] = False
-                                            logger.info('(%s) Bridge: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
+                                            logger.info('(%s) [5] Bridge: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
                                             # Cancel the timer if we've enabled an "ON" type timeout
                                         if _system['TO_TYPE'] == 'ON':
                                             _system['TIMER'] = pkt_time
-                                            logger.info('(%s) Bridge: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
+                                            logger.info('(%s) [6] Bridge: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
                                     # Reset the timer for the rule
                                     if _system['ACTIVE'] == False and _system['TO_TYPE'] == 'OFF':
                                         _system['TIMER'] = pkt_time + _system['TIMEOUT']
-                                        logger.info('(%s) Bridge: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
+                                        logger.info('(%s) [7] Bridge: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
                                     # Cancel the timer if we've enabled an "ON" type timeout
                                     if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON' and _dst_id in _system['OFF']:
                                         _system['TIMER'] = pkt_time
-                                        logger.info('(%s) Bridge: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
+                                        logger.info('(%s) [8] Bridge: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
                             else:
                                 
                                 if (_dst_id in _system['OFF']  or _dst_id in _system['RESET']) and _slot == _system['TS']:
@@ -913,19 +913,19 @@ class routerHBP(HBSYSTEM):
                                     #if _dst_id in _system['OFF']:
                                         if _system['ACTIVE'] == True:
                                             _system['ACTIVE'] = False
-                                            logger.info('(%s) Bridge: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
+                                            logger.info('(%s) [9] Bridge: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
                                             # Cancel the timer if we've enabled an "ON" type timeout
                                         if _system['TO_TYPE'] == 'ON':
                                             _system['TIMER'] = pkt_time
-                                            logger.info('(%s) Bridge: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
+                                            logger.info('(%s) [10] Bridge: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
                                     # Reset the timer for the rule
                                     if _system['ACTIVE'] == False and _system['TO_TYPE'] == 'OFF':
                                         _system['TIMER'] = pkt_time + _system['TIMEOUT']
-                                        logger.info('(%s) Bridge: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
+                                        logger.info('(%s) [11] Bridge: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
                                     # Cancel the timer if we've enabled an "ON" type timeout
                                     if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON' and _dst_id in _system['OFF']:
                                         _system['TIMER'] = pkt_time
-                                        logger.info('(%s) Bridge: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
+                                        logger.info('(%s) [12] Bridge: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
 
             #
             # END IN-BAND SIGNALLING
