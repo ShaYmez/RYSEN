@@ -563,7 +563,7 @@ class routerHBP(HBSYSTEM):
                                         # Cancel the timer if we've enabled an "OFF" type timeout
                                         if _system['TO_TYPE'] == 'OFF':
                                             _system['TIMER'] = pkt_time
-                                            logger.info('(%s) [D] Reflector: %s set to "OFF" with an on timer rule: timeout timer cancelled', self._system, _bridge)
+                                            logger.info('(%s) [D] Reflector: %s has an "OFF" timer and set to "ON": timeout timer cancelled', self._system, _bridge)
                                 # Reset the timer for the rule
                                 if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON':
                                     _system['TIMER'] = pkt_time + _system['TIMEOUT']
@@ -582,7 +582,7 @@ class routerHBP(HBSYSTEM):
                                                 # Cancel the timer if we've enabled an "ON" type timeout
                                                 if _system['TO_TYPE'] == 'ON':
                                                     _system['TIMER'] = pkt_time
-                                                    logger.info('(%s) [G] Reflector: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
+                                                    logger.info('(%s) [G] Reflector: %s has ON timer and set to "OFF": timeout timer cancelled', self._system, _bridge)
                                         # Reset the timer for the rule
                                         if _system['ACTIVE'] == False and _system['TO_TYPE'] == 'OFF':
                                             _system['TIMER'] = pkt_time + _system['TIMEOUT']
@@ -590,7 +590,7 @@ class routerHBP(HBSYSTEM):
                                         # Cancel the timer if we've enabled an "ON" type timeout
                                         if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON' and _dst_id in _system['OFF']:
                                             _system['TIMER'] = pkt_time
-                                            logger.info('(%s) [I] Reflector: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
+                                            logger.info('(%s) [I] Reflector: %s has ON timer and set to "OFF": timeout timer cancelled', self._system, _bridge)
             
             if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
                 
