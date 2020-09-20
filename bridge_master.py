@@ -604,19 +604,21 @@ class routerHBP(HBSYSTEM):
                 
                 #If disconnection called
                 if _int_dst_id == 4000:
+                    logger.debug('(%s) Reflector: voice called - 4000 "not linked"', self._system)
                     _say.append(words['notlinked'])
                     _say.append(words['silence'])
                  
                  #If status called
                 elif _int_dst_id == 5000:
+                    _active = False
                     for _bridge in BRIDGES:
                         if _bridge[0:1] != '#':
                             continue
                         for _system in BRIDGES[_bridge]:
                             _dehash_bridge = _bridge[1:]
                             if _system['SYSTEM'] == self._system and _slot == _system['TS']:
-                                    _active = False
                                     if _system['ACTIVE'] == True:
+                                        logger.debug('(%s) Reflector: voice called - 5000 status - "linked to %s"', self._system,_dehash_bridge)
                                         _say.append(words['silence'])
                                         _say.append(words['linked'])
                                         _say.append(words['silence'])
@@ -627,12 +629,15 @@ class routerHBP(HBSYSTEM):
                                             _say.append(words[num])
                                         
                                         _active = True
+                                        break
                         
                     if _active == False:
+                        logger.debug('(%s) Reflector: voice called - 5000 status - "not linked"', self._system)
                         _say.append(words['notlinked'])
                 
                 #Speak what TG was requested to link
                 else:
+                    logger.debug('(%s) Reflector: voice called (linking)  "linked to %s"', self._system,_int_dst_id)
                     _say.append(words['silence'])
                     _say.append(words['linked'])
                     _say.append(words['silence'])
