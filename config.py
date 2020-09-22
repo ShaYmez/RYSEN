@@ -261,7 +261,8 @@ def build_config(_config_file):
                         'TG1_ACL': config.get(section, 'TGID_TS1_ACL'),
                         'TG2_ACL': config.get(section, 'TGID_TS2_ACL'),
                         'DEFAULT_UA_TIMER': config.getint(section, 'DEFAULT_UA_TIMER'),
-                        'SINGLE_MODE': config.getboolean(section, 'SINGLE_MODE')
+                        'SINGLE_MODE': config.getboolean(section, 'SINGLE_MODE'),
+                        'VOICE_IDENT': config.getboolean(section, 'VOICE_IDENT')
                     }})
                     CONFIG['SYSTEMS'][section].update({'PEERS': {}})
                     

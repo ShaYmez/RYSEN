@@ -36,6 +36,7 @@ import sys
 from bitarray import bitarray
 from time import time,sleep
 import importlib.util
+import re
 
 # Twisted is pretty important, so I keep it separate
 from twisted.internet.protocol import Factory, Protocol
@@ -54,9 +55,6 @@ from mk_voice import pkt_gen
 
 #Read voices
 from read_ambe import readAMBE
-
-#regex
-import re
 
 # Stuff for socket reporting
 import pickle
@@ -262,6 +260,34 @@ def stream_trimmer_loop():
                     removed = systems[system].STATUS.pop(stream_id)
                 else:
                     logger.error('(%s) Attemped to remove OpenBridge Stream ID %s not in the Stream ID list: %s', system, int_id(stream_id), [id for id in systems[system].STATUS])
+
+def ident():
+    for system in systems:
+        if CONFIG['SYSTEMS'][system]['VOICE_IDENT'] == True:
+            #We only care about slot 2 - idents go out on slot 2
+            _slot  = systems[system].STATUS[2]
+            #If slot is idle for RX and TX
+            if (_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_slot['TX_TYPE'] == HBPF_SLT_VTERM):
+                #_stream_id = hex_str_4(1234567)
+                logger.info('(%s) Sending voice ident',system)
+                _say = [words['silence']]
+                _systemcs = re.sub(r'\W+', '', system)
+                _systemcs.upper()
+                for character in _systemcs:
+                    _say.append(words[character])
+                    _say.append(words['silence'])
+                speech = pkt_gen(bytes_3(16777215), bytes_3(16777215), bytes_4(16777215), 1, _say)
+
+                sleep(1)
+                while True:
+                    try:
+                        pkt = next(speech)
+                    except StopIteration:
+                            break
+                    #Packet every 60ms
+                    sleep(0.058)
+                    systems[system].send_system(pkt)
+        
 
 class routerOBP(OPENBRIDGE):
 
@@ -1063,5 +1089,11 @@ if __name__ == '__main__':
     stream_trimmer_task = task.LoopingCall(stream_trimmer_loop)
     stream_trimmer = stream_trimmer_task.start(5)
     stream_trimmer.addErrback(loopingErrHandle)
+   
+    # Ident
+    ident_task = task.LoopingCall(ident)
+    ident = ident_task.start(900)
+    ident.addErrback(loopingErrHandle)
+    
 
     reactor.run()
