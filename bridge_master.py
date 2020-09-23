@@ -263,6 +263,8 @@ def stream_trimmer_loop():
 
 def ident():
     for system in systems:
+        if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
+            continue
         if CONFIG['SYSTEMS'][system]['VOICE_IDENT'] == True:
             #We only care about slot 2 - idents go out on slot 2
             _slot  = systems[system].STATUS[2]
