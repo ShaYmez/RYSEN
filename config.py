@@ -108,6 +108,7 @@ def build_config(_config_file):
     CONFIG['LOGGER'] = {}
     CONFIG['ALIASES'] = {}
     CONFIG['SYSTEMS'] = {}
+    CONFIG['MYSQL'] = {}
 
     try:
         for section in config.sections():
@@ -152,6 +153,17 @@ def build_config(_config_file):
                     'SUBSCRIBER_URL': config.get(section, 'SUBSCRIBER_URL'),
                     'STALE_TIME': config.getint(section, 'STALE_DAYS') * 86400,
                 })
+                
+            elif section == 'MYSQL':
+                CONFIG['MYSQL'].update({
+                    'USE_MYSQL': config.getboolean(section, 'USE_MYSQL'),
+                    'USER': config.get(section, 'USER'),
+                    'PASS': config.get(section, 'PASS'),
+                    'DB': config.get(section, 'DB'),
+                    'SERVER': config.get(section, 'SERVER'),
+                    'PORT': config.getint('PORT')
+            })
+                
 
             elif config.getboolean(section, 'ENABLED'):
                 if config.get(section, 'MODE') == 'PEER':
