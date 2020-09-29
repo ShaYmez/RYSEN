@@ -44,7 +44,7 @@ class useMYSQL:
             _cursor.execute("select * from repeaters where ENABLED=1 and MODE='MASTER'")
         except mysql.connector.Error as err:
             _cursor.close()
-            return(False)
+            raise Exception('Problem with cursor execute')
         
         for (callsign, mode, enabled, _repeat, max_peers, export_ambe, ip, port, passphrase, group_hangtime, use_acl, reg_acl, sub_acl, tgid_ts1_acl, tgid_ts2_acl, default_ua_timer, single_mode, voice_ident) in _cursor:
             
@@ -68,7 +68,7 @@ class useMYSQL:
                     }})
             CONFIG['SYSTEMS'][callsign].update({'PEERS': {}})
                     
-            return(CONFIG)
+            return(CONFIG['SYSTEMS'])
             
 
 #For testing 

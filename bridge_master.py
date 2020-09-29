@@ -56,6 +56,9 @@ from mk_voice import pkt_gen
 #Read voices
 from read_ambe import readAMBE
 
+#MySQL
+from mysql_config import useMYSQL
+
 # Stuff for socket reporting
 import pickle
 # REMOVE LATER from datetime import datetime
@@ -1027,6 +1030,25 @@ if __name__ == '__main__':
     logger = log.config_logging(CONFIG['LOGGER'])
     logger.info('\n\nCopyright (c) 2013, 2014, 2015, 2016, 2018, 2019\n\tThe Regents of the K0USY Group. All rights reserved.\n')
     logger.debug('(GLOBAL) Logging system started, anything from here on gets logged')
+
+    
+    #If MySQL is enabled, read master config from MySQL too
+    if CONFIG['MYSQL']['USE_MYSQL'] == True:
+        logger.debug('(MYSQL) MySQL config enabled')
+        SQLCONFIG = {}
+        sql = useMYSQL(CONFIG['MYSQL']['SERVER'], CONFIG['MYSQL']['USER'], CONFIG['MYSQL']['PASS'], CONFIG['MYSQL']['DB'])
+        if sql.con():
+            logger.debug('(MYSQL) reading config from database')
+            try:
+                SQLCONFIG = sql.getConfig()
+            except:
+                logger.debug('(MYSQL) problem with SQL query, aborting')
+                sql.close()
+        else:
+            logger.debug('(MYSQL) problem connecting to SQL server, aborting')
+        
+        #Add MySQL config data to config dict
+        CONFIG['SYSTEMS'].update(SQLCONFIG)
 
     # Set up the signal handler
     def sig_handler(_signal, _frame):
