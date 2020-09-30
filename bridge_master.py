@@ -48,6 +48,7 @@ from hblink import HBSYSTEM, OPENBRIDGE, systems, hblink_handler, reportFactory,
 from dmr_utils3.utils import bytes_3, int_id, get_alias, bytes_4
 from dmr_utils3 import decode, bptc, const
 import config
+from config import acl_build
 import log
 from const import *
 from mk_voice import pkt_gen
@@ -292,7 +293,84 @@ def ident():
                     #Packet every 60ms
                     sleep(0.058)
                     systems[system].send_system(pkt)
-        
+
+def mysql_config_check():
+    logger.debug('(MYSQL) Periodic config check')
+    SQLCONFIG = {}
+    if sql.con():
+        logger.debug('(MYSQL) reading config from database')
+        try:
+            SQLCONFIG = sql.getConfig()
+        except:
+            logger.debug('(MYSQL) problem with SQL query, aborting')
+            sql.close()
+    else:
+        logger.debug('(MYSQL) problem connecting to SQL server, aborting')
+    
+    for system in SQLCONFIG:
+        if system not in CONFIG['SYSTEMS']:
+            logger.debug('(MYSQL) new system %s, starting HBP listener',system)  
+            CONFIG['SYSTEMS'][system] = SQLCONFIG[system]
+            systems[system] = routerHBP(system, CONFIG, report_server)
+            listeningPorts[system] = reactor.listenUDP(CONFIG['SYSTEMS'][system]['PORT'], systems[system], interface=CONFIG['SYSTEMS'][system]['IP'])
+            #Do ACL processing
+            # Registration ACLs
+            #SQLCONFIG[system]['REG_ACL'] = acl_build(SQLCONFIG[system]['REG_ACL'], PEER_MAX)
+           # Subscriber and TGID ACLs
+           logger.debug('(MYSQL) building ACLs')
+            for acl in ['SUB_ACL', 'TG1_ACL', 'TG2_ACL']:
+                SQLCONFIG[system][acl] = acl_build(SQLCONFIG[system][acl], ID_MAX)
+            #Add system to bridges
+            logger.debug('(MYSQL) adding new system to static bridges')
+            for _bridge in BRIDGES:
+                ts1 = False 
+                ts2 = False
+                for i,e in enumerate(BRIDGES[_bridge]):
+                    if e['SYSTEM'] == system and e['TS'] == 1:
+                        ts1 = True
+                    if e['SYSTEM'] == system and e['TS'] == 2:
+                        ts2 = True
+                if _bridge[0:1] != '#':
+                    _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
+                    if ts1 == False:
+                        BRIDGES[_bridge].append({'SYSTEM': system, 'TS': 1, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
+                    if ts2 == False:
+                        BRIDGES[_bridge].append({'SYSTEM': system, 'TS': 2, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
+                else:
+                    _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
+                    if ts2 == False:
+                        BRIDGES[_bridge].append({'SYSTEM': system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [bytes_3(4000)],'ON': [],'RESET': [], 'TIMER': time()})
+                
+        elif SQLCONFIG[system]['ENABLED'] == False and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
+            logger.debug('(MYSQL) %s changed from enabled to disabled, killing HBP listener',system)
+            listeningPorts[system].stopListening()
+            
+        elif CONFIG['SYSTEMS'][system]['ENABLED'] == False and SQLCONFIG[system]['ENABLED'] == True:
+            logger.debug('(MYSQL) %s changed from disabled to enabled, starting HBP listener',system)
+            systems[system] = routerHBP(system, CONFIG, report_server)
+            listeningPorts[system] = reactor.listenUDP(CONFIG['SYSTEMS'][system]['PORT'], systems[system], interface=CONFIG['SYSTEMS'][system]['IP'])
+            logger.debug('(GLOBAL) %s instance created: %s, %s', CONFIG['SYSTEMS'][system]['MODE'], system, systems[system])
+            
+        elif SQLCONFIG[system]['IP'] != CONFIG['SYSTEMS'][system]['IP'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
+            logger.debug('(MYSQL) %s IP binding changed on enabled system, killing HBP listener. Will restart in 1 minute',system)
+            listeningPorts[system].stopListening()
+            CONFIG['SYSTEMS'][system]['ENABLED'] = False
+            
+        elif SQLCONFIG[system]['PORT'] != CONFIG['SYSTEMS'][system]['PORT'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
+            logger.debug('(MYSQL) %s Port binding changed on enabled system, killing HBP listener. Will restart in 1 minute',system)
+            listeningPorts[system].stopListening()
+            CONFIG['SYSTEMS'][system]['ENABLED'] = False
+            
+        elif SQLCONFIG[system]['PASSPHRASE'] != CONFIG['SYSTEMS'][system]['PASSPHRASE'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
+            logger.debug('(MYSQL) %s Passphrase changed on enabled system, killing HBP listener. Will restart in 1 minute',system)
+            listeningPorts[system].stopListening()
+            CONFIG['SYSTEMS'][system]['ENABLED'] = False        
+            
+    
+    #Add MySQL config data to config dict
+    CONFIG['SYSTEMS'].update(SQLCONFIG)    
+    
+    sql.close()
 
 class routerOBP(OPENBRIDGE):
 
@@ -1002,6 +1080,11 @@ if __name__ == '__main__':
     import sys
     import os
     import signal
+    
+    # Higheset peer ID permitted by HBP
+    PEER_MAX = 4294967295
+    
+    ID_MAX = 16776415
 
     # Change the current directory to the location of the application
     os.chdir(os.path.dirname(os.path.realpath(sys.argv[0])))
@@ -1036,7 +1119,7 @@ if __name__ == '__main__':
     if CONFIG['MYSQL']['USE_MYSQL'] == True:
         logger.debug('(MYSQL) MySQL config enabled')
         SQLCONFIG = {}
-        sql = useMYSQL(CONFIG['MYSQL']['SERVER'], CONFIG['MYSQL']['USER'], CONFIG['MYSQL']['PASS'], CONFIG['MYSQL']['DB'])
+        sql = useMYSQL(CONFIG['MYSQL']['SERVER'], CONFIG['MYSQL']['USER'], CONFIG['MYSQL']['PASS'], CONFIG['MYSQL']['DB'],logger)
         if sql.con():
             logger.debug('(MYSQL) reading config from database')
             try:
@@ -1049,6 +1132,7 @@ if __name__ == '__main__':
         
         #Add MySQL config data to config dict
         CONFIG['SYSTEMS'].update(SQLCONFIG)
+        sql.close()
 
     # Set up the signal handler
     def sig_handler(_signal, _frame):
@@ -1091,13 +1175,16 @@ if __name__ == '__main__':
 
     # HBlink instance creation
     logger.info('(GLOBAL) HBlink \'bridge.py\' -- SYSTEM STARTING...')
+    
+    listeningPorts = {}
+    
     for system in CONFIG['SYSTEMS']:
         if CONFIG['SYSTEMS'][system]['ENABLED']:
             if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
                 systems[system] = routerOBP(system, CONFIG, report_server)
             else:
                 systems[system] = routerHBP(system, CONFIG, report_server)
-            reactor.listenUDP(CONFIG['SYSTEMS'][system]['PORT'], systems[system], interface=CONFIG['SYSTEMS'][system]['IP'])
+            listeningPorts[system] = reactor.listenUDP(CONFIG['SYSTEMS'][system]['PORT'], systems[system], interface=CONFIG['SYSTEMS'][system]['IP'])
             logger.debug('(GLOBAL) %s instance created: %s, %s', CONFIG['SYSTEMS'][system]['MODE'], system, systems[system])
 
     def loopingErrHandle(failure):
@@ -1119,5 +1206,10 @@ if __name__ == '__main__':
     ident = ident_task.start(900)
     ident.addErrback(loopingErrHandle)
     
-
+    #Mysql config checker
+    if CONFIG['MYSQL']['USE_MYSQL'] == True:
+        mysql_task = task.LoopingCall(mysql_config_check)
+        mysql = mysql_task.start(60)
+        mysql.addErrback(loopingErrHandle)
+    
     reactor.run()

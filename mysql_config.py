@@ -1,30 +1,38 @@
 import mysql.connector
 from mysql.connector import errorcode
+import mysql.connector.pooling
 
 class useMYSQL:
     #Init new object
-    def __init__(self, server,user,password,database):
+    def __init__(self, server,user,password,database,logger):
         self.server = server
         self.user = user
         self.password = password
         self.database = database
+        self.logger = logger
 
     #Connect
     def con(self):
+            logger = self.logger
             try:
                 self.db = mysql.connector.connect(
                     host=self.server,
                     user=self.user,
                     password=self.password,
-                    database=self.database
+                    database=self.database,
+                    pool_name = "hblink_master",
+                    pool_size = 2
                 )
             except mysql.connector.Error as err:
                 if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
-                    return [False,'Username or password error']
+                    logger.info('(MYSQL) username or password error')
+                    return (False)
                 elif err.errno == errorcode.ER_BAD_DB_ERROR:
-                    return [False,'DB Does Not Exist']
+                    logger.info('(MYSQL) DB Error')
+                    return (False)
                 else:
-                    return [False,err]
+                    logger.info('(MYSQL) unspecified error')
+                    return(False)
 
             return(True) 
      
@@ -41,13 +49,14 @@ class useMYSQL:
         _cursor = self.db.cursor()
         
         try:
-            _cursor.execute("select * from repeaters where ENABLED=1 and MODE='MASTER'")
+            _cursor.execute("select * from repeaters where MODE='MASTER'")
         except mysql.connector.Error as err:
             _cursor.close()
+            logger.info('(MYSQL) error, problem with cursor execute')
             raise Exception('Problem with cursor execute')
         
         for (callsign, mode, enabled, _repeat, max_peers, export_ambe, ip, port, passphrase, group_hangtime, use_acl, reg_acl, sub_acl, tgid_ts1_acl, tgid_ts2_acl, default_ua_timer, single_mode, voice_ident) in _cursor:
-            
+
             CONFIG['SYSTEMS'].update({callsign: {
                         'MODE': mode,
                         'ENABLED': bool(enabled),
@@ -68,7 +77,7 @@ class useMYSQL:
                     }})
             CONFIG['SYSTEMS'][callsign].update({'PEERS': {}})
                     
-            return(CONFIG['SYSTEMS'])
+        return(CONFIG['SYSTEMS'])
             
 
 #For testing 
