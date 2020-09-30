@@ -378,7 +378,7 @@ def mysql_config_check():
     #Add MySQL config data to config dict
     CONFIG['SYSTEMS'].update(SQLCONFIG)    
    
-   SQLCONFIG = {} 
+    SQLCONFIG = {} 
     sql.close()
 
 class routerOBP(OPENBRIDGE):
