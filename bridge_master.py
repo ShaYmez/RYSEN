@@ -309,8 +309,8 @@ def mysql_config_check():
         return
     
     for system in SQLCONFIG:
-        if system not in CONFIG['SYSTEMS']:
-            logger.debug('(MYSQL) new system %s, starting HBP listener',system)  
+        if system not in CONFIG['SYSTEMS'] and SQLCONFIG[system]['ENABLED'] == True:
+            logger.debug('(MYSQL) new enabled system %s, starting HBP listener',system)  
             CONFIG['SYSTEMS'][system] = SQLCONFIG[system]
             systems[system] = routerHBP(system, CONFIG, report_server)
             listeningPorts[system] = reactor.listenUDP(CONFIG['SYSTEMS'][system]['PORT'], systems[system], interface=CONFIG['SYSTEMS'][system]['IP'])
