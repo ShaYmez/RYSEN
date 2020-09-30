@@ -306,6 +306,7 @@ def mysql_config_check():
             sql.close()
     else:
         logger.debug('(MYSQL) problem connecting to SQL server, aborting')
+        return
     
     for system in SQLCONFIG:
         if system not in CONFIG['SYSTEMS']:
@@ -317,7 +318,7 @@ def mysql_config_check():
             # Registration ACLs
             #SQLCONFIG[system]['REG_ACL'] = acl_build(SQLCONFIG[system]['REG_ACL'], PEER_MAX)
            # Subscriber and TGID ACLs
-           logger.debug('(MYSQL) building ACLs')
+            logger.debug('(MYSQL) building ACLs')
             for acl in ['SUB_ACL', 'TG1_ACL', 'TG2_ACL']:
                 SQLCONFIG[system][acl] = acl_build(SQLCONFIG[system][acl], ID_MAX)
             #Add system to bridges
@@ -1124,15 +1125,15 @@ if __name__ == '__main__':
             logger.debug('(MYSQL) reading config from database')
             try:
                 SQLCONFIG = sql.getConfig()
+                #Add MySQL config data to config dict
+                CONFIG['SYSTEMS'].update(SQLCONFIG)
+                sql.close()
             except:
                 logger.debug('(MYSQL) problem with SQL query, aborting')
                 sql.close()
         else:
             logger.debug('(MYSQL) problem connecting to SQL server, aborting')
         
-        #Add MySQL config data to config dict
-        CONFIG['SYSTEMS'].update(SQLCONFIG)
-        sql.close()
 
     # Set up the signal handler
     def sig_handler(_signal, _frame):
