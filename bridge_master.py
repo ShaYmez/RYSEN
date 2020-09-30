@@ -309,15 +309,18 @@ def mysql_config_check():
         return
     
     for system in SQLCONFIG:
-        if system not in CONFIG['SYSTEMS'] and SQLCONFIG[system]['ENABLED'] == True:
-            logger.debug('(MYSQL) new enabled system %s, starting HBP listener',system)  
-            CONFIG['SYSTEMS'][system] = SQLCONFIG[system]
-            systems[system] = routerHBP(system, CONFIG, report_server)
-            listeningPorts[system] = reactor.listenUDP(CONFIG['SYSTEMS'][system]['PORT'], systems[system], interface=CONFIG['SYSTEMS'][system]['IP'])
+        if system not in CONFIG['SYSTEMS']:
+            if SQLCONFIG[system]['ENABLED'] == True:
+                logger.debug('(MYSQL) new enabled system %s, starting HBP listener',system)  
+                CONFIG['SYSTEMS'][system] = SQLCONFIG[system]
+                systems[system] = routerHBP(system, CONFIG, report_server)
+                listeningPorts[system] = reactor.listenUDP(CONFIG['SYSTEMS'][system]['PORT'], systems[system], interface=CONFIG['SYSTEMS'][system]['IP'])
+            else:
+                logger.debug('(MYSQL) new disabled system %s',system) 
             #Do ACL processing
             # Registration ACLs
             #SQLCONFIG[system]['REG_ACL'] = acl_build(SQLCONFIG[system]['REG_ACL'], PEER_MAX)
-           # Subscriber and TGID ACLs
+        # Subscriber and TGID ACLs
             logger.debug('(MYSQL) building ACLs')
             for acl in ['SUB_ACL', 'TG1_ACL', 'TG2_ACL']:
                 SQLCONFIG[system][acl] = acl_build(SQLCONFIG[system][acl], ID_MAX)
