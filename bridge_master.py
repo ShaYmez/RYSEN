@@ -344,6 +344,8 @@ def mysql_config_check():
                 
         elif SQLCONFIG[system]['ENABLED'] == False and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
             logger.debug('(MYSQL) %s changed from enabled to disabled, killing HBP listener',system)
+            systems[system].master_dereg()
+            systems[system]._system_maintenance.stop()
             listeningPorts[system].stopListening()
             
         elif CONFIG['SYSTEMS'][system]['ENABLED'] == False and SQLCONFIG[system]['ENABLED'] == True:
@@ -354,23 +356,26 @@ def mysql_config_check():
             
         elif SQLCONFIG[system]['IP'] != CONFIG['SYSTEMS'][system]['IP'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
             logger.debug('(MYSQL) %s IP binding changed on enabled system, killing HBP listener. Will restart in 1 minute',system)
+            systems[system].master_dereg()
+            systems[system]._system_maintenance.stop()
             listeningPorts[system].stopListening()
-            CONFIG['SYSTEMS'][system]['ENABLED'] = False
+            SQLCONFIG[system]['ENABLED'] = False
             
         elif SQLCONFIG[system]['PORT'] != CONFIG['SYSTEMS'][system]['PORT'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
             logger.debug('(MYSQL) %s Port binding changed on enabled system, killing HBP listener. Will restart in 1 minute',system)
+            systems[system].master_dereg()
+            systems[system]._system_maintenance.stop()
             listeningPorts[system].stopListening()
-            CONFIG['SYSTEMS'][system]['ENABLED'] = False
+            SQLCONFIG[system]['ENABLED'] = False
             
         elif SQLCONFIG[system]['PASSPHRASE'] != CONFIG['SYSTEMS'][system]['PASSPHRASE'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
-            logger.debug('(MYSQL) %s Passphrase changed on enabled system, killing HBP listener. Will restart in 1 minute',system)
-            listeningPorts[system].stopListening()
-            CONFIG['SYSTEMS'][system]['ENABLED'] = False        
-            
+            logger.debug('(MYSQL) %s Passphrase changed on enabled system. Kicking peers',system)
+            systems[system].master_dereg()
     
     #Add MySQL config data to config dict
     CONFIG['SYSTEMS'].update(SQLCONFIG)    
-    
+   
+   SQLCONFIG = {} 
     sql.close()
 
 class routerOBP(OPENBRIDGE):
