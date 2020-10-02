@@ -63,6 +63,7 @@ class readAMBE:
         ])
         return _wordBADict
 
+    #Read a single ambe file from the audio directory
     def readSingleFile(self,filename):
         ambeBytearray = {}
         _wordBitarray = bitarray(endian='big')
