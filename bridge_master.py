@@ -299,7 +299,7 @@ def ident():
                     _say.append(words[character])
                     _say.append(words['silence'])
                 #test 
-                #_say.append(AMBEobj.readSingleFile('44xx.ambe'))
+                #_say.append(AMBEobj.readSingleFile('connected.ambe'))
                 speech = pkt_gen(bytes_3(16777215), bytes_3(16777215), bytes_4(16777215), 1, _say)
 
                 sleep(1)

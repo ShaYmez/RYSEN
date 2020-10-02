@@ -102,4 +102,5 @@ if __name__ == '__main__':
     
     test = readAMBE('en_GB','./Audio/')
     
+    print(test.readfiles())
     print(test.readSingleFile('44xx.ambe'))
