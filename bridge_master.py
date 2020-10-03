@@ -1155,18 +1155,25 @@ if __name__ == '__main__':
         logger.debug('(MYSQL) MySQL config enabled')
         SQLCONFIG = {}
         sql = useMYSQL(CONFIG['MYSQL']['SERVER'], CONFIG['MYSQL']['USER'], CONFIG['MYSQL']['PASS'], CONFIG['MYSQL']['DB'],logger)
-        #if sql.con():
-        #    logger.debug('(MYSQL) reading config from database')
-        #    try:
-        #        SQLCONFIG = sql.getConfig()
+        #Run it once immediately
+        if sql.con():
+            logger.debug('(MYSQL) reading config from database')
+            try:
+                SQLCONFIG = sql.getConfig()
                 #Add MySQL config data to config dict
-        #        CONFIG['SYSTEMS'].update(SQLCONFIG)
-         #       sql.close()
-         #   except:
-         #       logger.debug('(MYSQL) problem with SQL query, aborting')
-         #       sql.close()
-        #else:
-         #   logger.debug('(MYSQL) problem connecting to SQL server, aborting')
+            except:
+                logger.debug('(MYSQL) problem with SQL query, aborting')
+            sql.close()
+            logger.debug('(MYSQL) building ACLs')
+            # Registration ACLs
+            for system in SQLCONFIG:
+                SQLCONFIG[system]['REG_ACL'] = acl_build(SQLCONFIG[system]['REG_ACL'], PEER_MAX)
+                for acl in ['SUB_ACL', 'TG1_ACL', 'TG2_ACL']:
+                    SQLCONFIG[system][acl] = acl_build(SQLCONFIG[system][acl], ID_MAX)
+            
+            CONFIG['SYSTEMS'].update(SQLCONFIG)
+        else:
+            logger.debug('(MYSQL) problem connecting to SQL server, aborting')
         
 
     # Set up the signal handler
