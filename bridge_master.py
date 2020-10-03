@@ -1247,7 +1247,7 @@ if __name__ == '__main__':
     # Ident
     #This runs in a thread so as not to block the reactor
     ident_task = task.LoopingCall(threadIdent)
-    identa = ident_task.start(30)
+    identa = ident_task.start(900)
     identa.addErrback(loopingErrHandle)
     
     #Mysql config checker
