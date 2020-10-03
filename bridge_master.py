@@ -312,6 +312,7 @@ def ident():
                     sleep(0.058)
                     #Twisted is not thread safe. We need to call this in the reactor main thread
                     reactor.callFromThread(systems[system].send_system,pkt)
+                    #systems[system].send_system(pkt)
 
 def mysql_config_check():
     logger.debug('(MYSQL) Periodic config check')
@@ -1246,8 +1247,8 @@ if __name__ == '__main__':
     # Ident
     #This runs in a thread so as not to block the reactor
     ident_task = task.LoopingCall(threadIdent)
-    ident = ident_task.start(900)
-    ident.addErrback(loopingErrHandle)
+    identa = ident_task.start(30)
+    identa.addErrback(loopingErrHandle)
     
     #Mysql config checker
     #This runs in a thread so as not to block the reactor
