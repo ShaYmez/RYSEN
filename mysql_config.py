@@ -64,7 +64,7 @@ class useMYSQL:
                             'MAX_PEERS': int(max_peers),
                             'IP': ip,
                             'PORT': int(port),
-                            'PASSPHRASE': passphrase,
+                            'PASSPHRASE': bytes(passphrase, 'utf-8'),
                             'GROUP_HANGTIME': int(group_hangtime),
                             'USE_ACL': bool(use_acl),
                             'REG_ACL': reg_acl,

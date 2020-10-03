@@ -1155,18 +1155,18 @@ if __name__ == '__main__':
         logger.debug('(MYSQL) MySQL config enabled')
         SQLCONFIG = {}
         sql = useMYSQL(CONFIG['MYSQL']['SERVER'], CONFIG['MYSQL']['USER'], CONFIG['MYSQL']['PASS'], CONFIG['MYSQL']['DB'],logger)
-        if sql.con():
-            logger.debug('(MYSQL) reading config from database')
-            try:
-                SQLCONFIG = sql.getConfig()
+        #if sql.con():
+        #    logger.debug('(MYSQL) reading config from database')
+        #    try:
+        #        SQLCONFIG = sql.getConfig()
                 #Add MySQL config data to config dict
-                CONFIG['SYSTEMS'].update(SQLCONFIG)
-                sql.close()
-            except:
-                logger.debug('(MYSQL) problem with SQL query, aborting')
-                sql.close()
-        else:
-            logger.debug('(MYSQL) problem connecting to SQL server, aborting')
+        #        CONFIG['SYSTEMS'].update(SQLCONFIG)
+         #       sql.close()
+         #   except:
+         #       logger.debug('(MYSQL) problem with SQL query, aborting')
+         #       sql.close()
+        #else:
+         #   logger.debug('(MYSQL) problem connecting to SQL server, aborting')
         
 
     # Set up the signal handler
