@@ -337,10 +337,10 @@ def mysql_config_check():
             else:
                 logger.debug('(MYSQL) new disabled system %s',system) 
             #Do ACL processing
-            # Registration ACLs
-            #SQLCONFIG[system]['REG_ACL'] = acl_build(SQLCONFIG[system]['REG_ACL'], PEER_MAX)
         # Subscriber and TGID ACLs
             logger.debug('(MYSQL) building ACLs')
+            # Registration ACLs
+            SQLCONFIG[system]['REG_ACL'] = acl_build(SQLCONFIG[system]['REG_ACL'], PEER_MAX)
             for acl in ['SUB_ACL', 'TG1_ACL', 'TG2_ACL']:
                 SQLCONFIG[system][acl] = acl_build(SQLCONFIG[system][acl], ID_MAX)
             #Add system to bridges
