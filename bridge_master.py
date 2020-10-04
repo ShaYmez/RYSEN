@@ -201,6 +201,8 @@ def rule_timer_loop():
                     if _system['TIMER'] < _now:
                         _system['ACTIVE'] = False
                         logger.info('(ROUTER) Conference Bridge TIMEOUT: DEACTIVATE System: %s, Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
+                        if _bridge[0:1] == '#':
+                            callInThread(disconnectedVoice,_system['SYSTEM'])
                     else:
                         timeout_in = _system['TIMER'] - _now
                         logger.info('(ROUTER) Conference Bridge ACTIVE (ON timer running): System: %s Bridge: %s, TS: %s, TGID: %s, Timeout in: %.2fs,', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']),  timeout_in)
@@ -268,6 +270,31 @@ def stream_trimmer_loop():
                     removed = systems[system].STATUS.pop(stream_id)
                 else:
                     logger.error('(%s) Attemped to remove OpenBridge Stream ID %s not in the Stream ID list: %s', system, int_id(stream_id), [id for id in systems[system].STATUS])
+
+def disconnectedVoice(system):
+    logger.info('(%s) Sending disconnected voice',system)
+    _say = [words['silence']]
+    if CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'] > 0:
+        for number in CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR']:
+            _say.append[number]
+            _say.append['silence']
+    else:
+        _say.append = words['notlinked']
+    
+    speech = pkt_gen(bytes_3(tg), bytes_3(tg), bytes_4(tg), 1, _say)
+
+    sleep(1)
+    while True:
+        try:
+            pkt = next(speech)
+        except StopIteration:
+                break
+        #Packet every 60ms
+        sleep(0.058)
+        #Twisted is not thread safe. We need to call this in the reactor main thread
+        reactor.callFromThread(systems[system].send_system,pkt)
+        #systems[system].send_system(pkt)
+    
 
 def threadIdent():
     logger.debug('(IDENT) starting ident thread')
