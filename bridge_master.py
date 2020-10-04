@@ -322,7 +322,13 @@ def disconnectedVoice(system):
     logger.info('(%s) Sending disconnected voice',system)
     _say = [words['silence']]
     if CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'] > 0:
-        for number in CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR']:
+        _say.append(words['silence'])
+        _say.append(words['linked'])
+        _say.append(words['silence'])
+        _say.append(words['2'])
+        _say.append(words['silence']) 
+        
+        for number in str(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR']):
             _say.append(words[number])
             _say.append(words['silence'])
     else:
