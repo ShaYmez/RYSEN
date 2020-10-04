@@ -174,6 +174,36 @@ def make_single_bridge(_tgid,_sourcesystem,_slot):
                 
         if _system == 'OBP-BM':
             BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': '','TO_TYPE': 'NONE','OFF': [],'ON': [],'RESET': [], 'TIMER': time()})
+
+def make_default_reflector(reflector,system):
+    bridge = '#'+str(reflector)
+    _tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
+    if bridge not in BRIDGES:
+        BRIDGES[bridge] = []
+        make_single_reflector(bytes_3(reflector), system)
+    bridgetemp = []
+    for bridgesystem in BRIDGES[bridge]:
+        if bridgesystem['SYSTEM'] == system and bridgesystem['TS'] == 2:
+            bridgetemp.append({'SYSTEM': system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': True,'TIMEOUT':  _tmout * 60,'TO_TYPE': 'OFF','OFF': [],'ON': [bytes_3(reflector),],'RESET': [], 'TIMER': time() + (_tmout * 60)})
+        else:
+            bridgetemp.append(bridgesystem)
+            
+        BRIDGES[bridge] = bridgetemp
+        
+def reset_default_reflector(reflector,system):
+    bridge = '#'+str(reflector)
+    _tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
+    if bridge not in BRIDGES:
+        BRIDGES[bridge] = []
+        make_single_reflector(bytes_3(reflector), system)
+    bridgetemp = []
+    for bridgesystem in BRIDGES[bridge]:
+        if bridgesystem['SYSTEM'] == system and bridgesystem['TS'] == 2:
+            bridgetemp.append({'SYSTEM': system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': False,'TIMEOUT':  _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(reflector),],'RESET': [], 'TIMER': time() + (_tmout * 60)})
+        else:
+            bridgetemp.append(bridgesystem)
+            
+        BRIDGES[bridge] = bridgetemp
             
 def make_single_reflector(_tgid,_sourcesystem):
     _tgid_s = str(int_id(_tgid))
@@ -202,7 +232,7 @@ def rule_timer_loop():
                         _system['ACTIVE'] = False
                         logger.info('(ROUTER) Conference Bridge TIMEOUT: DEACTIVATE System: %s, Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
                         if _bridge[0:1] == '#':
-                            callInThread(disconnectedVoice,_system['SYSTEM'])
+                            reactor.callInThread(disconnectedVoice,_system['SYSTEM'])
                     else:
                         timeout_in = _system['TIMER'] - _now
                         logger.info('(ROUTER) Conference Bridge ACTIVE (ON timer running): System: %s Bridge: %s, TS: %s, TGID: %s, Timeout in: %.2fs,', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']),  timeout_in)
@@ -271,17 +301,31 @@ def stream_trimmer_loop():
                 else:
                     logger.error('(%s) Attemped to remove OpenBridge Stream ID %s not in the Stream ID list: %s', system, int_id(stream_id), [id for id in systems[system].STATUS])
 
+def sendSpeech(self,speech):
+    sleep(1)
+    while True:
+        try:
+            pkt = next(speech)
+        except StopIteration:
+            break
+        #Packet every 60ms
+        sleep(0.058)
+        #Call the actual packet send in the reactor thread 
+        #as it's not thread safe
+        reactor.callFromThread(self.send_system,pkt)
+        #print(len(pkt), pkt[4], pkt)
+
 def disconnectedVoice(system):
     logger.info('(%s) Sending disconnected voice',system)
     _say = [words['silence']]
     if CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'] > 0:
         for number in CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR']:
-            _say.append[number]
-            _say.append['silence']
+            _say.append(words[number])
+            _say.append(words['silence'])
     else:
-        _say.append = words['notlinked']
+        _say.append(words['notlinked'])
     
-    speech = pkt_gen(bytes_3(tg), bytes_3(tg), bytes_4(tg), 1, _say)
+    speech = pkt_gen(bytes_3(9), bytes_3(9), bytes_4(9), 1, _say)
 
     sleep(1)
     while True:
@@ -421,6 +465,15 @@ def mysql_config_check():
         elif SQLCONFIG[system]['PASSPHRASE'] != CONFIG['SYSTEMS'][system]['PASSPHRASE'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
             logger.debug('(MYSQL) %s Passphrase changed on enabled system. Kicking peers',system)
             systems[system].master_dereg()
+            
+        elif SQLCONFIG[system]['DEFAULT_REFLECTOR'] != CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
+            if SQLCONFIG[system]['DEFAULT_REFLECTOR'] > 0:
+                logger.debug('(MYSQL) %s default reflector changed, updating',system) 
+                reset_default_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'],system)
+                make_default_reflector(SQLCONFIG[system]['DEFAULT_REFLECTOR'],system)
+            else:
+                logger.debug('(MYSQL) %s default reflector disabled, updating',system) 
+                reset_default_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'],system)
     
     #Add MySQL config data to config dict
     CONFIG['SYSTEMS'].update(SQLCONFIG)    
@@ -814,21 +867,6 @@ class routerHBP(HBSYSTEM):
      
                 speech = pkt_gen(bytes_3(9), bytes_3(9), bytes_4(9), 1, _say)
                 
-                #Nested function - see below
-                def sendSpeech(self,speech):
-                    sleep(1)
-                    while True:
-                        try:
-                            pkt = next(speech)
-                        except StopIteration:
-                            break
-                        #Packet every 60ms
-                        sleep(0.058)
-                        #Call the actual packet send in the reactor thread 
-                        #as it's not thread safe
-                        reactor.callFromThread(self.send_system,pkt)
-                        #print(len(pkt), pkt[4], pkt)
-                
                 #call speech in a thread as it contains sleep() and hence could block the reactor
                 reactor.callInThread(sendSpeech,self,speech)
 
@@ -1193,7 +1231,7 @@ if __name__ == '__main__':
                 logger.debug('(MYSQL) problem with SQL query, aborting')
             sql.close()
             logger.debug('(MYSQL) building ACLs')
-            # Registration ACLs
+            # Build ACLs
             for system in SQLCONFIG:
                 SQLCONFIG[system]['REG_ACL'] = acl_build(SQLCONFIG[system]['REG_ACL'], PEER_MAX)
                 for acl in ['SUB_ACL', 'TG1_ACL', 'TG2_ACL']:
@@ -1229,6 +1267,12 @@ if __name__ == '__main__':
 
     # Build the routing rules file
     BRIDGES = make_bridges(rules_module.BRIDGES)
+    
+    # Default reflector
+    logger.debug('(ROUTER) Setting default reflectors')
+    for system in CONFIG['SYSTEMS']:
+        if CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'] > 0:
+            make_default_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'],system)
 
     # INITIALIZE THE REPORTING LOOP
     if CONFIG['REPORTS']['REPORT']:
