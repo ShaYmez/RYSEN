@@ -1271,6 +1271,8 @@ if __name__ == '__main__':
     # Default reflector
     logger.debug('(ROUTER) Setting default reflectors')
     for system in CONFIG['SYSTEMS']:
+        if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
+            continue
         if CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'] > 0:
             make_default_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'],system)
 
