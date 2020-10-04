@@ -132,8 +132,8 @@ def make_bridges(_rules):
         #    continue
         
         for _confsystem in CONFIG['SYSTEMS']:
-            #if _confsystem == 'OBP-BM':
-            if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
+            if _confsystem == 'OBP-BM':
+            #if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
                 continue
             ts1 = False 
             ts2 = False
@@ -161,8 +161,8 @@ def make_single_bridge(_tgid,_sourcesystem,_slot):
     _tgid_s = str(int_id(_tgid))
     BRIDGES[_tgid_s] = []
     for _system in CONFIG['SYSTEMS']:
-        #if _system != 'OBP-BM':
-        if CONFIG['SYSTEMS'][system]['MODE'] == 'MASTER':
+        if _system != 'OBP-BM':
+        #if CONFIG['SYSTEMS'][system]['MODE'] == 'MASTER':
             _tmout = CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']
             if _system == _sourcesystem:
                     if _slot == 1:
@@ -213,8 +213,8 @@ def make_single_reflector(_tgid,_sourcesystem):
     _bridge = '#' + _tgid_s
     BRIDGES[_bridge] = []
     for _system in CONFIG['SYSTEMS']:
-        #if _system != 'OBP-BM':
-        if CONFIG['SYSTEMS'][system]['MODE'] == 'MASTER':
+        if _system != 'OBP-BM':
+        #if CONFIG['SYSTEMS'][system]['MODE'] == 'MASTER':
             _tmout = CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']
             if _system == _sourcesystem:
                 BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': True,'TIMEOUT':  _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time() + (_tmout * 60)})
