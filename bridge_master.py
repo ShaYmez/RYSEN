@@ -133,7 +133,7 @@ def make_bridges(_rules):
         
         for _confsystem in CONFIG['SYSTEMS']:
             #if _confsystem == 'OBP-BM':
-            if CONFIG['SYSTEMS'][system]['MODE'] != 'MASTER':
+            if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
                 continue
             ts1 = False 
             ts2 = False
