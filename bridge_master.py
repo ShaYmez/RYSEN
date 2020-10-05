@@ -205,6 +205,19 @@ def make_static_tg(tg,ts,system):
             bridgetemp.append(bridgesystem)
         
     BRIDGES[str(tg)] = bridgetemp
+    
+def reset_static_tg(tg,ts,system):
+    _tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
+    if tg not in BRIDGES:
+        make_single_bridge(bytes_3(tg),system,ts)
+    bridgetemp = []
+    for bridgesystem in BRIDGES[str(tg)]:
+        if bridgesystem['SYSTEM'] == system and bridgesystem['TS'] == ts:
+            bridgetemp.append({'SYSTEM': system, 'TS': ts, 'TGID': bytes_3(tg),'ACTIVE': False,'TIMEOUT':  _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(tg),],'RESET': [], 'TIMER': time() + (_tmout * 60)})
+        else:
+            bridgetemp.append(bridgesystem)
+        
+    BRIDGES[str(tg)] = bridgetemp
         
 def reset_default_reflector(reflector,system):
     bridge = '#'+str(reflector)
