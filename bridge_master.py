@@ -176,6 +176,7 @@ def make_single_bridge(_tgid,_sourcesystem,_slot):
                 
         if _system == 'OBP-BM':
             BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': '','TO_TYPE': 'NONE','OFF': [],'ON': [],'RESET': [], 'TIMER': time()})
+        
 
 def make_default_reflector(reflector,system):
     bridge = '#'+str(reflector)
@@ -191,6 +192,19 @@ def make_default_reflector(reflector,system):
             bridgetemp.append(bridgesystem)
             
         BRIDGES[bridge] = bridgetemp
+        
+def make_static_tg(tg,ts,system):
+    _tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
+    if tg not in BRIDGES:
+        make_single_bridge(bytes_3(tg),system,ts)
+    bridgetemp = []
+    for bridgesystem in BRIDGES[str(tg)]:
+        if bridgesystem['SYSTEM'] == system and bridgesystem['TS'] == ts:
+            bridgetemp.append({'SYSTEM': system, 'TS': ts, 'TGID': bytes_3(tg),'ACTIVE': True,'TIMEOUT':  _tmout * 60,'TO_TYPE': 'OFF','OFF': [],'ON': [bytes_3(tg),],'RESET': [], 'TIMER': time() + (_tmout * 60)})
+        else:
+            bridgetemp.append(bridgesystem)
+        
+    BRIDGES[str(tg)] = bridgetemp
         
 def reset_default_reflector(reflector,system):
     bridge = '#'+str(reflector)
@@ -1280,10 +1294,39 @@ if __name__ == '__main__':
     # Default reflector
     logger.debug('(ROUTER) Setting default reflectors')
     for system in CONFIG['SYSTEMS']:
-        if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
+        if CONFIG['SYSTEMS'][system]['MODE'] != 'MASTER':
             continue
         if CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'] > 0:
             make_default_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'],system)
+            
+    #static TGs 
+    logger.debug('(ROUTER) setting static TGs')
+    for system in CONFIG['SYSTEMS']:
+        if CONFIG['SYSTEMS'][system]['MODE'] != 'MASTER':
+            continue
+        ts1 = []
+        ts2 = []
+        if CONFIG['SYSTEMS'][system]['TS1_STATIC']:
+            ts1 = CONFIG['SYSTEMS'][system]['TS1_STATIC'].split(',')
+        if CONFIG['SYSTEMS'][system]['TS2_STATIC']:
+            ts2 = CONFIG['SYSTEMS'][system]['TS2_STATIC'].split(',')
+            
+        #if CONFIG['SYSTEMS'][system]['SINGLE_MODE'] == True:
+            #if ts1:
+                #make_static_tg(int(ts1[0]),1,system)
+            #if ts2:
+                #make_static_tg(int(ts2[0]),2,system)
+        #else:
+        for tg in ts1:
+                if not tg:
+                    continue
+                tg = int(tg)
+                make_static_tg(tg,1,system)
+            for tg in ts2:
+                if not tg:
+                    continue
+                tg = int(tg)
+                make_static_tg(tg,2,system)
 
     # INITIALIZE THE REPORTING LOOP
     if CONFIG['REPORTS']['REPORT']:
