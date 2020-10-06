@@ -156,13 +156,13 @@ def make_bridges(_rules):
     return _rules
 
 #Make a single bridge - used for on-the-fly UA bridges
-def make_single_bridge(_tgid,_sourcesystem,_slot):
+def make_single_bridge(_tgid,_sourcesystem,_slot,_tmout):
     _tgid_s = str(int_id(_tgid))
     BRIDGES[_tgid_s] = []
     for _system in CONFIG['SYSTEMS']:
         if _system != 'OBP-BM':
         #if CONFIG['SYSTEMS'][system]['MODE'] == 'MASTER':
-            _tmout = CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']
+            #_tmout = CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']
             if _system == _sourcesystem:
                     if _slot == 1:
                         BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time() +( _tmout * 60)})
@@ -178,12 +178,12 @@ def make_single_bridge(_tgid,_sourcesystem,_slot):
             BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': '','TO_TYPE': 'NONE','OFF': [],'ON': [],'RESET': [], 'TIMER': time()})
         
 
-def make_default_reflector(reflector,system):
+def make_default_reflector(reflector,_tmout,system):
     bridge = '#'+str(reflector)
-    _tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
+    #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
     if bridge not in BRIDGES:
         BRIDGES[bridge] = []
-        make_single_reflector(bytes_3(reflector), system)
+        make_single_reflector(bytes_3(reflector),_tmout, system)
     bridgetemp = []
     for bridgesystem in BRIDGES[bridge]:
         if bridgesystem['SYSTEM'] == system and bridgesystem['TS'] == 2:
@@ -193,10 +193,10 @@ def make_default_reflector(reflector,system):
             
         BRIDGES[bridge] = bridgetemp
         
-def make_static_tg(tg,ts,system):
-    _tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
-    if tg not in BRIDGES:
-        make_single_bridge(bytes_3(tg),system,ts)
+def make_static_tg(tg,ts,_tmout,system):
+    #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
+    if str(tg) not in BRIDGES:
+        make_single_bridge(bytes_3(tg),system,ts,_tmout)
     bridgetemp = []
     for bridgesystem in BRIDGES[str(tg)]:
         if bridgesystem['SYSTEM'] == system and bridgesystem['TS'] == ts:
@@ -206,10 +206,8 @@ def make_static_tg(tg,ts,system):
         
     BRIDGES[str(tg)] = bridgetemp
     
-def reset_static_tg(tg,ts,system):
-    _tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
-    if tg not in BRIDGES:
-        make_single_bridge(bytes_3(tg),system,ts)
+def reset_static_tg(tg,ts,_tmout,system):
+    #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
     bridgetemp = []
     for bridgesystem in BRIDGES[str(tg)]:
         if bridgesystem['SYSTEM'] == system and bridgesystem['TS'] == ts:
@@ -219,12 +217,12 @@ def reset_static_tg(tg,ts,system):
         
     BRIDGES[str(tg)] = bridgetemp
         
-def reset_default_reflector(reflector,system):
+def reset_default_reflector(reflector,_tmout,system):
     bridge = '#'+str(reflector)
-    _tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
+    #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
     if bridge not in BRIDGES:
         BRIDGES[bridge] = []
-        make_single_reflector(bytes_3(reflector), system)
+        make_single_reflector(bytes_3(reflector),_tmout, system)
     bridgetemp = []
     for bridgesystem in BRIDGES[bridge]:
         if bridgesystem['SYSTEM'] == system and bridgesystem['TS'] == 2:
@@ -234,14 +232,14 @@ def reset_default_reflector(reflector,system):
             
         BRIDGES[bridge] = bridgetemp
             
-def make_single_reflector(_tgid,_sourcesystem):
+def make_single_reflector(_tgid,_tmout,_sourcesystem):
     _tgid_s = str(int_id(_tgid))
     _bridge = '#' + _tgid_s
     BRIDGES[_bridge] = []
     for _system in CONFIG['SYSTEMS']:
         if _system != 'OBP-BM':
         #if CONFIG['SYSTEMS'][system]['MODE'] == 'MASTER':
-            _tmout = CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']
+            #_tmout = CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']
             if _system == _sourcesystem:
                 BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': True,'TIMEOUT':  _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time() + (_tmout * 60)})
             else:
@@ -444,6 +442,7 @@ def mysql_config_check():
                 listeningPorts[system] = reactor.listenUDP(CONFIG['SYSTEMS'][system]['PORT'], systems[system], interface=CONFIG['SYSTEMS'][system]['IP'])
             else:
                 logger.debug('(MYSQL) new disabled system %s',system) 
+            _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
             #Do ACL processing
         # Subscriber and TGID ACLs
             logger.debug('(MYSQL) building ACLs')
@@ -462,65 +461,89 @@ def mysql_config_check():
                     if e['SYSTEM'] == system and e['TS'] == 2:
                         ts2 = True
                 if _bridge[0:1] != '#':
-                    _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
                     if ts1 == False:
                         BRIDGES[_bridge].append({'SYSTEM': system, 'TS': 1, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
                     if ts2 == False:
                         BRIDGES[_bridge].append({'SYSTEM': system, 'TS': 2, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
                 else:
-                    _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
                     if ts2 == False:
                         BRIDGES[_bridge].append({'SYSTEM': system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [bytes_3(4000)],'ON': [],'RESET': [], 'TIMER': time()})
+              
+            if SQLCONFIG[system]['DEFAULT_REFLECTOR'] > 0:
+                    logger.debug('(MYSQL) %s setting default reflector',system) 
+                    make_default_reflector(SQLCONFIG[system]['DEFAULT_REFLECTOR'],_tmout,system)
+              
+            if SQLCONFIG[system]['TS1_STATIC']:
+                logger.debug('(MYSQL) %s setting static TGs on TS1',system) 
+                ts1 = SQLCONFIG[system]['TS1_STATIC'].split(',')
+                for tg in ts1:
+                    if not tg:
+                        continue
+                    tg = int(tg)
+                    make_static_tg(tg,1,_tmout,system)
+                    
+            if SQLCONFIG[system]['TS2_STATIC']:
+                logger.debug('(MYSQL) %s setting static TGs on TS2',system) 
+                ts2 = SQLCONFIG[system]['TS2_STATIC'].split(',')
+                for tg in ts2:
+                    if not tg:
+                        continue
+                    tg = int(tg)
+                    make_static_tg(tg,2,_tmout,system)
+        
+            continue
                 
-        elif SQLCONFIG[system]['ENABLED'] == False and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
+        if SQLCONFIG[system]['ENABLED'] == False and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
             logger.debug('(MYSQL) %s changed from enabled to disabled, killing HBP listener',system)
             systems[system].master_dereg()
             systems[system]._system_maintenance.stop()
             listeningPorts[system].stopListening()
             
-        elif CONFIG['SYSTEMS'][system]['ENABLED'] == False and SQLCONFIG[system]['ENABLED'] == True:
+        if CONFIG['SYSTEMS'][system]['ENABLED'] == False and SQLCONFIG[system]['ENABLED'] == True:
             logger.debug('(MYSQL) %s changed from disabled to enabled, starting HBP listener',system)
             systems[system] = routerHBP(system, CONFIG, report_server)
             listeningPorts[system] = reactor.listenUDP(CONFIG['SYSTEMS'][system]['PORT'], systems[system], interface=CONFIG['SYSTEMS'][system]['IP'])
             logger.debug('(GLOBAL) %s instance created: %s, %s', CONFIG['SYSTEMS'][system]['MODE'], system, systems[system])
             
-        elif SQLCONFIG[system]['IP'] != CONFIG['SYSTEMS'][system]['IP'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
+        if SQLCONFIG[system]['IP'] != CONFIG['SYSTEMS'][system]['IP'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
             logger.debug('(MYSQL) %s IP binding changed on enabled system, killing HBP listener. Will restart in 1 minute',system)
             systems[system].master_dereg()
             systems[system]._system_maintenance.stop()
             listeningPorts[system].stopListening()
             SQLCONFIG[system]['ENABLED'] = False
             
-        elif SQLCONFIG[system]['PORT'] != CONFIG['SYSTEMS'][system]['PORT'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
+        if SQLCONFIG[system]['PORT'] != CONFIG['SYSTEMS'][system]['PORT'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
             logger.debug('(MYSQL) %s Port binding changed on enabled system, killing HBP listener. Will restart in 1 minute',system)
             systems[system].master_dereg()
             systems[system]._system_maintenance.stop()
             listeningPorts[system].stopListening()
             SQLCONFIG[system]['ENABLED'] = False
             
-        elif SQLCONFIG[system]['PASSPHRASE'] != CONFIG['SYSTEMS'][system]['PASSPHRASE'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
+        if SQLCONFIG[system]['PASSPHRASE'] != CONFIG['SYSTEMS'][system]['PASSPHRASE'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
             logger.debug('(MYSQL) %s Passphrase changed on enabled system. Kicking peers',system)
             systems[system].master_dereg()
             
-        elif SQLCONFIG[system]['DEFAULT_REFLECTOR'] != CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
+        if SQLCONFIG[system]['DEFAULT_REFLECTOR'] != CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR']:
+            _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
             if SQLCONFIG[system]['DEFAULT_REFLECTOR'] > 0:
                 logger.debug('(MYSQL) %s default reflector changed, updating',system) 
-                reset_default_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'],system)
-                make_default_reflector(SQLCONFIG[system]['DEFAULT_REFLECTOR'],system)
+                reset_default_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'],_tmout,system)
+                make_default_reflector(SQLCONFIG[system]['DEFAULT_REFLECTOR'],_tmout,system)
             else:
                 logger.debug('(MYSQL) %s default reflector disabled, updating',system) 
                 reset_default_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'],system)
                 
-        elif SQLCONFIG[system]['TS1_STATIC'] != CONFIG['SYSTEMS'][system]['TS1_STATIC'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
+        if SQLCONFIG[system]['TS1_STATIC'] != CONFIG['SYSTEMS'][system]['TS1_STATIC']:
+            _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
             logger.debug('(MYSQL) %s TS1 static TGs changed, updating',system)
             ts1 = []
             if CONFIG['SYSTEMS'][system]['TS1_STATIC']:
                 ts1 = CONFIG['SYSTEMS'][system]['TS1_STATIC'].split(',')
                 for tg in ts1:
-                if not tg:
+                    if not tg:
                         continue
-                tg = int(tg)
-                reset_static_tg(tg,1,system)   
+                    tg = int(tg)
+                    reset_static_tg(tg,1,_tmout,system)   
             ts1 = []
             if SQLCONFIG[system]['TS1_STATIC']:
                 ts1 = SQLCONFIG[system]['TS1_STATIC'].split(',')
@@ -528,18 +551,19 @@ def mysql_config_check():
                     if not tg:
                         continue
                     tg = int(tg)
-                    make_static_tg(tg,1,system)
+                    make_static_tg(tg,1,_tmout,system)
                     
-        elif SQLCONFIG[system]['TS2_STATIC'] != CONFIG['SYSTEMS'][system]['TS2_STATIC'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
+        if SQLCONFIG[system]['TS2_STATIC'] != CONFIG['SYSTEMS'][system]['TS2_STATIC']:
+            _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
             logger.debug('(MYSQL) %s TS2 static TGs changed, updating',system)
             ts2 = []
             if CONFIG['SYSTEMS'][system]['TS2_STATIC']:
                 ts2 = CONFIG['SYSTEMS'][system]['TS2_STATIC'].split(',')
                 for tg in ts2:
-                if not tg:
+                    if not tg:
                         continue
-                tg = int(tg)
-                reset_static_tg(tg,2,system)
+                    tg = int(tg)
+                    reset_static_tg(tg,2,_tmout,system)
             ts2 = []
             if SQLCONFIG[system]['TS2_STATIC']:
                 ts2 = SQLCONFIG[system]['TS2_STATIC'].split(',')
@@ -547,7 +571,7 @@ def mysql_config_check():
                     if not tg:
                         continue
                     tg = int(tg)
-                    make_static_tg(tg,2,system)
+                    make_static_tg(tg,2,_tmout,system)
             
     #Add MySQL config data to config dict
     CONFIG['SYSTEMS'].update(SQLCONFIG)    
@@ -831,7 +855,7 @@ class routerHBP(HBSYSTEM):
                     _bridgename = '#'+ str(_int_dst_id)
                     if _bridgename not in BRIDGES and not (_int_dst_id >= 4000 and _int_dst_id <= 5000):
                             logger.info('(%s) [A] Reflector for TG %s does not exist. Creating as User Activated',self._system, _int_dst_id)
-                            make_single_reflector(_dst_id,self._system)
+                            make_single_reflector(_dst_id,CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER'],self._system)
                             
                     if _int_dst_id > 10 and _int_dst_id != 5000:
                         for _bridge in BRIDGES:
@@ -983,7 +1007,7 @@ class routerHBP(HBSYSTEM):
             #Create default bridge for unknown TG
                 if int_id(_dst_id) > 10 and (int_id(_dst_id)) not  in BRIDGES:
                     logger.info('(%s) Bridge for TG %s does not exist. Creating as User Activated',self._system, int_id(_dst_id))
-                    make_single_bridge(_dst_id,self._system,_slot)
+                    make_single_bridge(_dst_id,self._system,_slot,CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER'])
                 
             for _bridge in BRIDGES:
                 for _system in BRIDGES[_bridge]:
@@ -1348,13 +1372,14 @@ if __name__ == '__main__':
         if CONFIG['SYSTEMS'][system]['MODE'] != 'MASTER':
             continue
         if CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'] > 0:
-            make_default_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'],system)
+            make_default_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'],CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER'],system)
             
     #static TGs 
     logger.debug('(ROUTER) setting static TGs')
     for system in CONFIG['SYSTEMS']:
         if CONFIG['SYSTEMS'][system]['MODE'] != 'MASTER':
             continue
+        _tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
         ts1 = []
         ts2 = []
         if CONFIG['SYSTEMS'][system]['TS1_STATIC']:
@@ -1372,12 +1397,12 @@ if __name__ == '__main__':
                 if not tg:
                     continue
                 tg = int(tg)
-                make_static_tg(tg,1,system)
+                make_static_tg(tg,1,_tmout,system)
         for tg in ts2:
                 if not tg:
                     continue
                 tg = int(tg)
-                make_static_tg(tg,2,system)
+                make_static_tg(tg,2,_tmout,system)
 
     # INITIALIZE THE REPORTING LOOP
     if CONFIG['REPORTS']['REPORT']:
