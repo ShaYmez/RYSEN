@@ -510,7 +510,45 @@ def mysql_config_check():
             else:
                 logger.debug('(MYSQL) %s default reflector disabled, updating',system) 
                 reset_default_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'],system)
-    
+                
+        elif SQLCONFIG[system]['TS1_STATIC'] != CONFIG['SYSTEMS'][system]['TS1_STATIC'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
+            logger.debug('(MYSQL) %s TS1 static TGs changed, updating',system)
+            ts1 = []
+            if CONFIG['SYSTEMS'][system]['TS1_STATIC']:
+                ts1 = CONFIG['SYSTEMS'][system]['TS1_STATIC'].split(',')
+                for tg in ts1:
+                if not tg:
+                        continue
+                tg = int(tg)
+                reset_static_tg(tg,1,system)   
+            ts1 = []
+            if SQLCONFIG[system]['TS1_STATIC']:
+                ts1 = SQLCONFIG[system]['TS1_STATIC'].split(',')
+                for tg in ts1:
+                    if not tg:
+                        continue
+                    tg = int(tg)
+                    make_static_tg(tg,1,system)
+                    
+        elif SQLCONFIG[system]['TS2_STATIC'] != CONFIG['SYSTEMS'][system]['TS2_STATIC'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
+            logger.debug('(MYSQL) %s TS2 static TGs changed, updating',system)
+            ts2 = []
+            if CONFIG['SYSTEMS'][system]['TS2_STATIC']:
+                ts2 = CONFIG['SYSTEMS'][system]['TS2_STATIC'].split(',')
+                for tg in ts2:
+                if not tg:
+                        continue
+                tg = int(tg)
+                reset_static_tg(tg,2,system)
+            ts2 = []
+            if SQLCONFIG[system]['TS2_STATIC']:
+                ts2 = SQLCONFIG[system]['TS2_STATIC'].split(',')
+                for tg in ts2:
+                    if not tg:
+                        continue
+                    tg = int(tg)
+                    make_static_tg(tg,2,system)
+            
     #Add MySQL config data to config dict
     CONFIG['SYSTEMS'].update(SQLCONFIG)    
    
@@ -1335,7 +1373,7 @@ if __name__ == '__main__':
                     continue
                 tg = int(tg)
                 make_static_tg(tg,1,system)
-            for tg in ts2:
+        for tg in ts2:
                 if not tg:
                     continue
                 tg = int(tg)
