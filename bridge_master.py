@@ -347,6 +347,7 @@ def stream_trimmer_loop():
 def sendSpeech(self,speech):
     sleep(1)
     _nine = bytes_3(9)
+    _slot  = systems[system].STATUS[2]
     while True:
         try:
             pkt = next(speech)
@@ -356,7 +357,6 @@ def sendSpeech(self,speech):
         sleep(0.058)
         _stream_id = pkt[16:20]
         _pkt_time = time()
-        _slot  = systems[system].STATUS[2]
         if _stream_id not in systems[system].STATUS:
             systems[system].STATUS[_stream_id] = {
             'START':     _pkt_time,
@@ -375,6 +375,7 @@ def sendSpeech(self,speech):
         #print(len(pkt), pkt[4], pkt)
 
 def disconnectedVoice(system):
+    _nine = bytes_3(9)
     logger.info('(%s) Sending disconnected voice',system)
     _say = [words['silence']]
     if CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'] > 0:
@@ -390,9 +391,10 @@ def disconnectedVoice(system):
     else:
         _say.append(words['notlinked'])
     
-    speech = pkt_gen(bytes_3(9), bytes_3(9), bytes_4(9), 1, _say)
+    speech = pkt_gen(_nine, _nine, bytes_4(9), 1, _say)
 
     sleep(1)
+    _slot  = systems[system].STATUS[2]
     while True:
         try:
             pkt = next(speech)
@@ -402,7 +404,6 @@ def disconnectedVoice(system):
         sleep(0.058)
         _stream_id = pkt[16:20]
         _pkt_time = time()
-        _slot  = systems[system].STATUS[2]
         if _stream_id not in systems[system].STATUS:
             systems[system].STATUS[_stream_id] = {
             'START':     _pkt_time,
@@ -455,6 +456,7 @@ def ident():
                 speech = pkt_gen(_all_call, _all_call, bytes_4(16777215), 1, _say)
 
                 sleep(1)
+                _slot  = systems[system].STATUS[2]
                 while True:
                     try:
                         pkt = next(speech)
@@ -465,7 +467,6 @@ def ident():
                     
                     _stream_id = pkt[16:20]
                     _pkt_time = time()
-                    _slot  = systems[system].STATUS[2]
                     if _stream_id not in systems[system].STATUS:
                         systems[system].STATUS[_stream_id] = {
                         'START':     _pkt_time,
@@ -910,6 +911,8 @@ class routerHBP(HBSYSTEM):
         dmrpkt = _data[20:53]
         _bits = _data[15]
         
+        _nine = bytes_3(9)
+        
         #Handle private calls (for reflectors)
         if _call_type == 'unit' and _slot == 2:
             _int_dst_id = int_id(_dst_id)
@@ -1031,7 +1034,7 @@ class routerHBP(HBSYSTEM):
                     for num in str(_int_dst_id):
                         _say.append(words[num])
      
-                speech = pkt_gen(bytes_3(9), bytes_3(9), bytes_4(9), 1, _say)
+                speech = pkt_gen(_nine, _nine, bytes_4(9), 1, _say)
                 
                 #call speech in a thread as it contains sleep() and hence could block the reactor
                 reactor.callInThread(sendSpeech,self,speech)
