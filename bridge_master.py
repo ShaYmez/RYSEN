@@ -402,7 +402,7 @@ def disconnectedVoice(system):
         sleep(0.058)
         _stream_id = pkt[16:20]
         _pkt_time = time()
-         _slot  = systems[system].STATUS[2]
+        _slot  = systems[system].STATUS[2]
         if _stream_id not in systems[system].STATUS:
             systems[system].STATUS[_stream_id] = {
             'START':     _pkt_time,
@@ -465,7 +465,7 @@ def ident():
                     
                     _stream_id = pkt[16:20]
                     _pkt_time = time()
-                     _slot  = systems[system].STATUS[2]
+                    _slot  = systems[system].STATUS[2]
                     if _stream_id not in systems[system].STATUS:
                         systems[system].STATUS[_stream_id] = {
                         'START':     _pkt_time,
