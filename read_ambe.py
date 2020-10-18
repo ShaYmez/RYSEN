@@ -66,7 +66,7 @@ class readAMBE:
     #Read a single ambe file from the audio directory
     def readSingleFile(self,filename):
         ambeBytearray = {}
-        _wordBitarray = bitarray(endian='little')
+        _wordBitarray = bitarray(endian='big')
         _wordBA= []
         try:
             with open(self.path+filename,'rb') as ambe:            
