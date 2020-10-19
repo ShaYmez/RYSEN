@@ -31,7 +31,7 @@ class useMYSQL:
                     logger.info('(MYSQL) DB Error')
                     return (False)
                 else:
-                    logger.info('(MYSQL) unspecified error')
+                    logger.info('(MYSQL) error: %s',err)
                     return(False)
 
             return(True) 

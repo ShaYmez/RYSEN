@@ -704,9 +704,24 @@ def mysql_config_check():
                         continue
                     tg = int(tg)
                     make_static_tg(tg,2,_tmout,system)
+        
+        #Rebuild ACLs
+        SQLCONFIG[system]['REG_ACL'] = acl_build(SQLCONFIG[system]['REG_ACL'], PEER_MAX)
+        SQLCONFIG[system]['SUB_ACL'] = acl_build(SQLCONFIG[system]['SUB_ACL'], ID_MAX)
+        SQLCONFIG[system]['TG1_ACL'] = acl_build(SQLCONFIG[system]['TG1_ACL'], ID_MAX)
+        SQLCONFIG[system]['TG2_ACL'] = acl_build(SQLCONFIG[system]['TG2_ACL'], ID_MAX)
+        
+        if SQLCONFIG[system]['REG_ACL'] != CONFIG['SYSTEMS'][system]['REG_ACL']:
+            logger.debug('(MYSQL) registration ACL changed')
+        if SQLCONFIG[system]['SUB_ACL'] != CONFIG['SYSTEMS'][system]['SUB_ACL']:
+            logger.debug('(MYSQL) subscriber ACL changed')
+        if SQLCONFIG[system]['TG1_ACL'] != CONFIG['SYSTEMS'][system]['TG1_ACL']:
+            logger.debug('(MYSQL) TG1 ACL changed')
+        if SQLCONFIG[system]['TG2_ACL'] != CONFIG['SYSTEMS'][system]['TG2_ACL']:
+            logger.debug('(MYSQL) TG2 ACL changed')
             
     #Add MySQL config data to config dict
-    CONFIG['SYSTEMS'].update(SQLCONFIG)    
+    CONFIG['SYSTEMS'].update(SQLCONFIG)
    
     SQLCONFIG = {} 
     sql.close()
