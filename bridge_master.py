@@ -458,7 +458,7 @@ def ident():
             #print("RX:"+str(_slot['RX_TYPE'])+" TX:"+str(_slot['TX_TYPE'])+" TIME:"+str(time() - _slot['TX_TIME']))
             if (_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _slot['TX_TIME'] > CONFIG['SYSTEMS'][system]['GROUP_HANGTIME']):
                 #_stream_id = hex_str_4(1234567)
-                logger.info('(%s) Sending voice ident',system)
+                logger.info('(%s) Repeater idle. Sending voice ident',system)
                 _say = [words['silence']]
                 _systemcs = re.sub(r'\W+', '', system)
                 _systemcs.upper()
@@ -497,8 +497,6 @@ def ident():
                     #Twisted is not thread safe. We need to call this in the reactor main thread
                     reactor.callFromThread(systems[system].send_system,pkt)
                     #systems[system].send_system(pkt)
-            else:
-                logger.debug("(%s) repeater busy, not sending ident",system)
 
 def mysql_config_check():
     logger.debug('(MYSQL) Periodic config check')
