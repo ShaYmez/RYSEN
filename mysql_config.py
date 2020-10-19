@@ -1,6 +1,6 @@
 import mysql.connector
 from mysql.connector import errorcode
-import mysql.connector.pooling
+#import mysql.connector.pooling
 
 class useMYSQL:
     #Init new object
@@ -20,8 +20,8 @@ class useMYSQL:
                     user=self.user,
                     password=self.password,
                     database=self.database,
-                    pool_name = "hblink_master",
-                    pool_size = 2
+                #    pool_name = "hblink_master",
+                #    pool_size = 2
                 )
             except mysql.connector.Error as err:
                 if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
