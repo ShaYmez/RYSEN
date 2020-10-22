@@ -277,7 +277,7 @@ def build_config(_config_file):
                         'VOICE_IDENT': config.getboolean(section, 'VOICE_IDENT'),
                         'TS1_STATIC': config.get(section,'TS1_STATIC'),
                         'TS2_STATIC': config.get(section,'TS2_STATIC'),
-                        'DEFAULT_REFLECTOR': config.get(section, 'DEFAULT_REFLECTOR'),
+                        'DEFAULT_REFLECTOR': config.getint(section, 'DEFAULT_REFLECTOR'),
                     }})
                     CONFIG['SYSTEMS'][section].update({'PEERS': {}})
                     
