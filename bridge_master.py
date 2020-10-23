@@ -1577,12 +1577,8 @@ if __name__ == '__main__':
         
     #Read AMBE
     AMBEobj = readAMBE('en_GB','./Audio/')
-    TIMEAMBEobj = readAMBE('TIME_en_GB','./Audio/')
     #global words
     words = AMBEobj.readfiles()
-    #time words
-    timewords = TIMEAMBEobj.readfiles()
-    words.update(timewords)
     logger.info('(AMBE) Read %s words into voice dict',len(words) - 1)
 
     # HBlink instance creation
