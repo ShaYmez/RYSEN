@@ -630,6 +630,14 @@ def mysql_config_check():
                         continue
                     tg = int(tg)
                     make_static_tg(tg,2,_tmout,system)
+                    
+        if SQLCONFIG[system]['DEFAULT_UA_TIMER'] != CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']:
+            logger.debug('(MYSQL) %s DEFAULT_UA_TIMER changed. Killing HBP listener. Will restart in 1 minute',system)
+            systems[system].master_dereg()
+            systems[system]._system_maintenance.stop()
+            remove_bridge_system(system)
+            listeningPorts[system].stopListening()
+            SQLCONFIG[system]['ENABLED'] = False
         
         if SQLCONFIG[system]['IP'] != CONFIG['SYSTEMS'][system]['IP'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
             logger.debug('(MYSQL) %s IP binding changed on enabled system, killing HBP listener. Will restart in 1 minute',system)
@@ -1360,9 +1368,9 @@ class routerHBP(HBSYSTEM):
                                             _system['ACTIVE'] = False
                                             logger.info('(%s) [5] Bridge: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
                                             # Cancel the timer if we've enabled an "ON" type timeout
-                                        if _system['TO_TYPE'] == 'ON':
-                                            _system['TIMER'] = pkt_time
-                                            logger.info('(%s) [6] Bridge: %s set to ON with and "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
+                                            if _system['TO_TYPE'] == 'ON':
+                                                _system['TIMER'] = pkt_time
+                                                logger.info('(%s) [6] Bridge: %s set to ON with an "OFF" timer rule: timeout timer cancelled', self._system, _bridge)
                                     # Reset the timer for the rule
                                     if _system['ACTIVE'] == False and _system['TO_TYPE'] == 'OFF':
                                         _system['TIMER'] = pkt_time + _system['TIMEOUT']
@@ -1569,8 +1577,12 @@ if __name__ == '__main__':
         
     #Read AMBE
     AMBEobj = readAMBE('en_GB','./Audio/')
+    TIMEAMBEobj = readAMBE('TIME_en_GB','./Audio/')
     #global words
     words = AMBEobj.readfiles()
+    #time words
+    timewords = TIMEAMBEobj.readfiles()
+    words.update(timewords)
     logger.info('(AMBE) Read %s words into voice dict',len(words) - 1)
 
     # HBlink instance creation
