@@ -281,7 +281,9 @@ def rule_timer_loop():
     logger.debug('(ROUTER) routerHBP Rule timer loop started')
     _now = time()
     BRIDGE_SEMA.acquire(blocking = True)
+    _remove_bridges = []
     for _bridge in BRIDGES:
+        _bridge_used = False
         for _system in BRIDGES[_bridge]:
             if _system['TO_TYPE'] == 'ON':
                 if _system['ACTIVE'] == True:
@@ -292,6 +294,7 @@ def rule_timer_loop():
                             reactor.callInThread(disconnectedVoice,_system['SYSTEM'])
                     else:
                         timeout_in = _system['TIMER'] - _now
+                        _bridge_used = True
                         logger.info('(ROUTER) Conference Bridge ACTIVE (ON timer running): System: %s Bridge: %s, TS: %s, TGID: %s, Timeout in: %.2fs,', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']),  timeout_in)
                 elif _system['ACTIVE'] == False:
                     logger.debug('(ROUTER) Conference Bridge INACTIVE (no change): System: %s Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
@@ -299,14 +302,25 @@ def rule_timer_loop():
                 if _system['ACTIVE'] == False:
                     if _system['TIMER'] < _now:
                         _system['ACTIVE'] = True
+                        _bridge_used = True
                         logger.info('(ROUTER) Conference Bridge TIMEOUT: ACTIVATE System: %s, Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
                     else:
                         timeout_in = _system['TIMER'] - _now
+                        _bridge_used = True
                         logger.info('(ROUTER) Conference Bridge INACTIVE (OFF timer running): System: %s Bridge: %s, TS: %s, TGID: %s, Timeout in: %.2fs,', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']),  timeout_in)
                 elif _system['ACTIVE'] == True:
                     logger.debug('(ROUTER) Conference Bridge ACTIVE (no change): System: %s Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
             else:
+                _bridge_used = True
                 logger.debug('(ROUTER) Conference Bridge NO ACTION: System: %s, Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
+                
+        if _bridge_used == False:
+            _remove_bridges.append(_bridge)
+                
+    for _bridgerem in _remove_bridges:
+        del BRIDGES[_bridgerem]
+        logger.debug('(ROUTER) Unused conference bridge %s removed',_bridgerem)
+
     BRIDGE_SEMA.release()
     if CONFIG['REPORTS']['REPORT']:
         report_server.send_clients(b'bridge updated')
