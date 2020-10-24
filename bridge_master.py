@@ -311,7 +311,8 @@ def rule_timer_loop():
                 elif _system['ACTIVE'] == True:
                     logger.debug('(ROUTER) Conference Bridge ACTIVE (no change): System: %s Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
             else:
-                _bridge_used = True
+                if _system['SYSTEM'] != 'OBP-BM':
+                    _bridge_used = True
                 logger.debug('(ROUTER) Conference Bridge NO ACTION: System: %s, Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
                 
         if _bridge_used == False:
