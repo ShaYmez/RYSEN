@@ -290,13 +290,11 @@ def rule_timer_loop():
                     _bridge_used = True
                     if _system['TIMER'] < _now:
                         _system['ACTIVE'] = False
-                        _bridge_used = False
                         logger.info('(ROUTER) Conference Bridge TIMEOUT: DEACTIVATE System: %s, Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
                         if _bridge[0:1] == '#':
                             reactor.callInThread(disconnectedVoice,_system['SYSTEM'])
                     else:
                         timeout_in = _system['TIMER'] - _now
-                        _bridge_used = True
                         logger.info('(ROUTER) Conference Bridge ACTIVE (ON timer running): System: %s Bridge: %s, TS: %s, TGID: %s, Timeout in: %.2fs,', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']),  timeout_in)
                 elif _system['ACTIVE'] == False:
                     _bridge_used = False
@@ -312,6 +310,7 @@ def rule_timer_loop():
                         _bridge_used = True
                         logger.info('(ROUTER) Conference Bridge INACTIVE (OFF timer running): System: %s Bridge: %s, TS: %s, TGID: %s, Timeout in: %.2fs,', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']),  timeout_in)
                 elif _system['ACTIVE'] == True:
+                    _bridge_used = True
                     logger.debug('(ROUTER) Conference Bridge ACTIVE (no change): System: %s Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
             else:
                 if _system['SYSTEM'] != 'OBP-BM':
