@@ -295,15 +295,14 @@ def rule_timer_loop():
                             reactor.callInThread(disconnectedVoice,_system['SYSTEM'])
                     else:
                         timeout_in = _system['TIMER'] - _now
+                        _bridge_used = True
                         logger.info('(ROUTER) Conference Bridge ACTIVE (ON timer running): System: %s Bridge: %s, TS: %s, TGID: %s, Timeout in: %.2fs,', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']),  timeout_in)
                 elif _system['ACTIVE'] == False:
-                    _bridge_used = False
                     logger.debug('(ROUTER) Conference Bridge INACTIVE (no change): System: %s Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
             elif _system['TO_TYPE'] == 'OFF':
                 if _system['ACTIVE'] == False:
                     if _system['TIMER'] < _now:
                         _system['ACTIVE'] = True
-                        _bridge_used = True
                         logger.info('(ROUTER) Conference Bridge TIMEOUT: ACTIVATE System: %s, Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
                     else:
                         timeout_in = _system['TIMER'] - _now
