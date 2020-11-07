@@ -688,7 +688,7 @@ def mysql_config_check():
                 make_default_reflector(SQLCONFIG[system]['DEFAULT_REFLECTOR'],_tmout,system)
             else:
                 logger.debug('(MYSQL) %s default reflector disabled, updating',system) 
-                reset_default_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'],system)
+                reset_default_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'],_tmout,system)
                 
         if SQLCONFIG[system]['TS1_STATIC'] != CONFIG['SYSTEMS'][system]['TS1_STATIC']:
             _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
