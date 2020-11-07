@@ -595,7 +595,9 @@ def mysql_config_check():
         if SQLCONFIG[system]['ENABLED'] == False and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
             logger.debug('(MYSQL) %s changed from enabled to disabled, killing HBP listener and removing from bridges',system)
             systems[system].master_dereg()
-            systems[system]._system_maintenance.stop()
+            if systems[system]._system_maintenance is not None:
+                systems[system]._system_maintenance.stop()
+                systems[system]._system_maintenance = None
             remove_bridge_system(system)
             listeningPorts[system].stopListening()
             
@@ -650,7 +652,9 @@ def mysql_config_check():
         if SQLCONFIG[system]['DEFAULT_UA_TIMER'] != CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']:
             logger.debug('(MYSQL) %s DEFAULT_UA_TIMER changed. Killing HBP listener. Will restart in 1 minute',system)
             systems[system].master_dereg()
-            systems[system]._system_maintenance.stop()
+            if systems[system]._system_maintenance is not None:
+                systems[system]._system_maintenance.stop()
+                systems[system]._system_maintenance = None
             remove_bridge_system(system)
             listeningPorts[system].stopListening()
             SQLCONFIG[system]['ENABLED'] = False
@@ -658,21 +662,27 @@ def mysql_config_check():
         if SQLCONFIG[system]['IP'] != CONFIG['SYSTEMS'][system]['IP'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
             logger.debug('(MYSQL) %s IP binding changed on enabled system, killing HBP listener. Will restart in 1 minute',system)
             systems[system].master_dereg()
-            systems[system]._system_maintenance.stop()
+            if systems[system]._system_maintenance is not None:
+                systems[system]._system_maintenance.stop()
+                systems[system]._system_maintenance = None
             listeningPorts[system].stopListening()
             SQLCONFIG[system]['ENABLED'] = False
             
         if SQLCONFIG[system]['PORT'] != CONFIG['SYSTEMS'][system]['PORT'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
             logger.debug('(MYSQL) %s Port binding changed on enabled system, killing HBP listener. Will restart in 1 minute',system)
             systems[system].master_dereg()
-            systems[system]._system_maintenance.stop()
+            if systems[system]._system_maintenance is not None:
+                systems[system]._system_maintenance.stop()
+                systems[system]._system_maintenance = None
             listeningPorts[system].stopListening()
             SQLCONFIG[system]['ENABLED'] = False
             
         if SQLCONFIG[system]['MAX_PEERS'] != CONFIG['SYSTEMS'][system]['MAX_PEERS'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
             logger.debug('(MYSQL) %s MAX_PEERS changed on enabled system, killing HBP listener. Will restart in 1 minute',system)
             systems[system].master_dereg()
-            systems[system]._system_maintenance.stop()
+            if systems[system]._system_maintenance is not None:
+                systems[system]._system_maintenance.stop()
+                systems[system]._system_maintenance = None
             listeningPorts[system].stopListening()
             SQLCONFIG[system]['ENABLED'] = False
             
