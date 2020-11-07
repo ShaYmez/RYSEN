@@ -408,11 +408,13 @@ def disconnectedVoice(system):
     _nine = bytes_3(9)
     logger.info('(%s) Sending disconnected voice',system)
     _say = [words['silence']]
+    _say.append(words['silence']) 
     if CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'] > 0:
         _say.append(words['silence'])
         _say.append(words['linked'])
         _say.append(words['silence'])
         _say.append(words['2'])
+        _say.append(words['silence'])
         _say.append(words['silence']) 
         
         for number in str(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR']):
@@ -420,6 +422,8 @@ def disconnectedVoice(system):
             _say.append(words['silence'])
     else:
         _say.append(words['notlinked'])
+    
+    _say.append(words['silence']) 
     
     speech = pkt_gen(_nine, _nine, bytes_4(9), 1, _say)
 
@@ -476,11 +480,13 @@ def ident():
                 #_stream_id = hex_str_4(1234567)
                 logger.info('(%s) Repeater idle. Sending voice ident',system)
                 _say = [words['silence']]
+                _say.append(words['silence'])
                 _systemcs = re.sub(r'\W+', '', system)
                 _systemcs.upper()
                 for character in _systemcs:
                     _say.append(words[character])
                     _say.append(words['silence'])
+                _say.append(words['silence'])
                 #test 
                 #_say.append(AMBEobj.readSingleFile('44xx.ambe'))
                 _all_call = bytes_3(16777215)
@@ -1126,6 +1132,7 @@ class routerHBP(HBSYSTEM):
                                         _say.append(words['linked'])
                                         _say.append(words['silence'])
                                         _say.append(words['2'])
+                                        _say.append(words['silence'])
                                         _say.append(words['silence']) 
                                         
                                         for num in str(_dehash_bridge):
@@ -1145,6 +1152,7 @@ class routerHBP(HBSYSTEM):
                     _say.append(words['linked'])
                     _say.append(words['silence'])
                     _say.append(words['2'])
+                    _say.append(words['silence'])
                     _say.append(words['silence'])
                     
                     for num in str(_int_dst_id):
