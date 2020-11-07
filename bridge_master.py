@@ -1560,7 +1560,6 @@ if __name__ == '__main__':
         if CONFIG['SYSTEMS'][system]['MODE'] != 'MASTER':
             continue
         _tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
-        logger.debug('System %s tmout %s',system,_tmout)
         ts1 = []
         ts2 = []
         if CONFIG['SYSTEMS'][system]['TS1_STATIC']:
