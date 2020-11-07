@@ -1045,7 +1045,7 @@ class routerHBP(HBSYSTEM):
                     _bridgename = '#'+ str(_int_dst_id)
                     if _bridgename not in BRIDGES and not (_int_dst_id >= 4000 and _int_dst_id <= 5000):
                             logger.info('(%s) [A] Reflector for TG %s does not exist. Creating as User Activated',self._system, _int_dst_id)
-                            make_single_reflector(_dst_id,CONFIG['SYSTEMS'][self.system]['DEFAULT_UA_TIMER'],self._system)
+                            make_single_reflector(_dst_id,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'],self._system)
                     
                     BRIDGE_SEMA.acquire(blocking = True)
                     if _int_dst_id > 10 and _int_dst_id != 5000:
