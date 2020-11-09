@@ -729,6 +729,7 @@ class reportFactory(Factory):
 
     def send_config(self):
         serialized = pickle.dumps(self._config['SYSTEMS'], protocol=2) #.decode('utf-8', errors='ignore') #pickle.HIGHEST_PROTOCOL)
+        logger.debug('(REPORT) Send config')
         self.send_clients(b''.join([REPORT_OPCODES['CONFIG_SND'], serialized]))
 
 
