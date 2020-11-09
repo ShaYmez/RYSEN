@@ -1,4 +1,10 @@
-This is a heavily modified version of HBLink3 Is this what you want?
+### FreeDMR Master Server is a fork of the hblink3 project ###
+
+FreeDMR Master Server extends hblink3 to assist in building a master server using HBLink3
+
+More documentation is coming soon, but in the mean time the orignal text from hblink3 has been retained below.
+
+
 
 
 ---
