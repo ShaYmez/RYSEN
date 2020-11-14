@@ -1387,7 +1387,7 @@ class routerHBP(HBSYSTEM):
                 # Iterate the rules dictionary
                 BRIDGE_SEMA.acquire(blocking = True)
                 for _bridge in BRIDGES:
-                    if _bridge[0:1] == '#' and _int_dst_id != 9:
+                    if (_bridge[0:1] == '#') and (_int_dst_id != 9):
                         continue
                     for _system in BRIDGES[_bridge]:
                         if _system['SYSTEM'] == self._system:
