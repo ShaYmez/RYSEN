@@ -1187,9 +1187,10 @@ class routerHBP(HBSYSTEM):
         
         _nine = bytes_3(9)
         
+        _int_dst_id = int_id(_dst_id)
+        
         #Handle private calls (for reflectors)
         if _call_type == 'unit' and _slot == 2:
-            _int_dst_id = int_id(_dst_id)
             if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
                 logger.warning('(%s) Reflector: Private call from %s to %s',self._system, int_id(_rf_src), _int_dst_id)
                 #if _int_dst_id >= 4000 and _int_dst_id <= 5000:
@@ -1386,7 +1387,7 @@ class routerHBP(HBSYSTEM):
                 # Iterate the rules dictionary
                 BRIDGE_SEMA.acquire(blocking = True)
                 for _bridge in BRIDGES:
-                    if _bridge[0:1] == '#':
+                    if _bridge[0:1] == '#' and _int_dst_id != 9:
                         continue
                     for _system in BRIDGES[_bridge]:
                         if _system['SYSTEM'] == self._system:
