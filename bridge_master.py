@@ -598,7 +598,7 @@ def mysql_config_check():
                         make_static_tg(tg,2,_tmout,system)
         
             continue
-                
+        
         if SQLCONFIG[system]['ENABLED'] == False and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
             logger.debug('(MYSQL) %s changed from enabled to disabled, killing HBP listener and removing from bridges',system)
             systems[system].master_dereg()
@@ -761,6 +761,10 @@ def mysql_config_check():
             logger.debug('(MYSQL) TG1 ACL changed')
         if SQLCONFIG[system]['TG2_ACL'] != CONFIG['SYSTEMS'][system]['TG2_ACL']:
             logger.debug('(MYSQL) TG2 ACL changed')
+            
+        #Preserve peers list
+        if system in CONFIG['SYSTEMS']:
+            SQLCONFIG[system]['PEERS'] = CONFIG['SYSTEMS'][system]['PEERS']
             
     #Add MySQL config data to config dict
     CONFIG['SYSTEMS'].update(SQLCONFIG)
@@ -1177,9 +1181,7 @@ class routerHBP(HBSYSTEM):
                     systems[_target['SYSTEM']].send_system(_tmp_data)
                     #logger.debug('(%s) Packet routed by bridge: %s to system: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
 
-
         
-
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pkt_time = time()
         dmrpkt = _data[20:53]
