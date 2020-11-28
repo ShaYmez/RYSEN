@@ -132,7 +132,7 @@ def make_bridges(_rules):
         #    continue
         
         for _confsystem in CONFIG['SYSTEMS']:
-            if _confsystem == 'OBP-BM':
+            if _confsystem[0:3] == 'OBP':
             #if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
                 continue
             ts1 = False 
@@ -161,7 +161,7 @@ def make_single_bridge(_tgid,_sourcesystem,_slot,_tmout):
     _tgid_s = str(int_id(_tgid))
     BRIDGES[_tgid_s] = []
     for _system in CONFIG['SYSTEMS']:
-        if _system != 'OBP-BM':
+        if _system[0:3] != 'OBP':
         #if CONFIG['SYSTEMS'][system]['MODE'] == 'MASTER':
             #_tmout = CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']
             if _system == _sourcesystem:
@@ -175,7 +175,7 @@ def make_single_bridge(_tgid,_sourcesystem,_slot,_tmout):
                 BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time()})
                 BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time()})
                 
-        if _system == 'OBP-BM':
+        if _system[0:3] == 'OBP':
             BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': '','TO_TYPE': 'NONE','OFF': [],'ON': [],'RESET': [], 'TIMER': time()})
         
         BRIDGE_SEMA.release()
@@ -251,14 +251,14 @@ def make_single_reflector(_tgid,_tmout,_sourcesystem):
     BRIDGE_SEMA.acquire(blocking = True)
     BRIDGES[_bridge] = []
     for _system in CONFIG['SYSTEMS']:
-        if _system != 'OBP-BM':
+        if _system[0:3] != 'OBP':
         #if CONFIG['SYSTEMS'][system]['MODE'] == 'MASTER':
             #_tmout = CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']
             if _system == _sourcesystem:
                 BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': True,'TIMEOUT':  _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time() + (_tmout * 60)})
             else:
                 BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': False,'TIMEOUT':  CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER'] * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time()})
-        if _system == 'OBP-BM':
+        if _system[0:3] == 'OBP':
             BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': '','TO_TYPE': 'NONE','OFF': [],'ON': [],'RESET': [], 'TIMER': time()})
         BRIDGE_SEMA.release()
         
@@ -313,7 +313,7 @@ def rule_timer_loop():
                     _bridge_used = True
                     logger.debug('(ROUTER) Conference Bridge ACTIVE (no change): System: %s Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
             else:
-                if _system['SYSTEM'] != 'OBP-BM':
+                if _system['SYSTEM'][0:3] != 'OBP':
                     _bridge_used = True
                 logger.debug('(ROUTER) Conference Bridge NO ACTION: System: %s, Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
                 
