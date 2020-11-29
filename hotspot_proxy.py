@@ -1,5 +1,5 @@
 from twisted.internet.protocol import DatagramProtocol
-from twisted.internet import reactor
+from twisted.internet import reactor, task
 from time import time
 
 
@@ -38,10 +38,16 @@ class Proxy(DatagramProtocol):
 
 if __name__ == '__main__':
 
+#*** CONFIG HERE ***
+    
     ListenPort = 62031
     DestportStart = 50000
-    DestPortEnd = 50300
-    Timeout = 60
+    DestPortEnd = 50500
+    Timeout = 35
+    Stats = True
+    
+#*******************
+
     
     CONNTRACK = {}
 
@@ -50,4 +56,27 @@ if __name__ == '__main__':
 
     reactor.listenUDP(ListenPort,Proxy(ListenPort,CONNTRACK,Timeout))
 
+    def loopingErrHandle(failure):
+        print('(GLOBAL) STOPPING REACTOR TO AVOID MEMORY LEAK: Unhandled error in timed loop.\n {}'.format(failure))
+        reactor.stop()
+        
+    def stats():        
+        count = 0
+        for port in CONNTRACK:
+            if int(CONNTRACK[port]['time'])+Timeout > time():
+                count = count+1
+                
+        totalPorts = DestPortEnd - DestportStart
+        freePorts = totalPorts - count
+        
+        print("{} ports out of {} in use ({} free)".format(count,totalPorts,freePorts))
+
+
+        
+    if Stats == True:
+        stats_task = task.LoopingCall(stats)
+        statsa = stats_task.start(30)
+        statsa.addErrback(loopingErrHandle)
+
     reactor.run()
+    
