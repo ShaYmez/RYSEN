@@ -315,6 +315,8 @@ def rule_timer_loop():
             else:
                 if _system['SYSTEM'][0:3] != 'OBP':
                     _bridge_used = True
+                else if _system['SYSTEM'][0:3] == 'OBP' and _system['TO_TYPE'] == 'STAT':
+                    _bridge_used = True
                 logger.debug('(ROUTER) Conference Bridge NO ACTION: System: %s, Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
                 
         if _bridge_used == False:
