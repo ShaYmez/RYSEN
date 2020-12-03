@@ -315,7 +315,7 @@ def rule_timer_loop():
             else:
                 if _system['SYSTEM'][0:3] != 'OBP':
                     _bridge_used = True
-                else if _system['SYSTEM'][0:3] == 'OBP' and _system['TO_TYPE'] == 'STAT':
+                elif _system['SYSTEM'][0:3] == 'OBP' and _system['TO_TYPE'] == 'STAT':
                     _bridge_used = True
                 logger.debug('(ROUTER) Conference Bridge NO ACTION: System: %s, Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
                 
@@ -780,12 +780,14 @@ class routerOBP(OPENBRIDGE):
         OPENBRIDGE.__init__(self, _name, _config, _report)
         self.STATUS = {}
         
-    def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system):
+    def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP):
         for _target in BRIDGES[_bridge]:
             if (_target['SYSTEM'] != self._system) and (_target['ACTIVE']):
                 _target_status = systems[_target['SYSTEM']].STATUS
                 _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
                 if _target_system['MODE'] == 'OPENBRIDGE':
+                    if _noOBP == True:
+                        continue
                     # Is this a new call stream on the target?
                     if (_stream_id not in _target_status):
                         # This is a new call stream on the target
@@ -961,7 +963,7 @@ class routerOBP(OPENBRIDGE):
 
                     if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True):
 
-                        self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system)
+                        self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False)
                         
                         #Send to reflector or TG too, if it exists
                         if _bridge[0:1] == '#':
@@ -969,7 +971,7 @@ class routerOBP(OPENBRIDGE):
                         else:
                             _bridge = '#'+_bridge
                         if _bridge in BRIDGES:
-                          self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system) 
+                          self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,True) 
 
 
             # Final actions - Is this a voice terminator?
@@ -1046,7 +1048,7 @@ class routerHBP(HBSYSTEM):
                 }
             }
 
-    def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system):
+    def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP):
         for _target in BRIDGES[_bridge]:
             if _target['SYSTEM'] != self._system or (_target['SYSTEM'] == self._system and _target['TS'] != _slot):
                 if _target['ACTIVE']:
@@ -1054,6 +1056,8 @@ class routerHBP(HBSYSTEM):
                     _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
 
                     if _target_system['MODE'] == 'OPENBRIDGE':
+                        if _noOBP == True:
+                            continue
                         # Is this a new call stream on the target?
                         if (_stream_id not in _target_status):
                             # This is a new call stream on the target
@@ -1366,7 +1370,7 @@ class routerHBP(HBSYSTEM):
 
                     if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True):
 
-                        self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system)
+                        self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False)
                         
                         #Send to reflector or TG too, if it exists
                         if _bridge[0:1] == '#':
@@ -1374,7 +1378,7 @@ class routerHBP(HBSYSTEM):
                         else:
                             _bridge = '#'+_bridge
                         if _bridge in BRIDGES:
-                          self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system) 
+                          self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,True) 
 
             # Final actions - Is this a voice terminator?
             if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
@@ -1685,5 +1689,8 @@ if __name__ == '__main__':
         mysql_task = task.LoopingCall(threadedMysql)
         mysql = mysql_task.start(60)
         mysql.addErrback(loopingErrHandle)
+    
+    #more threads
+    reactor.suggestThreadPoolSize(30)
     
     reactor.run()
