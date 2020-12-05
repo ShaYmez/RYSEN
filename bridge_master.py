@@ -1377,17 +1377,43 @@ class routerHBP(HBSYSTEM):
                     logger.info('(%s) Bridge for TG %s does not exist. Creating as User Activated. Timeout %s',self._system, int_id(_dst_id),CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
                     make_single_bridge(_dst_id,self._system,_slot,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
                 
-            for _bridge in BRIDGES:
-                for _system in BRIDGES[_bridge]:
-                    if _bridge[0:1] == '#':
-                        continue
-                    if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True):
+            #for _bridge in BRIDGES:
+                #for _system in BRIDGES[_bridge]:
+                    #if _bridge[0:1] == '#':
+                        #continue
+                    #if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True):
 
-                        self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False)
+                        #self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False)
                         
-                        _bridge = '#'+_bridge
-                        if _bridge in BRIDGES:
-                          self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,True) 
+                        #_bridge = '#'+_bridge
+                        #if _bridge in BRIDGES:
+                          #self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,True) 
+                          
+            for _bridge in BRIDGES:
+                _refIgnore = []
+                _tgignore = []
+                if _bridge[0:1] != '#':
+                    for _system in BRIDGES[_bridge]:
+                        if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True and (_bridge not in _tgIgnore)):
+
+                            self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False)
+                            
+                            _bridge2 = '#'+_bridge
+                            if _bridge2 in BRIDGES:
+                                self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,True)
+                                _refIgnore.push(_bridge2)
+                
+                elif _bridge[0:1] == '#':
+                    for _system in BRIDGES[_bridge]:
+                        if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True and (_bridge not in _refIgnore)):
+
+                            self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False)
+                            
+                            _bridge2 = _bridge[1:]
+                            if _bridge2 in BRIDGES:
+                                self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,True)
+                                _tgIgnore.push(_bridge2)
+                    
 
             # Final actions - Is this a voice terminator?
             if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
