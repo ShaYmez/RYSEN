@@ -959,17 +959,31 @@ class routerOBP(OPENBRIDGE):
 
 
             for _bridge in BRIDGES:
-                for _system in BRIDGES[_bridge]:
-                    
-                    if _bridge[0:1] == '#':
-                        continue
-                    if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True):
+                _refIgnore = []
+                _tgignore = []
+                if _bridge[0:1] != '#':
+                    for _system in BRIDGES[_bridge]:
+                        if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True and (_bridge not in _tgIgnore)):
 
-                        self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False)
-                        
-                        _bridge = '#'+_bridge
-                        if _bridge in BRIDGES:
-                          self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,True) 
+                            self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False)
+                            
+                            _bridge = '#'+_bridge
+                            if _bridge in BRIDGES:
+                                self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,True)
+                            _refIgnore.push(_bridge)
+                
+                elif _bridge[0:1] == '#':
+                    for _system in BRIDGES[_bridge]:
+                        if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True and (_bridge not in _refIgnore)):
+
+                            self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False)
+                            
+                            _bridge = _bridge[1:]
+                            if _bridge in BRIDGES:
+                                self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,True)
+                            _tgIgnore.push(_bridge)
+                    
+                    
 
 
             # Final actions - Is this a voice terminator?
