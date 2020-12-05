@@ -1388,10 +1388,9 @@ class routerHBP(HBSYSTEM):
                         #_bridge = '#'+_bridge
                         #if _bridge in BRIDGES:
                           #self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,True) 
-                          
+            _refIgnore = []
+            _tgIgnore = []              
             for _bridge in BRIDGES:
-                _refIgnore = []
-                _tgIgnore = []
                 if _bridge[0:1] != '#':
                     for _system in BRIDGES[_bridge]:
                         if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True and (_bridge not in _tgIgnore)):
