@@ -957,10 +957,9 @@ class routerOBP(OPENBRIDGE):
 
             self.STATUS[_stream_id]['LAST'] = pkt_time
 
-
+            _refIgnore = []
+            _tgIgnore = []
             for _bridge in BRIDGES:
-                _refIgnore = []
-                _tgIgnore = []
                 if _bridge[0:1] != '#':
                     for _system in BRIDGES[_bridge]:
                         if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True and (_bridge not in _tgIgnore)):
