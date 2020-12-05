@@ -967,10 +967,10 @@ class routerOBP(OPENBRIDGE):
 
                             self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False)
                             
-                            _bridge = '#'+_bridge
-                            if _bridge in BRIDGES:
+                            _bridge2 = '#'+_bridge
+                            if _bridge2 in BRIDGES:
                                 self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,True)
-                            _refIgnore.push(_bridge)
+                            _refIgnore.push(_bridge2)
                 
                 elif _bridge[0:1] == '#':
                     for _system in BRIDGES[_bridge]:
@@ -978,10 +978,10 @@ class routerOBP(OPENBRIDGE):
 
                             self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False)
                             
-                            _bridge = _bridge[1:]
-                            if _bridge in BRIDGES:
+                            _bridge2 = _bridge[1:]
+                            if _bridge2 in BRIDGES:
                                 self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,True)
-                            _tgIgnore.push(_bridge)
+                            _tgIgnore.push(_bridge2)
                     
                     
 
