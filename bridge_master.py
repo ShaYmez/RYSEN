@@ -966,21 +966,21 @@ class routerOBP(OPENBRIDGE):
 
                             self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False)
                             
-                            _bridge2 = '#'+_bridge
-                            if _bridge2 in BRIDGES:
-                                self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,True)
-                                _refIgnore.append(_bridge2)
+                            #_bridge2 = '#'+_bridge
+                            #if _bridge2 in BRIDGES:
+                                #self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,True)
+                                #_refIgnore.append(_bridge2)
                 
-                elif _bridge[0:1] == '#':
-                    for _system in BRIDGES[_bridge]:
-                        if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True and (_bridge not in _refIgnore)):
+                #elif _bridge[0:1] == '#':
+                    #for _system in BRIDGES[_bridge]:
+                        #if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True and (_bridge not in _refIgnore)):
 
-                            self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False)
+                            #self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False)
                             
-                            _bridge2 = _bridge[1:]
-                            if _bridge2 in BRIDGES:
-                                self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,True)
-                                _tgIgnore.append(_bridge2)
+                            #_bridge2 = _bridge[1:]
+                            #if _bridge2 in BRIDGES:
+                                #self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,True)
+                                #_tgIgnore.append(_bridge2)
                     
                     
 
@@ -1396,21 +1396,21 @@ class routerHBP(HBSYSTEM):
 
                             self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False)
                             
-                            _bridge2 = '#'+_bridge
-                            if _bridge2 in BRIDGES:
-                                self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,True)
-                                _refIgnore.append(_bridge2)
+                            #_bridge2 = '#'+_bridge
+                            #if _bridge2 in BRIDGES:
+                                #self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,True)
+                                #_refIgnore.append(_bridge2)
                 
-                elif _bridge[0:1] == '#':
-                    for _system in BRIDGES[_bridge]:
-                        if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True and (_bridge not in _refIgnore)):
+                #elif _bridge[0:1] == '#':
+                    #for _system in BRIDGES[_bridge]:
+                        #if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True and (_bridge not in _refIgnore)):
 
-                            self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False)
+                            #self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False)
                             
-                            _bridge2 = _bridge[1:]
-                            if _bridge2 in BRIDGES:
-                                self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,True)
-                                _tgIgnore.append(_bridge2)
+                            #_bridge2 = _bridge[1:]
+                            #if _bridge2 in BRIDGES:
+                                #self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,True)
+                                #_tgIgnore.append(_bridge2)
                     
 
             # Final actions - Is this a voice terminator?
