@@ -280,7 +280,7 @@ class HBSYSTEM(DatagramProtocol):
             _packet = b''.join([_packet[:11], _peer, _packet[15:]])
         self.transport.write(_packet, self._peers[_peer]['SOCKADDR'])
         # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
-        logger.debug('(%s) TX Packet to %s on port %s: %s', self._peers[_peer]['RADIO_ID'], self._peers[_peer]['IP'], self._peers[_peer]['PORT'], ahex(_packet))
+        #logger.debug('(%s) TX Packet to %s on port %s: %s', self._peers[_peer]['RADIO_ID'], self._peers[_peer]['IP'], self._peers[_peer]['PORT'], ahex(_packet))
 
     def send_master(self, _packet):
         if _packet[:4] == DMRD:
