@@ -124,7 +124,7 @@ class OPENBRIDGE(DatagramProtocol):
             _packet = b''.join([_packet, (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
             self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
             # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
-            # logger.debug('(%s) TX Packet to OpenBridge %s:%s -- %s', self._system, self._config['TARGET_IP'], self._config['TARGET_PORT'], ahex(_packet))
+            logger.debug('(%s) TX Packet to OpenBridge %s:%s -- %s', self._system, self._config['TARGET_IP'], self._config['TARGET_PORT'], ahex(_packet))
         else:
             logger.error('(%s) OpenBridge system was asked to send non DMRD packet: %s', self._system, _packet)
 
@@ -273,21 +273,21 @@ class HBSYSTEM(DatagramProtocol):
     def send_peers(self, _packet):
         for _peer in self._peers:
             self.send_peer(_peer, _packet)
-            #logger.debug('(%s) Packet sent to peer %s', self._system, self._peers[_peer]['RADIO_ID'])
+            logger.debug('(%s) Packet sent to peer %s', self._system, self._peers[_peer]['RADIO_ID'])
 
     def send_peer(self, _peer, _packet):
         if _packet[:4] == DMRD:
             _packet = b''.join([_packet[:11], _peer, _packet[15:]])
         self.transport.write(_packet, self._peers[_peer]['SOCKADDR'])
         # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
-        #logger.debug('(%s) TX Packet to %s on port %s: %s', self._peers[_peer]['RADIO_ID'], self._peers[_peer]['IP'], self._peers[_peer]['PORT'], ahex(_packet))
+        logger.debug('(%s) TX Packet to %s on port %s: %s', self._peers[_peer]['RADIO_ID'], self._peers[_peer]['IP'], self._peers[_peer]['PORT'], ahex(_packet))
 
     def send_master(self, _packet):
         if _packet[:4] == DMRD:
             _packet = b''.join([_packet[:11], self._config['RADIO_ID'], _packet[15:]])
         self.transport.write(_packet, self._config['MASTER_SOCKADDR'])
         # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
-        # logger.debug('(%s) TX Packet to %s:%s -- %s', self._system, self._config['MASTER_IP'], self._config['MASTER_PORT'], ahex(_packet))
+        logger.debug('(%s) TX Packet to %s:%s -- %s', self._system, self._config['MASTER_IP'], self._config['MASTER_PORT'], ahex(_packet))
 
     def send_xlxmaster(self, radio, xlx, mastersock):
         radio3 = int.from_bytes(radio, 'big').to_bytes(3, 'big')
@@ -309,7 +309,7 @@ class HBSYSTEM(DatagramProtocol):
             _packet = b''.join([DMRD, packetnr1, radio3, xlx3, radio4, strmtype1, streamid, payload])
             self.transport.write(_packet, mastersock)
             # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
-            #logger.debug('(%s) XLX Module Change Packet: %s', self._system, ahex(_packet))
+            logger.debug('(%s) XLX Module Change Packet: %s', self._system, ahex(_packet))
         return
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):

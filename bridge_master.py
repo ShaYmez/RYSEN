@@ -780,14 +780,17 @@ class routerOBP(OPENBRIDGE):
         OPENBRIDGE.__init__(self, _name, _config, _report)
         self.STATUS = {}
         
-    def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP):
+    def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,_tgidIgnore):
         for _target in BRIDGES[_bridge]:
             if (_target['SYSTEM'] != self._system) and (_target['ACTIVE']):
                 _target_status = systems[_target['SYSTEM']].STATUS
                 _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
                 if _target_system['MODE'] == 'OPENBRIDGE':
-                    if _noOBP == True:
+                    print(int_id(_target['TGID']))
+                    if _noOBP == True  or (int_id(_target['TGID']) in _tgidIgnore):
+                        print('bang')
                         continue
+                    _tgidIgnore.append(int_id(_target['TGID']))
                     # Is this a new call stream on the target?
                     if (_stream_id not in _target_status):
                         # This is a new call stream on the target
@@ -957,30 +960,14 @@ class routerOBP(OPENBRIDGE):
 
             self.STATUS[_stream_id]['LAST'] = pkt_time
 
-            _refIgnore = []
-            _tgIgnore = []
+            _OBtgidIgnore = []
             for _bridge in BRIDGES:
-                if _bridge[0:1] != '#':
+                #if _bridge[0:1] != '#':
+                if True:
                     for _system in BRIDGES[_bridge]:
-                        if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True and (_bridge not in _tgIgnore)):
-
-                            self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False)
-                            
-                            #_bridge2 = '#'+_bridge
-                            #if _bridge2 in BRIDGES:
-                                #self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,True)
-                                #_refIgnore.append(_bridge2)
-                
-                #elif _bridge[0:1] == '#':
-                    #for _system in BRIDGES[_bridge]:
-                        #if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True and (_bridge not in _refIgnore)):
-
-                            #self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False)
-                            
-                            #_bridge2 = _bridge[1:]
-                            #if _bridge2 in BRIDGES:
-                                #self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,True)
-                                #_tgIgnore.append(_bridge2)
+                        if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True):
+                            print(_OBtgidIgnore)
+                            _OBtgidIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_OBtgidIgnore)
                     
                     
 
@@ -1059,7 +1046,7 @@ class routerHBP(HBSYSTEM):
                 }
             }
 
-    def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP):
+    def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,_tgidIgnore):
         for _target in BRIDGES[_bridge]:
             if _target['SYSTEM'] != self._system or (_target['SYSTEM'] == self._system and _target['TS'] != _slot):
                 if _target['ACTIVE']:
@@ -1067,8 +1054,11 @@ class routerHBP(HBSYSTEM):
                     _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
 
                     if _target_system['MODE'] == 'OPENBRIDGE':
-                        if _noOBP == True:
+                        print(int_id(_target['TGID']))
+                        if _noOBP == True  or (int_id(_target['TGID']) in _tgidIgnore):
+                            print('bang')
                             continue
+                        _tgidIgnore.append(int_id(_target['TGID']))
                         # Is this a new call stream on the target?
                         if (_stream_id not in _target_status):
                             # This is a new call stream on the target
@@ -1197,7 +1187,7 @@ class routerHBP(HBSYSTEM):
                     # Transmit the packet to the destination system
                     systems[_target['SYSTEM']].send_system(_tmp_data)
                     #logger.debug('(%s) Packet routed by bridge: %s to system: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
-
+        return(_tgidIgnore)
         
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pkt_time = time()
@@ -1220,7 +1210,7 @@ class routerHBP(HBSYSTEM):
                             make_single_reflector(_dst_id,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'],self._system)
                     
                     BRIDGE_SEMA.acquire(blocking = True)
-                    if _int_dst_id > 10 and _int_dst_id != 5000:
+                    if _int_dst_id > 5 and _int_dst_id != 5000:
                         for _bridge in BRIDGES:
                             if _bridge[0:1] != '#':
                                 continue
@@ -1372,7 +1362,7 @@ class routerHBP(HBSYSTEM):
                     self.STATUS[_slot]['RX_LC'] = LC_OPT + _dst_id + _rf_src
 
             #Create default bridge for unknown TG
-                if int_id(_dst_id) >= 5 and (str(int_id(_dst_id)) not in BRIDGES):
+                if int_id(_dst_id) >= 5 and int_id(_dst_id) != 9 and (str(int_id(_dst_id)) not in BRIDGES):
                     logger.info('(%s) Bridge for TG %s does not exist. Creating as User Activated. Timeout %s',self._system, int_id(_dst_id),CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
                     make_single_bridge(_dst_id,self._system,_slot,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
                 
@@ -1387,31 +1377,16 @@ class routerHBP(HBSYSTEM):
                         #_bridge = '#'+_bridge
                         #if _bridge in BRIDGES:
                           #self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,True) 
-            _refIgnore = []
-            _tgIgnore = []              
+                          
+            _OBtgidIgnore = []
             for _bridge in BRIDGES:
-                if _bridge[0:1] != '#':
+                #if _bridge[0:1] != '#':
+                if True:
                     for _system in BRIDGES[_bridge]:
-                        if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True and (_bridge not in _tgIgnore)):
-
-                            self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False)
+                        if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True):
+                            print(_OBtgidIgnore)
+                            _OBtgidIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_OBtgidIgnore)
                             
-                            #_bridge2 = '#'+_bridge
-                            #if _bridge2 in BRIDGES:
-                                #self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,True)
-                                #_refIgnore.append(_bridge2)
-                
-                #elif _bridge[0:1] == '#':
-                    #for _system in BRIDGES[_bridge]:
-                        #if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True and (_bridge not in _refIgnore)):
-
-                            #self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False)
-                            
-                            #_bridge2 = _bridge[1:]
-                            #if _bridge2 in BRIDGES:
-                                #self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,True)
-                                #_tgIgnore.append(_bridge2)
-                    
 
             # Final actions - Is this a voice terminator?
             if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
