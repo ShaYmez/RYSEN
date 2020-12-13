@@ -787,7 +787,7 @@ class routerOBP(OPENBRIDGE):
                 _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
                 if _target_system['MODE'] == 'OPENBRIDGE':
                     print(int_id(_target['TGID']))
-                    if _noOBP == True  or (int_id(_target['TGID']) in _tgidIgnore):
+                    if _noOBP == True:
                         print('bang')
                         continue
                     _tgidIgnore.append(int_id(_target['TGID']))
@@ -1055,7 +1055,7 @@ class routerHBP(HBSYSTEM):
 
                     if _target_system['MODE'] == 'OPENBRIDGE':
                         print(int_id(_target['TGID']))
-                        if _noOBP == True  or (int_id(_target['TGID']) in _tgidIgnore):
+                        if _noOBP == True:
                             print('bang')
                             continue
                         _tgidIgnore.append(int_id(_target['TGID']))
