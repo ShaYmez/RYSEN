@@ -966,7 +966,7 @@ class routerOBP(OPENBRIDGE):
 
             _sysIgnore = []
             for _bridge in BRIDGES:
-                if _bridge[0:1] != '#':
+                #if _bridge[0:1] != '#':
                 #if True:
                     for _system in BRIDGES[_bridge]:
                         if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
