@@ -780,17 +780,18 @@ class routerOBP(OPENBRIDGE):
         OPENBRIDGE.__init__(self, _name, _config, _report)
         self.STATUS = {}
         
-    def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,_tgidIgnore):
+    def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,_sysIgnore):
         for _target in BRIDGES[_bridge]:
             if (_target['SYSTEM'] != self._system) and (_target['ACTIVE']):
                 _target_status = systems[_target['SYSTEM']].STATUS
                 _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
+                if (_target['SYSTEM'],_target['TS']) in _sysIgnore:
+                    logger.debug("(DEDUP) Skipping system %s TS: %s",_target['SYSTEM'],_target['TS'])
+                    continue
                 if _target_system['MODE'] == 'OPENBRIDGE':
                     print(int_id(_target['TGID']))
-                    if _noOBP == True or _target['SYSTEM'] in _tgidIgnore:
-                        print('bang')
+                    if _noOBP == True:
                         continue
-                    _tgidIgnore.append(_target['SYSTEM'])
                     # Is this a new call stream on the target?
                     if (_stream_id not in _target_status):
                         # This is a new call stream on the target
@@ -923,7 +924,10 @@ class routerOBP(OPENBRIDGE):
                 # Transmit the packet to the destination system
                 systems[_target['SYSTEM']].send_system(_tmp_data)
                     #logger.debug('(%s) Packet routed by bridge: %s to system: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
-
+                #Ignore this system and TS pair if it's called again on this packet
+        #We want to ignore this system and TS combination if it's called again for this packet
+        _sysIgnore.append((_target['SYSTEM'],_target['TS']))
+        return(_sysIgnore)
 
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
@@ -960,17 +964,15 @@ class routerOBP(OPENBRIDGE):
 
             self.STATUS[_stream_id]['LAST'] = pkt_time
 
-            _OBtgidIgnore = []
+            _sysIgnore = []
             for _bridge in BRIDGES:
-                #if _bridge[0:1] != '#':
-                if True:
+                if _bridge[0:1] != '#':
+                #if True:
                     for _system in BRIDGES[_bridge]:
                         if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
-                            _OBtgidIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_OBtgidIgnore)
-                        elif _system['SYSTEM'] == self._system and int_id(_system['TGID']) == 9 and _system['TS'] == 2 and _system['ACTIVE'] == True and _bridge == "#"+str(int_id(_system['TGID'])):
-                            _OBtgidIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_OBtgidIgnore)
-                    
-                    
+                            _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore)
+
+            
 
 
             # Final actions - Is this a voice terminator?
@@ -1047,19 +1049,19 @@ class routerHBP(HBSYSTEM):
                 }
             }
 
-    def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,_tgidIgnore):
+    def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,_sysIgnore):
         for _target in BRIDGES[_bridge]:
             if _target['SYSTEM'] != self._system or (_target['SYSTEM'] == self._system and _target['TS'] != _slot):
                 if _target['ACTIVE']:
                     _target_status = systems[_target['SYSTEM']].STATUS
                     _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
 
+                    if (_target['SYSTEM'],_target['TS']) in _sysIgnore:
+                        logger.debug("(DEDUP) Skipping system %s TS: %s",_target['SYSTEM'],_target['TS'])
+                        continue
                     if _target_system['MODE'] == 'OPENBRIDGE':
-                        print(int_id(_target['TGID']))
-                        if _noOBP == True or _target['SYSTEM'] in _tgidIgnore:
-                            print('bang')
+                        if _noOBP == True:
                             continue
-                        _tgidIgnore.append(_target['SYSTEM'])
                         # Is this a new call stream on the target?
                         if (_stream_id not in _target_status):
                             # This is a new call stream on the target
@@ -1188,8 +1190,9 @@ class routerHBP(HBSYSTEM):
                     # Transmit the packet to the destination system
                     systems[_target['SYSTEM']].send_system(_tmp_data)
                     #logger.debug('(%s) Packet routed by bridge: %s to system: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
-        return _tgidIgnore
-        
+        _sysIgnore.append((_target['SYSTEM'],_target['TS']))           
+        return _sysIgnore
+
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pkt_time = time()
         dmrpkt = _data[20:53]
@@ -1368,15 +1371,13 @@ class routerHBP(HBSYSTEM):
                     make_single_bridge(_dst_id,self._system,_slot,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
                 
                           
-            _OBtgidIgnore = []
+            _sysIgnore = []
             for _bridge in BRIDGES:
                 #if _bridge[0:1] != '#':
                 if True:
                     for _system in BRIDGES[_bridge]:
                         if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
-                            _OBtgidIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_OBtgidIgnore)
-                        elif _system['SYSTEM'] == self._system and int_id(_system['TGID']) == 9 and _system['TS'] == 2 and _system['ACTIVE'] == True and _bridge == "#"+str(int_id(_system['TGID'])):
-                            _OBtgidIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_OBtgidIgnore)
+                            _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore)
 
             # Final actions - Is this a voice terminator?
             if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
