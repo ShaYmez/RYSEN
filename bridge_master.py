@@ -926,7 +926,8 @@ class routerOBP(OPENBRIDGE):
                     #logger.debug('(%s) Packet routed by bridge: %s to system: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                 #Ignore this system and TS pair if it's called again on this packet
         #We want to ignore this system and TS combination if it's called again for this packet
-        _sysIgnore.append((_target['SYSTEM'],_target['TS']))
+            if _target_system['MODE'] == 'OPENBRIDGE':
+                _sysIgnore.append((_target['SYSTEM'],_target['TS']))
         return(_sysIgnore)
 
 
@@ -1190,7 +1191,8 @@ class routerHBP(HBSYSTEM):
                     # Transmit the packet to the destination system
                     systems[_target['SYSTEM']].send_system(_tmp_data)
                     #logger.debug('(%s) Packet routed by bridge: %s to system: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
-        _sysIgnore.append((_target['SYSTEM'],_target['TS']))           
+            if _target_system['MODE'] == 'OPENBRIDGE':
+                _sysIgnore.append((_target['SYSTEM'],_target['TS']))           
         return _sysIgnore
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
