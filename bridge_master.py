@@ -405,7 +405,7 @@ def sendSpeech(self,speech):
         #Call the actual packet send in the reactor thread 
         #as it's not thread safe
         reactor.callFromThread(self.send_system,pkt)
-        #print(len(pkt), pkt[4], pkt)
+        #(len(pkt), pkt[4], pkt)
 
 def disconnectedVoice(system):
     _nine = bytes_3(9)
@@ -787,7 +787,7 @@ class routerOBP(OPENBRIDGE):
                 _target_status = systems[_target['SYSTEM']].STATUS
                 _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
                 if (_target['SYSTEM'],_target['TS']) in _sysIgnore:
-                    logger.debug("(DEDUP) OBP Source Skipping system %s TS: %s",_target['SYSTEM'],_target['TS'])
+                    #logger.debug("(DEDUP) OBP Source Skipping system %s TS: %s",_target['SYSTEM'],_target['TS'])
                     continue
                 if _target_system['MODE'] == 'OPENBRIDGE':
                     if _noOBP == True:
@@ -1059,7 +1059,7 @@ class routerHBP(HBSYSTEM):
                     _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
 
                     if (_target['SYSTEM'],_target['TS']) in _sysIgnore:
-                        logger.debug("(DEDUP) HBP Source - Skipping system %s TS: %s",_target['SYSTEM'],_target['TS'])
+                        #logger.debug("(DEDUP) HBP Source - Skipping system %s TS: %s",_target['SYSTEM'],_target['TS'])
                         continue
                     if _target_system['MODE'] == 'OPENBRIDGE':
                         if _noOBP == True:
