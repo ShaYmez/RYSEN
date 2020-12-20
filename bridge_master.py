@@ -787,7 +787,8 @@ class routerOBP(OPENBRIDGE):
                 _target_status = systems[_target['SYSTEM']].STATUS
                 _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
                 if (_target['SYSTEM'],_target['TS']) in _sysIgnore:
-                    logger.debug("(DEDUP) OBP Source Skipping system %s TS: %s",_target['SYSTEM'],_target['TS'])
+                    if (_stream_id not in _target_status):
+                        logger.debug("(DEDUP) OBP Source Skipping system %s TS: %s",_target['SYSTEM'],_target['TS'])
                     continue
                 if _target_system['MODE'] == 'OPENBRIDGE':
                     if _noOBP == True:
@@ -1057,9 +1058,9 @@ class routerHBP(HBSYSTEM):
                 if _target['ACTIVE']:
                     _target_status = systems[_target['SYSTEM']].STATUS
                     _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
-
                     if (_target['SYSTEM'],_target['TS']) in _sysIgnore:
-                        logger.debug("(DEDUP) HBP Source - Skipping system %s TS: %s",_target['SYSTEM'],_target['TS'])
+                        if (_stream_id not in _target_status):
+                            logger.debug("(DEDUP) HBP Source - Skipping system %s TS: %s",_target['SYSTEM'],_target['TS'])
                         continue
                     if _target_system['MODE'] == 'OPENBRIDGE':
                         if _noOBP == True:
