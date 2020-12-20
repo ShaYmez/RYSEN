@@ -780,7 +780,8 @@ class routerOBP(OPENBRIDGE):
         OPENBRIDGE.__init__(self, _name, _config, _report)
         self.STATUS = {}
         
-    def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,_sysIgnore):
+    def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,sysIgnore):
+        _sysIgnore = sysIgnore
         for _target in BRIDGES[_bridge]:
             if (_target['SYSTEM'] != self._system) and (_target['ACTIVE']):
                 _target_status = systems[_target['SYSTEM']].STATUS
@@ -1050,7 +1051,8 @@ class routerHBP(HBSYSTEM):
                 }
             }
 
-    def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,_sysIgnore):
+    def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,sysIgnore):
+        _sysIgnore = sysIgnore
         for _target in BRIDGES[_bridge]:
             if _target['SYSTEM'] != self._system or (_target['SYSTEM'] == self._system and _target['TS'] != _slot):
                 if _target['ACTIVE']:
