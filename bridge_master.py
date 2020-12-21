@@ -944,7 +944,7 @@ class routerOBP(OPENBRIDGE):
             logger.debug("%s) Duplicate sequence number %s, disgarding",self._system,_seq)
             return
         #Inbound out-of-order packets
-        elif _seq == True and _seq < self._lastSeq:
+        elif _seq > 1 and _seq < self._lastSeq:
             logger.debug("%s) Out of order packet - last sequence number %s, this sequence number %s,  disgarding",self._system,self._lastSeq,_seq)
             return
         #Inbound missed packets
