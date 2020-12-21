@@ -780,6 +780,9 @@ class routerOBP(OPENBRIDGE):
         OPENBRIDGE.__init__(self, _name, _config, _report)
         self.STATUS = {}
         
+        #Store last sequence number
+        self._lastSeq = False
+        
     def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,sysIgnore):
         _sysIgnore = sysIgnore
         for _target in BRIDGES[_bridge]:
@@ -935,6 +938,19 @@ class routerOBP(OPENBRIDGE):
         pkt_time = time()
         dmrpkt = _data[20:53]
         _bits = _data[15]
+        
+        #Handle inbound duplicates
+        if _seq == True and _seq == self._lastSeq:
+            logger.debug("%s) Duplicate sequence number %s, disgarding",self._system,_seq)
+            return
+        #Inbound out-of-order packets
+        elif _seq == True and _seq < self._lastSeq:
+            logger.debug("%s) Out of order packet - last sequence number %s, this sequence number %s,  disgarding",self._system,self._lastSeq,_seq)
+            return
+        #Inbound missed packets
+        elif _seq == True and _seq > (self._lastSeq+1):
+             logger.debug("(%s) Missed packet - last sequence number %s, this sequence number %s",self._system,self._lastSeq,_seq)
+    
 
         if _call_type == 'group':
             # Is this a new call stream?
@@ -946,6 +962,7 @@ class routerOBP(OPENBRIDGE):
                     'RFS':       _rf_src,
                     'TGID':      _dst_id,
                 }
+                
 
                 # If we can, use the LC from the voice header as to keep all options intact
                 if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
@@ -964,7 +981,10 @@ class routerOBP(OPENBRIDGE):
                     self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
 
             self.STATUS[_stream_id]['LAST'] = pkt_time
-
+            
+            #Save this sequence number 
+            self._lastSeq = _seq
+            
             _sysIgnore = []
             for _bridge in BRIDGES:
                 #if _bridge[0:1] != '#':
@@ -987,6 +1007,9 @@ class routerOBP(OPENBRIDGE):
                 logger.debug('(%s) OpenBridge sourced call stream end, remove terminated Stream ID: %s', self._system, int_id(_stream_id))
                 if not removed:
                     selflogger.error('(%s) *CALL END*   STREAM ID: %s NOT IN LIST -- THIS IS A REAL PROBLEM', self._system, int_id(_stream_id))
+                
+                #Reset sequence number 
+                self._lastSeq = False
 
 class routerHBP(HBSYSTEM):
 
