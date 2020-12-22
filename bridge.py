@@ -200,11 +200,26 @@ class routerOBP(OPENBRIDGE):
         OPENBRIDGE.__init__(self, _name, _config, _report)
         self.STATUS = {}
 
+        #Store last sequence number
+        self._lastSeq = False
+        
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pkt_time = time()
         dmrpkt = _data[20:53]
         _bits = _data[15]
+        
+                #Handle inbound duplicates
+        if _seq == True and _seq == self._lastSeq:
+            logger.debug("%s) Duplicate sequence number %s, disgarding",self._system,_seq)
+            return
+        #Inbound out-of-order packets
+        elif _seq == True and (_seq != 1) and (_seq < self._lastSeq):
+            logger.debug("%s) Out of order packet - last sequence number %s, this sequence number %s,  disgarding",self._system,self._lastSeq,_seq)
+            return
+        #Inbound missed packets
+        elif _seq == True and _seq > (self._lastSeq+1):
+             logger.debug("(%s) Missed packet - last sequence number %s, this sequence number %s",self._system,self._lastSeq,_seq)
 
         if _call_type == 'group':
             # Is this a new call stream?
@@ -392,6 +407,9 @@ class routerOBP(OPENBRIDGE):
                 logger.debug('(%s) OpenBridge sourced call stream end, remove terminated Stream ID: %s', self._system, int_id(_stream_id))
                 if not removed:
                     selflogger.error('(%s) *CALL END*   STREAM ID: %s NOT IN LIST -- THIS IS A REAL PROBLEM', self._system, int_id(_stream_id))
+                    
+                #Reset sequence number 
+                self._lastSeq = False
 
 class routerHBP(HBSYSTEM):
 
