@@ -475,6 +475,8 @@ def ident():
         if CONFIG['SYSTEMS'][system]['MODE'] != 'MASTER':
             continue
         if CONFIG['SYSTEMS'][system]['VOICE_IDENT'] == True:
+           # if CONFIG['SYSTEMS'][system]['PEERS'] == False:
+            #    logger.debug('(%s) System has no peers, not sending ident',system)
             #We only care about slot 2 - idents go out on slot 2
             _slot  = systems[system].STATUS[2]
             #If slot is idle for RX and TX
