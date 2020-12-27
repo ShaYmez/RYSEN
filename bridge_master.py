@@ -534,6 +534,8 @@ def options_config():
         if CONFIG['SYSTEMS'][_system]['ENABLED'] == True:
             if 'OPTIONS' in CONFIG['SYSTEMS'][_system]:
                 _options = {}
+                re.sub("\'","",CONFIG['SYSTEMS'][_system]['OPTIONS'])
+                re.sub("\"","",CONFIG['SYSTEMS'][_system]['OPTIONS'])
                 for x in CONFIG['SYSTEMS'][_system]['OPTIONS'].split(";"):
                     try:
                         k,v = x.split('=')
@@ -554,14 +556,12 @@ def options_config():
                     
                 if _options['TS1_STATIC']:
                     re.sub("\s","",_options['TS1_STATIC'])
-                    re.sub("\'","",_options['TS1_STATIC'])
                     if re.search("![\d\,]",_options['TS1_STATIC']):
                         logger.debug('(OPTIONS) %s - TS1_STATIC contains characters other than numbers and comma, ignoring',_system)
                         continue
                 
                 if _options['TS2_STATIC']:
                     re.sub("\s","",_options['TS2_STATIC'])
-                    re.sub("\'","",_options['TS2_STATIC'])
                     if re.search("![\d\,]",_options['TS2_STATIC']):
                         logger.debug('(OPTIONS) %s - TS2_STATIC contains characters other than numbers and comma, ignoring',_system)
                         continue
