@@ -29,21 +29,21 @@ class Proxy(DatagramProtocol):
                 if Debug:
                     print("return path match")
                     print(data)
-            elif host+str(port) in self.sourceTrack:
+            elif host+":"+str(port) in self.sourceTrack:
                 del self.sourceTrack[host+str(port)]
             return
         
             #If we have a sourcetrack for this connect and thenowtimeout has not expired, forward to tracked port
-        if host+str(port) in self.sourceTrack and (int(self.sourceTrack[host+str(port)]['time'])+self.timeout >nowtime):
-            self.transport.write(data, ('127.0.0.1',self.sourceTrack[host+str(port)]['dport']))
-            self.connTrack[self.sourceTrack[host+str(port)]['dport']]['time'] =nowtime
-            self.sourceTrack[host+str(port)]['time'] =nowtime
+        if host+":"+str(port) in self.sourceTrack and (int(self.sourceTrack[host+":"+str(port)]['time'])+self.timeout >nowtime):
+            self.transport.write(data, ('127.0.0.1',self.sourceTrack[host+":"+str(port)]['dport']))
+            self.connTrack[self.sourceTrack[host+":"+str(port)]['dport']]['time'] =nowtime
+            self.sourceTrack[host+":"+str(port)]['time'] =nowtime
             if Debug:
                 print("Tracked inbound match")
                 print(data)
             return
-        elif host+str(port) in self.sourceTrack:
-            del self.sourceTrack[host+str(port)]
+        elif host+":"+str(port) in self.sourceTrack:
+            del self.sourceTrack[host+":"+str(port)]
         
         #Find free port to map for new connection
         for dport in self.connTrack:
@@ -51,9 +51,9 @@ class Proxy(DatagramProtocol):
                 self.connTrack[dport]['sport'] = port
                 self.connTrack[dport]['host'] = host
                 self.connTrack[dport]['time'] =nowtime
-                self.sourceTrack[host+str(port)] = {}
-                self.sourceTrack[host+str(port)]['dport'] = dport
-                self.sourceTrack[host+str(port)]['time'] =nowtime
+                self.sourceTrack[host+":"+str(port)] = {}
+                self.sourceTrack[host+":"+str(port)]['dport'] = dport
+                self.sourceTrack[host+":"+str(port)]['time'] =nowtime
                 self.transport.write(data, ('127.0.0.1',dport))
                 if Debug:
                     print("New connection")
