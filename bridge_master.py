@@ -535,7 +535,11 @@ def options_config():
             if 'OPTIONS' in CONFIG['SYSTEMS'][_system]:
                 _options = {}
                 for x in CONFIG['SYSTEMS'][_system]['OPTIONS'].split(";"):
-                    k,v = x.split('=')
+                    try:
+                        k,v = x.split('=')
+                    except ValueError:
+                        logger.debug('(OPTIONS) Value error %s ignoring',_system)
+                        continue
                     _options[k] = v
                 logger.debug('(OPTIONS) Options found for %s',_system)
                 
