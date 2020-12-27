@@ -615,7 +615,7 @@ def options_config():
                             reset_static_tg(tg,2,_tmout,_system)
                     ts2 = []
                     if _options['TS2_STATIC']:
-                        ts2 = SQLCONFIG[_system]['TS2_STATIC'].split(',')
+                        ts2 = _options['TS2_STATIC'].split(',')
                         for tg in ts2:
                             if not tg:
                                 continue
