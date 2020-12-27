@@ -72,6 +72,9 @@ import pickle
 import logging
 logger = logging.getLogger(__name__)
 
+#REGEX
+import re
+
 
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Cortney T. Buffington, N0MJS, Forked by Simon Adlem - G7RZU'
@@ -525,13 +528,113 @@ def ident():
                     reactor.callFromThread(systems[system].send_system,pkt)
                     #systems[system].send_system(pkt)
 
+def options_config():
+    logger.debug('(OPTIONS) Running options parser')
+    for _system in CONFIG['SYSTEMS']:
+        if CONFIG['SYSTEMS'][_system]['ENABLED'] == True:
+            if 'OPTIONS' in CONFIG['SYSTEMS'][_system]:
+                _options = {}
+                for x in CONFIG['SYSTEMS'][_system]['OPTIONS'].split(";"):
+                    k,v = x.split('=')
+                    _options[k] = v
+                logger.debug('(OPTIONS) Options found for %s',_system)
+                
+                if 'TS1_STATIC' not in _options or 'TS2_STATIC' not in _options or 'DEFAULT_REFLECTOR' not in _options or 'DEFAULT_UA_TIMER' not in _options:
+                    logger.debug('(OPTIONS) %s - Required field missing, ignoring',_system)
+                    continue
+                
+                if _options['TS1_STATIC'] == '':
+                    _options['TS1_STATIC'] = False
+                if _options['TS2_STATIC'] == '':
+                    _options['TS2_STATIC'] = False
+                    
+                if _options['TS1_STATIC']:
+                    re.sub("\s","",_options['TS1_STATIC'])
+                    if re.search("![\d\,]",_options['TS1_STATIC']):
+                        logger.debug('(OPTIONS) %s - TS1_STATIC contains characters other than numbers and comma, ignoring',_system)
+                        continue
+                
+                if _options['TS2_STATIC']:
+                    re.sub("\s","",_options['TS2_STATIC'])
+                    if re.search("![\d\,]",_options['TS2_STATIC']):
+                        logger.debug('(OPTIONS) %s - TS2_STATIC contains characters other than numbers and comma, ignoring',_system)
+                        continue
+                
+                if not _options['DEFAULT_REFLECTOR'].isdigit():
+                    logger.debug('(OPTIONS) %s - DEFAULT_UA_TIMER is not an integer, ignoring',_system)
+                    continue
+                
+                if not _options['DEFAULT_UA_TIMER'].isdigit():
+                    logger.debug('(OPTIONS) %s - DEFAULT_REFLECTOR is not an integer, ignoring',_system)
+                    continue
+        
+                if int(_options['DEFAULT_REFLECTOR']) != CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR']:
+                    _tmout = int(_options['DEFAULT_UA_TIMER'])
+                    if int(_options['DEFAULT_REFLECTOR']) > 0:
+                        logger.debug('(OPTIONS) %s default reflector changed, updating',_system) 
+                        reset_default_reflector(_options['DEFAULT_REFLECTOR'],_tmout,_system)
+                        make_default_reflector(_options['DEFAULT_REFLECTOR'],_tmout,_system)
+                    else:
+                        logger.debug('(OPTIONS) %s default reflector disabled, updating',_system) 
+                        reset_default_reflector(int(_options['DEFAULT_REFLECTOR']),_tmout,_system)
+                        
+                if _options['TS1_STATIC'] != CONFIG['SYSTEMS'][_system]['TS1_STATIC']:
+                    _tmout = int(_options['DEFAULT_UA_TIMER'])
+                    logger.debug('(OPTIONS) %s TS1 static TGs changed, updating',_system)
+                    ts1 = []
+                    if CONFIG['SYSTEMS'][_system]['TS1_STATIC']:
+                        ts1 = CONFIG['SYSTEMS'][_system]['TS1_STATIC'].split(',')
+                        for tg in ts1:
+                            if not tg:
+                                continue
+                            tg = int(tg)
+                            reset_static_tg(tg,1,_tmout,_system)   
+                    ts1 = []
+                    if _options['TS1_STATIC']:
+                        ts1 = _options['TS1_STATIC'].split(',')
+                        for tg in ts1:
+                            if not tg:
+                                continue
+                            tg = int(tg)
+                            make_static_tg(tg,1,_tmout,_system)
+                            
+                if _options['TS2_STATIC'] != CONFIG['SYSTEMS'][_system]['TS2_STATIC']:
+                    _tmout = int(_options['DEFAULT_UA_TIMER'])
+                    logger.debug('(OPTIONS) %s TS2 static TGs changed, updating',_system)
+                    ts2 = []
+                    if CONFIG['SYSTEMS'][_system]['TS2_STATIC']:
+                        ts2 = CONFIG['SYSTEMS'][_system]['TS2_STATIC'].split(',')
+                        for tg in ts2:
+                            if not tg:
+                                continue
+                            tg = int(tg)
+                            reset_static_tg(tg,2,_tmout,_system)
+                    ts2 = []
+                    if _options['TS2_STATIC']:
+                        ts2 = SQLCONFIG[_system]['TS2_STATIC'].split(',')
+                        for tg in ts2:
+                            if not tg:
+                                continue
+                            tg = int(tg)
+                            make_static_tg(tg,2,_tmout,_system)
+                
+                
+                CONFIG['SYSTEMS'][_system].update({
+                        'TS1_STATIC'          : _options['TS1_STATIC'],
+                        'TS2_STATIC'          : _options['TS2_STATIC'],
+                        'DEFAULT_REFLECTOR'   : int(_options['DEFAULT_REFLECTOR']),
+                        'DEFAULT_UA_TIMER'    : int(_options['DEFAULT_UA_TIMER'])
+                    })
+                
+
 def mysql_config_check():
     logger.debug('(MYSQL) Periodic config check')
     SQLCONFIG = {}
+    SQLGETCONFIG = {}
     if sql.con():
         logger.debug('(MYSQL) reading config from database')
         try:
-            SQLCONFIG = sql.getConfig()
+            SQLGETCONFIG = sql.getConfig()
         except:
             logger.debug('(MYSQL) problem with SQL query, aborting')
             sql.close()
@@ -539,7 +642,9 @@ def mysql_config_check():
         logger.debug('(MYSQL) problem connecting to SQL server, aborting')
         return
     
-    for system in SQLCONFIG:
+    SQLCONFIG = SQLGETCONFIG
+    
+    for system in SQLGETCONFIG:
         if system not in CONFIG['SYSTEMS']:
             if SQLCONFIG[system]['ENABLED'] == True:
                 logger.debug('(MYSQL) new enabled system %s, starting HBP listener',system)  
@@ -603,6 +708,19 @@ def mysql_config_check():
         
             continue
         
+        #Preserve options line
+        if 'OPTIONS' in CONFIG['SYSTEMS'][system]:
+            SQLCONFIG[system]['OPTIONS'] = CONFIG['SYSTEMS'][system]['OPTIONS']
+            SQLCONFIG[system].update({
+                    'TS1_STATIC'    :   CONFIG['SYSTEMS'][system]['TS1_STATIC'],
+                    'TS2_STATIC'    :   CONFIG['SYSTEMS'][system]['TS2_STATIC'],
+                    'DEFAULT_UA_TIMER'    :   CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER'],
+                    'DEFAULT_REFLECTOR'    :   CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR']
+                })
+            #logger.debug('(MYSQL) %s has HBP Options line - skipping',system)
+            #continue
+            
+        
         if SQLCONFIG[system]['ENABLED'] == False and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
             logger.debug('(MYSQL) %s changed from enabled to disabled, killing HBP listener and removing from bridges',system)
             systems[system].master_dereg()
@@ -639,36 +757,39 @@ def mysql_config_check():
                 BRIDGE_SEMA.release()
             
             if SQLCONFIG[system]['DEFAULT_REFLECTOR'] > 0:
+                if 'OPTIONS' not in SQLCONFIG[system]:
                     logger.debug('(MYSQL) %s setting default reflector',system) 
                     make_default_reflector(SQLCONFIG[system]['DEFAULT_REFLECTOR'],_tmout,system)
             
             if SQLCONFIG[system]['TS1_STATIC']:
-                logger.debug('(MYSQL) %s setting static TGs on TS1',system) 
-                ts1 = SQLCONFIG[system]['TS1_STATIC'].split(',')
-                for tg in ts1:
-                    if not tg:
-                        continue
-                    tg = int(tg)
-                    make_static_tg(tg,1,_tmout,system)
-                    
-            if SQLCONFIG[system]['TS2_STATIC']:
-                logger.debug('(MYSQL) %s setting static TGs on TS2',system) 
-                ts2 = SQLCONFIG[system]['TS2_STATIC'].split(',')
-                for tg in ts2:
-                    if not tg:
-                        continue
-                    tg = int(tg)
-                    make_static_tg(tg,2,_tmout,system)
+                if 'OPTIONS' not in SQLCONFIG[system]:
+                    logger.debug('(MYSQL) %s setting static TGs on TS1',system) 
+                    ts1 = SQLCONFIG[system]['TS1_STATIC'].split(',')
+                    for tg in ts1:
+                        if not tg:
+                            continue
+                        tg = int(tg)
+                        make_static_tg(tg,1,_tmout,system)
+                        
+                if SQLCONFIG[system]['TS2_STATIC']:
+                    logger.debug('(MYSQL) %s setting static TGs on TS2',system) 
+                    ts2 = SQLCONFIG[system]['TS2_STATIC'].split(',')
+                    for tg in ts2:
+                        if not tg:
+                            continue
+                        tg = int(tg)
+                        make_static_tg(tg,2,_tmout,system)
                     
         if SQLCONFIG[system]['DEFAULT_UA_TIMER'] != CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']:
-            logger.debug('(MYSQL) %s DEFAULT_UA_TIMER changed. Killing HBP listener. Will restart in 1 minute',system)
-            systems[system].master_dereg()
-            if systems[system]._system_maintenance is not None and systems[system]._system_maintenance.running == True:
-                systems[system]._system_maintenance.stop()
-                systems[system]._system_maintenance = None
-            remove_bridge_system(system)
-            listeningPorts[system].stopListening()
-            SQLCONFIG[system]['ENABLED'] = False
+            if 'OPTIONS' not in SQLCONFIG[system]:
+                logger.debug('(MYSQL) %s DEFAULT_UA_TIMER changed. Killing HBP listener. Will restart in 1 minute',system)
+                systems[system].master_dereg()
+                if systems[system]._system_maintenance is not None and systems[system]._system_maintenance.running == True:
+                    systems[system]._system_maintenance.stop()
+                    systems[system]._system_maintenance = None
+                remove_bridge_system(system)
+                listeningPorts[system].stopListening()
+                SQLCONFIG[system]['ENABLED'] = False
         
         if SQLCONFIG[system]['IP'] != CONFIG['SYSTEMS'][system]['IP'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
             logger.debug('(MYSQL) %s IP binding changed on enabled system, killing HBP listener. Will restart in 1 minute',system)
@@ -702,54 +823,57 @@ def mysql_config_check():
             systems[system].master_dereg()
             
         if SQLCONFIG[system]['DEFAULT_REFLECTOR'] != CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR']:
-            _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
-            if SQLCONFIG[system]['DEFAULT_REFLECTOR'] > 0:
-                logger.debug('(MYSQL) %s default reflector changed, updating',system) 
-                reset_default_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'],_tmout,system)
-                make_default_reflector(SQLCONFIG[system]['DEFAULT_REFLECTOR'],_tmout,system)
-            else:
-                logger.debug('(MYSQL) %s default reflector disabled, updating',system) 
-                reset_default_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'],_tmout,system)
+            if 'OPTIONS' not in SQLCONFIG[system]:
+                _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
+                if SQLCONFIG[system]['DEFAULT_REFLECTOR'] > 0:
+                    logger.debug('(MYSQL) %s default reflector changed, updating',system) 
+                    reset_default_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'],_tmout,system)
+                    make_default_reflector(SQLCONFIG[system]['DEFAULT_REFLECTOR'],_tmout,system)
+                else:
+                    logger.debug('(MYSQL) %s default reflector disabled, updating',system) 
+                    reset_default_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'],_tmout,system)
                 
         if SQLCONFIG[system]['TS1_STATIC'] != CONFIG['SYSTEMS'][system]['TS1_STATIC']:
-            _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
-            logger.debug('(MYSQL) %s TS1 static TGs changed, updating',system)
-            ts1 = []
-            if CONFIG['SYSTEMS'][system]['TS1_STATIC']:
-                ts1 = CONFIG['SYSTEMS'][system]['TS1_STATIC'].split(',')
-                for tg in ts1:
-                    if not tg:
-                        continue
-                    tg = int(tg)
-                    reset_static_tg(tg,1,_tmout,system)   
-            ts1 = []
-            if SQLCONFIG[system]['TS1_STATIC']:
-                ts1 = SQLCONFIG[system]['TS1_STATIC'].split(',')
-                for tg in ts1:
-                    if not tg:
-                        continue
-                    tg = int(tg)
-                    make_static_tg(tg,1,_tmout,system)
+            if 'OPTIONS' not in SQLCONFIG[system]:
+                _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
+                logger.debug('(MYSQL) %s TS1 static TGs changed, updating',system)
+                ts1 = []
+                if CONFIG['SYSTEMS'][system]['TS1_STATIC']:
+                    ts1 = CONFIG['SYSTEMS'][system]['TS1_STATIC'].split(',')
+                    for tg in ts1:
+                        if not tg:
+                            continue
+                        tg = int(tg)
+                        reset_static_tg(tg,1,_tmout,system)   
+                ts1 = []
+                if SQLCONFIG[system]['TS1_STATIC']:
+                    ts1 = SQLCONFIG[system]['TS1_STATIC'].split(',')
+                    for tg in ts1:
+                        if not tg:
+                            continue
+                        tg = int(tg)
+                        make_static_tg(tg,1,_tmout,system)
                     
         if SQLCONFIG[system]['TS2_STATIC'] != CONFIG['SYSTEMS'][system]['TS2_STATIC']:
-            _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
-            logger.debug('(MYSQL) %s TS2 static TGs changed, updating',system)
-            ts2 = []
-            if CONFIG['SYSTEMS'][system]['TS2_STATIC']:
-                ts2 = CONFIG['SYSTEMS'][system]['TS2_STATIC'].split(',')
-                for tg in ts2:
-                    if not tg:
-                        continue
-                    tg = int(tg)
-                    reset_static_tg(tg,2,_tmout,system)
-            ts2 = []
-            if SQLCONFIG[system]['TS2_STATIC']:
-                ts2 = SQLCONFIG[system]['TS2_STATIC'].split(',')
-                for tg in ts2:
-                    if not tg:
-                        continue
-                    tg = int(tg)
-                    make_static_tg(tg,2,_tmout,system)
+            if 'OPTIONS' not in SQLCONFIG[system]:
+                _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
+                logger.debug('(MYSQL) %s TS2 static TGs changed, updating',system)
+                ts2 = []
+                if CONFIG['SYSTEMS'][system]['TS2_STATIC']:
+                    ts2 = CONFIG['SYSTEMS'][system]['TS2_STATIC'].split(',')
+                    for tg in ts2:
+                        if not tg:
+                            continue
+                        tg = int(tg)
+                        reset_static_tg(tg,2,_tmout,system)
+                ts2 = []
+                if SQLCONFIG[system]['TS2_STATIC']:
+                    ts2 = SQLCONFIG[system]['TS2_STATIC'].split(',')
+                    for tg in ts2:
+                        if not tg:
+                            continue
+                        tg = int(tg)
+                        make_static_tg(tg,2,_tmout,system)
         
         #Rebuild ACLs
         SQLCONFIG[system]['REG_ACL'] = acl_build(SQLCONFIG[system]['REG_ACL'], PEER_MAX)
@@ -1710,12 +1834,17 @@ if __name__ == '__main__':
     identa = ident_task.start(900)
     identa.addErrback(loopingErrHandle)
     
+    #Options parsing
+    options_task = task.LoopingCall(options_config)
+    options = options_task.start(30)
+    options.addErrback(loopingErrHandle)
+    
     #Mysql config checker
     #This runs in a thread so as not to block the reactor
     if CONFIG['MYSQL']['USE_MYSQL'] == True:
         mysql_sema = Semaphore(value=1)
         mysql_task = task.LoopingCall(threadedMysql)
-        mysql = mysql_task.start(60)
+        mysql = mysql_task.start(30)
         mysql.addErrback(loopingErrHandle)
     
     #more threads

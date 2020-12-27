@@ -248,6 +248,9 @@ class HBSYSTEM(DatagramProtocol):
             logger.info('(%s) Peer %s (%s) has timed out and is being removed', self._system, self._peers[peer]['CALLSIGN'], self._peers[peer]['RADIO_ID'])
             # Remove any timed out peers from the configuration
             del self._CONFIG['SYSTEMS'][self._system]['PEERS'][peer]
+        if not self._peers and self._CONFIG['OPTIONS']:
+            logger.info('(%s) Deleting HBP Options',self._system)
+            del self._CONFIG['OPTIONS']
 
     # Aliased in __init__ to maintenance_loop if system is a peer
     def peer_maintenance_loop(self):
@@ -513,6 +516,7 @@ class HBSYSTEM(DatagramProtocol):
             _this_peer['OPTIONS'] = _data[8:]
             self.send_peer(_peer_id, b''.join([RPTACK, _peer_id]))
             logger.info('(%s) Peer %s has sent options %s', self._system, _this_peer['CALLSIGN'], _this_peer['OPTIONS'])
+            self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = _this_peer['OPTIONS'].decode()
         
         elif _command == RPTP:    # RPTPing -- peer is pinging us
                 _peer_id = _data[7:11]
