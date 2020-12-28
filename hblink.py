@@ -406,7 +406,7 @@ class HBSYSTEM(DatagramProtocol):
         elif _command == RPTL:    # RPTLogin -- a repeater wants to login
             _peer_id = _data[4:8]
             # Check to see if we've reached the maximum number of allowed peers
-            if len(self._peers) < self._config['MAX_PEERS']:
+            if len(self._peers) < self._config['MAX_PEERS'] or _peer_id in self._peers:
                 # Check for valid Radio ID
                 if acl_check(_peer_id, self._CONFIG['GLOBAL']['REG_ACL']) and acl_check(_peer_id, self._config['REG_ACL']):
                     # Build the configuration data strcuture for the peer
