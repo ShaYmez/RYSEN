@@ -23,13 +23,13 @@ class Proxy(DatagramProtocol):
             if int(self.connTrack[port]['time'])+self.timeout >nowtime:
                 self.transport.write(data,(self.connTrack[port]['host'],self.connTrack[port]['sport']))
                 #if master refuses login, remove tracking
-                if data == b'MSTNAK\x00#\xbf"':
-                    self.connTrack[port]['time'] = False
+                if data[0:6] == b'MSTNAK':
+                    del self.sourceTrack[host+":"+str(port)]
                 if Debug:
                     print("return path match")
                     print(data)
             elif host+":"+str(port) in self.sourceTrack:
-                del self.sourceTrack[host+str(port)]
+                del self.sourceTrack[host+":"+str(port)]
             return
         
             #If we have a sourcetrack for this connect and thenowtimeout has not expired, forward to tracked port
