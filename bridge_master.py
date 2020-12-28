@@ -578,8 +578,8 @@ def options_config():
                     _tmout = int(_options['DEFAULT_UA_TIMER'])
                     if int(_options['DEFAULT_REFLECTOR']) > 0:
                         logger.debug('(OPTIONS) %s default reflector changed, updating',_system) 
-                        reset_default_reflector(_options['DEFAULT_REFLECTOR'],_tmout,_system)
-                        make_default_reflector(_options['DEFAULT_REFLECTOR'],_tmout,_system)
+                        reset_default_reflector(CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR'],_tmout,_system)
+                        make_default_reflector(int(_options['DEFAULT_REFLECTOR']),_tmout,_system)
                     else:
                         logger.debug('(OPTIONS) %s default reflector disabled, updating',_system) 
                         reset_default_reflector(int(_options['DEFAULT_REFLECTOR']),_tmout,_system)
