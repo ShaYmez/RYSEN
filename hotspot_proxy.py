@@ -22,10 +22,9 @@ class Proxy(DatagramProtocol):
         if host == '127.0.0.1' and port in self.connTrack:
             if int(self.connTrack[port]['time'])+self.timeout >nowtime:
                 self.transport.write(data,(self.connTrack[port]['host'],self.connTrack[port]['sport']))
-                #if master refuses login, remove tracking and block fornowtimeout seconds
-                #if data == b'MSTNAK\x00#\xbf"':
-                    #self.connTrack[port]['time'] = False
-                    #self.connTrack[port]['nacktime'] =nowtime+self.timeout
+                #if master refuses login, remove tracking
+                if data == b'MSTNAK\x00#\xbf"':
+                    self.connTrack[port]['time'] = False
                 if Debug:
                     print("return path match")
                     print(data)
