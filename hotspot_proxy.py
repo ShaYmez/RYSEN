@@ -24,12 +24,13 @@ class Proxy(DatagramProtocol):
                 self.transport.write(data,(self.connTrack[port]['host'],self.connTrack[port]['sport']))
                 #if master refuses login, remove tracking
                 if data[0:6] == b'MSTNAK':
-                    del self.sourceTrack[host+":"+str(port)]
+                    if self.sourceTrack[self.connTrack[port]['host']+":"+self.connTrack[port]['sport']]:
+                        del self.sourceTrack[self.connTrack[port]['host']+":"+self.connTrack[port]['sport']]
                 if Debug:
                     print("return path match")
                     print(data)
             elif host+":"+str(port) in self.sourceTrack:
-                del self.sourceTrack[host+":"+str(port)]
+                del self.sourceTrack[self.connTrack[port]['host']+":"+self.connTrack[port]['sport']]
             return
         
             #If we have a sourcetrack for this connect and thenowtimeout has not expired, forward to tracked port
@@ -46,13 +47,13 @@ class Proxy(DatagramProtocol):
         
         #Find free port to map for new connection
         for dport in self.connTrack:
-            if (self.connTrack[dport]['time'] == False or (int(self.connTrack[dport]['time'])+self.timeout <nowtime)):
+            if (self.connTrack[dport]['time'] == False or (int(self.connTrack[dport]['time'])+self.timeout < nowtime)):
                 self.connTrack[dport]['sport'] = port
                 self.connTrack[dport]['host'] = host
                 self.connTrack[dport]['time'] =nowtime
                 self.sourceTrack[host+":"+str(port)] = {}
                 self.sourceTrack[host+":"+str(port)]['dport'] = dport
-                self.sourceTrack[host+":"+str(port)]['time'] =nowtime
+                self.sourceTrack[host+":"+str(port)]['time'] = nowtime
                 self.transport.write(data, ('127.0.0.1',dport))
                 if Debug:
                     print("New connection")
