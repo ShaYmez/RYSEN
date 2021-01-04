@@ -897,11 +897,14 @@ def mysql_config_check():
             logger.debug('(MYSQL) TG2 ACL changed')
             
         #Preserve peers list
-        if system in CONFIG['SYSTEMS']:
+        if system in CONFIG['SYSTEMS'] and CONFIG['SYSTEMS'][system]['ENABLED']:
+            systems[system]._peer_sema.acquire(blocking=True)
             SQLCONFIG[system]['PEERS'] = CONFIG['SYSTEMS'][system]['PEERS']
-            
+            systems[system]._peer_sema.release()
+        CONFIG['SYSTEMS'][system].update(SQLCONFIG[system])
+                
     #Add MySQL config data to config dict
-    CONFIG['SYSTEMS'].update(SQLCONFIG)
+    #CONFIG['SYSTEMS'].update(SQLCONFIG)
    
     SQLCONFIG = {} 
     sql.close()
