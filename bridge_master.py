@@ -624,13 +624,16 @@ def options_config():
                             tg = int(tg)
                             make_static_tg(tg,2,_tmout,_system)
                 
-                
+                systems[_system]._peer_sema.acquire(blocking=True)
+                _peerstmp = CONFIG['SYSTEMS'][_system]['PEERS']
                 CONFIG['SYSTEMS'][_system].update({
                         'TS1_STATIC'          : _options['TS1_STATIC'],
                         'TS2_STATIC'          : _options['TS2_STATIC'],
                         'DEFAULT_REFLECTOR'   : int(_options['DEFAULT_REFLECTOR']),
-                        'DEFAULT_UA_TIMER'    : int(_options['DEFAULT_UA_TIMER'])
+                        'DEFAULT_UA_TIMER'    : int(_options['DEFAULT_UA_TIMER']),
+                        'PEERS'               : _peerstmp
                     })
+                systems[_system]._peer_sema.release()
                 
 
 def mysql_config_check():

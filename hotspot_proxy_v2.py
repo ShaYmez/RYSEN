@@ -19,10 +19,10 @@ class Proxy(DatagramProtocol):
         self.numPorts = DestPortEnd - DestportStart
         
         
-    def reaper(self,_peer_id,transport):
+    def reaper(self,_peer_id):
         if self.debug:
             print("dead",_peer_id)
-        #transport.write(b'RPTCL'+_peer_id, ('127.0.0.1',self.peerTrack[_peer_id]['dport']))
+        self.transport.write(b'RPTCL'+_peer_id, ('127.0.0.1',self.peerTrack[_peer_id]['dport']))
         self.connTrack[self.peerTrack[_peer_id]['dport']] = False
         del self.peerTrack[_peer_id]
         
@@ -81,10 +81,11 @@ class Proxy(DatagramProtocol):
           #  _peer_id = self.connTrack[port]
             if self.debug:
                 print(data)
-            if _peer_id in self.peerTrack:
+            if _peer_id and _peer_id in self.peerTrack:
                 self.transport.write(data,(self.peerTrack[_peer_id]['shost'],self.peerTrack[_peer_id]['sport']))
                 #self.peerTrack[_peer_id]['timer'].reset()
             return
+            
                 
             
         else:
@@ -132,7 +133,7 @@ class Proxy(DatagramProtocol):
                 self.peerTrack[_peer_id]['dport'] = _dport
                 self.peerTrack[_peer_id]['sport'] = port
                 self.peerTrack[_peer_id]['shost'] = host
-                self.peerTrack[_peer_id]['timer'] = ResettableTimer(self.timeout,self.reaper,[_peer_id,self.transport])
+                self.peerTrack[_peer_id]['timer'] = ResettableTimer(self.timeout,self.reaper,[_peer_id])
                 self.peerTrack[_peer_id]['timer'].start()
                 self.transport.write(data, (self.master,_dport))
                 if self.debug:
