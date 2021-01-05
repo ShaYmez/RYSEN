@@ -124,7 +124,7 @@ class Proxy(DatagramProtocol):
                     return
                 #for _dport in self.connTrack:
                 while True:
-                    _dport = random.randint(1,(self.numPorts - 2))
+                    _dport = random.randint(1,(self.numPorts - 1))
                     _dport = _dport + self.destPortStart
                     if not self.connTrack[_dport]:
                         break
@@ -147,7 +147,7 @@ if __name__ == '__main__':
     
     Master = "127.0.0.1"
     ListenPort = 62031
-    DestportStart = 50000
+    DestportStart = 5000
     DestPortEnd = 50600
     Timeout = 30
     Stats = True
@@ -159,8 +159,9 @@ if __name__ == '__main__':
     
     CONNTRACK = {}
 
-    for port in range(DestportStart,DestPortEnd,1):
+    for port in range(DestportStart,DestPortEnd+1,1):
         CONNTRACK[port] = False
+    
 
     reactor.listenUDP(ListenPort,Proxy(Master,ListenPort,CONNTRACK,BlackList,Timeout,Debug,DestportStart,DestPortEnd))
 
