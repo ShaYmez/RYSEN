@@ -67,9 +67,9 @@ class Proxy(DatagramProtocol):
                         _peer_id = self.connTrack[port]
             elif _command == MSTN:
                     _peer_id = data[6:10]
-                    #self.peerTrack[_peer_id]['timer'].cancel()
-                    #self.reaper(_peer_id)
-                    #return
+                    self.peerTrack[_peer_id]['timer'].cancel()
+                    self.reaper(_peer_id)
+                    return
             elif _command == MSTP:
                     _peer_id = data[7:11]
             elif _command == MSTC:
@@ -147,7 +147,7 @@ if __name__ == '__main__':
     
     Master = "127.0.0.1"
     ListenPort = 62031
-    DestportStart = 5000
+    DestportStart = 50000
     DestPortEnd = 50600
     Timeout = 30
     Stats = True

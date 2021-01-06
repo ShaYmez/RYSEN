@@ -253,9 +253,9 @@ class HBSYSTEM(DatagramProtocol):
             # Remove any timed out peers from the configuration
             del self._CONFIG['SYSTEMS'][self._system]['PEERS'][peer]
         self._peer_sema.release()
-        if not self._peers and self._CONFIG['OPTIONS']:
+        if 'PEERS' not in self._CONFIG['SYSTEMS'][self._system] and 'OPTIONS' in self._CONFIG['SYSTEMS'][self._system]:
             logger.info('(%s) Deleting HBP Options',self._system)
-            del self._CONFIG['OPTIONS']
+            del self._CONFIG['SYSTEMS'][self._system]['OPTIONS']
 
     # Aliased in __init__ to maintenance_loop if system is a peer
     def peer_maintenance_loop(self):

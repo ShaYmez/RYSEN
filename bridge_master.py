@@ -624,17 +624,13 @@ def options_config():
                             tg = int(tg)
                             make_static_tg(tg,2,_tmout,_system)
                 
-                systems[_system]._peer_sema.acquire(blocking=True)
-                _peerstmp = CONFIG['SYSTEMS'][_system]['PEERS']
-                CONFIG['SYSTEMS'][_system].update({
-                        'TS1_STATIC'          : _options['TS1_STATIC'],
-                        'TS2_STATIC'          : _options['TS2_STATIC'],
-                        'DEFAULT_REFLECTOR'   : int(_options['DEFAULT_REFLECTOR']),
-                        'DEFAULT_UA_TIMER'    : int(_options['DEFAULT_UA_TIMER']),
-                        'PEERS'               : _peerstmp
-                    })
-                systems[_system]._peer_sema.release()
-                
+               # systems[_system]._peer_sema.acquire(blocking=True)
+              #  _peerstmp = CONFIG['SYSTEMS'][_system]['PEERS']
+                CONFIG['SYSTEMS'][_system]['TS1_STATIC'] =  _options['TS1_STATIC']
+                CONFIG['SYSTEMS'][_system]['TS2_STATIC'] = _options['TS2_STATIC']
+                CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR'] = int(_options['DEFAULT_REFLECTOR'])
+                CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER'] = int(_options['DEFAULT_UA_TIMER'])
+                    
 
 def mysql_config_check():
     logger.debug('(MYSQL) Periodic config check')
@@ -720,12 +716,11 @@ def mysql_config_check():
         #Preserve options line
         if 'OPTIONS' in CONFIG['SYSTEMS'][system]:
             SQLCONFIG[system]['OPTIONS'] = CONFIG['SYSTEMS'][system]['OPTIONS']
-            SQLCONFIG[system].update({
-                    'TS1_STATIC'    :   CONFIG['SYSTEMS'][system]['TS1_STATIC'],
-                    'TS2_STATIC'    :   CONFIG['SYSTEMS'][system]['TS2_STATIC'],
-                    'DEFAULT_UA_TIMER'    :   CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER'],
-                    'DEFAULT_REFLECTOR'    :   CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR']
-                })
+            SQLCONFIG[system]['TS1_STATIC'] = CONFIG['SYSTEMS'][system]['TS1_STATIC']
+            SQLCONFIG[system]['TS2_STATIC'] = CONFIG['SYSTEMS'][system]['TS2_STATIC']
+            SQLCONFIG[system]['DEFAULT_UA_TIMER'] = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
+            SQLCONFIG[system]['DEFAULT_REFLECTOR'] = CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR']
+            
             #logger.debug('(MYSQL) %s has HBP Options line - skipping',system)
             #continue
             
@@ -900,11 +895,14 @@ def mysql_config_check():
             logger.debug('(MYSQL) TG2 ACL changed')
             
         #Preserve peers list
-        if system in CONFIG['SYSTEMS'] and CONFIG['SYSTEMS'][system]['ENABLED']:
+        if system in CONFIG['SYSTEMS'] and CONFIG['SYSTEMS'][system]['ENABLED'] and 'PEERS' in CONFIG['SYSTEMS'][system] :
             systems[system]._peer_sema.acquire(blocking=True)
             SQLCONFIG[system]['PEERS'] = CONFIG['SYSTEMS'][system]['PEERS']
+            CONFIG['SYSTEMS'][system].update(SQLCONFIG[system])
             systems[system]._peer_sema.release()
-        CONFIG['SYSTEMS'][system].update(SQLCONFIG[system])
+        else:
+            CONFIG['SYSTEMS'][system].update(SQLCONFIG[system]) 
+        
                 
     #Add MySQL config data to config dict
     #CONFIG['SYSTEMS'].update(SQLCONFIG)
