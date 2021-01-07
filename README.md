@@ -2,8 +2,9 @@
 
 FreeDMR Master Server extends hblink3 to assist in building a master server using HBLink3
 
-More documentation is coming soon, but in the mean time the orignal text from hblink3 has been retained below.
+Please see the wiki for documentation:
 
+https://github.com/hacknix/FreeDMR/wiki
 
 
 
