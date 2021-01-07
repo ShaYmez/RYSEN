@@ -528,7 +528,7 @@ class HBSYSTEM(DatagramProtocol):
             _peer_id = _data[4:8]
             if _peer_id in self._peers and self._peers[_peer_id]['SOCKADDR'] == _sockaddr:
                     _this_peer = self._peers[_peer_id]
-            self._peer_sema.aquire(blocking-True)
+            self._peer_sema.acquire(blocking=True)
             _this_peer['OPTIONS'] = _data[8:]
             self._peer_sema.release()
             self.send_peer(_peer_id, b''.join([RPTACK, _peer_id]))

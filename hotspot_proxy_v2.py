@@ -147,11 +147,11 @@ if __name__ == '__main__':
     
     Master = "127.0.0.1"
     ListenPort = 62031
-    DestportStart = 50000
-    DestPortEnd = 50600
+    DestportStart = 54000
+    DestPortEnd = 54001
     Timeout = 30
     Stats = True
-    Debug = False
+    Debug = True
     BlackList = [1234567]
     
 #*******************
