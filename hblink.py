@@ -551,7 +551,7 @@ class HBSYSTEM(DatagramProtocol):
                     logger.warning('(%s) Ping from Radio ID that is not logged in: %s', self._system, int_id(_peer_id))
 
         else:
-            logger.error('(%s) Unrecognized command. Raw HBP PDU: %s', self._system, ahex(_data))
+            logger.error('(%s) Unrecognized command. Raw HBP PDU: %s', self._system, _data)
 
     # Aliased in __init__ to datagramReceived if system is a peer
     def peer_datagramReceived(self, _data, _sockaddr):
