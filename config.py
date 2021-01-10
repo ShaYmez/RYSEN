@@ -121,7 +121,8 @@ def build_config(_config_file):
                     'REG_ACL': config.get(section, 'REG_ACL'),
                     'SUB_ACL': config.get(section, 'SUB_ACL'),
                     'TG1_ACL': config.get(section, 'TGID_TS1_ACL'),
-                    'TG2_ACL': config.get(section, 'TGID_TS2_ACL')
+                    'TG2_ACL': config.get(section, 'TGID_TS2_ACL'),
+                    'GEN_STAT_BRIDGES': config.getboolean(section, 'GEN_STAT_BRIDGES')
                 })
 
             elif section == 'REPORTS':

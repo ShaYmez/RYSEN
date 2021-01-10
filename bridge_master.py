@@ -183,6 +183,23 @@ def make_single_bridge(_tgid,_sourcesystem,_slot,_tmout):
         
         BRIDGE_SEMA.release()
         
+#Make static bridge - used for on-the-fly relay bridges
+def make_stat_bridge(_tgid):
+    BRIDGE_SEMA.acquire(blocking = True)
+    _tgid_s = str(int_id(_tgid))
+    BRIDGES[_tgid_s] = []
+    for _system in CONFIG['SYSTEMS']:
+        if _system[0:3] != 'OBP':
+            if CONFIG['SYSTEMS'][_system]['MODE'] == 'MASTER':
+                _tmout = CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']
+                BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time()})
+                BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time()})
+                    
+        if _system[0:3] == 'OBP':
+            BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': '','TO_TYPE': 'STAT','OFF': [],'ON': [],'RESET': [], 'TIMER': time()})
+        
+        BRIDGE_SEMA.release()
+        
 
 def make_default_reflector(reflector,_tmout,system):
     bridge = '#'+str(reflector)
@@ -332,6 +349,20 @@ def rule_timer_loop():
     BRIDGE_SEMA.release()
     if CONFIG['REPORTS']['REPORT']:
         report_server.send_clients(b'bridge updated')
+
+def statTrimmer():
+    logger.debug('(ROUTER) STAT trimmer loop started')
+    _remove_bridges = []
+    for _bridge in BRIDGES:
+        _bridge_stat = False
+        for _system in BRIDGES[_bridge]:
+            if _system['TO_TYPE'] == 'STAT':
+                _bridge_stat = True
+        if _bridge_stat:
+            _remove_bridges.append(_system)
+    for _bridgerem in _remove_bridges:
+        del BRIDGES[_bridgerem]
+        logger.debug('(ROUTER) STAT bridge %s removed',_bridgerem)
 
 
 # run this every 10 seconds to trim orphaned stream ids
@@ -1121,6 +1152,12 @@ class routerOBP(OPENBRIDGE):
             #Save this sequence number 
             self._lastSeq = _seq
             
+            #Create STAT bridge for unknown TG
+            if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:
+                if int_id(_dst_id) >= 5 and int_id(_dst_id) != 9 and (str(int_id(_dst_id)) not in BRIDGES):
+                    logger.info('(%s) Bridge for STAT TG %s does not exist. Creating',self._system, int_id(_dst_id))
+                    make_stat_bridge(_dst_id)
+            
             _sysIgnore = []
             for _bridge in BRIDGES:
                 #if _bridge[0:1] != '#':
@@ -1856,6 +1893,12 @@ if __name__ == '__main__':
         mysql_task = task.LoopingCall(threadedMysql)
         mysql = mysql_task.start(30)
         mysql.addErrback(loopingErrHandle)
+        
+    #STAT trimmer - once every 24 hours
+    if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:
+        stat_trimmer_task = task.LoopingCall(statTrimmer)
+        stat_trimmer = stat_trimmer_task.start(86400)
+        stat_trimmer.addErrback(loopingErrHandle)
     
     #more threads
     reactor.suggestThreadPoolSize(30)
