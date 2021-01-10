@@ -1580,7 +1580,10 @@ class routerHBP(HBSYSTEM):
                 #if _bridge[0:1] != '#':
                 if True:
                     for _system in BRIDGES[_bridge]:
-                        if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
+                        #if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and #_system['ACTIVE'] == True:
+                        #    _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore)
+                        if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True) \
+                        or (_system['SYSTEM'] == self._system and int_id(_system['TGID']) == int(_bridge)  and _system['TS'] == _slot and _system['ACTIVE'] == True):
                             _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore)
 
             # Final actions - Is this a voice terminator?
