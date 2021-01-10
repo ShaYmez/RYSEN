@@ -352,6 +352,7 @@ def rule_timer_loop():
 
 def statTrimmer():
     logger.debug('(ROUTER) STAT trimmer loop started')
+    BRIDGE_SEMA.acquire(blocking = True)
     _remove_bridges = []
     for _bridge in BRIDGES:
         _bridge_stat = False
@@ -363,6 +364,9 @@ def statTrimmer():
     for _bridgerem in _remove_bridges:
         del BRIDGES[_bridgerem]
         logger.debug('(ROUTER) STAT bridge %s removed',_bridgerem)
+    BRIDGE_SEMA.release()
+    if CONFIG['REPORTS']['REPORT']:
+        report_server.send_clients(b'bridge updated')
 
 
 # run this every 10 seconds to trim orphaned stream ids
