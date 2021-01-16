@@ -360,7 +360,7 @@ def statTrimmer():
             if _system['TO_TYPE'] == 'STAT':
                 _bridge_stat = True
         if _bridge_stat:
-            _remove_bridges.append(_system)
+            _remove_bridges.append(_bridge)
     for _bridgerem in _remove_bridges:
         del BRIDGES[_bridgerem]
         logger.debug('(ROUTER) STAT bridge %s removed',_bridgerem)
