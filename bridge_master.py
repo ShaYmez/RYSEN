@@ -1906,7 +1906,7 @@ if __name__ == '__main__':
     #STAT trimmer - once every hour
     if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:
         stat_trimmer_task = task.LoopingCall(statTrimmer)
-        stat_trimmer = stat_trimmer_task.start(60)#3600
+        stat_trimmer = stat_trimmer_task.start(3600)#3600
         stat_trimmer.addErrback(loopingErrHandle)
     
     #more threads
