@@ -1257,10 +1257,10 @@ class routerHBP(HBSYSTEM):
         _sysIgnore = sysIgnore
         for _target in BRIDGES[_bridge]:
             #if _target['SYSTEM'] != self._system or (_target['SYSTEM'] == self._system and _target['TS'] != _slot):
-            if _target['SYSTEM'] != self._system:
-                if _target['ACTIVE']:
-                    _target_status = systems[_target['SYSTEM']].STATUS
-                    _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
+            if _target['SYSTEM'] != self._system and _target['ACTIVE']:
+                #if _target['ACTIVE']:
+                _target_status = systems[_target['SYSTEM']].STATUS
+                _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
 
                     if (_target['SYSTEM'],_target['TS']) in _sysIgnore:
                         #logger.debug("(DEDUP) HBP Source - Skipping system %s TS: %s",_target['SYSTEM'],_target['TS'])
