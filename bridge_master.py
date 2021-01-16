@@ -691,7 +691,7 @@ def mysql_config_check():
     
     for system in SQLGETCONFIG:
         if system not in CONFIG['SYSTEMS']:
-            if SQLCONFIG[system]['ENABLED'] == True:
+            if SQLCONFIG[system]['ENABLED']:
                 logger.debug('(MYSQL) new enabled system %s, starting HBP listener',system)  
                 CONFIG['SYSTEMS'][system] = SQLCONFIG[system]
                 systems[system] = routerHBP(system, CONFIG, report_server)
@@ -708,7 +708,7 @@ def mysql_config_check():
                 SQLCONFIG[system][acl] = acl_build(SQLCONFIG[system][acl], ID_MAX)
             
             #Add system to bridges
-            if SQLCONFIG[system]['ENABLED'] == True:
+            if SQLCONFIG[system]['ENABLED']:
                 logger.debug('(MYSQL) adding new system to static bridges')
                 BRIDGE_SEMA.acquire(blocking = True)
                 for _bridge in BRIDGES:
@@ -1175,8 +1175,6 @@ class routerOBP(OPENBRIDGE):
                         if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
                             _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore)
 
-            
-
 
             # Final actions - Is this a voice terminator?
             if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM):
@@ -1258,7 +1256,8 @@ class routerHBP(HBSYSTEM):
     def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,sysIgnore):
         _sysIgnore = sysIgnore
         for _target in BRIDGES[_bridge]:
-            if _target['SYSTEM'] != self._system or (_target['SYSTEM'] == self._system and _target['TS'] != _slot):
+            #if _target['SYSTEM'] != self._system or (_target['SYSTEM'] == self._system and _target['TS'] != _slot):
+            if _target['SYSTEM'] != self._system:
                 if _target['ACTIVE']:
                     _target_status = systems[_target['SYSTEM']].STATUS
                     _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
@@ -1586,6 +1585,14 @@ class routerHBP(HBSYSTEM):
                 if True:
                     for _system in BRIDGES[_bridge]:
                         if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
+                            _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore)
+                        
+                        #Send to reflector or TG too, if it exists
+                        if _bridge[0:1] == '#':
+                            _bridge = _bridge[1:]
+                        else:
+                            _bridge = '#'+_bridge
+                        if _bridge in BRIDGES:
                             _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore)
 
             # Final actions - Is this a voice terminator?
