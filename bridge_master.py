@@ -1587,13 +1587,13 @@ class routerHBP(HBSYSTEM):
                         if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
                             _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore)
                         
-                        #Send to reflector or TG too, if it exists
-                        if _bridge[0:1] == '#':
-                            _bridge = _bridge[1:]
-                        else:
-                            _bridge = '#'+_bridge
-                        if _bridge in BRIDGES:
-                            _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore)
+                            #Send to reflector or TG too, if it exists
+                            if _bridge[0:1] == '#':
+                                _bridge = _bridge[1:]
+                            else:
+                                _bridge = '#'+_bridge
+                            if _bridge in BRIDGES:
+                                _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore)
 
             # Final actions - Is this a voice terminator?
             if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
