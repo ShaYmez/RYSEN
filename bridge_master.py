@@ -356,10 +356,15 @@ def statTrimmer():
     _remove_bridges = []
     for _bridge in BRIDGES:
         _bridge_stat = False
+        _in_use = False
         for _system in BRIDGES[_bridge]:
             if _system['TO_TYPE'] == 'STAT':
                 _bridge_stat = True
-        if _bridge_stat:
+            if _system['TO_TYPE'] == 'ON' and _system['ACTIVE']:
+                _in_use = True
+            elif _system['TO_TYPE'] == 'OFF' and not _system['ACTIVE']:
+                _in_use = True
+        if _bridge_stat and not _in_use:
             _remove_bridges.append(_bridge)
     for _bridgerem in _remove_bridges:
         del BRIDGES[_bridgerem]
@@ -1901,7 +1906,7 @@ if __name__ == '__main__':
     #STAT trimmer - once every hour
     if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:
         stat_trimmer_task = task.LoopingCall(statTrimmer)
-        stat_trimmer = stat_trimmer_task.start(3600)
+        stat_trimmer = stat_trimmer_task.start(60)#3600
         stat_trimmer.addErrback(loopingErrHandle)
     
     #more threads
