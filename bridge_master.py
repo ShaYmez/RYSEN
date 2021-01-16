@@ -1898,10 +1898,10 @@ if __name__ == '__main__':
         mysql = mysql_task.start(30)
         mysql.addErrback(loopingErrHandle)
         
-    #STAT trimmer - once every 24 hours
+    #STAT trimmer - once every hour
     if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:
         stat_trimmer_task = task.LoopingCall(statTrimmer)
-        stat_trimmer = stat_trimmer_task.start(86400)
+        stat_trimmer = stat_trimmer_task.start(3600)
         stat_trimmer.addErrback(loopingErrHandle)
     
     #more threads
