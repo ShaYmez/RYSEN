@@ -36,31 +36,21 @@ None. The owners of this work make absolutely no warranty, express or implied. U
 **PRE-REQUISITE KNOWLEDGE:**  
 This document assumes the reader is familiar with Linux/UNIX, the Python programming language and DMR.  
 
-**Using docker version**
 
-To work with provided docker setup you will need:
-* A private repository with your configuration files (all .cfg files in repo will be copyed to the application root directory on start up)
-* A service user able to read your private repository (or be brave and publish your configuration, or be really brave and give your username and password to the docker)
-* A server with docker installed
-* Follow this simple steps:
+**Using the docker version**
 
-Build your own image from source
+Build the docker image
 
 ```bash
-
-docker build . -t millaguie/hblink:3.0.0
-
+docker build --tag freedmr .
 ```
 
-Or user a prebuilt one in docker hub: millaguie/hblink:3.0.0
-
-Wake up your container
+Start your container
 
 ```bash
-touch /var/log/hblink.log
-chown 65000  /var/log/hblink.log
- run -v /var/log/hblink.log:/var/log/hblink.log -e GIT_USER=$USER -e GIT_PASSWORD=$PASSWORD -e GIT_REPO=$URL_TO_REPO_WITHOUT_HTTPS://  -p 54000:54000  millaguie/hblink:3.0.0
- ```
+cfg_file="/absolute/path/to/cfg/file"
+run -v $cfg_file:/opt/freedmr/hblink.cfg -p 54000:54000 freedmr
+```
 
 **MORE DOCUMENTATION TO COME**
 
