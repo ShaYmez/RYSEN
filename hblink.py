@@ -491,7 +491,10 @@ class HBSYSTEM(DatagramProtocol):
                     self._peer_sema.acquire(blocking=True)
                     del self._peers[_peer_id]
                     self._peer_sema.release()
-
+                    if 'OPTIONS' in self._CONFIG['SYSTEMS'][self._system]:
+                        logger.info('(%s) Deleting HBP Options',self._system)
+                        del self._CONFIG['SYSTEMS'][self._system]['OPTIONS']
+                    
             else:
                 _peer_id = _data[4:8]      # Configure Command
                 if _peer_id in self._peers \
