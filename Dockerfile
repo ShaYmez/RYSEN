@@ -1,30 +1,25 @@
-FROM python:3.7-slim-stretch
+FROM python:3.7-slim-buster
 
-RUN apt update && \
+COPY entrypoint /entrypoint
+
+RUN useradd -u 54000 radio && \
+    apt update && \
     apt install -y git && \
     cd /usr/src/ && \
-    git clone https://github.com/n0mjs710/dmr_utils3 && \
-    cd /usr/src/dmr_utils3 && \
+    git clone https://github.com/hacknix/dmr_utils && \
+    cd /usr/src/dmr_utils && \
     ./install.sh && \
     rm -rf /var/lib/apt/lists/* && \
     cd /opt && \
-    rm -rf /usr/src/dmr_utils3 && \
-    git clone https://github.com/hacknix/hblink3
-ENV AAA BBBB
-RUN cd /opt/hblink3/ && \
+    rm -rf /usr/src/dmr_utils && \
+    git clone https://github.com/hacknix/freedmr && \
+    cd /opt/freedmr/ && \
     sed -i s/.*python.*//g  requirements.txt && \
-    pip install --no-cache-dir -r requirements.txt
-
-
-ADD entrypoint /entrypoint
-
-RUN adduser -u 54000 radio && \
-    adduser radio radio && \
-    chmod 755 /entrypoint && \
-    chown radio:radio /entrypoint && \
-    chown radio /opt/hblink3
+    pip install --no-cache-dir -r requirements.txt && \
+    chown radio /opt/freedmr
 
 USER radio 
+
 EXPOSE 54000
 
 ENTRYPOINT [ "/entrypoint" ]
