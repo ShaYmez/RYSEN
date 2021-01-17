@@ -409,7 +409,7 @@ def stream_trimmer_loop():
                 try:
                     if systems[system].STATUS[stream_id]['LAST'] < _now - 5:
                         remove_list.append(stream_id)
-                except 'KeyError':
+                except:
                     logger.debug("Keyerror - stream trimmer")
                     continue
             for stream_id in remove_list:
