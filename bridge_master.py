@@ -1422,7 +1422,7 @@ class routerHBP(HBSYSTEM):
                             make_single_reflector(_dst_id,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'],self._system)
                     
                     BRIDGE_SEMA.acquire(blocking = True)
-                    if _int_dst_id > 5 and _int_dst_id != 5000:
+                    if _int_dst_id > 5 and _int_dst_id != 9 and _int_dst_id != 5000:
                         for _bridge in BRIDGES:
                             if _bridge[0:1] != '#':
                                 continue
