@@ -411,7 +411,10 @@ def stream_trimmer_loop():
                         remove_list.append(stream_id)
                 except:
                     logger.debug("Keyerror - stream trimmer")
+                    print(systems[system].STATUS[stream_id])
+                    systems[system].STATUS[stream_id]['LAST'] = _now
                     continue
+                
             for stream_id in remove_list:
                 if stream_id in systems[system].STATUS:
                     _stream = systems[system].STATUS[stream_id]
