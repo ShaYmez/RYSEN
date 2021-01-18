@@ -410,7 +410,7 @@ def stream_trimmer_loop():
                     if systems[system].STATUS[stream_id]['LAST'] < _now - 5:
                         remove_list.append(stream_id)
                 except:
-                    logger.debug("(%s) Keyerror - stream trimmer %s %s %s %s %s",system,systems[system].STATUS[stream_id]['START'],systems[system].STATUS[stream_id]['CONTENTION'],systems[system].STATUS[stream_id]['RFS'],int_id(systems[system].STATUS[stream_id]['TGID']),systems[system].STATUS[stream_id]['LAST'])
+                    logger.debug("(%s) Keyerror - stream trimmer %s %s %s %s",system,systems[system].STATUS[stream_id]['START'],systems[system].STATUS[stream_id]['CONTENTION'],systems[system].STATUS[stream_id]['RFS'],int_id(systems[system].STATUS[stream_id]['TGID']))
                     systems[system].STATUS[stream_id]['LAST'] = _now
                     continue
                 
