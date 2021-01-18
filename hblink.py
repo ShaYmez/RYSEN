@@ -552,6 +552,10 @@ class HBSYSTEM(DatagramProtocol):
                 else:
                     self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                     logger.warning('(%s) Ping from Radio ID that is not logged in: %s', self._system, int_id(_peer_id))
+        
+        elif _command == DMRA:
+                _peer_id = _data[4:8]
+                logger.info('(%s) Peer has sent Talker Alias packet %s', self._system, _data)
 
         else:
             logger.error('(%s) Unrecognized command. Raw HBP PDU: %s', self._system, _data)
