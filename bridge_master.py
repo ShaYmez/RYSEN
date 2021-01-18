@@ -220,7 +220,6 @@ def make_default_reflector(reflector,_tmout,system):
         
 def make_static_tg(tg,ts,_tmout,system):
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
-    BRIDGE_SEMA.acquire(blocking = True)
     if str(tg) not in BRIDGES:
         make_single_bridge(bytes_3(tg),system,ts,_tmout)
     bridgetemp = []
