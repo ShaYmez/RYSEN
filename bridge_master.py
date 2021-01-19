@@ -1925,6 +1925,6 @@ if __name__ == '__main__':
         stat_trimmer.addErrback(loopingErrHandle)
     
     #more threads
-    reactor.suggestThreadPoolSize(30)
+    reactor.suggestThreadPoolSize(50)
     
     reactor.run()
