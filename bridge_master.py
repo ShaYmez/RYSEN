@@ -428,6 +428,7 @@ def stream_trimmer_loop():
 def sendSpeech(self,speech):
     sleep(1)
     _nine = bytes_3(9)
+    _source_id = bytes_3(5000)
     _slot  = systems[system].STATUS[2]
     while True:
         try:
@@ -442,7 +443,7 @@ def sendSpeech(self,speech):
             systems[system].STATUS[_stream_id] = {
             'START':     _pkt_time,
             'CONTENTION':False,
-            'RFS':       _nine,
+            'RFS':       _source_id,
             'TGID':      _nine,
             }
             _slot['TX_TGID'] = _nine
@@ -457,6 +458,7 @@ def sendSpeech(self,speech):
 
 def disconnectedVoice(system):
     _nine = bytes_3(9)
+    _source_id = bytes_3(5000)
     logger.info('(%s) Sending disconnected voice',system)
     _say = [words['silence']]
     _say.append(words['silence']) 
@@ -476,7 +478,7 @@ def disconnectedVoice(system):
     
     _say.append(words['silence']) 
     
-    speech = pkt_gen(_nine, _nine, bytes_4(9), 1, _say)
+    speech = pkt_gen(_source_id, _nine, bytes_4(9), 1, _say)
 
     sleep(1)
     _slot  = systems[system].STATUS[2]
@@ -493,7 +495,7 @@ def disconnectedVoice(system):
             systems[system].STATUS[_stream_id] = {
             'START':     _pkt_time,
             'CONTENTION':False,
-            'RFS':       _nine,
+            'RFS':       _source_id,
             'TGID':      _nine,
             }
             _slot['TX_TGID'] = _nine
@@ -543,7 +545,8 @@ def ident():
                 #test 
                 #_say.append(AMBEobj.readSingleFile('44xx.ambe'))
                 _all_call = bytes_3(16777215)
-                speech = pkt_gen(_all_call, _all_call, bytes_4(16777215), 1, _say)
+                _source_id= bytes_3(5000)
+                speech = pkt_gen(_source_id, _all_call, bytes_4(16777215), 1, _say)
 
                 sleep(1)
                 _slot  = systems[system].STATUS[2]
@@ -561,7 +564,7 @@ def ident():
                         systems[system].STATUS[_stream_id] = {
                         'START':     _pkt_time,
                         'CONTENTION':False,
-                        'RFS':       _all_call,
+                        'RFS':       _source_id,
                         'TGID':      _all_call,
                         }
                         _slot['TX_TGID'] = _all_call
@@ -1537,7 +1540,7 @@ class routerHBP(HBSYSTEM):
                     for num in str(_int_dst_id):
                         _say.append(words[num])
      
-                speech = pkt_gen(_nine, _nine, bytes_4(9), 1, _say)
+                speech = pkt_gen(bytes_3(5000), _nine, bytes_4(9), 1, _say)
                 
                 #call speech in a thread as it contains sleep() and hence could block the reactor
                 reactor.callInThread(sendSpeech,self,speech)
