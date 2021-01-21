@@ -39,17 +39,23 @@ This document assumes the reader is familiar with Linux/UNIX, the Python program
 
 **Using the docker version**
 
-Build the docker image
+Build the docker image.
 
 ```bash
 docker build --tag freedmr .
 ```
 
-Start your container
+Start your container, passing your configuration file.
 
 ```bash
 cfg_file="/absolute/path/to/cfg/file"
-run -v $cfg_file:/opt/freedmr/hblink.cfg -p 54000:54000 freedmr
+docker run -v $cfg_file:/opt/freedmr/hblink.cfg -p 54000:54000 freedmr
+```
+
+Note that `$cfg_file` is used by the container's 'radio' user internally, so you may need to modify file permissions.
+
+```bash
+chmod 666 $cfg_file
 ```
 
 **MORE DOCUMENTATION TO COME**
