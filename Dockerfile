@@ -1,19 +1,15 @@
-FROM python:3.7-slim-buster
-#FROM python:3.7-alpine
+FROM python:3.7-alpine
 
 COPY entrypoint /entrypoint
 
-RUN useradd -u 54000 radio && \
-        apt-get update && \
-        apt-get install -y git gcc && \
+RUN adduser -D -u 54000 radio && \
+        apk update && \
+        apk add git gcc musl-dev && \
         cd /opt && \
         git clone https://github.com/hacknix/freedmr && \
-        cd freedmr && \
+        cd /opt/freedmr && \
         pip install --no-cache-dir -r requirements.txt && \
-        apt-get purge  -y git gcc libx11-6 && \
-	apt-get clean -y && \
-	apt-get autoremove -y && \
-        rm -rf /var/lib/apt/lists/* && \
+        apk del git gcc musl-dev && \
         chown -R radio: /opt/freedmr
 
 EXPOSE 54000
