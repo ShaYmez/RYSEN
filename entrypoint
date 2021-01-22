@@ -1,4 +1,4 @@
 #!/bin/sh
 
 cd /opt/freedmr
-python /opt/freedmr/hblink.py -c hblink.cfg
+python /opt/freedmr/bridge_master.py -c hblink.cfg
