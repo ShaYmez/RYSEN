@@ -93,6 +93,8 @@ class Proxy(DatagramProtocol):
             
             if _command == DMRD:                # DMRData -- encapsulated DMR data frame
                 _peer_id = data[11:15]
+            elif _command == DMRA:              # DMRAlias -- Talker Alias information
+                _peer_id = _data[4:8]
             elif _command == RPTL:              # RPTLogin -- a repeater wants to login
                 _peer_id = data[4:8]
             elif _command == RPTK:              # Repeater has answered our login challenge
