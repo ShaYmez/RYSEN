@@ -1771,7 +1771,7 @@ if __name__ == '__main__':
     if CONFIG['MYSQL']['USE_MYSQL'] == True:
         logger.debug('(MYSQL) MySQL config enabled')
         SQLCONFIG = {}
-        sql = useMYSQL(CONFIG['MYSQL']['SERVER'], CONFIG['MYSQL']['USER'], CONFIG['MYSQL']['PASS'], CONFIG['MYSQL']['DB'],logger)
+        sql = useMYSQL(CONFIG['MYSQL']['SERVER'], CONFIG['MYSQL']['USER'], CONFIG['MYSQL']['PASS'], CONFIG['MYSQL']['DB'],CONFIG['MYSQL']['TABLE'],logger)
         #Run it once immediately
         if sql.con():
             logger.debug('(MYSQL) reading config from database')

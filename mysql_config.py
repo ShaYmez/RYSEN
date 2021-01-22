@@ -4,11 +4,12 @@ from mysql.connector import errorcode
 
 class useMYSQL:
     #Init new object
-    def __init__(self, server,user,password,database,logger):
+    def __init__(self, server,user,password,database,table,logger):
         self.server = server
         self.user = user
         self.password = password
         self.database = database
+        self.table = table
         self.logger = logger
 
     #Connect
@@ -49,7 +50,7 @@ class useMYSQL:
         _cursor = self.db.cursor()
         
         try:
-            _cursor.execute("select * from repeaters where MODE='MASTER'")
+            _cursor.execute("select * from {} where MODE='MASTER'".format(self.table))
         except mysql.connector.Error as err:
             _cursor.close()
             logger.info('(MYSQL) error, problem with cursor execute')

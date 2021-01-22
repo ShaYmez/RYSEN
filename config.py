@@ -162,7 +162,8 @@ def build_config(_config_file):
                     'PASS': config.get(section, 'PASS'),
                     'DB': config.get(section, 'DB'),
                     'SERVER': config.get(section, 'SERVER'),
-                    'PORT': config.getint(section,'PORT')
+                    'PORT': config.getint(section,'PORT'),
+                    'TABLE': config.get(section, 'TABLE')
             })
                 
 
