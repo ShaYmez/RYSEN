@@ -31,6 +31,7 @@ class Proxy(DatagramProtocol):
         
         # HomeBrew Protocol Commands
         DMRD    = b'DMRD'
+        DMRA    = b'DMRA'
         MSTCL   = b'MSTCL'
         MSTNAK  = b'MSTNAK'
         MSTPONG = b'MSTPONG'
