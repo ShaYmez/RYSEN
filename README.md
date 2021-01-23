@@ -48,8 +48,7 @@ docker build --tag freedmr .
 Start your container, passing your configuration file.
 
 ```bash
-cfg_file="/absolute/path/to/cfg/file"
-docker run -v $cfg_file:/opt/freedmr/hblink.cfg -p 54000-54020:54000-54020/udp freedmr
+./run_in_docker.sh
 ```
 
 Note that `$cfg_file` is used by the container's 'radio' user internally, so you may need to modify file permissions.
