@@ -465,17 +465,22 @@ class HBSYSTEM(DatagramProtocol):
                 self._peer_sema.release()
                 _sent_hash = _data[8:]
                 _salt_str = bytes_4(_this_peer['SALT'])
-                _calc_hash = bhex(sha256(_salt_str+self._config['PASSPHRASE']).hexdigest())
-                if _sent_hash == _calc_hash:
+                if self._CONFIG['GLOBAL']['ALLOW_NULL_PASSPHRASE'] and len(self._config['PASSPHRASE']) == 0:
                     _this_peer['CONNECTION'] = 'WAITING_CONFIG'
                     self.send_peer(_peer_id, b''.join([RPTACK, _peer_id]))
                     logger.info('(%s) Peer %s has completed the login exchange successfully', self._system, _this_peer['RADIO_ID'])
                 else:
-                    logger.info('(%s) Peer %s has FAILED the login exchange successfully', self._system, _this_peer['RADIO_ID'])
-                    self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
-                    self._peer_sema.acquire(blocking=True)
-                    del self._peers[_peer_id]
-                    self._peer_sema.release()
+                    _calc_hash = bhex(sha256(_salt_str+self._config['PASSPHRASE']).hexdigest())                
+                    if _sent_hash == _calc_hash:
+                        _this_peer['CONNECTION'] = 'WAITING_CONFIG'
+                        self.send_peer(_peer_id, b''.join([RPTACK, _peer_id]))
+                        logger.info('(%s) Peer %s has completed the login exchange successfully', self._system, _this_peer['RADIO_ID'])
+                    else:
+                        logger.info('(%s) Peer %s has FAILED the login exchange successfully', self._system, _this_peer['RADIO_ID'])
+                        self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
+                        self._peer_sema.acquire(blocking=True)
+                        del self._peers[_peer_id]
+                        self._peer_sema.release()
             else:
                 self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                 logger.warning('(%s) Login challenge from Radio ID that has not logged in: %s', self._system, int_id(_peer_id))
