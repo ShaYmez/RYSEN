@@ -12,8 +12,6 @@ RUN adduser -D -u 54000 radio && \
         apk del git gcc musl-dev && \
         chown -R radio: /opt/freedmr
 
-EXPOSE 54000
-
 USER radio
 
 ENTRYPOINT [ "/entrypoint" ]
