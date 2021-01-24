@@ -1401,7 +1401,11 @@ class routerHBP(HBSYSTEM):
                         # Create a Burst B-E packet (Embedded LC)
                         elif _dtype_vseq in [1,2,3,4]:
                             dmrbits = dmrbits[0:116] + _target_status[_target['TS']]['TX_EMB_LC'][_dtype_vseq] + dmrbits[148:264]
-                        dmrpkt = dmrbits.tobytes()
+                        try:
+                            dmrpkt = dmrbits.tobytes()
+                        except AttributeError:
+                            logger.debug('(%s) AttributeError - dmrbits.tobytes()',self._system)
+                            
                         _tmp_data = b''.join([_tmp_data, dmrpkt, _data[53:55]])
 
                     # Transmit the packet to the destination system
