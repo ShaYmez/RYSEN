@@ -456,7 +456,7 @@ def sendSpeech(self,speech):
         #as it's not thread safe
         reactor.callFromThread(self.send_system,pkt)
         #(len(pkt), pkt[4], pkt)
-        logger.info('(%s) Sendspeech thread ended',self._system)
+    logger.info('(%s) Sendspeech thread ended',self._system)
 
 def disconnectedVoice(system):
     _nine = bytes_3(9)
