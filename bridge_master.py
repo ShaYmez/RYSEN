@@ -1404,7 +1404,7 @@ class routerHBP(HBSYSTEM):
                         try:
                             dmrpkt = dmrbits.tobytes()
                         except AttributeError:
-                            logger.debug('(%s) AttributeError - dmrbits.tobytes()',self._system)
+                            logger.debug('(%s) Non-fatal AttributeError - dmrbits.tobytes()',self._system)
                             
                         _tmp_data = b''.join([_tmp_data, dmrpkt, _data[53:55]])
 
