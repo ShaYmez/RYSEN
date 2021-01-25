@@ -426,6 +426,7 @@ def stream_trimmer_loop():
                     logger.error('(%s) Attemped to remove OpenBridge Stream ID %s not in the Stream ID list: %s', system, int_id(stream_id), [id for id in systems[system].STATUS])
 
 def sendSpeech(self,speech):
+    logger.info('(%s) Inside sendspeech thread',self._system)
     sleep(1)
     _nine = bytes_3(9)
     _source_id = bytes_3(5000)
@@ -455,6 +456,7 @@ def sendSpeech(self,speech):
         #as it's not thread safe
         reactor.callFromThread(self.send_system,pkt)
         #(len(pkt), pkt[4], pkt)
+        logger.info('(%s) Sendspeech thread ended',self._system)
 
 def disconnectedVoice(system):
     _nine = bytes_3(9)
@@ -506,6 +508,7 @@ def disconnectedVoice(system):
         #Twisted is not thread safe. We need to call this in the reactor main thread
         reactor.callFromThread(systems[system].send_system,pkt)
         #systems[system].send_system(pkt)
+        logger.info('(%s) disconnected voice thread end',system)
     
 
 def threadIdent():
@@ -1499,7 +1502,7 @@ class routerHBP(HBSYSTEM):
                 
                 #If disconnection called
                 if _int_dst_id == 4000:
-                    logger.debug('(%s) Reflector: voice called - 4000 "not linked"', self._system)
+                    logger.info('(%s) Reflector: voice called - 4000 "not linked"', self._system)
                     _say.append(words['notlinked'])
                     _say.append(words['silence'])
                  
@@ -1513,7 +1516,7 @@ class routerHBP(HBSYSTEM):
                             _dehash_bridge = _bridge[1:]
                             if _system['SYSTEM'] == self._system and _slot == _system['TS']:
                                     if _system['ACTIVE'] == True:
-                                        logger.debug('(%s) Reflector: voice called - 5000 status - "linked to %s"', self._system,_dehash_bridge)
+                                        logger.info('(%s) Reflector: voice called - 5000 status - "linked to %s"', self._system,_dehash_bridge)
                                         _say.append(words['silence'])
                                         _say.append(words['linked'])
                                         _say.append(words['silence'])
@@ -1528,12 +1531,12 @@ class routerHBP(HBSYSTEM):
                                         break
                         
                     if _active == False:
-                        logger.debug('(%s) Reflector: voice called - 5000 status - "not linked"', self._system)
+                        logger.info('(%s) Reflector: voice called - 5000 status - "not linked"', self._system)
                         _say.append(words['notlinked'])
                 
                 #Speak what TG was requested to link
                 else:
-                    logger.debug('(%s) Reflector: voice called (linking)  "linked to %s"', self._system,_int_dst_id)
+                    logger.info('(%s) Reflector: voice called (linking)  "linked to %s"', self._system,_int_dst_id)
                     _say.append(words['silence'])
                     _say.append(words['linked'])
                     _say.append(words['silence'])
