@@ -1830,7 +1830,7 @@ if __name__ == '__main__':
         logger.info('(REPORT) TCP Socket reporting not configured')
         
     #Read AMBE
-    AMBEobj = readAMBE('en_GB','./Audio/')
+    AMBEobj = readAMBE(CONFIG['GLOBAL']['ANNOUNCEMENT_LANGUAGE'],'./Audio/')
     #global words
     words = AMBEobj.readfiles()
     logger.info('(AMBE) Read %s words into voice dict',len(words) - 1)
