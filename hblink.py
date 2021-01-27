@@ -35,7 +35,6 @@ from hashlib import sha256, sha1
 from hmac import new as hmac_new, compare_digest
 from time import time
 from collections import deque
-from threading import Semaphore
 
 # Twisted is pretty important, so I keep it separate
 from twisted.internet.protocol import DatagramProtocol, Factory, Protocol

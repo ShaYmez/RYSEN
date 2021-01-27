@@ -493,11 +493,7 @@ def threadIdent():
     
 def threadedMysql():
     logger.debug('(MYSQL) Starting MySQL thread')
-    if not mysql_sema.acquire(blocking = False):
-        logger.debug('(MYSQL) Previous thread is still running (can\'t acquire semaphore). Try next iteration')
-        return
     reactor.callInThread(mysqlGetConfig)
-    mysql_sema.release()
 
 def ident():
     for system in systems:
@@ -1886,7 +1882,6 @@ if __name__ == '__main__':
     #Mysql config checker
     #This runs in a thread so as not to block the reactor
     if CONFIG['MYSQL']['USE_MYSQL'] == True:
-        mysql_sema = Semaphore(value=1)
         mysql_task = task.LoopingCall(threadedMysql)
         mysql = mysql_task.start(30)
         mysql.addErrback(loopingErrHandle)
