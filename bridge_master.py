@@ -417,6 +417,7 @@ def sendSpeech(self,speech):
             'CONTENTION':False,
             'RFS':       _source_id,
             'TGID':      _nine,
+            'LAST':      _pkt_time
             }
             _slot['TX_TGID'] = _nine
         else:
@@ -470,6 +471,7 @@ def disconnectedVoice(system):
             'CONTENTION':False,
             'RFS':       _source_id,
             'TGID':      _nine,
+            'LAST':      _pkt_time
             }
             _slot['TX_TGID'] = _nine
         else:
@@ -536,6 +538,7 @@ def ident():
                         'CONTENTION':False,
                         'RFS':       _source_id,
                         'TGID':      _all_call,
+                        'LAST':      _pkt_time
                         }
                         _slot['TX_TGID'] = _all_call
                     else:
@@ -657,8 +660,10 @@ def mysqlGetConfig():
         except:
             logger.debug('(MYSQL) problem with SQL query, aborting')
             sql.close()
+            return
     else:
         logger.debug('(MYSQL) problem connecting to SQL server, aborting')
+        sql.close()
         return
     
     sql.close()
