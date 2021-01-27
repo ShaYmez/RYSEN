@@ -437,7 +437,7 @@ def disconnectedVoice(system):
     _say.append(words['silence']) 
     if CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'] > 0:
         _say.append(words['silence'])
-        _say.append(words['linked'])
+        _say.append(words['linkedto'])
         _say.append(words['silence'])
         _say.append(words['2'])
         _say.append(words['silence'])
@@ -1478,7 +1478,7 @@ class routerHBP(HBSYSTEM):
                                     if _system['ACTIVE'] == True:
                                         logger.info('(%s) Reflector: voice called - 5000 status - "linked to %s"', self._system,_dehash_bridge)
                                         _say.append(words['silence'])
-                                        _say.append(words['linked'])
+                                        _say.append(words['linkedto'])
                                         _say.append(words['silence'])
                                         _say.append(words['2'])
                                         _say.append(words['silence'])
@@ -1498,7 +1498,7 @@ class routerHBP(HBSYSTEM):
                 else:
                     logger.info('(%s) Reflector: voice called (linking)  "linked to %s"', self._system,_int_dst_id)
                     _say.append(words['silence'])
-                    _say.append(words['linked'])
+                    _say.append(words['linkedto'])
                     _say.append(words['silence'])
                     _say.append(words['2'])
                     _say.append(words['silence'])
