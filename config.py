@@ -123,7 +123,8 @@ def build_config(_config_file):
                     'TG1_ACL': config.get(section, 'TGID_TS1_ACL'),
                     'TG2_ACL': config.get(section, 'TGID_TS2_ACL'),
                     'GEN_STAT_BRIDGES': config.getboolean(section, 'GEN_STAT_BRIDGES'),
-                    'ALLOW_NULL_PASSPHRASE': config.getboolean(section, 'ALLOW_NULL_PASSPHRASE')
+                    'ALLOW_NULL_PASSPHRASE': config.getboolean(section, 'ALLOW_NULL_PASSPHRASE'),
+                    'ANNOUNCEMENT_LANGUAGE': config.get(section, 'ANNOUNCEMENT_LANGUAGE')
                     
                 })
 

@@ -42,11 +42,6 @@ import re
 from twisted.internet.protocol import Factory, Protocol
 from twisted.protocols.basic import NetstringReceiver
 from twisted.internet import reactor, task
-#We're going to *try* and be thread safe
-#from twisted.python import threadable
-#threadable.init(1)
-
-from threading import Semaphore
 
 # Things we import from the main hblink module
 from hblink import HBSYSTEM, OPENBRIDGE, systems, hblink_handler, reportFactory, REPORT_OPCODES, mk_aliases
@@ -666,6 +661,7 @@ def mysqlGetConfig():
         logger.debug('(MYSQL) problem connecting to SQL server, aborting')
         return
     
+    sql.close()
     reactor.callFromThread(mysql_config_check,SQLGETCONFIG)
     
 
@@ -926,7 +922,6 @@ def mysql_config_check(SQLGETCONFIG):
     #CONFIG['SYSTEMS'].update(SQLCONFIG)
    
     SQLCONFIG = {} 
-    sql.close()
 
 class routerOBP(OPENBRIDGE):
 
