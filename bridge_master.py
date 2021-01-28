@@ -396,6 +396,24 @@ def stream_trimmer_loop():
                 else:
                     logger.error('(%s) Attemped to remove OpenBridge Stream ID %s not in the Stream ID list: %s', system, int_id(stream_id), [id for id in systems[system].STATUS])
 
+def sendVoicePacket(self,pkt,_source_id,_dest_id,_slot):
+    _stream_id = pkt[16:20]
+    _pkt_time = time()
+    if _stream_id not in systems[system].STATUS:
+        systems[system].STATUS[_stream_id] = {
+        'START':     _pkt_time,
+        'CONTENTION':False,
+        'RFS':       _source_id,
+        'TGID':      _dest_id,
+        'LAST':      _pkt_time
+        }
+        _slot['TX_TGID'] = _dest_id
+    else:
+        systems[system].STATUS[_stream_id]['LAST'] = _pkt_time
+        _slot['TX_TIME'] = _pkt_time
+                                            
+    self.send_system(pkt)
+    
 def sendSpeech(self,speech):
     logger.info('(%s) Inside sendspeech thread',self._system)
     sleep(1)
@@ -409,25 +427,8 @@ def sendSpeech(self,speech):
             break
         #Packet every 60ms
         sleep(0.058)
-        _stream_id = pkt[16:20]
-        _pkt_time = time()
-        if _stream_id not in systems[system].STATUS:
-            systems[system].STATUS[_stream_id] = {
-            'START':     _pkt_time,
-            'CONTENTION':False,
-            'RFS':       _source_id,
-            'TGID':      _nine,
-            'LAST':      _pkt_time
-            }
-            _slot['TX_TGID'] = _nine
-        else:
-            systems[system].STATUS[_stream_id]['LAST'] = _pkt_time
-            _slot['TX_TIME'] = _pkt_time
-                                               
-        #Call the actual packet send in the reactor thread 
-        #as it's not thread safe
-        reactor.callFromThread(self.send_system,pkt)
-        #(len(pkt), pkt[4], pkt)
+        reactor.callFromThread(sendVoicePacket,self,pkt,_source_id,_nine,_slot)
+
     logger.info('(%s) Sendspeech thread ended',self._system)
 
 def disconnectedVoice(system):
@@ -465,22 +466,7 @@ def disconnectedVoice(system):
         sleep(0.058)
         _stream_id = pkt[16:20]
         _pkt_time = time()
-        if _stream_id not in systems[system].STATUS:
-            systems[system].STATUS[_stream_id] = {
-            'START':     _pkt_time,
-            'CONTENTION':False,
-            'RFS':       _source_id,
-            'TGID':      _nine,
-            'LAST':      _pkt_time
-            }
-            _slot['TX_TGID'] = _nine
-        else:
-            systems[system].STATUS[_stream_id]['LAST'] = _pkt_time
-            _slot['TX_TIME'] = _pkt_time                            
-     
-        #Twisted is not thread safe. We need to call this in the reactor main thread
-        reactor.callFromThread(systems[system].send_system,pkt)
-        #systems[system].send_system(pkt)
+        reactor.callFromThread(sendVoicePacket,self,pkt,_source_id,_nine,_slot)
         logger.info('(%s) disconnected voice thread end',system)
     
 
@@ -532,22 +518,7 @@ def ident():
                     
                     _stream_id = pkt[16:20]
                     _pkt_time = time()
-                    if _stream_id not in systems[system].STATUS:
-                        systems[system].STATUS[_stream_id] = {
-                        'START':     _pkt_time,
-                        'CONTENTION':False,
-                        'RFS':       _source_id,
-                        'TGID':      _all_call,
-                        'LAST':      _pkt_time
-                        }
-                        _slot['TX_TGID'] = _all_call
-                    else:
-                        systems[system].STATUS[_stream_id]['LAST'] = _pkt_time
-                        _slot['TX_TIME'] = _pkt_time
-                                               
-                    #Twisted is not thread safe. We need to call this in the reactor main thread
-                    reactor.callFromThread(systems[system].send_system,pkt)
-                    #systems[system].send_system(pkt)
+                    reactor.callFromThread(sendVoicePacket,self,pkt,_source_id,_all_call,_slot)
 
 def options_config():
     logger.debug('(OPTIONS) Running options parser')
