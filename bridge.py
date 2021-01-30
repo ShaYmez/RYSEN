@@ -180,8 +180,13 @@ def stream_trimmer_loop():
         if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
             remove_list = []
             for stream_id in systems[system].STATUS:
-                if systems[system].STATUS[stream_id]['LAST'] < _now - 5:
-                    remove_list.append(stream_id)
+                try:
+                    if systems[system].STATUS[stream_id]['LAST'] < _now - 5:
+                        remove_list.append(stream_id)
+                except:
+                    logger.debug("(%s) Keyerror - stream trimmer Stream ID: %s Start: %s Contention: %s RFS: %s  TGID: %s",stream_id,systems[system].STATUS[stream_id]['START'],systems[system].STATUS[stream_id]['CONTENTION'],systems[system].STATUS[stream_id]['RFS'],int_id(systems[system].STATUS[stream_id]['TGID']))
+                    systems[system].STATUS[stream_id]['LAST'] = _now
+                    continue
             for stream_id in remove_list:
                 if stream_id in systems[system].STATUS:
                     _stream = systems[system].STATUS[stream_id]
