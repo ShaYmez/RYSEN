@@ -1,0 +1,4 @@
+#!/bin/sh
+
+cd /opt/freedmr
+python /opt/freedmr/bridge_master.py -c freedmr.cfg -r rules.py
