@@ -777,7 +777,7 @@ def mysql_config_check(SQLGETCONFIG):
                         make_static_tg(tg,2,_tmout,system)
                     
         if SQLCONFIG[system]['DEFAULT_UA_TIMER'] != CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']:
-            if 'OPTIONS' not in SQLCONFIG[system]:
+            if 'OPTIONS' not in CONFIG['SYSTEMS'][system]:
                 logger.debug('(MYSQL) %s DEFAULT_UA_TIMER changed. Killing HBP listener. Will restart in 1 minute',system)
                 systems[system].master_dereg()
                 if systems[system]._system_maintenance is not None and systems[system]._system_maintenance.running == True:
@@ -830,7 +830,7 @@ def mysql_config_check(SQLGETCONFIG):
                     reset_default_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'],_tmout,system)
                 
         if SQLCONFIG[system]['TS1_STATIC'] != CONFIG['SYSTEMS'][system]['TS1_STATIC']:
-            if 'OPTIONS' not in SQLCONFIG[system]:
+            if 'OPTIONS' not in CONFIG['SYSTEMS'][system]:
                 _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
                 logger.debug('(MYSQL) %s TS1 static TGs changed, updating',system)
                 ts1 = []
@@ -851,7 +851,7 @@ def mysql_config_check(SQLGETCONFIG):
                         make_static_tg(tg,1,_tmout,system)
                     
         if SQLCONFIG[system]['TS2_STATIC'] != CONFIG['SYSTEMS'][system]['TS2_STATIC']:
-            if 'OPTIONS' not in SQLCONFIG[system]:
+            if 'OPTIONS' not in CONFIG['SYSTEMS'][system]:
                 _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
                 logger.debug('(MYSQL) %s TS2 static TGs changed, updating',system)
                 ts2 = []
