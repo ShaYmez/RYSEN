@@ -568,7 +568,7 @@ def options_config():
                     
                 _tmout = int(_options['DEFAULT_UA_TIMER'])
                 
-                if int(options['DEFAULT_UA_TIMER'] != CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']:
+                if int(options['DEFAULT_UA_TIMER']) != CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']:
                     logger.debug('(OPTIONS) %s Updating DEFAULT_UA_TIMER for existing bridges.',_system)
                     remove_bridge_system(_system)
                     for _bridge in BRIDGES:
