@@ -1,0 +1,25 @@
+[Unit]
+
+Description= FreeDMR Repeaters Service 
+
+
+
+After=syslog.target network.target
+
+
+
+[Service]
+User=root
+
+WorkingDirectory=/opt/FreeDMR
+
+ExecStart=/usr/bin/python3 bridge_master.py -c ./config/hblink.cfg -r ./config/rules.py
+
+
+
+
+
+
+[Install]
+WantedBy=multi-user.target
+
