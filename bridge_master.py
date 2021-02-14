@@ -567,25 +567,26 @@ def options_config():
                     continue
                     
                 _tmout = int(_options['DEFAULT_UA_TIMER'])
-
-                logger.debug('(OPTIONS) %s Updating DEFAULT_UA_TIMER for existing bridges.',_system)
-                remove_bridge_system(_system)
-                for _bridge in BRIDGES:
-                    ts1 = False 
-                    ts2 = False
-                    for i,e in enumerate(BRIDGES[_bridge]):
-                        if e['SYSTEM'] == _system and e['TS'] == 1:
-                            ts1 = True
-                        if e['SYSTEM'] == _system and e['TS'] == 2:
-                            ts2 = True
-                    if _bridge[0:1] != '#':
-                        if ts1 == False:
-                            BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 1, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
-                        if ts2 == False:
-                            BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 2, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
-                    else:
-                        if ts2 == False:
-                            BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [bytes_3(4000)],'ON': [],'RESET': [], 'TIMER': time()})
+                
+                if int(options['DEFAULT_UA_TIMER'] != CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']:
+                    logger.debug('(OPTIONS) %s Updating DEFAULT_UA_TIMER for existing bridges.',_system)
+                    remove_bridge_system(_system)
+                    for _bridge in BRIDGES:
+                        ts1 = False 
+                        ts2 = False
+                        for i,e in enumerate(BRIDGES[_bridge]):
+                            if e['SYSTEM'] == _system and e['TS'] == 1:
+                                ts1 = True
+                            if e['SYSTEM'] == _system and e['TS'] == 2:
+                                ts2 = True
+                        if _bridge[0:1] != '#':
+                            if ts1 == False:
+                                BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 1, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
+                            if ts2 == False:
+                                BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 2, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
+                        else:
+                            if ts2 == False:
+                                BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [bytes_3(4000)],'ON': [],'RESET': [], 'TIMER': time()})
         
                 if int(_options['DEFAULT_REFLECTOR']) != CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR']:
                     if int(_options['DEFAULT_REFLECTOR']) > 0:
