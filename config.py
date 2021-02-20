@@ -300,7 +300,8 @@ def build_config(_config_file):
                         'USE_ACL': config.getboolean(section, 'USE_ACL'),
                         'SUB_ACL': config.get(section, 'SUB_ACL'),
                         'TG1_ACL': config.get(section, 'TGID_ACL'),
-                        'TG2_ACL': 'PERMIT:ALL'
+                        'TG2_ACL': 'PERMIT:ALL',
+                        'RELAX_CHECKS': config.getboolean(section, 'RELAX_CHECKS')
                     }})
                     
     

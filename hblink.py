@@ -141,7 +141,7 @@ class OPENBRIDGE(DatagramProtocol):
             _hash = _packet[53:]
             _ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
 
-            if compare_digest(_hash, _ckhs) and _sockaddr == self._config['TARGET_SOCK']:
+            if compare_digest(_hash, _ckhs) and (_sockaddr == self._config['TARGET_SOCK'] or self._config['RELAX_CHECKS']):
                 _peer_id = _data[11:15]
                 _seq = _data[4]
                 _rf_src = _data[5:8]
