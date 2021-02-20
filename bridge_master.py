@@ -521,7 +521,7 @@ def ident():
                     
                     _stream_id = pkt[16:20]
                     _pkt_time = time()
-                    reactor.callFromThread(sendVoicePacket,self,pkt,_source_id,_all_call,_slot)
+                    reactor.callFromThread(sendVoicePacket,systems[system],pkt,_source_id,_all_call,_slot)
 
 def options_config():
     logger.debug('(OPTIONS) Running options parser')
@@ -1878,7 +1878,7 @@ if __name__ == '__main__':
         _map = voiceMap[CONFIG['GLOBAL']['ANNOUNCEMENT_LANGUAGE']]
         for _mapword in _map:
             logger.info('(AMBE) Mapping \"%s\" to \"%s\"',_mapword,_map[_mapword])
-            words[_mapword] = words.pop(_map[_mapword])
+            words[_mapword] = words[_map[_mapword]]
 
     # HBlink instance creation
     logger.info('(GLOBAL) FreeDMR \'bridge_master.py\' -- SYSTEM STARTING...')
