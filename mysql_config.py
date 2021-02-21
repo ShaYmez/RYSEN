@@ -78,6 +78,7 @@ class useMYSQL:
                             'TS1_STATIC': ts1_static,
                             'TS2_STATIC': ts2_static,
                             'DEFAULT_REFLECTOR': int(default_reflector)
+                            'GENERATOR': 1
                         }})
                 CONFIG['SYSTEMS'][callsign].update({'PEERS': {}})
             except TypeError:
