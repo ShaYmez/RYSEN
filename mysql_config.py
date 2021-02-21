@@ -77,8 +77,8 @@ class useMYSQL:
                             'VOICE_IDENT': bool(voice_ident),
                             'TS1_STATIC': ts1_static,
                             'TS2_STATIC': ts2_static,
-                            'DEFAULT_REFLECTOR': int(default_reflector)
-                            'GENERATOR': 1
+                            'DEFAULT_REFLECTOR': int(default_reflector),
+                            'GENERATOR': int(1),
                         }})
                 CONFIG['SYSTEMS'][callsign].update({'PEERS': {}})
             except TypeError:
