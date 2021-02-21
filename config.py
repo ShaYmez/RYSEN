@@ -283,6 +283,7 @@ def build_config(_config_file):
                         'TS1_STATIC': config.get(section,'TS1_STATIC'),
                         'TS2_STATIC': config.get(section,'TS2_STATIC'),
                         'DEFAULT_REFLECTOR': config.getint(section, 'DEFAULT_REFLECTOR'),
+                        'GENERATOR': config.getint(section, 'GENERATOR')
                     }})
                     CONFIG['SYSTEMS'][section].update({'PEERS': {}})
                     

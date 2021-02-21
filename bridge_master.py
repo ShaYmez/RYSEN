@@ -1888,10 +1888,30 @@ if __name__ == '__main__':
     
     listeningPorts = {}
     
+    generator = {}
+    systemdelete = []
+    for system in CONFIG['SYSTEMS']:
+        if CONFIG['SYSTEMS'][system]['ENABLED']:
+            if CONFIG['SYSTEMS'][system]['MODE'] == 'MASTER' and (CONFIG['SYSTEMS'][system]['GENERATOR'] > 1):
+                for count in range(CONFIG['SYSTEMS'][system]['GENERATOR']):
+                    _systemname = system+'-'+str(count)
+                    generator[_systemname] = CONFIG['SYSTEMS'][system].copy()
+                    generator[_systemname]['PORT'] = generator[_systemname]['PORT'] + count
+                    logger.debug('(GLOBAL) Generator - generated system %s',_systemname)
+                systemdelete.append(system)
+    
+    for _system in generator:
+        CONFIG['SYSTEMS'][_system] = generator[_system]
+    for _system in systemdelete:
+            CONFIG['SYSTEMS'].pop(_system)
+    
+    del generator
+    del systemdelete
+    
     for system in CONFIG['SYSTEMS']:
         if CONFIG['SYSTEMS'][system]['ENABLED']:
             if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
-                systems[system] = routerOBP(system, CONFIG, report_server)
+                systems[system] = routerOBP(system, CONFIG, report_server)                
             else:
                 systems[system] = routerHBP(system, CONFIG, report_server)
             listeningPorts[system] = reactor.listenUDP(CONFIG['SYSTEMS'][system]['PORT'], systems[system], interface=CONFIG['SYSTEMS'][system]['IP'])
