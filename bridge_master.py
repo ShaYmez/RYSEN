@@ -37,6 +37,7 @@ from bitarray import bitarray
 from time import time,sleep
 import importlib.util
 import re
+import copy
 
 # Twisted is pretty important, so I keep it separate
 from twisted.internet.protocol import Factory, Protocol
@@ -1895,7 +1896,7 @@ if __name__ == '__main__':
             if CONFIG['SYSTEMS'][system]['MODE'] == 'MASTER' and (CONFIG['SYSTEMS'][system]['GENERATOR'] > 1):
                 for count in range(CONFIG['SYSTEMS'][system]['GENERATOR']):
                     _systemname = system+'-'+str(count)
-                    generator[_systemname] = CONFIG['SYSTEMS'][system].copy()
+                    generator[_systemname] = copy.deepcopy(CONFIG['SYSTEMS'][system])
                     generator[_systemname]['PORT'] = generator[_systemname]['PORT'] + count
                     logger.debug('(GLOBAL) Generator - generated system %s',_systemname)
                 systemdelete.append(system)
