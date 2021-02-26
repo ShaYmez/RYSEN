@@ -487,9 +487,15 @@ def ident():
         if CONFIG['SYSTEMS'][system]['MODE'] != 'MASTER':
             continue
         if CONFIG['SYSTEMS'][system]['VOICE_IDENT'] == True:
-           # if CONFIG['SYSTEMS'][system]['PEERS'] == False:
-            #    logger.debug('(%s) System has no peers, not sending ident',system)
-            #We only care about slot 2 - idents go out on slot 2
+            if CONFIG['SYSTEMS'][system]['MAX_PEERS'] > 1:
+                logger.debug("(%s) System has MAX_PEERS > 1, skipping",system)
+                continue
+            _callsign = False
+            for _peerid in CONFIG['SYSTEMS'][system]['PEERS']:
+                _callsign = CONFIG['SYSTEMS'][system]['PEERS'][_peerid]['CALLSIGN'].decode()
+            if not _callsign:
+                logger.debug("(%s) System has no peers or no recorded callsign (%s), skipping",system,_callsign)
+                continue
             _slot  = systems[system].STATUS[2]
             #If slot is idle for RX and TX
             #print("RX:"+str(_slot['RX_TYPE'])+" TX:"+str(_slot['TX_TYPE'])+" TIME:"+str(time() - _slot['TX_TIME']))
@@ -498,7 +504,7 @@ def ident():
                 logger.info('(%s) Repeater idle. Sending voice ident',system)
                 _say = [words['silence']]
                 _say.append(words['silence'])
-                _systemcs = re.sub(r'\W+', '', system)
+                _systemcs = re.sub(r'\W+', '', _callsign)
                 _systemcs.upper()
                 for character in _systemcs:
                     _say.append(words[character])
