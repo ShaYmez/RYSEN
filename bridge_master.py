@@ -134,8 +134,8 @@ def make_bridges(_rules):
         #    continue
         
         for _confsystem in CONFIG['SYSTEMS']:
-            if _confsystem[0:3] == 'OBP':
-            #if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
+            #if _confsystem[0:3] == 'OBP':
+            if CONFIG['SYSTEMS'][_confsystem]['MODE'] != 'MASTER':
                 continue
             ts1 = False 
             ts2 = False
@@ -252,8 +252,8 @@ def make_single_reflector(_tgid,_tmout,_sourcesystem):
     _bridge = '#' + _tgid_s
     BRIDGES[_bridge] = []
     for _system in CONFIG['SYSTEMS']:
-        if _system[0:3] != 'OBP':
-        #if CONFIG['SYSTEMS'][system]['MODE'] == 'MASTER':
+        #if _system[0:3] != 'OBP':
+        if CONFIG['SYSTEMS'][_system]['MODE'] == 'MASTER':
             #_tmout = CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']
             if _system == _sourcesystem:
                 BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': True,'TIMEOUT':  _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time() + (_tmout * 60)})
@@ -501,7 +501,7 @@ def ident():
             #print("RX:"+str(_slot['RX_TYPE'])+" TX:"+str(_slot['TX_TYPE'])+" TIME:"+str(time() - _slot['TX_TIME']))
             if (_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _slot['TX_TIME'] > CONFIG['SYSTEMS'][system]['GROUP_HANGTIME']):
                 #_stream_id = hex_str_4(1234567)
-                logger.info('(%s) Repeater idle. Sending voice ident',system)
+                logger.info('(%s) System idle. Sending voice ident',system)
                 _say = [words['silence']]
                 _say.append(words['silence'])
                 _systemcs = re.sub(r'\W+', '', _callsign)
@@ -1963,6 +1963,6 @@ if __name__ == '__main__':
         stat_trimmer.addErrback(loopingErrHandle)
     
     #more threads
-    reactor.suggestThreadPoolSize(500)
+    reactor.suggestThreadPoolSize(100)
     
     reactor.run()
