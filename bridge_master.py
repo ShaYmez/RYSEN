@@ -1659,7 +1659,7 @@ class routerHBP(HBSYSTEM):
 
                             # TGID matches an DE-ACTIVATION trigger
                             #Single TG mode
-                            if (CONFIG['SYSTEMS'][self._system]['SINGLE_MODE']) == True:
+                            if (CONFIG['SYSTEMS'][self._system]['MODE'] == 'MASTER' and CONFIG['SYSTEMS'][self._system]['SINGLE_MODE']) == True:
                                 if (_dst_id in _system['OFF']  or _dst_id in _system['RESET'] or _dst_id != _system['TGID']) and _slot == _system['TS']:
                                 #if (_dst_id in _system['OFF']  or _dst_id in _system['RESET']) and _slot == _system['TS']:
                                     # Set the matching rule as ACTIVE
