@@ -150,8 +150,8 @@ if __name__ == '__main__':
     
     Master = "127.0.0.1"
     ListenPort = 62031
-    DestportStart = 54100
-    DestPortEnd = 54200
+    DestportStart = 54000
+    DestPortEnd = 54100
     Timeout = 30
     Stats = True
     Debug = True
