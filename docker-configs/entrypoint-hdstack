@@ -1,0 +1,7 @@
+#!/bin/sh
+
+cd /opt/freedmr
+python /opt/freedmr/hdstack/hotspot_proxy_v2.py &
+python /opt/freedmr/bridge_master.py -c freedmr.cfg -r rules.py &
+python /opt/freedmr/bridge_master.py -c hdstack/stack1.cfg -r rules.py &
+python /opt/freedmr/bridge_master.py -c hdstack/stack2.cfg -r rules.py &
