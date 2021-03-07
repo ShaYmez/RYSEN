@@ -624,11 +624,11 @@ def options_config():
                         logger.debug('(OPTIONS) %s - TS2_STATIC contains characters other than numbers and comma, ignoring',_system)
                         continue
                 
-                if not _options['DEFAULT_REFLECTOR'].isdigit():
+                if isinstance(_options['DEFAULT_REFLECTOR'], str) and not _options['DEFAULT_REFLECTOR'].isdigit():
                     logger.debug('(OPTIONS) %s - DEFAULT_UA_TIMER is not an integer, ignoring',_system)
                     continue
                 
-                if not _options['DEFAULT_UA_TIMER'].isdigit():
+                if isinstance(_options['DEFAULT_UA_TIMER'], str) and not _options['DEFAULT_UA_TIMER'].isdigit():
                     logger.debug('(OPTIONS) %s - DEFAULT_REFLECTOR is not an integer, ignoring',_system)
                     continue
                     
