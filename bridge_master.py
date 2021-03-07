@@ -549,6 +549,60 @@ def options_config():
                     _options[k] = v
                 logger.debug('(OPTIONS) Options found for %s',_system)
                 
+                if 'DIAL' in _options:
+                    _options['DEFAULT_REFLECTOR'] = _options.pop('DIAL')
+                if 'TIMER' in _options:
+                    _options['DEFAULT_UA_TIMER'] = _options.pop('TIMER')
+                if 'TS1' in _options:
+                    _options['TS1_STATIC'] = _options.pop('TS1')
+                if 'TS2' in _options:
+                    _options['TS2_STATIC'] = _options.pop('TS2')
+                    
+                #DMR+ style options
+                if 'StartRef' in _options:
+                    _options['DEFAULT_REFLECTOR'] = _options.pop('StartRef')
+                if 'RelinkTime' in _options:
+                    _options['DEFAULT_UA_TIMER'] = _options.pop('RelinkTime')
+                if 'TS1_1' in _options:
+                    _options['TS1_STATIC'] = _options.pop('TS1_1')
+                    if 'TS1_2' in _options:
+                        _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_2')
+                    if 'TS1_3' in _options:
+                        _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_3')
+                    if 'TS1_4' in _options:
+                        _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_4')
+                    if 'TS1_4' in _options:
+                        _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_5')
+                if 'TS2_2' in _options:
+                    _options['TS2_STATIC'] = _options.pop('TS2_1')
+                    if 'TS2_2' in _options:
+                        _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_2')
+                    if 'TS2_3' in _options:
+                        _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_3')
+                    if 'TS2_4' in _options:
+                        _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_4')
+                    if 'TS2_4' in _options:
+                        _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_5')
+                if 'UserLink' in _options:
+                    _options.pop('UserLink')
+                
+                if 'TS1_STATIC' not in _options:
+                    _options['TS1_STATIC'] = False
+                
+                if 'TS2_STATIC' not in _options:
+                    _options['TS2_STATIC'] = False
+                    
+                if 'DEFAULT_REFLECTOR' not in _options:
+                    _options['DEFAULT_REFLECTOR'] = 0
+                    
+                if 'DEFAULT_UA_TIMER' not in _options:
+                    _options['DEFAULT_UA_TIMER'] = CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']
+                
+                if 'VOICE' in _options and (CONFIG['SYSTEMS'][_system]['VOICE_IDENT'] != bool(int(_options['VOICE']))):
+                    CONFIG['SYSTEMS'][_system]['VOICE_IDENT'] = bool(int(_options['VOICE']))
+                    logger.debug("(OPTIONS) %s - Setting voice ident to %s",_system,CONFIG['SYSTEMS'][_system]['VOICE_IDENT'])
+                        
+                
                 if 'TS1_STATIC' not in _options or 'TS2_STATIC' not in _options or 'DEFAULT_REFLECTOR' not in _options or 'DEFAULT_UA_TIMER' not in _options:
                     logger.debug('(OPTIONS) %s - Required field missing, ignoring',_system)
                     continue
