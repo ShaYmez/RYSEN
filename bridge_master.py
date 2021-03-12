@@ -870,6 +870,7 @@ def mysql_config_check(SQLGETCONFIG):
                 for _bridge in BRIDGES:
                     ts1 = False 
                     ts2 = False
+                    _tmout = CONFIG['SYSTEMS'][system][DEFAULT_UA_TIMER]
                     for i,e in enumerate(BRIDGES[_bridge]):
                         if e['SYSTEM'] == system and e['TS'] == 1:
                             ts1 = True
