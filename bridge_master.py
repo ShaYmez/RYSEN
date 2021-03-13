@@ -601,7 +601,10 @@ def options_config():
                 if 'VOICE' in _options and (CONFIG['SYSTEMS'][_system]['VOICE_IDENT'] != bool(int(_options['VOICE']))):
                     CONFIG['SYSTEMS'][_system]['VOICE_IDENT'] = bool(int(_options['VOICE']))
                     logger.debug("(OPTIONS) %s - Setting voice ident to %s",_system,CONFIG['SYSTEMS'][_system]['VOICE_IDENT'])
-                        
+                    
+                if 'SINGLE' in _options and (CONFIG['SYSTEMS'][_system]['SINGLE_MODE'] != bool(int(_options['SINGLE']))):
+                    CONFIG['SYSTEMS'][_system]['SINGLE_MODE'] = bool(int(_options['SINGLE_MODE']))
+                    logger.debug("(OPTIONS) %s - Setting SINGLE_MODE to %s",_system,CONFIG['SYSTEMS'][_system]['SINGLE_MODE'])
                 
                 if 'TS1_STATIC' not in _options or 'TS2_STATIC' not in _options or 'DEFAULT_REFLECTOR' not in _options or 'DEFAULT_UA_TIMER' not in _options:
                     logger.debug('(OPTIONS) %s - Required field missing, ignoring',_system)
