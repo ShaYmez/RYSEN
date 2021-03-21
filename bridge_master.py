@@ -538,9 +538,9 @@ def options_config():
         if CONFIG['SYSTEMS'][_system]['ENABLED'] == True:
             if 'OPTIONS' in CONFIG['SYSTEMS'][_system]:
                 _options = {}
+                CONFIG['SYSTEMS'][_system]['OPTIONS'] = CONFIG['SYSTEMS'][_system]['OPTIONS'].rstrip('\x00')
                 re.sub("\'","",CONFIG['SYSTEMS'][_system]['OPTIONS'])
                 re.sub("\"","",CONFIG['SYSTEMS'][_system]['OPTIONS'])
-                re.sub("\x00","",CONFIG['SYSTEMS'][_system]['OPTIONS'])
                 for x in CONFIG['SYSTEMS'][_system]['OPTIONS'].split(";"):
                     try:
                         k,v = x.split('=')
