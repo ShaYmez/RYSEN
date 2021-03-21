@@ -250,8 +250,13 @@ class HBSYSTEM(DatagramProtocol):
             # Remove any timed out peers from the configuration
             del self._CONFIG['SYSTEMS'][self._system]['PEERS'][peer]
         if 'PEERS' not in self._CONFIG['SYSTEMS'][self._system] and 'OPTIONS' in self._CONFIG['SYSTEMS'][self._system]:
-            logger.info('(%s) Deleting HBP Options',self._system)
-            del self._CONFIG['SYSTEMS'][self._system]['OPTIONS']
+            
+            if '_default_options' in self._CONFIG['SYSTEMS'][self._system]:
+                logger.info('(%s) Setting default Options: %s',self._system, self._CONFIG['SYSTEMS'][self._system]['_default_options'])
+                self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = self._CONFIG['SYSTEMS'][self._system]['_default_options']
+            else:
+                del self._CONFIG['SYSTEMS'][self._system]['OPTIONS']
+                logger.info('(%s) Deleting HBP Options',self._system)
 
     # Aliased in __init__ to maintenance_loop if system is a peer
     def peer_maintenance_loop(self):
@@ -485,8 +490,12 @@ class HBSYSTEM(DatagramProtocol):
                     self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                     del self._peers[_peer_id]
                     if 'OPTIONS' in self._CONFIG['SYSTEMS'][self._system]:
-                        logger.info('(%s) Deleting HBP Options',self._system)
-                        del self._CONFIG['SYSTEMS'][self._system]['OPTIONS']
+                        if '_default_options' in self._CONFIG['SYSTEMS'][self._system]:
+                            self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = self._CONFIG['SYSTEMS'][self._system]['_default_options']
+                            logger.info('(%s) Setting default Options: %s',self._system, self._CONFIG['SYSTEMS'][self._system]['_default_options'])
+                        else:
+                            logger.info('(%s) Deleting HBP Options',self._system)
+                            del self._CONFIG['SYSTEMS'][self._system]['OPTIONS']
                     
             else:
                 _peer_id = _data[4:8]      # Configure Command
