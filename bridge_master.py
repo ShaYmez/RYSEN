@@ -419,7 +419,7 @@ def sendVoicePacket(self,pkt,_source_id,_dest_id,_slot):
     self.send_system(pkt)
     
 def sendSpeech(self,speech):
-    logger.info('(%s) Inside sendspeech thread',self._system)
+    logger.debug('(%s) Inside sendspeech thread',self._system)
     sleep(1)
     _nine = bytes_3(9)
     _source_id = bytes_3(5000)
@@ -433,12 +433,12 @@ def sendSpeech(self,speech):
         sleep(0.058)
         reactor.callFromThread(sendVoicePacket,self,pkt,_source_id,_nine,_slot)
 
-    logger.info('(%s) Sendspeech thread ended',self._system)
+    logger.debug('(%s) Sendspeech thread ended',self._system)
 
 def disconnectedVoice(system):
     _nine = bytes_3(9)
     _source_id = bytes_3(5000)
-    logger.info('(%s) Sending disconnected voice',system)
+    logger.debug('(%s) Sending disconnected voice',system)
     _say = [words['silence']]
     _say.append(words['silence']) 
     if CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'] > 0:
@@ -471,7 +471,7 @@ def disconnectedVoice(system):
         _stream_id = pkt[16:20]
         _pkt_time = time()
         reactor.callFromThread(sendVoicePacket,self,pkt,_source_id,_nine,_slot)
-        logger.info('(%s) disconnected voice thread end',system)
+        logger.debug('(%s) disconnected voice thread end',system)
     
 
 def threadIdent():
@@ -488,7 +488,7 @@ def ident():
             continue
         if CONFIG['SYSTEMS'][system]['VOICE_IDENT'] == True:
             if CONFIG['SYSTEMS'][system]['MAX_PEERS'] > 1:
-                logger.debug("(%s) System has MAX_PEERS > 1, skipping",system)
+                logger.debug("(IDENT) %s System has MAX_PEERS > 1, skipping",system)
                 continue
             _callsign = False
             for _peerid in CONFIG['SYSTEMS'][system]['PEERS']:
