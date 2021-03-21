@@ -494,7 +494,7 @@ def ident():
             for _peerid in CONFIG['SYSTEMS'][system]['PEERS']:
                 _callsign = CONFIG['SYSTEMS'][system]['PEERS'][_peerid]['CALLSIGN'].decode()
             if not _callsign:
-                logger.debug("(%s) System has no peers or no recorded callsign (%s), skipping",system,_callsign)
+                logger.debug("(IDENT) %s System has no peers or no recorded callsign (%s), skipping",system,_callsign)
                 continue
             _slot  = systems[system].STATUS[2]
             #If slot is idle for RX and TX
@@ -540,6 +540,7 @@ def options_config():
                 _options = {}
                 re.sub("\'","",CONFIG['SYSTEMS'][_system]['OPTIONS'])
                 re.sub("\"","",CONFIG['SYSTEMS'][_system]['OPTIONS'])
+                re.sub("\x00","",CONFIG['SYSTEMS'][_system]['OPTIONS'])
                 for x in CONFIG['SYSTEMS'][_system]['OPTIONS'].split(";"):
                     try:
                         k,v = x.split('=')
