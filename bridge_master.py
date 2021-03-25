@@ -382,7 +382,7 @@ def stream_trimmer_loop():
             for stream_id in systems[system].STATUS:
                 
                 #if stream already marked as finished, just remove it
-                if '_fin' in [system].STATUS[stream_id] and systems[system].STATUS[stream_id]['LAST'] < _now - 5:
+                if '_fin' in systems[system].STATUS[stream_id] and systems[system].STATUS[stream_id]['LAST'] < _now - 5:
                     removed = systems[system].STATUS.pop(stream_id)
                 
                 try:
