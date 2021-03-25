@@ -1273,9 +1273,9 @@ class routerOBP(OPENBRIDGE):
                             return
             
             #Move this here to stop messing up the dash - we only want to log a QSO if we allow it
-            #if (_stream_id not in self.STATUS):
-            #    if CONFIG['REPORTS']['REPORT']:
-            #        self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+            if (_stream_id not in self.STATUS):
+                if CONFIG['REPORTS']['REPORT']:
+                    self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
 
             self.STATUS[_stream_id]['LAST'] = pkt_time
             
