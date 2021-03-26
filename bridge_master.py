@@ -1263,7 +1263,7 @@ class routerOBP(OPENBRIDGE):
                         #try:
                             #self.STATUS.pop('LOOPHOLD')
                         #except:
-                            #pass
+                        #pass
                     #return
                
                 for system in systems:                            
