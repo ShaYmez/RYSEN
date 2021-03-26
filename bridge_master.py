@@ -1273,7 +1273,7 @@ class routerOBP(OPENBRIDGE):
                         for _sysslot in systems[system].STATUS:
                             if 'RX_STREAM_ID' in systems[system].STATUS[_sysslot] and _stream_id == systems[system].STATUS[_sysslot]['RX_STREAM_ID']:
                                 if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']: 
-                                    logger.warning("(%s) OBP LoopControl - call originated from HBP %s, stream id: %s, TG: %s, TS: %s, disgarding stream",self._system, system, int_id(_stream_id), int_id(_dst_id),_sysslot)
+                                    logger.warning("(%s) OBP *LoopControl* FIRST HBP: %s, STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id),_sysslot)
                                     self.STATUS[_stream_id]['LOOPLOG'] = True
                                 self.STATUS[_stream_id]['LAST'] = pkt_time
                                 return
@@ -1281,7 +1281,7 @@ class routerOBP(OPENBRIDGE):
                         #if _stream_id in systems[system].STATUS and systems[system].STATUS[_stream_id]['START'] <= self.STATUS[_stream_id]['START']:
                         if _stream_id in systems[system].STATUS and '1ST' in systems[system].STATUS[_stream_id] and systems[system].STATUS[_stream_id]['TGID'] == _dst_id:
                             if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
-                                logger.warning("(%s) OBP LoopControl - system %s is first system for stream id: %s on TG %s, disgarding stream from this system",self._system, system, int_id(_stream_id), int_id(_dst_id))
+                                logger.warning("(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id))
                                 self.STATUS[_stream_id]['LOOPLOG'] = True
                             self.STATUS[_stream_id]['LAST'] = pkt_time
                             return
