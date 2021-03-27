@@ -113,6 +113,9 @@ class playback(HBSYSTEM):
         pkt_time = time()
         dmrpkt = _data[20:53]
         _bits = _data[15]
+        
+        _new_stream_id = bytes_4(randint(0x00, 0xFFFFFFFF))
+        
         if _call_type == 'group':
             
             # Is this is a new call stream?
@@ -120,6 +123,8 @@ class playback(HBSYSTEM):
                 self.STATUS['RX_START'] = pkt_time
                 logger.info('(%s) *START RECORDING* STREAM ID: %s SUB: %s (%s) REPEATER: %s (%s) TGID %s (%s), TS %s', \
                                   self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+                #Change the stream ID
+                _data = _data[:15] + _new_stream_id + _data[21:]
                 self.CALL_DATA.append(_data)
                 self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
                 return
