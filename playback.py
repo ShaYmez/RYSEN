@@ -133,8 +133,11 @@ class playback(HBSYSTEM):
             # Final actions - Is this a voice terminator?
             if (_frame_type == const.HBPF_DATA_SYNC) and (_dtype_vseq == const.HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != const.HBPF_SLT_VTERM) and (self.CALL_DATA):
                 call_duration = pkt_time - self.STATUS['RX_START']
+                 #Change the stream ID
+                _data = _data[:15] + _new_stream_id + _data[21:]
                 self.CALL_DATA.append(_data)
                 logger.info('(%s) *END   RECORDING* STREAM ID: %s', self._system, int_id(_stream_id))
+                _stream_id = _new_stream_id
                 sleep(2)
                 logger.info('(%s) *START  PLAYBACK* STREAM ID: %s SUB: %s (%s) REPEATER: %s (%s) TGID %s (%s), TS %s, Duration: %s', \
                                   self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration)
