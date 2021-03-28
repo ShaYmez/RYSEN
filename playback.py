@@ -24,6 +24,7 @@ import sys
 from bitarray import bitarray
 from time import time, sleep
 from importlib import import_module
+from random import randint
 
 # Twisted is pretty important, so I keep it separate
 from twisted.internet.protocol import Factory, Protocol
