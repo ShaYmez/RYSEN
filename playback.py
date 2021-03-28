@@ -139,7 +139,11 @@ class playback(HBSYSTEM):
                                   self._system, int_id(_new_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration)
                 
                 for i in self.CALL_DATA:
+                    print('****')
+                    print('i')
+                    print('----')
                     i = i[:15] + _new_stream_id + i[21:]
+                    print(i)
                     self.send_system(i)
                     #print(i)
                     sleep(0.06)
