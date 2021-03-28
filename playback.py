@@ -150,8 +150,11 @@ class playback(HBSYSTEM):
             else:
                 if self.CALL_DATA:
                     #Change the stream ID
+                    print(_data)
+                    print("----")
                     _data = _data[:15] + _new_stream_id + _data[21:]
                     self.CALL_DATA.append(_data)
+                    print(_data)
 
 
             # Mark status variables for use later
