@@ -142,7 +142,7 @@ class playback(HBSYSTEM):
                     print('****')
                     print(i)
                     print('----')
-                    i = i[:15] + _new_stream_id + i[21:]
+                    i = i[:16] + _new_stream_id + i[21:]
                     print(i)
                     self.send_system(i)
                     #print(i)
