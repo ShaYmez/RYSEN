@@ -137,19 +137,20 @@ class playback(HBSYSTEM):
                 _data = _data[:15] + _new_stream_id + _data[21:]
                 self.CALL_DATA.append(_data)
                 logger.info('(%s) *END   RECORDING* STREAM ID: %s', self._system, int_id(_stream_id))
-                _stream_id = _new_stream_id
                 sleep(2)
                 logger.info('(%s) *START  PLAYBACK* STREAM ID: %s SUB: %s (%s) REPEATER: %s (%s) TGID %s (%s), TS %s, Duration: %s', \
-                                  self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration)
+                                  self._system, int_id(_new_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration)
                 for i in self.CALL_DATA:
                     self.send_system(i)
                     #print(i)
                     sleep(0.06)
                 self.CALL_DATA = []
-                logger.info('(%s) *END    PLAYBACK* STREAM ID: %s', self._system, int_id(_stream_id))
+                logger.info('(%s) *END    PLAYBACK* STREAM ID: %s', self._system, int_id(_new_stream_id))
 
             else:
                 if self.CALL_DATA:
+                    #Change the stream ID
+                    _data = _data[:15] + _new_stream_id + _data[21:]
                     self.CALL_DATA.append(_data)
 
 
