@@ -140,7 +140,7 @@ class playback(HBSYSTEM):
                 
                 for i in self.CALL_DATA:
                     print('****')
-                    print('i')
+                    print(i)
                     print('----')
                     i = i[:15] + _new_stream_id + i[21:]
                     print(i)
