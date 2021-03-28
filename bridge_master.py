@@ -1254,18 +1254,7 @@ class routerOBP(OPENBRIDGE):
             else:
                 
                # Loop Control
-               
-                #if 'LOOPHOLD' in self.STATUS[_stream_id]:
-                    #if self.STATUS[_stream_id]['LOOPHOLD'] < 5:
-                        #logger.debug ('(%s) Avoid packet due to loophold: %s',self._system,self.STATUS[_stream_id]['LOOPHOLD'])
-                        #self.STATUS[_stream_id]['LOOPHOLD'] = self.STATUS[_stream_id]['LOOPHOLD'] + 1
-                    #else:
-                        #try:
-                            #self.STATUS.pop('LOOPHOLD')
-                        #except:
-                        #pass
-                    #return
-               
+
                 for system in systems:                            
                     if system  == self._system:
                         continue
