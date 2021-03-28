@@ -160,6 +160,9 @@ def make_bridges(_rules):
 #Make a single bridge - used for on-the-fly UA bridges
 def make_single_bridge(_tgid,_sourcesystem,_slot,_tmout):
     _tgid_s = str(int_id(_tgid))
+    #Always a 1 min timeout for Echo
+    if _tgid_s = '9990':
+        _tmout = 1
     BRIDGES[_tgid_s] = []
     for _system in CONFIG['SYSTEMS']:
         if _system[0:3] != 'OBP':
