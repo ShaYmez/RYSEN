@@ -161,7 +161,7 @@ def make_bridges(_rules):
 def make_single_bridge(_tgid,_sourcesystem,_slot,_tmout):
     _tgid_s = str(int_id(_tgid))
     #Always a 1 min timeout for Echo
-    if _tgid_s = '9990':
+    if _tgid_s == '9990':
         _tmout = 1
     BRIDGES[_tgid_s] = []
     for _system in CONFIG['SYSTEMS']:
