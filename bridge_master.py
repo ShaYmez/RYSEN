@@ -253,6 +253,9 @@ def reset_default_reflector(reflector,_tmout,system):
 def make_single_reflector(_tgid,_tmout,_sourcesystem):
     _tgid_s = str(int_id(_tgid))
     _bridge = '#' + _tgid_s
+    #1 min timeout for echo
+    if _tgid_s == '9990':
+        _tmout = 1
     BRIDGES[_bridge] = []
     for _system in CONFIG['SYSTEMS']:
         #if _system[0:3] != 'OBP':
