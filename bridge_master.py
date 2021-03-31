@@ -1259,7 +1259,7 @@ class routerOBP(OPENBRIDGE):
 
             else:
                 
-               if '_fin' in self.STATUS[_stream_id]:
+                if '_fin' in self.STATUS[_stream_id]:
                    logger.warning("(%s) OBP *LoopControl* STREAM ID: %s ALREADY FINISHED FROM THIS SOURCE, IGNORING",self._system, int_id(_stream_id))
                    return
                
