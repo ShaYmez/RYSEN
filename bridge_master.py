@@ -366,7 +366,7 @@ def stream_trimmer_loop():
                 _slot  = systems[system].STATUS[slot]
 
                 # RX slot check
-                if _slot['RX_TYPE'] != HBPF_SLT_VTERM and _slot['RX_TIME'] <  _now - 5:
+                if _slot['RX_TYPE'] != HBPF_SLT_VTERM and _slot['RX_TIME'] <  _now - 10:
                     _slot['RX_TYPE'] = HBPF_SLT_VTERM
                     logger.info('(%s) *TIME OUT*  RX STREAM ID: %s SUB: %s TGID %s, TS %s, Duration: %.2f', \
                         system, int_id(_slot['RX_STREAM_ID']), int_id(_slot['RX_RFS']), int_id(_slot['RX_TGID']), slot, _slot['RX_TIME'] - _slot['RX_START'])
@@ -374,7 +374,7 @@ def stream_trimmer_loop():
                         systems[system]._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(_slot['RX_STREAM_ID']), int_id(_slot['RX_PEER']), int_id(_slot['RX_RFS']), slot, int_id(_slot['RX_TGID']), _slot['RX_TIME'] - _slot['RX_START']).encode(encoding='utf-8', errors='ignore'))
 
                 # TX slot check
-                if _slot['TX_TYPE'] != HBPF_SLT_VTERM and _slot['TX_TIME'] <  _now - 5:
+                if _slot['TX_TYPE'] != HBPF_SLT_VTERM and _slot['TX_TIME'] <  _now - 10:
                     _slot['TX_TYPE'] = HBPF_SLT_VTERM
                     logger.info('(%s) *TIME OUT*  TX STREAM ID: %s SUB: %s TGID %s, TS %s, Duration: %.2f', \
                         system, int_id(_slot['TX_STREAM_ID']), int_id(_slot['TX_RFS']), int_id(_slot['TX_TGID']), slot, _slot['TX_TIME'] - _slot['TX_START'])
@@ -389,13 +389,13 @@ def stream_trimmer_loop():
             for stream_id in systems[system].STATUS:
                 
                 #if stream already marked as finished, just remove it
-                if '_fin' in systems[system].STATUS[stream_id] and systems[system].STATUS[stream_id]['LAST'] < _now - 5:
+                if '_fin' in systems[system].STATUS[stream_id] and systems[system].STATUS[stream_id]['LAST'] < _now - 10:
                     logger.info('(%s) *FINISHED STREAM* STREAM ID: %s',system, int_id(stream_id))
                     fin_list.append(stream_id)
                     continue
                 
                 try:
-                    if systems[system].STATUS[stream_id]['LAST'] < _now - 5:
+                    if systems[system].STATUS[stream_id]['LAST'] < _now - 10:
                         remove_list.append(stream_id)
                 except:
                     logger.warning("(%s) Keyerror - stream trimmer Stream ID: %s",system,stream_id)
