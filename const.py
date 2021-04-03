@@ -69,6 +69,8 @@ RPTA    = b'RPTA'
 RPTO    = b'RPTO'
 DMRA    = b'DMRA'
 
+#Bridge Control commands
+BCKA    = b'BCKA'
 
 # Higheset peer ID permitted by HBP
 PEER_MAX = 4294967295

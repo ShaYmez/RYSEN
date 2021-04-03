@@ -124,9 +124,15 @@ class OPENBRIDGE(DatagramProtocol):
             _packet = b''.join([_packet, (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
             self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
             # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
-            #logger.debug('(%s) TX Packet to OpenBridge %s:%s -- %s', self._system, self._config['TARGET_IP'], self._config['TARGET_PORT'], ahex(_packet))
+            #logger.debug('(%s) TX Packet to OpenBridge %s:%s -- %s', self._system, self._config['TARGET_IP'], self._config['TARGET_PORT'], ahex(_packet))                
         else:
             logger.error('(%s) OpenBridge system was asked to send non DMRD packet: %s', self._system, _packet)
+            
+    def send_bcka(self):
+        _packet= b'KA'
+        _packet = b''.join([_packet, (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
+        self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
+        logger.debug('(%s) Sent Bridge Control Keep Alive',self._system)
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pass
@@ -194,7 +200,21 @@ class OPENBRIDGE(DatagramProtocol):
             else:
                 h,p = _sockaddr
                 logger.info('(%s) OpenBridge HMAC failed, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:53]), len(_packet[53:]), repr(_packet[53:]),h,p) 
-
+        
+        if _packet[:2] == BC:    # Bridge Control packet (Extended OBP)
+            if _packet[:4] == BCKA:
+                _data = _packet[:53]
+                _hash = _packet[53:]
+                _ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
+                if compare_digest(_hash, _ckhs):
+                    logger.debug('(%s) Bridge Control Keep Alive received')
+                    self._config['_bc']['_ka'] = time()
+        
+                else:
+                    h,p = _sockaddr
+                    logger.info('(%s) OpenBridge BCKA invalid KeepAlive, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:53]), len(_packet[53:]), repr(_packet[53:]),h,p) 
+        
+                
 #************************************************
 #     HB MASTER CLASS
 #************************************************
@@ -441,7 +461,7 @@ class HBSYSTEM(DatagramProtocol):
                         'SOFTWARE_ID': '',
                         'PACKAGE_ID': '',
                     }})
-                    logger.info('(%s) Repeater Logging in with Radio ID: %s, %s:%s', self._system, int_id(_peer_id), _sockaddr[0], _sockaddr[1])
+                    logger.info('(%s) Repeater Logging in with Radio ID: %s, %s:%s, Package ID: %s', self._system, int_id(_peer_id), _sockaddr[0], _sockaddr[1],self._peers[_peer_id]['PACKAGE_ID'])
                     _salt_str = bytes_4(self._peers[_peer_id]['SALT'])
                     self.send_peer(_peer_id, b''.join([RPTACK, _salt_str]))
                     self._peers[_peer_id]['CONNECTION'] = 'CHALLENGE_SENT'
