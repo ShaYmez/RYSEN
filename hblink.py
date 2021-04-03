@@ -461,7 +461,7 @@ class HBSYSTEM(DatagramProtocol):
                         'SOFTWARE_ID': '',
                         'PACKAGE_ID': '',
                     }})
-                    logger.info('(%s) Repeater Logging in with Radio ID: %s, %s:%s, Package ID: %s', self._system, int_id(_peer_id), _sockaddr[0], _sockaddr[1],self._peers[_peer_id]['PACKAGE_ID'])
+                    logger.info('(%s) Repeater Logging in with Radio ID: %s, %s:%s', self._system, int_id(_peer_id), _sockaddr[0], _sockaddr[1])
                     _salt_str = bytes_4(self._peers[_peer_id]['SALT'])
                     self.send_peer(_peer_id, b''.join([RPTACK, _salt_str]))
                     self._peers[_peer_id]['CONNECTION'] = 'CHALLENGE_SENT'
@@ -542,7 +542,7 @@ class HBSYSTEM(DatagramProtocol):
                     _this_peer['PACKAGE_ID'] = _data[262:302]
 
                     self.send_peer(_peer_id, b''.join([RPTACK, _peer_id]))
-                    logger.info('(%s) Peer %s (%s) has sent repeater configuration', self._system, _this_peer['CALLSIGN'], _this_peer['RADIO_ID'])
+                    logger.info('(%s) Peer %s (%s) has sent repeater configuration, Package ID: %s, Software ID: %s', self._system, _this_peer['CALLSIGN'], _this_peer['RADIO_ID'],self._peers[_peer_id]['PACKAGE_ID'],,self._peers[_peer_id]['SOFTWARE_ID'])
                 else:
                     self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                     logger.warning('(%s) Peer info from Radio ID that has not logged in: %s', self._system, int_id(_peer_id))
