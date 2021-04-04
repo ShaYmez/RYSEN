@@ -70,6 +70,7 @@ RPTO    = b'RPTO'
 DMRA    = b'DMRA'
 
 #Bridge Control commands
+BC      = b'BC'
 BCKA    = b'BCKA'
 
 # Higheset peer ID permitted by HBP

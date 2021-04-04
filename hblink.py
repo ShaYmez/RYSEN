@@ -112,6 +112,10 @@ class OPENBRIDGE(DatagramProtocol):
         self._report = _report
         self._config = self._CONFIG['SYSTEMS'][self._system]
         self._laststrid = deque([], 20)
+        
+    def startProtocol(self):
+        self._bcka = task.LoopingCall(self.send_bcka)
+        self._bcka = self._bcka.start(10)
 
     def dereg(self):
         logger.info('(%s) is mode OPENBRIDGE. No De-Registration required, continuing shutdown', self._system)
@@ -129,7 +133,7 @@ class OPENBRIDGE(DatagramProtocol):
             logger.error('(%s) OpenBridge system was asked to send non DMRD packet: %s', self._system, _packet)
             
     def send_bcka(self):
-        _packet= b'KA'
+        _packet= BCKA
         _packet = b''.join([_packet, (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
         self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
         logger.debug('(%s) Sent Bridge Control Keep Alive',self._system)
