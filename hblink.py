@@ -223,7 +223,7 @@ class OPENBRIDGE(DatagramProtocol):
                                 self.config['TARGET_IP'] = h
                                 logger.info('(%s) *BridgeControl* Source IP has changed for OBP, updating',self._system)
                             else:
-                                logger.info('(%s) *BridgeControl* Source IP has changed for OBP but port has also changed, *NOT* updating',self._system)
+                                logger.info('(%s) *BridgeControl* Source IP has changed for OBP but port has also changed, *NOT* updating, IP: %s, Port: %s',self._system, h, p)
                                 
                     else:
                         h,p = _sockaddr
