@@ -218,12 +218,9 @@ class OPENBRIDGE(DatagramProtocol):
                         self._config['_bcka'] = time()
                         if _sockaddr != self._config['TARGET_SOCK']:
                             h,p =  _sockaddr
-                            if p == self._config['TARGET_PORT']:
-                                self._config['TARGET_SOCK'] = _sockaddr
+                            if h != self.config['TARGET_IP']:
                                 self.config['TARGET_IP'] = h
                                 logger.info('(%s) *BridgeControl* Source IP has changed for OBP, updating',self._system)
-                            else:
-                                logger.info('(%s) *BridgeControl* Source IP has changed for OBP but port has also changed, *NOT* updating, IP: %s, Port: %s',self._system, h, p)
                                 
                     else:
                         h,p = _sockaddr
