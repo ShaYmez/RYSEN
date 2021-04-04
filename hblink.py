@@ -113,16 +113,11 @@ class OPENBRIDGE(DatagramProtocol):
         self._config = self._CONFIG['SYSTEMS'][self._system]
         self._laststrid = deque([], 20)
         
-<<<<<<< HEAD
-    #def startProtocol(self):
-    #    self._bcka = task.LoopingCall(self.send_bcka)
-    #    self._bcka = self._bcka.start(10)
-=======
+
     def startProtocol(self):
         if self._config['ENHANCED_OBP']:
             self._bcka = task.LoopingCall(self.send_bcka)
             self._bcka = self._bcka.start(10)
->>>>>>> bcka
 
     def dereg(self):
         logger.info('(%s) is mode OPENBRIDGE. No De-Registration required, continuing shutdown', self._system)
