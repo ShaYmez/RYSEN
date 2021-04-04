@@ -138,7 +138,7 @@ class OPENBRIDGE(DatagramProtocol):
         _packet = BCKA
         _packet = b''.join([_packet[:4], (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
         self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
-        logger.debug('(%s) Sent Bridge Control Keep Alive',self._system)
+        logger.debug('(%s) *BridgeControl* sent Keep Alive',self._system)
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pass
