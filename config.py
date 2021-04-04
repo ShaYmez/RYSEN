@@ -303,6 +303,7 @@ def build_config(_config_file):
                         'TG1_ACL': config.get(section, 'TGID_ACL'),
                         'TG2_ACL': 'PERMIT:ALL',
                         'RELAX_CHECKS': config.getboolean(section, 'RELAX_CHECKS')
+                        'ENHANCED_OBP': config.getboolean(section, 'ENHANCED_OBP')
                     }})
                     
     
