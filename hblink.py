@@ -113,9 +113,16 @@ class OPENBRIDGE(DatagramProtocol):
         self._config = self._CONFIG['SYSTEMS'][self._system]
         self._laststrid = deque([], 20)
         
+<<<<<<< HEAD
     #def startProtocol(self):
     #    self._bcka = task.LoopingCall(self.send_bcka)
     #    self._bcka = self._bcka.start(10)
+=======
+    def startProtocol(self):
+        if self._config['ENHANCED_OBP']:
+            self._bcka = task.LoopingCall(self.send_bcka)
+            self._bcka = self._bcka.start(10)
+>>>>>>> bcka
 
     def dereg(self):
         logger.info('(%s) is mode OPENBRIDGE. No De-Registration required, continuing shutdown', self._system)
@@ -204,23 +211,29 @@ class OPENBRIDGE(DatagramProtocol):
             else:
                 h,p = _sockaddr
                 logger.info('(%s) OpenBridge HMAC failed, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:53]), len(_packet[53:]), repr(_packet[53:]),h,p) 
-        
-        if _packet[:2] == BC:    # Bridge Control packet (Extended OBP)
-            if _packet[:4] == BCKA:
-                _data = _packet[:53]
-                _hash = _packet[53:]
-                _ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
-                if compare_digest(_hash, _ckhs):
-                    logger.debug('(%s) Bridge Control Keep Alive received')
-                    self._config['_bc']['_ka'] = time()
-        
-                else:
-                    print(_hash)
-                    print(_ckhs)
-                    h,p = _sockaddr
-                    logger.info('(%s) OpenBridge BCKA invalid KeepAlive, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:53]), len(_packet[53:]), repr(_packet[53:]),h,p) 
-        
-                
+
+        if self._config['ENHANCED_OBP']:
+            if _packet[:2] == BC:    # Bridge Control packet (Extended OBP)
+                if _packet[:4] == BCKA:
+                    #_data = _packet[:53]
+                    _hash = _packet[4:]
+                    _ckhs = hmac_new(self._config['PASSPHRASE'],_packet[:4],sha1).digest()
+                    if compare_digest(_hash, _ckhs):
+                        logger.debug('(%s) *BridgeControl* Keep Alive received',self._system)
+                        self._config['_bcka'] = time()
+                        if _sockaddr != self._config['TARGET_SOCK']:
+                            h,p =  _sockaddr
+                            if p == self._config['TARGET_PORT']:
+                                self._config['TARGET_SOCK'] = _sockaddr
+                                self.config['TARGET_IP'] = h
+                                logger.info('(%s) *BridgeControl* Source IP has changed for OBP, updating',self._system)
+                            else:
+                                logger.info('(%s) *BridgeControl* Source IP has changed for OBP but port has also changed, *NOT* updating',self._system)
+                                
+                    else:
+                        h,p = _sockaddr
+                        logger.info('(%s) *BridgeControl* BCKA invalid KeepAlive, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:53]), len(_packet[53:]), repr(_packet[53:]),h,p) 
+      
 #************************************************
 #     HB MASTER CLASS
 #************************************************
