@@ -113,9 +113,9 @@ class OPENBRIDGE(DatagramProtocol):
         self._config = self._CONFIG['SYSTEMS'][self._system]
         self._laststrid = deque([], 20)
         
-    def startProtocol(self):
-        self._bcka = task.LoopingCall(self.send_bcka)
-        self._bcka = self._bcka.start(10)
+    #def startProtocol(self):
+    #    self._bcka = task.LoopingCall(self.send_bcka)
+    #    self._bcka = self._bcka.start(10)
 
     def dereg(self):
         logger.info('(%s) is mode OPENBRIDGE. No De-Registration required, continuing shutdown', self._system)
@@ -133,8 +133,8 @@ class OPENBRIDGE(DatagramProtocol):
             logger.error('(%s) OpenBridge system was asked to send non DMRD packet: %s', self._system, _packet)
             
     def send_bcka(self):
-        _packet= BCKA
-        _packet = b''.join([_packet, (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
+        _packet = BCKA
+        _packet = b''.join([_packet[:4], (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
         self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
         logger.debug('(%s) Sent Bridge Control Keep Alive',self._system)
 
@@ -215,6 +215,8 @@ class OPENBRIDGE(DatagramProtocol):
                     self._config['_bc']['_ka'] = time()
         
                 else:
+                    print(_hash)
+                    print(_ckhs)
                     h,p = _sockaddr
                     logger.info('(%s) OpenBridge BCKA invalid KeepAlive, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:53]), len(_packet[53:]), repr(_packet[53:]),h,p) 
         
