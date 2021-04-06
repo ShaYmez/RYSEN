@@ -391,7 +391,7 @@ def stream_trimmer_loop():
             for stream_id in systems[system].STATUS:
                 
                 #if stream already marked as finished, just remove it
-                if '_fin' in systems[system].STATUS[stream_id] and systems[system].STATUS[stream_id]['LAST'] < _now - 10:
+                if '_fin' in systems[system].STATUS[stream_id] and systems[system].STATUS[stream_id]['LAST'] < _now - 60:
                     logger.info('(%s) *FINISHED STREAM* STREAM ID: %s',system, int_id(stream_id))
                     fin_list.append(stream_id)
                     continue
