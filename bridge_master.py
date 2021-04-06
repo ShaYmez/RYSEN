@@ -366,7 +366,7 @@ def stream_trimmer_loop():
                 _slot  = systems[system].STATUS[slot]
 
                 # RX slot check
-                if _slot['RX_TYPE'] != HBPF_SLT_VTERM and _slot['RX_TIME'] <  _now - 10:
+                if _slot['RX_TYPE'] != HBPF_SLT_VTERM and _slot['RX_TIME'] <  _now - 60:
                     _slot['RX_TYPE'] = HBPF_SLT_VTERM
                     logger.info('(%s) *TIME OUT*  RX STREAM ID: %s SUB: %s TGID %s, TS %s, Duration: %.2f', \
                         system, int_id(_slot['RX_STREAM_ID']), int_id(_slot['RX_RFS']), int_id(_slot['RX_TGID']), slot, _slot['RX_TIME'] - _slot['RX_START'])
@@ -376,7 +376,7 @@ def stream_trimmer_loop():
                     _slot['RX_STREAM_ID'] = b'\x00'
 
                 # TX slot check
-                if _slot['TX_TYPE'] != HBPF_SLT_VTERM and _slot['TX_TIME'] <  _now - 10:
+                if _slot['TX_TYPE'] != HBPF_SLT_VTERM and _slot['TX_TIME'] <  _now - 60:
                     _slot['TX_TYPE'] = HBPF_SLT_VTERM
                     logger.info('(%s) *TIME OUT*  TX STREAM ID: %s SUB: %s TGID %s, TS %s, Duration: %.2f', \
                         system, int_id(_slot['TX_STREAM_ID']), int_id(_slot['TX_RFS']), int_id(_slot['TX_TGID']), slot, _slot['TX_TIME'] - _slot['TX_START'])
@@ -397,7 +397,7 @@ def stream_trimmer_loop():
                     continue
                 
                 try:
-                    if systems[system].STATUS[stream_id]['LAST'] < _now - 10:
+                    if systems[system].STATUS[stream_id]['LAST'] < _now - 60:
                         remove_list.append(stream_id)
                 except:
                     logger.warning("(%s) Keyerror - stream trimmer Stream ID: %s",system,stream_id)
