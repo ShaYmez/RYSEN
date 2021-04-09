@@ -1267,10 +1267,10 @@ class routerOBP(OPENBRIDGE):
                
                # Loop Control
                 _removeextra1 = []
+                _count = 0
                 for system in systems:
                     if system  == self._system:
                         continue
-                    _count = 0
                     if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
                         if _stream_id in systems[system].STATUS and '1ST' in systems[system].STATUS[_stream_id]:
                             _count = _count + 1
