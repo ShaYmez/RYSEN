@@ -1275,7 +1275,7 @@ class routerOBP(OPENBRIDGE):
                     if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
                         if _stream_id in systems[system].STATUS and '1ST' in systems[system].STATUS[_stream_id]:
                             _count = _count + 1
-                            if _count > 0:
+                            if _count > 1:
                                 logger.warning('Extra')
                                 _removeextra1.append(system)
                 for remove in removeextra1:
