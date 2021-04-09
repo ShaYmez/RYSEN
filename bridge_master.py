@@ -1277,7 +1277,7 @@ class routerOBP(OPENBRIDGE):
                             if _count > 1:
                                 logger.warning('Extra')
                                 _removeextra1.append(system)
-                for remove in removeextra1:
+                for remove in _removeextra1:
                     del systems[remove].STATUS[_stream_id]['1ST']
 
                 for system in systems:                            
