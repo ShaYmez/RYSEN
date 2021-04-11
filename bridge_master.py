@@ -1266,19 +1266,19 @@ class routerOBP(OPENBRIDGE):
                    return
                
                # Loop Control
-                _removeextra1 = []
-                _count = 0
-                for system in systems:
-                    if system  == self._system:
-                        continue
-                    if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
-                        if _stream_id in systems[system].STATUS and '1ST' in systems[system].STATUS[_stream_id]:
-                            _count = _count + 1
-                            if _count > 1:
-                                logger.warning('Extra')
-                                _removeextra1.append(system)
-                for remove in _removeextra1:
-                    del systems[remove].STATUS[_stream_id]['1ST']
+                #_removeextra1 = []
+                #_count = 0
+                #for system in systems:
+                    #if system  == self._system:
+                        #continue
+                    #if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
+                        #if _stream_id in systems[system].STATUS and '1ST' in systems[system].STATUS[_stream_id]:
+                            #_count = _count + 1
+                            #if _count > 1:
+                                #logger.warning('Extra')
+                                #_removeextra1.append(system)
+                #for remove in _removeextra1:
+                    #del systems[remove].STATUS[_stream_id]['1ST']
 
                 for system in systems:                            
                     if system  == self._system:
