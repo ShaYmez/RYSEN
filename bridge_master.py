@@ -421,7 +421,7 @@ def stream_trimmer_loop():
                 
                     try:
                         for tgid in _sysconfig['_bcsq']:
-                            if sysconfig['_bcsq'][tgid] == stream_id:
+                            if _sysconfig['_bcsq'][tgid] == stream_id:
                                 removed = sysconfig['_bcsq'].pop(tgid)
                     except KeyError:
                         pass
