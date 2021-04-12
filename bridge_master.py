@@ -366,17 +366,18 @@ def stream_trimmer_loop():
                 _slot  = systems[system].STATUS[slot]
 
                 # RX slot check
-                if _slot['RX_TYPE'] != HBPF_SLT_VTERM and _slot['RX_TIME'] <  _now - 60:
+                if _slot['RX_TYPE'] != HBPF_SLT_VTERM and _slot['RX_TIME'] <  _now - 5:
                     _slot['RX_TYPE'] = HBPF_SLT_VTERM
                     logger.info('(%s) *TIME OUT*  RX STREAM ID: %s SUB: %s TGID %s, TS %s, Duration: %.2f', \
                         system, int_id(_slot['RX_STREAM_ID']), int_id(_slot['RX_RFS']), int_id(_slot['RX_TGID']), slot, _slot['RX_TIME'] - _slot['RX_START'])
                     if CONFIG['REPORTS']['REPORT']:
                         systems[system]._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(_slot['RX_STREAM_ID']), int_id(_slot['RX_PEER']), int_id(_slot['RX_RFS']), slot, int_id(_slot['RX_TGID']), _slot['RX_TIME'] - _slot['RX_START']).encode(encoding='utf-8', errors='ignore'))
-                    #Null stream_id - for loop control 
+                #Null stream_id - for loop control 
+                if _slot['RX_TIME'] < _now - 60:
                     _slot['RX_STREAM_ID'] = b'\x00'
 
                 # TX slot check
-                if _slot['TX_TYPE'] != HBPF_SLT_VTERM and _slot['TX_TIME'] <  _now - 60:
+                if _slot['TX_TYPE'] != HBPF_SLT_VTERM and _slot['TX_TIME'] <  _now - 5:
                     _slot['TX_TYPE'] = HBPF_SLT_VTERM
                     logger.info('(%s) *TIME OUT*  TX STREAM ID: %s SUB: %s TGID %s, TS %s, Duration: %.2f', \
                         system, int_id(_slot['TX_STREAM_ID']), int_id(_slot['TX_RFS']), int_id(_slot['TX_TGID']), slot, _slot['TX_TIME'] - _slot['TX_START'])
@@ -417,6 +418,13 @@ def stream_trimmer_loop():
                     if CONFIG['REPORTS']['REPORT']:
                             systems[system]._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(stream_id), int_id(_sysconfig['NETWORK_ID']), int_id(_stream['RFS']), 1, int_id(_stream['TGID']), _stream['LAST'] - _stream['START']).encode(encoding='utf-8', errors='ignore'))
                     removed = systems[system].STATUS.pop(stream_id)
+                
+                    try:
+                        for tgid in _sysconfig['_bcsq']:
+                            if sysconfig['_bcsq'][tgid] == stream_id:
+                                removed = sysconfig['_bcsq'].pop(tgid)
+                    except KeyError:
+                        pass
                 else:
                     logger.error('(%s) Attemped to remove OpenBridge Stream ID %s not in the Stream ID list: %s', system, int_id(stream_id), [id for id in systems[system].STATUS])
 
@@ -1072,6 +1080,12 @@ class routerOBP(OPENBRIDGE):
                     #We want to ignore this system and TS combination if it's called again for this packet
                     _sysIgnore.append((_target['SYSTEM'],_target['TS']))
         
+                    if ('_bcsq' in _target_system) and (_dst_id in _target_system['_bcsq']) and (_target_system['_bcsq'][_dst_id] == _stream_id):
+                        #logger.info('(%s) Conference Bridge: %s, is Source Quenched for Stream ID: %s, skipping system: %s TS: %s, TGID: %s', self._system, _bridge, int_id(_stream_id), _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
+                        continue
+                        
+                        
+                    
                     # Is this a new call stream on the target?
                     if (_stream_id not in _target_status):
                         # This is a new call stream on the target
@@ -1261,8 +1275,9 @@ class routerOBP(OPENBRIDGE):
 
             else:
                 
-                if '_fin' in self.STATUS[_stream_id]:
+                if '_fin' in self.STATUS[_stream_id] and '_finlog' not in self.STATUS[_stream_id]:
                    logger.warning("(%s) OBP *LoopControl* STREAM ID: %s ALREADY FINISHED FROM THIS SOURCE, IGNORING",self._system, int_id(_stream_id))
+                   self.STATUS[_stream_id]['_finlog'] = True
                    return
                
                # Loop Control
@@ -1298,6 +1313,13 @@ class routerOBP(OPENBRIDGE):
                                 logger.warning("(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id))
                                 self.STATUS[_stream_id]['LOOPLOG'] = True
                             self.STATUS[_stream_id]['LAST'] = pkt_time
+                            
+                            if CONFIG['SYSTEMS'][self._system]['ENHANCED_OBP'] and '_bcsq' not in self.STATUS[_stream_id]:
+                                systems[self._system].send_bcsq(_dst_id,_stream_id)
+                                logger.warning("(%s) OBP *BridgeControl* This system Sent BCSQ , STREAM ID: %s, TG %s",self._system, int_id(_stream_id), int_id(_dst_id))
+                                self.STATUS[_stream_id]['_bcsq'] = True
+                                
+                                
                             return
 
 
@@ -1317,6 +1339,7 @@ class routerOBP(OPENBRIDGE):
                 #if _bridge[0:1] != '#':
                 #if True:
                     for _system in BRIDGES[_bridge]:
+                        
                         if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
                             _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore)
 

@@ -72,6 +72,7 @@ DMRA    = b'DMRA'
 #Bridge Control commands
 BC      = b'BC'
 BCKA    = b'BCKA'
+BCSQ    = b'BCSQ'
 
 # Higheset peer ID permitted by HBP
 PEER_MAX = 4294967295

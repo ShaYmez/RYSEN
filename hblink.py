@@ -116,7 +116,7 @@ class OPENBRIDGE(DatagramProtocol):
 
     def startProtocol(self):
         if self._config['ENHANCED_OBP']:
-            self._bcka = task.LoopingCall(self.send_bcka)
+            self._bcka = task.LoopingCall(self.send_bcka())
             self._bcka = self._bcka.start(10)
 
     def dereg(self):
@@ -132,13 +132,20 @@ class OPENBRIDGE(DatagramProtocol):
             # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
             #logger.debug('(%s) TX Packet to OpenBridge %s:%s -- %s', self._system, self._config['TARGET_IP'], self._config['TARGET_PORT'], ahex(_packet))                
         else:
-            logger.error('(%s) OpenBridge system was asked to send non DMRD packet: %s', self._system, _packet)
+            logger.error('(%s) OpenBridge system was asked to send non DMRD packet with send_system(): %s', self._system, _packet)
             
     def send_bcka(self):
         _packet = BCKA
         _packet = b''.join([_packet[:4], (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
         self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
         logger.debug('(%s) *BridgeControl* sent Keep Alive',self._system)
+        
+    def send_bcsq(self,_tgid,_stream_id):
+        _packet = b''.join([BCSQ, _tgid, _stream_id])
+        _packet = b''.join([_packet, (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
+        self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
+        logger.debug('(%s) *BridgeControl* sent Source Quench, TG: %s, Stream ID: %s',self._system,int_id(_tgid), int_id(_stream_id))
+    
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pass
@@ -209,6 +216,7 @@ class OPENBRIDGE(DatagramProtocol):
 
         if self._config['ENHANCED_OBP']:
             if _packet[:2] == BC:    # Bridge Control packet (Extended OBP)
+                #Keep Alive
                 if _packet[:4] == BCKA:
                     #_data = _packet[:53]
                     _hash = _packet[4:]
@@ -218,7 +226,7 @@ class OPENBRIDGE(DatagramProtocol):
                         self._config['_bcka'] = time()
                         if _sockaddr != self._config['TARGET_SOCK']:
                             h,p =  _sockaddr
-                            logger.info('(%s) *BridgeControl* Source IP and Port has changed for OBP from %s:%s to %s:%s,  updating',self._system,self._config['TARGET_IP'],self._config['TARGET_port'],h,p)
+                            logger.info('(%s) *BridgeControl* Source IP and Port has changed for OBP from %s:%s to %s:%s,  updating',self._system,self._config['TARGET_IP'],self._config['TARGET_PORT'],h,p)
                             self._config['TARGET_IP'] = h
                             self._config['TARGET_PORT'] = p
                             self._config['TARGET_SOCK'] = (h,p)
@@ -226,6 +234,23 @@ class OPENBRIDGE(DatagramProtocol):
                     else:
                         h,p = _sockaddr
                         logger.info('(%s) *BridgeControl* BCKA invalid KeepAlive, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:53]), len(_packet[53:]), repr(_packet[53:]),h,p) 
+                #Source Quench
+                if _packet[:4] == BCSQ:
+                    #_data = _packet[:11]
+                    _hash = _packet[11:]
+                    _tgid = _packet[4:7]
+                    _stream_id = _packet[7:11]
+                    _ckhs = hmac_new(self._config['PASSPHRASE'],_packet[:11],sha1).digest()
+                    if compare_digest(_hash, _ckhs):
+                        logger.info('(%s) *BridgeControl* Source Quench request received for TGID: %s, Stream ID: %s',self._system,int_id(_tgid), int_id(_stream_id))
+                        if '_bcsq' not in self._config:
+                            self._config['_bcsq'] = {}
+                        self._config['_bcsq'][_tgid] = _stream_id
+                    else:
+                        h,p = _sockaddr
+                        logger.info('(%s) *BridgeControl* BCSQ invalid Source Quench, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:53]), len(_packet[53:]), repr(_packet[53:]),h,p)  
+                
+                    
       
 #************************************************
 #     HB MASTER CLASS
