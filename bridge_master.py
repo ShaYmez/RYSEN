@@ -397,19 +397,19 @@ def stream_trimmer_loop():
                     fin_list.append(stream_id)
                     continue
                 
-                try:
-                    if '_to' not in systems[system].STATUS[stream_id] and '_fin' not in systems[system].STATUS[stream_id] and systems[system].STATUS[stream_id]['LAST'] < _now - 5:
-                        systems[system].STATUS[stream_id]['_fin'] = True
-                        logger.info('(%s) *TIME OUT*   STREAM ID: %s SUB: %s PEER: %s TGID: %s TS 1 Duration: %.2f', \
-                            system, int_id(stream_id), get_alias(int_id(_stream['RFS']), subscriber_ids), get_alias(int_id(_sysconfig['NETWORK_ID']), peer_ids), get_alias(int_id(_stream['TGID']), talkgroup_ids), _stream['LAST'] - _stream['START'])
-                        if CONFIG['REPORTS']['REPORT']:
-                                systems[system]._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(stream_id), int_id(_sysconfig['NETWORK_ID']), int_id(_stream['RFS']), 1, int_id(_stream['TGID']), _stream['LAST'] - _stream['START']).encode(encoding='utf-8', errors='ignore'))
-                        systems[system].STATUS[stream_id]['_to'] = True
-                        continue
-                except:
-                    logger.warning("(%s) Keyerror - stream trimmer Stream ID: %s",system,stream_id)
-                    systems[system].STATUS[stream_id]['LAST'] = _now
+                #try:
+                if '_to' not in systems[system].STATUS[stream_id] and '_fin' not in systems[system].STATUS[stream_id] and systems[system].STATUS[stream_id]['LAST'] < _now - 5:
+                    systems[system].STATUS[stream_id]['_fin'] = True
+                    logger.info('(%s) *TIME OUT*   STREAM ID: %s SUB: %s PEER: %s TGID: %s TS 1 Duration: %.2f', \
+                        system, int_id(stream_id), get_alias(int_id(_stream['RFS']), subscriber_ids), get_alias(int_id(_sysconfig['NETWORK_ID']), peer_ids), get_alias(int_id(_stream['TGID']), talkgroup_ids), _stream['LAST'] - _stream['START'])
+                    if CONFIG['REPORTS']['REPORT']:
+                            systems[system]._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(stream_id), int_id(_sysconfig['NETWORK_ID']), int_id(_stream['RFS']), 1, int_id(_stream['TGID']), _stream['LAST'] - _stream['START']).encode(encoding='utf-8', errors='ignore'))
+                    systems[system].STATUS[stream_id]['_to'] = True
                     continue
+                #except:
+                    #logger.warning("(%s) Keyerror - stream trimmer Stream ID: %s",system,stream_id)
+                    #systems[system].STATUS[stream_id]['LAST'] = _now
+                    #continue
 
                     
                 try:
