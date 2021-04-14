@@ -1292,10 +1292,11 @@ class routerOBP(OPENBRIDGE):
 
             else:
                 
-                if '_fin' in self.STATUS[_stream_id] and '_finlog' not in self.STATUS[_stream_id]:
-                   logger.warning("(%s) OBP *LoopControl* STREAM ID: %s ALREADY FINISHED FROM THIS SOURCE, IGNORING",self._system, int_id(_stream_id))
-                   self.STATUS[_stream_id]['_finlog'] = True
-                   return
+                if '_fin' in self.STATUS[_stream_id]:
+                    if '_finlog' not in self.STATUS[_stream_id]:
+                        logger.warning("(%s) OBP *LoopControl* STREAM ID: %s ALREADY FINISHED FROM THIS SOURCE, IGNORING",self._system, int_id(_stream_id))
+                    self.STATUS[_stream_id]['_finlog'] = True
+                    return
                
                # Loop Control
                 #_removeextra1 = []
