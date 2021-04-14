@@ -392,7 +392,7 @@ def stream_trimmer_loop():
             for stream_id in systems[system].STATUS:
                 
                 #if stream already marked as finished, just remove it
-                if '_fin' in systems[system].STATUS[stream_id] and systems[system].STATUS[stream_id]['LAST'] < _now - 60:
+                if '_fin' in systems[system].STATUS[stream_id] and systems[system].STATUS[stream_id]['LAST'] < _now - 180:
                     logger.info('(%s) *FINISHED STREAM* STREAM ID: %s',system, int_id(stream_id))
                     fin_list.append(stream_id)
                     continue
@@ -415,7 +415,7 @@ def stream_trimmer_loop():
 
                     
                 try:
-                    if systems[system].STATUS[stream_id]['LAST'] < _now - 60:
+                    if systems[system].STATUS[stream_id]['LAST'] < _now - 180:
                         remove_list.append(stream_id)
                 except:
                     logger.warning("(%s) Keyerror - stream trimmer Stream ID: %s",system,stream_id)
