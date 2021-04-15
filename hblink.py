@@ -112,12 +112,18 @@ class OPENBRIDGE(DatagramProtocol):
         self._report = _report
         self._config = self._CONFIG['SYSTEMS'][self._system]
         self._laststrid = deque([], 20)
+
+            
+    def loopingErrHandle(self,failure):
+        logger.error('(GLOBAL - hblink.py) Unhandled error in timed loop.\n %s', failure)
         
 
     def startProtocol(self):
         if self._config['ENHANCED_OBP']:
-            self._bcka = task.LoopingCall(self.send_bcka())
-            self._bcka = self._bcka.start(10)
+            logger.debug('(%s) *BridgeControl* starting KeepAlive timer',self._system)
+            self._bcka_task = task.LoopingCall(self.send_bcka)
+            self._bcka = self._bcka_task.start(10)
+            self._bcka.addErrback(self.loopingErrHandle)
 
     def dereg(self):
         logger.info('(%s) is mode OPENBRIDGE. No De-Registration required, continuing shutdown', self._system)
