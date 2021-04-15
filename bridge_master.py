@@ -1101,7 +1101,6 @@ class routerOBP(OPENBRIDGE):
                     if ('_bcsq' in _target_system) and (_dst_id in _target_system['_bcsq']) and (_target_system['_bcsq'][_dst_id] == _stream_id):
                         #logger.info('(%s) Conference Bridge: %s, is Source Quenched for Stream ID: %s, skipping system: %s TS: %s, TGID: %s', self._system, _bridge, int_id(_stream_id), _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                         continue
-                    
                         
                     
                     # Is this a new call stream on the target?
@@ -1450,10 +1449,7 @@ class routerHBP(HBSYSTEM):
                         if ('_bcsq' in _target_system) and (_dst_id in _target_system['_bcsq']) and (_target_system['_bcsq'][_target['TGID']] == _stream_id):
                         #logger.info('(%s) Conference Bridge: %s, is Source Quenched for Stream ID: %s, skipping system: %s TS: %s, TGID: %s', self._system, _bridge, int_id(_stream_id), _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                             continue
-                        
-                        #If target has missed 6 (on 1 min) of keepalives, don't send
-                        if _target_system['ENHANCED_OBP'] and '_bcka' in _target_system and _target_system['_bcka'] < _pkt_time - 60:
-                            continue
+
         
                         # Is this a new call stream on the target?
                         if (_stream_id not in _target_status):
