@@ -232,8 +232,8 @@ class OPENBRIDGE(DatagramProtocol):
                     _hash = _packet[4:]
                     _ckhs = hmac_new(self._config['PASSPHRASE'],_packet[:4],sha1).digest()
                     if compare_digest(_hash, _ckhs):
-                        logger.debug('(%s) *BridgeControl* Keep Alive received',self._system)
                         self._config['_bcka'] = time()
+                        logger.debug('(%s) *BridgeControl* Keep Alive received: time %s',self._system,int(self._config['_bcka']))
                         if _sockaddr != self._config['TARGET_SOCK']:
                             h,p =  _sockaddr
                             logger.info('(%s) *BridgeControl* Source IP and Port has changed for OBP from %s:%s to %s:%s,  updating',self._system,self._config['TARGET_IP'],self._config['TARGET_PORT'],h,p)
