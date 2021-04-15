@@ -1104,7 +1104,7 @@ class routerOBP(OPENBRIDGE):
                     
                     #If target has missed 6 (on 1 min) of keepalives, don't send
                     if _target_system['ENHANCED_OBP'] and '_bcka' in _target_system and _target_system['_bcka'] < _pkt_time - 60:
-                        logger.debug(_target_system['_bcka'])
+                        logger.debug('**************************')
                         continue
                         
                     
