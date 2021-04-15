@@ -1102,10 +1102,6 @@ class routerOBP(OPENBRIDGE):
                         #logger.info('(%s) Conference Bridge: %s, is Source Quenched for Stream ID: %s, skipping system: %s TS: %s, TGID: %s', self._system, _bridge, int_id(_stream_id), _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                         continue
                     
-                    #If target has missed 6 (on 1 min) of keepalives, don't send
-                    if _target_system['ENHANCED_OBP'] and '_bcka' in _target_system and _target_system['_bcka'] < _pkt_time - 60:
-                        logger.debug('**************************')
-                        continue
                         
                     
                     # Is this a new call stream on the target?
