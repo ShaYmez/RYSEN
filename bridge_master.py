@@ -1259,6 +1259,9 @@ class routerOBP(OPENBRIDGE):
         elif _seq == True and _seq > (self._lastSeq+1):
              logger.debug("(%s) Missed packet - last sequence number %s, this sequence number %s",self._system,self._lastSeq,_seq)
     
+        #Save this sequence number 
+        self._lastSeq = _seq
+            
 
         if _call_type == 'group':
             # Is this a new call stream?
@@ -1330,8 +1333,6 @@ class routerOBP(OPENBRIDGE):
 
             self.STATUS[_stream_id]['LAST'] = pkt_time
             
-            #Save this sequence number 
-            self._lastSeq = _seq
             
             #Create STAT bridge for unknown TG
             if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:
