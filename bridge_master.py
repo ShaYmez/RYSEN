@@ -1259,7 +1259,7 @@ class routerOBP(OPENBRIDGE):
             logger.warning("(%s) Duplicate sequence number %s, disgarding",self._system,_seq)
             return
         #Inbound out-of-order packets
-        if _seq  and (_seq != 1) and (_seq < self._lastSeq):
+        if _seq and self._lastSeq  and (_seq != 1) and (_seq < self._lastSeq):
             logger.warning("%s) Out of order packet - last sequence number %s, this sequence number %s,  disgarding",self._system,self._lastSeq,_seq)
             return
         #Inbound missed packets
