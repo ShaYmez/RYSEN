@@ -1249,15 +1249,15 @@ class routerOBP(OPENBRIDGE):
         
         #Handle inbound duplicates
         if _seq == True and _seq == self._lastSeq:
-            logger.debug("%s) Duplicate sequence number %s, disgarding",self._system,_seq)
+            logger.warning("%s) Duplicate sequence number %s, disgarding",self._system,_seq)
             return
         #Inbound out-of-order packets
         elif _seq == True and (_seq != 1) and (_seq < self._lastSeq):
-            logger.debug("%s) Out of order packet - last sequence number %s, this sequence number %s,  disgarding",self._system,self._lastSeq,_seq)
+            logger.warning("%s) Out of order packet - last sequence number %s, this sequence number %s,  disgarding",self._system,self._lastSeq,_seq)
             return
         #Inbound missed packets
         elif _seq == True and _seq > (self._lastSeq+1):
-             logger.debug("(%s) Missed packet - last sequence number %s, this sequence number %s",self._system,self._lastSeq,_seq)
+             logger.warning("(%s) Missed packet - last sequence number %s, this sequence number %s",self._system,self._lastSeq,_seq)
     
         #Save this sequence number 
         self._lastSeq = _seq
