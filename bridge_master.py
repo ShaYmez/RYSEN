@@ -1263,7 +1263,7 @@ class routerOBP(OPENBRIDGE):
             logger.warning("%s) Out of order packet - last sequence number %s, this sequence number %s,  disgarding",self._system,self._lastSeq,_seq)
             return
         #Inbound missed packets
-        if _seq and _seq > (self._lastSeq+1):
+        if _seq and and self._lastSeq _seq > (self._lastSeq+1):
              logger.warning("(%s) Missed packet - last sequence number %s, this sequence number %s",self._system,self._lastSeq,_seq)
     
         #Save this sequence number 
