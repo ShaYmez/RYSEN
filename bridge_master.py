@@ -1315,19 +1315,19 @@ class routerOBP(OPENBRIDGE):
                 #Duplicate handling#
                 #Duplicate complete packet
                 if self.STATUS[_stream_id]['lastData'] and self.STATUS[_stream_id]['lastData'] == _data and _seq > 1:
-                    logger.warning("(%s) last packet is a complete duplicate of the previous one, disgarding",self._system)
+                    logger.warning("(%s) last packet is a complete duplicate of the previous one, disgarding. Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
                     return
                 #Handle inbound duplicates
                 if _seq and _seq == self.STATUS[_stream_id]['lastSeq']:
-                    logger.warning("(%s) Duplicate sequence number %s, disgarding",self._system,_seq)
+                    logger.warning("(%s) Duplicate sequence number %s, disgarding. Stream ID:, %s TGID: %s",self._system,_seq,int_id(_stream_id),int_id(_dst_id))
                     return
                 #Inbound out-of-order packets
                 if _seq and self.STATUS[_stream_id]['lastSeq']  and (_seq != 1) and (_seq < self.STATUS[_stream_id]['lastSeq']):
-                    logger.warning("%s) Out of order packet - last sequence number %s, this sequence number %s,  disgarding",self._system,self.STATUS[_stream_id]['lastSeq'],_seq)
+                    logger.warning("%s) Out of order packet - last sequence number %s, this sequence number %s,  disgarding. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_stream_id]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
                     return
                 #Inbound missed packets
                 if _seq and self.STATUS[_stream_id]['lastSeq'] and _seq > (self.STATUS[_stream_id]['lastSeq']+1):
-                    logger.warning("(%s) Missed packet - last sequence number %s, this sequence number %s",self._system,self.STATUS[_stream_id]['lastSeq'],_seq)
+                    logger.warning("(%s) Missed packet - last sequence number %s, this sequence number %s. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_stream_id]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
             
                 #Save this sequence number 
                 self.STATUS[_stream_id]['lastSeq'] = _seq
