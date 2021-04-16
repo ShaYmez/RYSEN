@@ -1272,11 +1272,6 @@ class routerOBP(OPENBRIDGE):
             
 
         if _call_type == 'group':
-            
-            
-            #Put this here as I think we risk timing out a stream too soon if it is rejected
-            self.STATUS[_stream_id]['LAST'] = pkt_time
-            
             # Is this a new call stream?
             if (_stream_id not in self.STATUS):
                 
@@ -1344,6 +1339,7 @@ class routerOBP(OPENBRIDGE):
                             return
 
 
+            self.STATUS[_stream_id]['LAST'] = pkt_time
             
             
             #Create STAT bridge for unknown TG
