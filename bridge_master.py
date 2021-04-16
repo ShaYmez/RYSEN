@@ -1078,12 +1078,7 @@ class routerOBP(OPENBRIDGE):
     def __init__(self, _name, _config, _report):
         OPENBRIDGE.__init__(self, _name, _config, _report)
         self.STATUS = {}
-        
-        #Store last sequence number
-        self._lastSeq = False
-        #store last packet
-        self._lastData = False
-        
+                
     def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,sysIgnore):
         _sysIgnore = sysIgnore
         for _target in BRIDGES[_bridge]:
@@ -1248,29 +1243,7 @@ class routerOBP(OPENBRIDGE):
         pkt_time = time()
         dmrpkt = _data[20:53]
         _bits = _data[15]
-        
-        #Duplicate complete packet
-        if self._lastData and self._lastData == _data and _seq > 1:
-            logger.warning("(%s) last packet is a complete duplicate of the previous one, disgarding",self._system)
-            return
-        
-        #Handle inbound duplicates
-        if _seq and _seq == self._lastSeq:
-            logger.warning("(%s) Duplicate sequence number %s, disgarding",self._system,_seq)
-            return
-        #Inbound out-of-order packets
-        if _seq and self._lastSeq  and (_seq != 1) and (_seq < self._lastSeq):
-            logger.warning("%s) Out of order packet - last sequence number %s, this sequence number %s,  disgarding",self._system,self._lastSeq,_seq)
-            return
-        #Inbound missed packets
-        if _seq and self._lastSeq and _seq > (self._lastSeq+1):
-             logger.warning("(%s) Missed packet - last sequence number %s, this sequence number %s",self._system,self._lastSeq,_seq)
-    
-        #Save this sequence number 
-        self._lastSeq = _seq
-        self._lastData = _data
-            
-
+                
         if _call_type == 'group':
             # Is this a new call stream?
             if (_stream_id not in self.STATUS):
@@ -1281,8 +1254,12 @@ class routerOBP(OPENBRIDGE):
                     'CONTENTION':False,
                     'RFS':       _rf_src,
                     'TGID':      _dst_id,
-                    '1ST': True
+                    '1ST': True,
+                    'lastSeq': False,
+                    'lastData': False
+
                 }
+                print(self.STATUS[_stream_id])
 
                 # If we can, use the LC from the voice header as to keep all options intact
                 if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
@@ -1302,15 +1279,14 @@ class routerOBP(OPENBRIDGE):
 
 
             else:
-                
-               
+                #Finished stream handling#
                 if '_fin' in self.STATUS[_stream_id]:
                     if '_finlog' not in self.STATUS[_stream_id]:
                         logger.warning("(%s) OBP *LoopControl* STREAM ID: %s ALREADY FINISHED FROM THIS SOURCE, IGNORING",self._system, int_id(_stream_id))
                     self.STATUS[_stream_id]['_finlog'] = True
                     return
                
-
+                #LoopControl#
                 for system in systems:                            
                     if system  == self._system:
                         continue
@@ -1334,9 +1310,30 @@ class routerOBP(OPENBRIDGE):
                                 systems[self._system].send_bcsq(_dst_id,_stream_id)
                                 #logger.warning("(%s) OBP *BridgeControl* Sent BCSQ , STREAM ID: %s, TG %s",self._system, int_id(_stream_id), int_id(_dst_id))
                                 self.STATUS[_stream_id]['_bcsq'] = True
-                                
-                                
                             return
+                        
+                #Duplicate handling#
+                #Duplicate complete packet
+                if self.STATUS[_stream_id]['lastData'] and self.STATUS[_stream_id]['lastData'] == _data and _seq > 1:
+                    logger.warning("(%s) last packet is a complete duplicate of the previous one, disgarding",self._system)
+                    return
+                #Handle inbound duplicates
+                if _seq and _seq == self.STATUS[_stream_id]['lastSeq']:
+                    logger.warning("(%s) Duplicate sequence number %s, disgarding",self._system,_seq)
+                    return
+                #Inbound out-of-order packets
+                if _seq and self.STATUS[_stream_id]['lastSeq']  and (_seq != 1) and (_seq < self.STATUS[_stream_id]['lastSeq']):
+                    logger.warning("%s) Out of order packet - last sequence number %s, this sequence number %s,  disgarding",self._system,self.STATUS[_stream_id]['lastSeq'],_seq)
+                    return
+                #Inbound missed packets
+                if _seq and self.STATUS[_stream_id]['lastSeq'] and _seq > (self.STATUS[_stream_id]['lastSeq']+1):
+                    logger.warning("(%s) Missed packet - last sequence number %s, this sequence number %s",self._system,self.STATUS[_stream_id]['lastSeq'],_seq)
+            
+                #Save this sequence number 
+                self.STATUS[_stream_id]['lastSeq'] = _seq
+                #Save this packet
+                self.STATUS[_stream_id]['lastData'] = _data
+               
 
 
             self.STATUS[_stream_id]['LAST'] = pkt_time
@@ -1372,7 +1369,7 @@ class routerOBP(OPENBRIDGE):
                     #selflogger.error('(%s) *CALL END*   STREAM ID: %s NOT IN LIST -- THIS IS A REAL PROBLEM', self._system, int_id(_stream_id))
                 
                 #Reset sequence number 
-                self._lastSeq = False
+                self.STATUS[_stream_id]['lastSeq'] = False
 
 class routerHBP(HBSYSTEM):
 
