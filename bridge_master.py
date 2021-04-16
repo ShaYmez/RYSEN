@@ -1081,6 +1081,8 @@ class routerOBP(OPENBRIDGE):
         
         #Store last sequence number
         self._lastSeq = False
+        #store last packet
+        self._lastData = False
         
     def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,sysIgnore):
         _sysIgnore = sysIgnore
@@ -1247,20 +1249,26 @@ class routerOBP(OPENBRIDGE):
         dmrpkt = _data[20:53]
         _bits = _data[15]
         
+        #Duplicate complete packet
+        if self._lastData and _lastData == _data:
+            logger.warning("(%s) last packet is a complete duplicate of the previous one, disgarding",self._system)
+            return
+        
         #Handle inbound duplicates
-        if _seq == True and _seq == self._lastSeq:
-            logger.warning("%s) Duplicate sequence number %s, disgarding",self._system,_seq)
+        if _seq and _seq == self._lastSeq:
+            logger.warning("(%s) Duplicate sequence number %s, disgarding",self._system,_seq)
             return
         #Inbound out-of-order packets
-        elif _seq == True and (_seq != 1) and (_seq < self._lastSeq):
+        if _seq  and (_seq != 1) and (_seq < self._lastSeq):
             logger.warning("%s) Out of order packet - last sequence number %s, this sequence number %s,  disgarding",self._system,self._lastSeq,_seq)
             return
         #Inbound missed packets
-        elif _seq == True and _seq > (self._lastSeq+1):
+        if _seq and _seq > (self._lastSeq+1):
              logger.warning("(%s) Missed packet - last sequence number %s, this sequence number %s",self._system,self._lastSeq,_seq)
     
         #Save this sequence number 
         self._lastSeq = _seq
+        self._lastData = _data
             
 
         if _call_type == 'group':
