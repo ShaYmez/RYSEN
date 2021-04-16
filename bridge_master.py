@@ -1250,7 +1250,7 @@ class routerOBP(OPENBRIDGE):
         _bits = _data[15]
         
         #Duplicate complete packet
-        if self._lastData and self._lastData == _data:
+        if self._lastData and _lastData == _data:
             logger.warning("(%s) last packet is a complete duplicate of the previous one, disgarding",self._system)
             return
         
