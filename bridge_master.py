@@ -1403,7 +1403,9 @@ class routerHBP(HBSYSTEM):
                     2: b'\x00',
                     3: b'\x00',
                     4: b'\x00',
-                    }
+                    },
+                'lastSeq': False,
+                'lastData': False
                 },
             2: {
                 'RX_START':     time(),
@@ -1429,7 +1431,9 @@ class routerHBP(HBSYSTEM):
                     2: b'\x00',
                     3: b'\x00',
                     4: b'\x00',
-                    }
+                    },
+                'lastSeq': False,
+                'lastData': False
                 }
             }
 
@@ -1765,7 +1769,28 @@ class routerHBP(HBSYSTEM):
                 if int_id(_dst_id) >= 5 and int_id(_dst_id) != 9 and (str(int_id(_dst_id)) not in BRIDGES):
                     logger.info('(%s) Bridge for TG %s does not exist. Creating as User Activated. Timeout %s',self._system, int_id(_dst_id),CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
                     make_single_bridge(_dst_id,self._system,_slot,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
-                
+             
+            #Duplicate handling#
+            #Duplicate complete packet
+            if self.STATUS[_slot]['lastData'] and self.STATUS[_slot]['lastData'] == _data and _seq > 1:
+                logger.warning("(%s) *DupControl* last packet is a complete duplicate of the previous one, disgarding. Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
+                return
+            #Handle inbound duplicates
+            if _seq and _seq == self.STATUS[_slot]['lastSeq']:
+                logger.warning("(%s) *DupControl* Duplicate sequence number %s, disgarding. Stream ID:, %s TGID: %s",self._system,_seq,int_id(_stream_id),int_id(_dst_id))
+                return
+            #Inbound out-of-order packets
+            if _seq and self.STATUS[_slot]['lastSeq']  and (_seq != 1) and (_seq < self.STATUS[_slot]['lastSeq']):
+                logger.warning("%s) *DupControl* Out of order packet - last sequence number %s, this sequence number %s,  disgarding. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_slot]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
+                return
+            #Inbound missed packets
+            if _seq and self.STATUS[_slot]['lastSeq'] and _seq > (self.STATUS[_slot]['lastSeq']+1):
+                logger.warning("(%s) *DupControl* Missed packet - last sequence number %s, this sequence number %s. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_slot]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
+        
+            #Save this sequence number 
+            self.STATUS[_slot]['lastSeq'] = _seq
+            #Save this packet
+            self.STATUS[_slot]['lastData'] = _data
                           
             _sysIgnore = []
             for _bridge in BRIDGES:
@@ -1790,6 +1815,10 @@ class routerHBP(HBSYSTEM):
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration)
                 if CONFIG['REPORTS']['REPORT']:
                    self._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), call_duration).encode(encoding='utf-8', errors='ignore'))
+                
+                #Reset back to False  
+                self.STATUS[_slot]['lastSeq'] = False
+                self.STATUS[_slot]['lastData'] = False
 
                 #
                 # Begin in-band signalling for call end. This has nothign to do with routing traffic directly.
@@ -2087,7 +2116,7 @@ if __name__ == '__main__':
     for system in CONFIG['SYSTEMS']:
         if CONFIG['SYSTEMS'][system]['ENABLED']:
             if CONFIG['SYSTEMS'][system]['MODE'] == 'XLXPEER':
-                logger.warning('(GLOBAL) system %s not started - XLXPEER and PEER connections currently unsupported ', system)
+                logger.warning('(GLOBAL) system %s not started - XLXPEER connections currently unsupported ', system)
                 continue
             if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
                 systems[system] = routerOBP(system, CONFIG, report_server)                
