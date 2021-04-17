@@ -1795,7 +1795,7 @@ class routerHBP(HBSYSTEM):
                             self.STATUS[_slot]['_bcsq'] = True
                         return
             
-            _int_seq = int(_seq)
+            _int_seq == int(_seq.decode())
             #Duplicate handling#
             #Duplicate complete packet
             if self.STATUS[_slot]['lastData'] and self.STATUS[_slot]['lastData'] == _data and _int_seq > 1:
