@@ -1259,7 +1259,6 @@ class routerOBP(OPENBRIDGE):
                     'lastData': False
 
                 }
-                print(self.STATUS[_stream_id])
 
                 # If we can, use the LC from the voice header as to keep all options intact
                 if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
