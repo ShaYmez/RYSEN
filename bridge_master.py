@@ -1797,6 +1797,11 @@ class routerHBP(HBSYSTEM):
             
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+=======
+            _int_seq = _seq.decode()
+            _int_seq = int(_int_seq)
+>>>>>>> Stashed changes
 =======
             _int_seq = _seq.decode()
             _int_seq = int(_int_seq)
