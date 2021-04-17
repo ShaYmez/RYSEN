@@ -1795,25 +1795,26 @@ class routerHBP(HBSYSTEM):
                             self.STATUS[_slot]['_bcsq'] = True
                         return
             
+            _int_seq == int(_seq.decode())
             #Duplicate handling#
             #Duplicate complete packet
-            if self.STATUS[_slot]['lastData'] and self.STATUS[_slot]['lastData'] == _data and _seq > 1:
+            if self.STATUS[_slot]['lastData'] and self.STATUS[_slot]['lastData'] == _data and _int_seq > 1:
                 logger.warning("(%s) *PacketControl* last packet is a complete duplicate of the previous one, disgarding. Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
                 return
             #Handle inbound duplicates
-            if _seq and _seq == self.STATUS[_slot]['lastSeq']:
-                logger.warning("(%s) *PacketControl* Duplicate sequence number %s, disgarding. Stream ID:, %s TGID: %s",self._system,_seq,int_id(_stream_id),int_id(_dst_id))
+            if _int_seq and _int_seq == self.STATUS[_slot]['lastSeq']:
+                logger.warning("(%s) *PacketControl* Duplicate sequence number %s, disgarding. Stream ID:, %s TGID: %s",self._system,_int_seq,int_id(_stream_id),int_id(_dst_id))
                 return
             #Inbound out-of-order packets
-            if _seq and self.STATUS[_slot]['lastSeq']  and (_seq != 1) and (_seq < self.STATUS[_slot]['lastSeq']):
-                logger.warning("%s) *PacketControl* Out of order packet - last SEQ: %s, this SEQ: %s,  disgarding. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_slot]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
+            if _int_seq and self.STATUS[_slot]['lastSeq']  and (_int_seq != 1) and (_int_seq < self.STATUS[_slot]['lastSeq']):
+                logger.warning("%s) *PacketControl* Out of order packet - last SEQ: %s, this SEQ: %s,  disgarding. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_slot]['lastSeq'],_int_seq,int_id(_stream_id),int_id(_dst_id))
                 return
             #Inbound missed packets
-            if _seq and self.STATUS[_slot]['lastSeq'] and _seq > (self.STATUS[_slot]['lastSeq']+1):
-                logger.warning("(%s) *PacketControl* Missed packet(s) - last SEQ: %s, this SEQ: %s. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_slot]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
+            if _int_seq and self.STATUS[_slot]['lastSeq'] and _int_seq > (self.STATUS[_slot]['lastSeq']+1):
+                logger.warning("(%s) *PacketControl* Missed packet(s) - last SEQ: %s, this SEQ: %s. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_slot]['lastSeq'],_int_seq,int_id(_stream_id),int_id(_dst_id))
         
             #Save this sequence number 
-            self.STATUS[_slot]['lastSeq'] = _seq
+            self.STATUS[_slot]['lastSeq'] = _int_seq
             #Save this packet
             self.STATUS[_slot]['lastData'] = _data
                           
