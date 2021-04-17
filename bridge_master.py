@@ -1794,22 +1794,8 @@ class routerHBP(HBSYSTEM):
                             #logger.warning("(%s) OBP *BridgeControl* Sent BCSQ , STREAM ID: %s, TG %s",self._system, int_id(_stream_id), int_id(_dst_id))
                             self.STATUS[_slot]['_bcsq'] = True
                         return
-            
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-=======
-            _int_seq = _seq.decode()
-            _int_seq = int(_int_seq)
->>>>>>> Stashed changes
-=======
-            _int_seq = _seq.decode()
-            _int_seq = int(_int_seq)
->>>>>>> Stashed changes
-=======
-            _int_seq = _seq.decode()
-            _int_seq = int(_int_seq)
->>>>>>> Stashed changes
+        
+            _int_seq = int(_seq)
             #Duplicate handling#
             #Duplicate complete packet
             if self.STATUS[_slot]['lastData'] and self.STATUS[_slot]['lastData'] == _data and _seq > 1:
