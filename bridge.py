@@ -223,6 +223,8 @@ class routerOBP(OPENBRIDGE):
                     'CONTENTION':False,
                     'RFS':       _rf_src,
                     'TGID':      _dst_id,
+                    'lastSeq': False,
+                    'lastData': False
                 }
 
                 # If we can, use the LC from the voice header as to keep all options intact
