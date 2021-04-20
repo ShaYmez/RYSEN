@@ -213,18 +213,6 @@ class routerOBP(OPENBRIDGE):
         pkt_time = time()
         dmrpkt = _data[20:53]
         _bits = _data[15]
-        
-                #Handle inbound duplicates
-        if _seq == True and _seq == self._lastSeq:
-            logger.debug("%s) Duplicate sequence number %s, disgarding",self._system,_seq)
-            return
-        #Inbound out-of-order packets
-        elif _seq == True and (_seq != 1) and (_seq < self._lastSeq):
-            logger.debug("%s) Out of order packet - last sequence number %s, this sequence number %s,  disgarding",self._system,self._lastSeq,_seq)
-            return
-        #Inbound missed packets
-        elif _seq == True and _seq > (self._lastSeq+1):
-             logger.debug("(%s) Missed packet - last sequence number %s, this sequence number %s",self._system,self._lastSeq,_seq)
 
         if _call_type == 'group':
             # Is this a new call stream?
@@ -252,6 +240,28 @@ class routerOBP(OPENBRIDGE):
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
                 if CONFIG['REPORTS']['REPORT']:
                     self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                    
+                #Duplicate handling#
+                #Duplicate complete packet
+                if self.STATUS[_stream_id]['lastData'] and self.STATUS[_stream_id]['lastData'] == _data and _seq > 1:
+                    logger.warning("(%s) *PacketControl* last packet is a complete duplicate of the previous one, disgarding. Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
+                    return
+                #Handle inbound duplicates
+                if _seq and _seq == self.STATUS[_stream_id]['lastSeq']:
+                    logger.warning("(%s) *PacketControl* Duplicate sequence number %s, disgarding. Stream ID:, %s TGID: %s",self._system,_seq,int_id(_stream_id),int_id(_dst_id))
+                    return
+                #Inbound out-of-order packets
+                if _seq and self.STATUS[_stream_id]['lastSeq']  and (_seq != 1) and (_seq < self.STATUS[_stream_id]['lastSeq']):
+                    logger.warning("%s) *PacketControl* Out of order packet - last SEQ: %s, this SEQ: %s,  disgarding. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_stream_id]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
+                    return
+                #Inbound missed packets
+                if _seq and self.STATUS[_stream_id]['lastSeq'] and _seq > (self.STATUS[_stream_id]['lastSeq']+1):
+                    logger.warning("(%s) *PacketControl* Missed packet(s) - last SEQ: %s, this SEQ: %s. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_stream_id]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
+            
+                #Save this sequence number 
+                self.STATUS[_stream_id]['lastSeq'] = _seq
+                #Save this packet
+                self.STATUS[_stream_id]['lastData'] = _data
 
             self.STATUS[_stream_id]['LAST'] = pkt_time
 
