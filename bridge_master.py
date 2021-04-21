@@ -357,7 +357,7 @@ def kaReporting():
     logger.debug('(ROUTER) KeepAlive reporting loop started')
     #for system in systems:
     if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
-        if '_bcka' in config['SYSTEMS'][system] and config['SYSTEMS'][system]['_bcka'] < time() - 60:
+        if '_bcka' in CONFIG['SYSTEMS'][system] and CONFIG['SYSTEMS'][system]['_bcka'] < time() - 60:
                logger.warning('(ROUTER) not sending to system %s as last keepalive was %s ago',system, config['SYSTEMS'][system]['_bcka'] - time())
 
 # run this every 10 seconds to trim orphaned stream ids
