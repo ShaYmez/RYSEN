@@ -589,7 +589,7 @@ class HBSYSTEM(DatagramProtocol):
                     _this_peer['PACKAGE_ID'] = _data[262:302]
 
                     self.send_peer(_peer_id, b''.join([RPTACK, _peer_id]))
-                    logger.info('(%s) Peer %s (%s) has sent repeater configuration, Package ID: %s, Software ID: %s', self._system, _this_peer['CALLSIGN'], _this_peer['RADIO_ID'],self._peers[_peer_id]['PACKAGE_ID'].decode().rstrip(),self._peers[_peer_id]['SOFTWARE_ID'].decode().rstrip())
+                    logger.info('(%s) Peer %s (%s) has sent repeater configuration, Package ID: %s, Software ID: %s, Desc: %s', self._system, _this_peer['CALLSIGN'], _this_peer['RADIO_ID'],self._peers[_peer_id]['PACKAGE_ID'].decode().rstrip(),self._peers[_peer_id]['SOFTWARE_ID'].decode().rstrip(),self._peers[_peer_id]['DESCRIPTION'].decode().rstrip())
                 else:
                     self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                     logger.warning('(%s) Peer info from Radio ID that has not logged in: %s', self._system, int_id(_peer_id))
@@ -636,7 +636,8 @@ class HBSYSTEM(DatagramProtocol):
 
                 _peer_id = _data[11:15]
                 if self._config['LOOSE'] or _peer_id == self._config['RADIO_ID']: # Validate the Radio_ID unless using loose validation
-                    _seq = _data[4:5]
+                    #_seq = _data[4:5]
+                    _seq = _data[4]
                     _rf_src = _data[5:8]
                     _dst_id = _data[8:11]
                     _bits = _data[15]
