@@ -353,6 +353,12 @@ def statTrimmer():
     if CONFIG['REPORTS']['REPORT']:
         report_server.send_clients(b'bridge updated')
 
+def kaReporting():
+    logger.debug('(ROUTER) KeepAlive reporting loop started')
+    #for system in systems:
+    if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
+        if '_bcka' in config['SYSTEMS'][system] and config['SYSTEMS'][system]['_bcka'] < time() - 60:
+               logger.warning('(ROUTER) not sending to system %s as last keepalive was %s ago',system, config['SYSTEMS'][system]['_bcka'] - time())
 
 # run this every 10 seconds to trim orphaned stream ids
 def stream_trimmer_loop():
@@ -1101,7 +1107,6 @@ class routerOBP(OPENBRIDGE):
                     
                     #If target has missed 6 (on 1 min) of keepalives, don't send
                     if _target_system['ENHANCED_OBP'] and '_bcka' in _target_system and _target_system['_bcka'] < pkt_time - 60:
-                        logger.debug('**************************')
                         continue
                         
                     
@@ -1466,7 +1471,6 @@ class routerHBP(HBSYSTEM):
                         
                         #If target has missed 6 (on 1 min) of keepalives, don't send
                         if _target_system['ENHANCED_OBP'] and '_bcka' in _target_system and _target_system['_bcka'] < pkt_time - 60:
-                            logger.warning('Not sending due to mised KA')
                             continue
         
                         # Is this a new call stream on the target?
@@ -2196,6 +2200,11 @@ if __name__ == '__main__':
         stat_trimmer_task = task.LoopingCall(statTrimmer)
         stat_trimmer = stat_trimmer_task.start(3600)#3600
         stat_trimmer.addErrback(loopingErrHandle)
+        
+    #KA Reporting
+    ka_task = task.LoopingCall(kaReporting)
+    ka = ka_task.start(60)
+    ka.addErrback(loopingErrHandle)
     
     #more threads
     reactor.suggestThreadPoolSize(100)
