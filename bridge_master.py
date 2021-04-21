@@ -1466,6 +1466,7 @@ class routerHBP(HBSYSTEM):
                         
                         #If target has missed 6 (on 1 min) of keepalives, don't send
                         if _target_system['ENHANCED_OBP'] and '_bcka' in _target_system and _target_system['_bcka'] < _pkt_time - 60:
+                            logger.warning('Not sending due to mised KA')
                             continue
         
                         # Is this a new call stream on the target?
