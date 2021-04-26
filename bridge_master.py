@@ -1827,7 +1827,7 @@ class routerHBP(HBSYSTEM):
                 return
             #Inbound missed packets
             if _seq and self.STATUS[_slot]['lastSeq'] and _seq > (self.STATUS[_slot]['lastSeq']+1):
-                logger.warning("(%s) *PacketControl*  %s Missed packet(s) - last SEQ: %s, this SEQ: %s. Stream ID:, %s TGID: %s ",self._system,(_seq  - self.STATUS[_slot]['lastSeq'),self.STATUS[_slot]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
+                logger.warning("(%s) *PacketControl*  %s Missed packet(s) - last SEQ: %s, this SEQ: %s. Stream ID:, %s TGID: %s ",self._system,_seq  - self.STATUS[_slot]['lastSeq',self.STATUS[_slot]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
         
             #Save this sequence number 
             self.STATUS[_slot]['lastSeq'] = _seq
