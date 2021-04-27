@@ -1307,7 +1307,7 @@ class routerOBP(OPENBRIDGE):
                         for _sysslot in systems[system].STATUS:
                             if 'RX_STREAM_ID' in systems[system].STATUS[_sysslot] and _stream_id == systems[system].STATUS[_sysslot]['RX_STREAM_ID']:
                                 if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']: 
-                                    logger.info("(%s) OBP *LoopControl* FIRST HBP: %s, STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id),_sysslot)
+                                    logger.warning("(%s) OBP *LoopControl* FIRST HBP: %s, STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id),_sysslot)
                                     self.STATUS[_stream_id]['LOOPLOG'] = True
                                 self.STATUS[_stream_id]['LAST'] = pkt_time
                                 return
@@ -1315,7 +1315,7 @@ class routerOBP(OPENBRIDGE):
                         #if _stream_id in systems[system].STATUS and systems[system].STATUS[_stream_id]['START'] <= self.STATUS[_stream_id]['START']:
                         if _stream_id in systems[system].STATUS and '1ST' in systems[system].STATUS[_stream_id] and systems[system].STATUS[_stream_id]['TGID'] == _dst_id:
                             if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
-                                logger.info("(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id))
+                                logger.warning("(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id))
                                 self.STATUS[_stream_id]['LOOPLOG'] = True
                             self.STATUS[_stream_id]['LAST'] = pkt_time
                             
@@ -1340,7 +1340,7 @@ class routerOBP(OPENBRIDGE):
                     return
                 #Inbound missed packets
                 if _seq and self.STATUS[_stream_id]['lastSeq'] and _seq > (self.STATUS[_stream_id]['lastSeq']+1):
-                    logger.warning("(%s) *PacketControl* %s Missed packet(s) - last SEQ: %s, this SEQ: %s. Stream ID:, %s TGID: %s ",self._system, (_seq - self.STATUS[_stream_id]['lastSeq']), self.STATUS[_stream_id]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
+                    logger.warning("(%s) *PacketControl* %s Missed packet(s) - last SEQ: %s, this SEQ: %s. Stream ID:, %s TGID: %s ",self._system, (_seq - self.STATUS[_stream_id]['lastSeq']) self.STATUS[_stream_id]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
             
                 #Save this sequence number 
                 self.STATUS[_stream_id]['lastSeq'] = _seq
