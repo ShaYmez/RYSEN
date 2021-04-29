@@ -77,7 +77,7 @@ import re
 
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Cortney T. Buffington, N0MJS, Forked by Simon Adlem - G7RZU'
-__copyright__  = 'Copyright (c) 2016-2019 Cortney T. Buffington, N0MJS and the K0USY Group, Simon Adlem, G7RZU 2020'
+__copyright__  = 'Copyright (c) 2016-2019 Cortney T. Buffington, N0MJS and the K0USY Group, Simon Adlem, G7RZU 2020,2021'
 __credits__    = 'Colin Durbridge, G4EML, Steve Zingman, N4IRS; Mike Zingman, N4IRR; Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT; Jon Lee, G4TSN'
 __license__    = 'GNU GPLv3'
 __maintainer__ = 'Simon Adlem G7RZU'
@@ -237,7 +237,7 @@ def reset_static_tg(tg,ts,_tmout,system):
             
         BRIDGES[str(tg)] = bridgetemp
     except KeyError:
-        logger.warning('(ERROR) KeyError in reset_static_tg() - bridge gone away?')
+        logger.exception('(ERROR) KeyError in reset_static_tg() - bridge gone away?')
         return
         
 def reset_default_reflector(reflector,_tmout,system):
@@ -428,7 +428,7 @@ def stream_trimmer_loop():
                     if systems[system].STATUS[stream_id]['LAST'] < _now - 180:
                         remove_list.append(stream_id)
                 except:
-                    logger.warning("(%s) Keyerror - stream trimmer Stream ID: %s",system,stream_id)
+                    logger.exception("(%s) Keyerror - stream trimmer Stream ID: %s",system,stream_id)
                     systems[system].STATUS[stream_id]['LAST'] = _now
                     continue
                 
@@ -453,7 +453,7 @@ def stream_trimmer_loop():
                     except KeyError:
                         pass
                 else:
-                    logger.error('(%s) Attemped to remove OpenBridge Stream ID %s not in the Stream ID list: %s', system, int_id(stream_id), [id for id in systems[system].STATUS])
+                    logger.exception('(%s) Attemped to remove OpenBridge Stream ID %s not in the Stream ID list: %s', system, int_id(stream_id), [id for id in systems[system].STATUS])
 
 def sendVoicePacket(self,pkt,_source_id,_dest_id,_slot):
     _stream_id = pkt[16:20]
@@ -1606,7 +1606,7 @@ class routerHBP(HBSYSTEM):
                         try:
                             dmrpkt = dmrbits.tobytes()
                         except AttributeError:
-                            logger.debug('(%s) Non-fatal AttributeError - dmrbits.tobytes()',self._system)
+                            logger.exception('(%s) Non-fatal AttributeError - dmrbits.tobytes()',self._system)
                             
                         _tmp_data = b''.join([_tmp_data, dmrpkt, _data[53:55]])
 
@@ -2016,7 +2016,8 @@ if __name__ == '__main__':
     if cli_args.LOG_LEVEL:
         CONFIG['LOGGER']['LOG_LEVEL'] = cli_args.LOG_LEVEL
     logger = log.config_logging(CONFIG['LOGGER'])
-    logger.info('\n\nCopyright (c) 2013, 2014, 2015, 2016, 2018, 2019\n\tThe Regents of the K0USY Group. All rights reserved.\n')
+    logger.info('\n\nCopyright (c) 2020, 2021 Simon G7RZU simon@gb7fr.org.uk')
+    logger.info('Copyright (c) 2013, 2014, 2015, 2016, 2018, 2019\n\tThe Regents of the K0USY Group. All rights reserved.\n')
     logger.debug('(GLOBAL) Logging system started, anything from here on gets logged')
 
     
