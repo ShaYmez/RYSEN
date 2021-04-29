@@ -150,7 +150,7 @@ class OPENBRIDGE(DatagramProtocol):
         _packet = b''.join([BCSQ, _tgid, _stream_id])
         _packet = b''.join([_packet, (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
         self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
-        logger.info('(%s) *BridgeControl* sent BCSQ Source Quench, TG: %s, Stream ID: %s',self._system,int_id(_tgid), int_id(_stream_id))
+        logger.debug('(%s) *BridgeControl* sent BCSQ Source Quench, TG: %s, Stream ID: %s',self._system,int_id(_tgid), int_id(_stream_id))
     
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
@@ -236,7 +236,7 @@ class OPENBRIDGE(DatagramProtocol):
                         self._config['_bcka'] = time()
                         if _sockaddr != self._config['TARGET_SOCK']:
                             h,p =  _sockaddr
-                            logger.info('(%s) *BridgeControl* Source IP and Port has changed for OBP from %s:%s to %s:%s,  updating',self._system,self._config['TARGET_IP'],self._config['TARGET_PORT'],h,p)
+                            logger.warning('(%s) *BridgeControl* Source IP and Port has changed for OBP from %s:%s to %s:%s,  updating',self._system,self._config['TARGET_IP'],self._config['TARGET_PORT'],h,p)
                             self._config['TARGET_IP'] = h
                             self._config['TARGET_PORT'] = p
                             self._config['TARGET_SOCK'] = (h,p)
@@ -252,7 +252,7 @@ class OPENBRIDGE(DatagramProtocol):
                     _stream_id = _packet[7:11]
                     _ckhs = hmac_new(self._config['PASSPHRASE'],_packet[:11],sha1).digest()
                     if compare_digest(_hash, _ckhs):
-                        logger.info('(%s) *BridgeControl*  BCSQ Source Quench request received for TGID: %s, Stream ID: %s',self._system,int_id(_tgid), int_id(_stream_id))
+                        logger.debug('(%s) *BridgeControl*  BCSQ Source Quench request received for TGID: %s, Stream ID: %s',self._system,int_id(_tgid), int_id(_stream_id))
                         if '_bcsq' not in self._config:
                             self._config['_bcsq'] = {}
                         self._config['_bcsq'][_tgid] = _stream_id

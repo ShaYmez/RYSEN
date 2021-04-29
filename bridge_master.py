@@ -588,184 +588,188 @@ def ident():
 def options_config():
     logger.debug('(OPTIONS) Running options parser')
     for _system in CONFIG['SYSTEMS']:
-        if CONFIG['SYSTEMS'][_system]['MODE'] != 'MASTER':
-            continue
-        if CONFIG['SYSTEMS'][_system]['ENABLED'] == True:
-            if 'OPTIONS' in CONFIG['SYSTEMS'][_system]:
-                _options = {}
-                CONFIG['SYSTEMS'][_system]['OPTIONS'] = CONFIG['SYSTEMS'][_system]['OPTIONS'].rstrip('\x00')
-                re.sub("\'","",CONFIG['SYSTEMS'][_system]['OPTIONS'])
-                re.sub("\"","",CONFIG['SYSTEMS'][_system]['OPTIONS'])
-                for x in CONFIG['SYSTEMS'][_system]['OPTIONS'].split(";"):
-                    try:
-                        k,v = x.split('=')
-                    except ValueError:
-                        logger.debug('(OPTIONS) Value error %s ignoring',_system)
-                        continue
-                    _options[k] = v
-                logger.debug('(OPTIONS) Options found for %s',_system)
-                
-                if 'DIAL' in _options:
-                    _options['DEFAULT_REFLECTOR'] = _options.pop('DIAL')
-                if 'TIMER' in _options:
-                    _options['DEFAULT_UA_TIMER'] = _options.pop('TIMER')
-                if 'TS1' in _options:
-                    _options['TS1_STATIC'] = _options.pop('TS1')
-                if 'TS2' in _options:
-                    _options['TS2_STATIC'] = _options.pop('TS2')
+        try:
+            if CONFIG['SYSTEMS'][_system]['MODE'] != 'MASTER':
+                continue
+            if CONFIG['SYSTEMS'][_system]['ENABLED'] == True:
+                if 'OPTIONS' in CONFIG['SYSTEMS'][_system]:
+                    _options = {}
+                    CONFIG['SYSTEMS'][_system]['OPTIONS'] = CONFIG['SYSTEMS'][_system]['OPTIONS'].rstrip('\x00')
+                    re.sub("\'","",CONFIG['SYSTEMS'][_system]['OPTIONS'])
+                    re.sub("\"","",CONFIG['SYSTEMS'][_system]['OPTIONS'])
+                    for x in CONFIG['SYSTEMS'][_system]['OPTIONS'].split(";"):
+                        try:
+                            k,v = x.split('=')
+                        except ValueError:
+                            logger.debug('(OPTIONS) Value error %s ignoring',_system)
+                            continue
+                        _options[k] = v
+                    logger.debug('(OPTIONS) Options found for %s',_system)
                     
-                #DMR+ style options
-                if 'StartRef' in _options:
-                    _options['DEFAULT_REFLECTOR'] = _options.pop('StartRef')
-                if 'RelinkTime' in _options:
-                    _options['DEFAULT_UA_TIMER'] = _options.pop('RelinkTime')
-                if 'TS1_1' in _options:
-                    _options['TS1_STATIC'] = _options.pop('TS1_1')
-                    if 'TS1_2' in _options:
-                        _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_2')
-                    if 'TS1_3' in _options:
-                        _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_3')
-                    if 'TS1_4' in _options:
-                        _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_4')
-                    if 'TS1_4' in _options:
-                        _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_5')
-                if 'TS2_2' in _options:
-                    _options['TS2_STATIC'] = _options.pop('TS2_1')
-                    if 'TS2_2' in _options:
-                        _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_2')
-                    if 'TS2_3' in _options:
-                        _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_3')
-                    if 'TS2_4' in _options:
-                        _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_4')
-                    if 'TS2_4' in _options:
-                        _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_5')
-                if 'UserLink' in _options:
-                    _options.pop('UserLink')
-                
-                if 'TS1_STATIC' not in _options:
-                    _options['TS1_STATIC'] = False
-                
-                if 'TS2_STATIC' not in _options:
-                    _options['TS2_STATIC'] = False
-                    
-                if 'DEFAULT_REFLECTOR' not in _options:
-                    _options['DEFAULT_REFLECTOR'] = 0
-                    
-                if 'DEFAULT_UA_TIMER' not in _options:
-                    _options['DEFAULT_UA_TIMER'] = CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']
-                
-                if 'VOICE' in _options and (CONFIG['SYSTEMS'][_system]['VOICE_IDENT'] != bool(int(_options['VOICE']))):
-                    CONFIG['SYSTEMS'][_system]['VOICE_IDENT'] = bool(int(_options['VOICE']))
-                    logger.debug("(OPTIONS) %s - Setting voice ident to %s",_system,CONFIG['SYSTEMS'][_system]['VOICE_IDENT'])
-                    
-                if 'SINGLE' in _options and (CONFIG['SYSTEMS'][_system]['SINGLE_MODE'] != bool(int(_options['SINGLE']))):
-                    CONFIG['SYSTEMS'][_system]['SINGLE_MODE'] = bool(int(_options['SINGLE']))
-                    logger.debug("(OPTIONS) %s - Setting SINGLE_MODE to %s",_system,CONFIG['SYSTEMS'][_system]['SINGLE_MODE'])
-                
-                if 'TS1_STATIC' not in _options or 'TS2_STATIC' not in _options or 'DEFAULT_REFLECTOR' not in _options or 'DEFAULT_UA_TIMER' not in _options:
-                    logger.debug('(OPTIONS) %s - Required field missing, ignoring',_system)
-                    continue
-                
-                if _options['TS1_STATIC'] == '':
-                    _options['TS1_STATIC'] = False
-                if _options['TS2_STATIC'] == '':
-                    _options['TS2_STATIC'] = False
-                    
-                if _options['TS1_STATIC']:
-                    re.sub("\s","",_options['TS1_STATIC'])
-                    if re.search("![\d\,]",_options['TS1_STATIC']):
-                        logger.debug('(OPTIONS) %s - TS1_STATIC contains characters other than numbers and comma, ignoring',_system)
-                        continue
-                
-                if _options['TS2_STATIC']:
-                    re.sub("\s","",_options['TS2_STATIC'])
-                    if re.search("![\d\,]",_options['TS2_STATIC']):
-                        logger.debug('(OPTIONS) %s - TS2_STATIC contains characters other than numbers and comma, ignoring',_system)
-                        continue
-                
-                if isinstance(_options['DEFAULT_REFLECTOR'], str) and not _options['DEFAULT_REFLECTOR'].isdigit():
-                    logger.debug('(OPTIONS) %s - DEFAULT_UA_TIMER is not an integer, ignoring',_system)
-                    continue
-                
-                if isinstance(_options['DEFAULT_UA_TIMER'], str) and not _options['DEFAULT_UA_TIMER'].isdigit():
-                    logger.debug('(OPTIONS) %s - DEFAULT_REFLECTOR is not an integer, ignoring',_system)
-                    continue
-                    
-                _tmout = int(_options['DEFAULT_UA_TIMER'])
-                
-                if int(_options['DEFAULT_UA_TIMER']) != CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']:
-                    logger.debug('(OPTIONS) %s Updating DEFAULT_UA_TIMER for existing bridges.',_system)
-                    remove_bridge_system(_system)
-                    for _bridge in BRIDGES:
-                        ts1 = False 
-                        ts2 = False
-                        for i,e in enumerate(BRIDGES[_bridge]):
-                            if e['SYSTEM'] == _system and e['TS'] == 1:
-                                ts1 = True
-                            if e['SYSTEM'] == _system and e['TS'] == 2:
-                                ts2 = True
-                        if _bridge[0:1] != '#':
-                            if ts1 == False:
-                                BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 1, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
-                            if ts2 == False:
-                                BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 2, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
-                        else:
-                            if ts2 == False:
-                                BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [bytes_3(4000)],'ON': [],'RESET': [], 'TIMER': time()})
-        
-                if int(_options['DEFAULT_REFLECTOR']) != CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR']:
-                    if int(_options['DEFAULT_REFLECTOR']) > 0:
-                        logger.debug('(OPTIONS) %s default reflector changed, updating',_system) 
-                        reset_default_reflector(CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR'],_tmout,_system)
-                        make_default_reflector(int(_options['DEFAULT_REFLECTOR']),_tmout,_system)
-                    else:
-                        logger.debug('(OPTIONS) %s default reflector disabled, updating',_system) 
-                        reset_default_reflector(int(_options['DEFAULT_REFLECTOR']),_tmout,_system)
+                    if 'DIAL' in _options:
+                        _options['DEFAULT_REFLECTOR'] = _options.pop('DIAL')
+                    if 'TIMER' in _options:
+                        _options['DEFAULT_UA_TIMER'] = _options.pop('TIMER')
+                    if 'TS1' in _options:
+                        _options['TS1_STATIC'] = _options.pop('TS1')
+                    if 'TS2' in _options:
+                        _options['TS2_STATIC'] = _options.pop('TS2')
                         
-                if _options['TS1_STATIC'] != CONFIG['SYSTEMS'][_system]['TS1_STATIC']:
-                    _tmout = int(_options['DEFAULT_UA_TIMER'])
-                    logger.debug('(OPTIONS) %s TS1 static TGs changed, updating',_system)
-                    ts1 = []
-                    if CONFIG['SYSTEMS'][_system]['TS1_STATIC']:
-                        ts1 = CONFIG['SYSTEMS'][_system]['TS1_STATIC'].split(',')
-                        for tg in ts1:
-                            if not tg:
-                                continue
-                            tg = int(tg)
-                            reset_static_tg(tg,1,_tmout,_system)   
-                    ts1 = []
+                    #DMR+ style options
+                    if 'StartRef' in _options:
+                        _options['DEFAULT_REFLECTOR'] = _options.pop('StartRef')
+                    if 'RelinkTime' in _options:
+                        _options['DEFAULT_UA_TIMER'] = _options.pop('RelinkTime')
+                    if 'TS1_1' in _options:
+                        _options['TS1_STATIC'] = _options.pop('TS1_1')
+                        if 'TS1_2' in _options:
+                            _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_2')
+                        if 'TS1_3' in _options:
+                            _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_3')
+                        if 'TS1_4' in _options:
+                            _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_4')
+                        if 'TS1_4' in _options:
+                            _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_5')
+                    if 'TS2_2' in _options:
+                        _options['TS2_STATIC'] = _options.pop('TS2_1')
+                        if 'TS2_2' in _options:
+                            _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_2')
+                        if 'TS2_3' in _options:
+                            _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_3')
+                        if 'TS2_4' in _options:
+                            _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_4')
+                        if 'TS2_4' in _options:
+                            _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_5')
+                    if 'UserLink' in _options:
+                        _options.pop('UserLink')
+                    
+                    if 'TS1_STATIC' not in _options:
+                        _options['TS1_STATIC'] = False
+                    
+                    if 'TS2_STATIC' not in _options:
+                        _options['TS2_STATIC'] = False
+                        
+                    if 'DEFAULT_REFLECTOR' not in _options:
+                        _options['DEFAULT_REFLECTOR'] = 0
+                        
+                    if 'DEFAULT_UA_TIMER' not in _options:
+                        _options['DEFAULT_UA_TIMER'] = CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']
+                    
+                    if 'VOICE' in _options and (CONFIG['SYSTEMS'][_system]['VOICE_IDENT'] != bool(int(_options['VOICE']))):
+                        CONFIG['SYSTEMS'][_system]['VOICE_IDENT'] = bool(int(_options['VOICE']))
+                        logger.debug("(OPTIONS) %s - Setting voice ident to %s",_system,CONFIG['SYSTEMS'][_system]['VOICE_IDENT'])
+                        
+                    if 'SINGLE' in _options and (CONFIG['SYSTEMS'][_system]['SINGLE_MODE'] != bool(int(_options['SINGLE']))):
+                        CONFIG['SYSTEMS'][_system]['SINGLE_MODE'] = bool(int(_options['SINGLE']))
+                        logger.debug("(OPTIONS) %s - Setting SINGLE_MODE to %s",_system,CONFIG['SYSTEMS'][_system]['SINGLE_MODE'])
+                    
+                    if 'TS1_STATIC' not in _options or 'TS2_STATIC' not in _options or 'DEFAULT_REFLECTOR' not in _options or 'DEFAULT_UA_TIMER' not in _options:
+                        logger.debug('(OPTIONS) %s - Required field missing, ignoring',_system)
+                        continue
+                    
+                    if _options['TS1_STATIC'] == '':
+                        _options['TS1_STATIC'] = False
+                    if _options['TS2_STATIC'] == '':
+                        _options['TS2_STATIC'] = False
+                        
                     if _options['TS1_STATIC']:
-                        ts1 = _options['TS1_STATIC'].split(',')
-                        for tg in ts1:
-                            if not tg:
-                                continue
-                            tg = int(tg)
-                            make_static_tg(tg,1,_tmout,_system)
-                            
-                if _options['TS2_STATIC'] != CONFIG['SYSTEMS'][_system]['TS2_STATIC']:
-                    _tmout = int(_options['DEFAULT_UA_TIMER'])
-                    logger.debug('(OPTIONS) %s TS2 static TGs changed, updating',_system)
-                    ts2 = []
-                    if CONFIG['SYSTEMS'][_system]['TS2_STATIC']:
-                        ts2 = CONFIG['SYSTEMS'][_system]['TS2_STATIC'].split(',')
-                        for tg in ts2:
-                            if not tg:
-                                continue
-                            tg = int(tg)
-                            reset_static_tg(tg,2,_tmout,_system)
-                    ts2 = []
+                        re.sub("\s","",_options['TS1_STATIC'])
+                        if re.search("![\d\,]",_options['TS1_STATIC']):
+                            logger.debug('(OPTIONS) %s - TS1_STATIC contains characters other than numbers and comma, ignoring',_system)
+                            continue
+                    
                     if _options['TS2_STATIC']:
-                        ts2 = _options['TS2_STATIC'].split(',')
-                        for tg in ts2:
-                            if not tg:
-                                continue
-                            tg = int(tg)
-                            make_static_tg(tg,2,_tmout,_system)
-                
-                CONFIG['SYSTEMS'][_system]['TS1_STATIC'] =  _options['TS1_STATIC']
-                CONFIG['SYSTEMS'][_system]['TS2_STATIC'] = _options['TS2_STATIC']
-                CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR'] = int(_options['DEFAULT_REFLECTOR'])
-                CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER'] = int(_options['DEFAULT_UA_TIMER'])
+                        re.sub("\s","",_options['TS2_STATIC'])
+                        if re.search("![\d\,]",_options['TS2_STATIC']):
+                            logger.debug('(OPTIONS) %s - TS2_STATIC contains characters other than numbers and comma, ignoring',_system)
+                            continue
+                    
+                    if isinstance(_options['DEFAULT_REFLECTOR'], str) and not _options['DEFAULT_REFLECTOR'].isdigit():
+                        logger.debug('(OPTIONS) %s - DEFAULT_UA_TIMER is not an integer, ignoring',_system)
+                        continue
+                    
+                    if isinstance(_options['DEFAULT_UA_TIMER'], str) and not _options['DEFAULT_UA_TIMER'].isdigit():
+                        logger.debug('(OPTIONS) %s - DEFAULT_REFLECTOR is not an integer, ignoring',_system)
+                        continue
+                        
+                    _tmout = int(_options['DEFAULT_UA_TIMER'])
+                    
+                    if int(_options['DEFAULT_UA_TIMER']) != CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']:
+                        logger.debug('(OPTIONS) %s Updating DEFAULT_UA_TIMER for existing bridges.',_system)
+                        remove_bridge_system(_system)
+                        for _bridge in BRIDGES:
+                            ts1 = False 
+                            ts2 = False
+                            for i,e in enumerate(BRIDGES[_bridge]):
+                                if e['SYSTEM'] == _system and e['TS'] == 1:
+                                    ts1 = True
+                                if e['SYSTEM'] == _system and e['TS'] == 2:
+                                    ts2 = True
+                            if _bridge[0:1] != '#':
+                                if ts1 == False:
+                                    BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 1, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
+                                if ts2 == False:
+                                    BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 2, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
+                            else:
+                                if ts2 == False:
+                                    BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [bytes_3(4000)],'ON': [],'RESET': [], 'TIMER': time()})
+            
+                    if int(_options['DEFAULT_REFLECTOR']) != CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR']:
+                        if int(_options['DEFAULT_REFLECTOR']) > 0:
+                            logger.debug('(OPTIONS) %s default reflector changed, updating',_system) 
+                            reset_default_reflector(CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR'],_tmout,_system)
+                            make_default_reflector(int(_options['DEFAULT_REFLECTOR']),_tmout,_system)
+                        else:
+                            logger.debug('(OPTIONS) %s default reflector disabled, updating',_system) 
+                            reset_default_reflector(int(_options['DEFAULT_REFLECTOR']),_tmout,_system)
+                            
+                    if _options['TS1_STATIC'] != CONFIG['SYSTEMS'][_system]['TS1_STATIC']:
+                        _tmout = int(_options['DEFAULT_UA_TIMER'])
+                        logger.debug('(OPTIONS) %s TS1 static TGs changed, updating',_system)
+                        ts1 = []
+                        if CONFIG['SYSTEMS'][_system]['TS1_STATIC']:
+                            ts1 = CONFIG['SYSTEMS'][_system]['TS1_STATIC'].split(',')
+                            for tg in ts1:
+                                if not tg:
+                                    continue
+                                tg = int(tg)
+                                reset_static_tg(tg,1,_tmout,_system)   
+                        ts1 = []
+                        if _options['TS1_STATIC']:
+                            ts1 = _options['TS1_STATIC'].split(',')
+                            for tg in ts1:
+                                if not tg:
+                                    continue
+                                tg = int(tg)
+                                make_static_tg(tg,1,_tmout,_system)
+                                
+                    if _options['TS2_STATIC'] != CONFIG['SYSTEMS'][_system]['TS2_STATIC']:
+                        _tmout = int(_options['DEFAULT_UA_TIMER'])
+                        logger.debug('(OPTIONS) %s TS2 static TGs changed, updating',_system)
+                        ts2 = []
+                        if CONFIG['SYSTEMS'][_system]['TS2_STATIC']:
+                            ts2 = CONFIG['SYSTEMS'][_system]['TS2_STATIC'].split(',')
+                            for tg in ts2:
+                                if not tg:
+                                    continue
+                                tg = int(tg)
+                                reset_static_tg(tg,2,_tmout,_system)
+                        ts2 = []
+                        if _options['TS2_STATIC']:
+                            ts2 = _options['TS2_STATIC'].split(',')
+                            for tg in ts2:
+                                if not tg:
+                                    continue
+                                tg = int(tg)
+                                make_static_tg(tg,2,_tmout,_system)
+                    
+                    CONFIG['SYSTEMS'][_system]['TS1_STATIC'] =  _options['TS1_STATIC']
+                    CONFIG['SYSTEMS'][_system]['TS2_STATIC'] = _options['TS2_STATIC']
+                    CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR'] = int(_options['DEFAULT_REFLECTOR'])
+                    CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER'] = int(_options['DEFAULT_UA_TIMER'])
+                except:
+                    logger.exception('(OPTIONS) caught exception')
+                    continue
 
 def mysqlGetConfig():
     logger.debug('(MYSQL) Periodic config check')
@@ -1794,7 +1798,7 @@ class routerHBP(HBSYSTEM):
                     for _sysslot in systems[system].STATUS:
                         if 'RX_STREAM_ID' in systems[system].STATUS[_sysslot] and _stream_id == systems[system].STATUS[_sysslot]['RX_STREAM_ID']:
                             if 'LOOPLOG' not in self.STATUS[_slot] or not self.STATUS[_slot]['LOOPLOG']: 
-                                logger.warning("(%s) OBP *LoopControl* FIRST HBP: %s, STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id),_sysslot)
+                                logger.info("(%s) OBP *LoopControl* FIRST HBP: %s, STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id),_sysslot)
                                 self.STATUS[_slot]['LOOPLOG'] = True
                             self.STATUS[_slot]['LAST'] = pkt_time
                             return
@@ -1802,7 +1806,7 @@ class routerHBP(HBSYSTEM):
                     #if _stream_id in systems[system].STATUS and systems[system].STATUS[_stream_id]['START'] <= self.STATUS[_stream_id]['START']:
                     if _stream_id in systems[system].STATUS and '1ST' in systems[system].STATUS[_stream_id] and systems[system].STATUS[_stream_id]['TGID'] == _dst_id:
                         if 'LOOPLOG' not in self.STATUS[_slot] or not self.STATUS[_slot]['LOOPLOG']:
-                            logger.warning("(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id))
+                            logger.info("(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id))
                             self.STATUS[_slot]['LOOPLOG'] = True
                         self.STATUS[_slot]['LAST'] = pkt_time
                         
