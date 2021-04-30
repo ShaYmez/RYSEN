@@ -2073,6 +2073,29 @@ if __name__ == '__main__':
     # Build the routing rules file
     BRIDGES = make_bridges(rules_module.BRIDGES)
     
+    #Generator
+    generator = {}
+    systemdelete = []
+    for system in CONFIG['SYSTEMS']:
+        if CONFIG['SYSTEMS'][system]['ENABLED']:
+            if CONFIG['SYSTEMS'][system]['MODE'] == 'MASTER' and (CONFIG['SYSTEMS'][system]['GENERATOR'] > 1):
+                for count in range(CONFIG['SYSTEMS'][system]['GENERATOR']):
+                    _systemname = system+'-'+str(count)
+                    generator[_systemname] = copy.deepcopy(CONFIG['SYSTEMS'][system])
+                    generator[_systemname]['PORT'] = generator[_systemname]['PORT'] + count
+                    generator[_systemname]['_default_options'] = "TS1_STATIC={};TS2_STATIC={};SINGLE={};DEFAULT_UA_TIMER={};DEFAULT_REFLECTOR={};VOICE={}".format(generator[_systemname]['TS1_STATIC'],generator[_systemname]['TS2_STATIC'],int(generator[_systemname]['SINGLE_MODE']),generator[_systemname]['DEFAULT_UA_TIMER'],generator[_systemname]['DEFAULT_REFLECTOR'],int(generator[_systemname]['VOICE_IDENT']) )
+                    logger.debug('(GLOBAL) Generator - generated system %s',_systemname)
+                    generator[_systemname]['_default_options']
+                systemdelete.append(system)
+    
+    for _system in generator:
+        CONFIG['SYSTEMS'][_system] = generator[_system]
+    for _system in systemdelete:
+            CONFIG['SYSTEMS'].pop(_system)
+    
+    del generator
+    del systemdelete
+    
     # Default reflector
     logger.debug('(ROUTER) Setting default reflectors')
     for system in CONFIG['SYSTEMS']:
@@ -2137,28 +2160,7 @@ if __name__ == '__main__':
 
     
     listeningPorts = {}
-    
-    generator = {}
-    systemdelete = []
-    for system in CONFIG['SYSTEMS']:
-        if CONFIG['SYSTEMS'][system]['ENABLED']:
-            if CONFIG['SYSTEMS'][system]['MODE'] == 'MASTER' and (CONFIG['SYSTEMS'][system]['GENERATOR'] > 1):
-                for count in range(CONFIG['SYSTEMS'][system]['GENERATOR']):
-                    _systemname = system+'-'+str(count)
-                    generator[_systemname] = copy.deepcopy(CONFIG['SYSTEMS'][system])
-                    generator[_systemname]['PORT'] = generator[_systemname]['PORT'] + count
-                    generator[_systemname]['_default_options'] = "TS1_STATIC={};TS2_STATIC={};SINGLE={};DEFAULT_UA_TIMER={};DEFAULT_REFLECTOR={};VOICE={}".format(generator[_systemname]['TS1_STATIC'],generator[_systemname]['TS2_STATIC'],int(generator[_systemname]['SINGLE_MODE']),generator[_systemname]['DEFAULT_UA_TIMER'],generator[_systemname]['DEFAULT_REFLECTOR'],int(generator[_systemname]['VOICE_IDENT']) )
-                    logger.debug('(GLOBAL) Generator - generated system %s',_systemname)
-                    generator[_systemname]['_default_options']
-                systemdelete.append(system)
-    
-    for _system in generator:
-        CONFIG['SYSTEMS'][_system] = generator[_system]
-    for _system in systemdelete:
-            CONFIG['SYSTEMS'].pop(_system)
-    
-    del generator
-    del systemdelete
+
     
     for system in CONFIG['SYSTEMS']:
         if CONFIG['SYSTEMS'][system]['ENABLED']:
