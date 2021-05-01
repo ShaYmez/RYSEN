@@ -1,0 +1,6 @@
+#!/bin/sh
+
+cd /opt/freedmr
+python /opt/freedmr/hotspot_proxy_v2.py &
+python /opt/freedmr/playback.py -c loro.cfg &
+python /opt/freedmr/bridge_master.py -c freedmr.cfg -r rules.py
