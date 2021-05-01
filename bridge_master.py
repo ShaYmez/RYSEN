@@ -427,8 +427,8 @@ def stream_trimmer_loop():
                 try:
                     if systems[system].STATUS[stream_id]['LAST'] < _now - 180:
                         remove_list.append(stream_id)
-                except:
-                    logger.exception("(%s) Keyerror - stream trimmer Stream ID: %s",system,stream_id)
+                except Exception as e:
+                    logger.exception("(%s) Keyerror - stream trimmer Stream ID: %s",system,stream_id, exc_info=e)
                     systems[system].STATUS[stream_id]['LAST'] = _now
                     continue
                 
@@ -453,7 +453,7 @@ def stream_trimmer_loop():
                     except KeyError:
                         pass
                 else:
-                    logger.exception('(%s) Attemped to remove OpenBridge Stream ID %s not in the Stream ID list: %s', system, int_id(stream_id), [id for id in systems[system].STATUS])
+                    logger.debug('(%s) Attemped to remove OpenBridge Stream ID %s not in the Stream ID list: %s', system, int_id(stream_id), [id for id in systems[system].STATUS])
 
 def sendVoicePacket(self,pkt,_source_id,_dest_id,_slot):
     _stream_id = pkt[16:20]
@@ -767,8 +767,8 @@ def options_config():
                     CONFIG['SYSTEMS'][_system]['TS2_STATIC'] = _options['TS2_STATIC']
                     CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR'] = int(_options['DEFAULT_REFLECTOR'])
                     CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER'] = int(_options['DEFAULT_UA_TIMER'])
-        except:
-            logger.exception('(OPTIONS) caught exception')
+        except Exception as e:
+            logger.exception('(OPTIONS) caught exception',exc_info=e)
             continue
 
 def mysqlGetConfig():
