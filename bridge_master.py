@@ -2164,9 +2164,9 @@ if __name__ == '__main__':
     
     for system in CONFIG['SYSTEMS']:
         if CONFIG['SYSTEMS'][system]['ENABLED']:
-           # if CONFIG['SYSTEMS'][system]['MODE'] == 'XLXPEER':
-           #     logger.warning('(GLOBAL) system %s not started - XLXPEER connections currently unsupported ', system)
-           #     continue
+            if CONFIG['SYSTEMS'][system]['MODE'] == 'XLXPEER':
+                logger.warning('(GLOBAL) system %s not started - XLXPEER connections currently unsupported ', system)
+                continue
             if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
                 systems[system] = routerOBP(system, CONFIG, report_server)                
             else:
