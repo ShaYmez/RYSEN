@@ -361,8 +361,11 @@ def kaReporting():
     logger.debug('(ROUTER) KeepAlive reporting loop started')
     for system in systems:
         if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
-            if '_bcka' in CONFIG['SYSTEMS'][system] and CONFIG['SYSTEMS'][system]['_bcka'] < time() - 60:
-                logger.warning('(ROUTER) not sending to system %s as last KeepAlive was %s seconds ago',system, int(time() - CONFIG['SYSTEMS'][system]['_bcka']))
+            if CONFIG['SYSTEMS'][system]['ENHANCED_OBP']:
+                if '_bcka' not in CONFIG['SYSTEMS'][system]:
+                   logger.warning('(ROUTER) not sending to system %s as KeepAlive never seen',system)
+                elif CONFIG['SYSTEMS'][system]['_bcka'] < time() - 60:
+                    logger.warning('(ROUTER) not sending to system %s as last KeepAlive was %s seconds ago',system, int(time() - CONFIG['SYSTEMS'][system]['_bcka']))
 
 # run this every 10 seconds to trim stream ids
 def stream_trimmer_loop():
@@ -1114,7 +1117,7 @@ class routerOBP(OPENBRIDGE):
                         continue
                     
                     #If target has missed 6 (on 1 min) of keepalives, don't send
-                    if _target_system['ENHANCED_OBP'] and '_bcka' in _target_system and _target_system['_bcka'] < pkt_time - 60:
+                    if _target_system['ENHANCED_OBP'] and ('_bcka' not in _target_system or _target_system['_bcka'] < pkt_time - 60):
                         continue
                         
                     
