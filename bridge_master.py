@@ -770,8 +770,8 @@ def options_config():
                     CONFIG['SYSTEMS'][_system]['TS2_STATIC'] = _options['TS2_STATIC']
                     CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR'] = int(_options['DEFAULT_REFLECTOR'])
                     CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER'] = int(_options['DEFAULT_UA_TIMER'])
-        except Exception as e:
-            logger.exception('(OPTIONS) caught exception',exc_info=e)
+        except Exception:
+            logger.exception('(OPTIONS) caught exception')
             continue
 
 def mysqlGetConfig():
