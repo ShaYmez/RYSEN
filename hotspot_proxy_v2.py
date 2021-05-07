@@ -71,7 +71,7 @@ class Proxy(DatagramProtocol):
                     try:
                         self.peerTrack[_peer_id]['timer'].cancel()
                     except KeyError:
-                        return
+                        pass
                     self.reaper(_peer_id)
                     return
             elif _command == MSTP:
