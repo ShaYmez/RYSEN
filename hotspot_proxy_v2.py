@@ -68,7 +68,10 @@ class Proxy(DatagramProtocol):
                         _peer_id = self.connTrack[port]
             elif _command == MSTN:
                     _peer_id = data[6:10]
-                    self.peerTrack[_peer_id]['timer'].cancel()
+                    try:
+                        self.peerTrack[_peer_id]['timer'].cancel()
+                    except KeyError:
+                        return
                     self.reaper(_peer_id)
                     return
             elif _command == MSTP:
