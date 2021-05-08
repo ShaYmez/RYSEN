@@ -156,7 +156,7 @@ if __name__ == '__main__':
     DestportStart = 54000
     DestPortEnd = 54100
     Timeout = 30
-    Stats = False
+    Stats = True
     Debug = False
     BlackList = [1234567]
     
