@@ -568,8 +568,8 @@ def ident():
                     _say.append(words[character])
                     _say.append(words['silence'])
                 _say.append(words['silence'])
-                #test 
-                #_say.append(AMBEobj.readSingleFile('44xx.ambe'))
+                test 
+                #_say.append(AMBEobj.readSingleFile('alpha.ambe'))
                 _all_call = bytes_3(16777215)
                 _source_id= bytes_3(5000)
                 speech = pkt_gen(_source_id, _all_call, bytes_4(16777215), 1, _say)
