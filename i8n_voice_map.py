@@ -37,48 +37,57 @@ voiceMap = {
 
     'en_US:': {
                 'to': '2',
-                'freedmr': 'silence'
+                'freedmr': 'silence',
+                'this-is': 'silence'
     },
     
     'es_ES': {
                 'to': 'silence',
-                'freedmr': 'silence'
+                'freedmr': 'silence',
+                'this-is': 'silence'
     },
     
     'fr_FR': {
                 'to': 'silence',
-                'freedmr': 'silence'
+                'freedmr': 'silence',
+                'this-is': 'silence'
     },
     
     'de_DE': {
                 'to': 'silence',
-                'freedmr': 'silence'
+                'freedmr': 'silence',
+                'this-is': 'silence'
     },
     
     'dk_DK': {
                 'to': 'silence',
-                'freedmr': 'silence'
+                'freedmr': 'silence',
+                'this-is': 'silence'
                     
     },
     
     'it_IT': {
                 'to': 'silence',
-                'freedmr': 'silence'
+                'freedmr': 'silence',
+                'this-is': 'silence'
     },
     
     'no_NO': {
                 'to': 'silence',
-                'freedmr': 'silence'
+                'freedmr': 'silence',
+                'this-is': 'silence'
     },
     
     'pl_PL': {
                 'to': 'silence',
-                'freedmr': 'silence'
+                'freedmr': 'silence',
+                'this-is': 'silence'
     },
     
     'se_SE': {
                 'to': 'silence',
-                'freedmr': 'silence'
+                'freedmr': 'silence',
+                'this-is': 'silence'
     }
 
 }
