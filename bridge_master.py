@@ -562,6 +562,16 @@ def ident():
                 logger.info('(%s) System idle. Sending voice ident',system)
                 _say = [words['silence']]
                 _say.append(words['silence'])
+                _say.append(words['silence'])
+                _say.append(words['this-is'])
+                _say.append(words['silence'])
+                _say.append(words['silence'])
+                _say.append(words['silence'])
+                _say.append(words['silence'])
+                _say.append(words['silence'])
+                _say.append(words['silence'])
+                _say.append(words['silence'])
+                
                 _systemcs = re.sub(r'\W+', '', _callsign)
                 _systemcs.upper()
                 for character in _systemcs:
@@ -571,6 +581,9 @@ def ident():
                 _say.append(words['silence'])
                 _say.append(words['silence'])
                 _say.append(words['silence'])
+                _say.append(words['silence'])
+                _say.append(words['silence'])
+                
                 _say.append(words['freedmr'])
                 
                 #test 
