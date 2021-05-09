@@ -568,6 +568,11 @@ def ident():
                     _say.append(words[character])
                     _say.append(words['silence'])
                 _say.append(words['silence'])
+                _say.append(words['silence'])
+                _say.append(words['silence'])
+                _say.append(words['silence'])
+                _say.append(words['freedmr'])
+                
                 #test 
                 #_say.append(AMBEobj.readSingleFile('alpha.ambe'))
                 _all_call = bytes_3(16777215)
@@ -2194,7 +2199,7 @@ if __name__ == '__main__':
     # Ident
     #This runs in a thread so as not to block the reactor
     ident_task = task.LoopingCall(threadIdent)
-    identa = ident_task.start(900)
+    identa = ident_task.start(20)
     identa.addErrback(loopingErrHandle)
     
     #Options parsing
