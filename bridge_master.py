@@ -568,7 +568,7 @@ def ident():
                     _say.append(words[character])
                     _say.append(words['silence'])
                 _say.append(words['silence'])
-                test 
+                #test 
                 #_say.append(AMBEobj.readSingleFile('alpha.ambe'))
                 _all_call = bytes_3(16777215)
                 _source_id= bytes_3(5000)

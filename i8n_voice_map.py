@@ -22,7 +22,7 @@ voiceMap = {
                 'P': 'papa',
                 'Q': 'quebec',
                 'R': 'romeo',
-                #'S': 'sierra',
+                'S': 'sierra',
                 'T': 'tango',
                 'U': 'uniform',
                 'V': 'victor',
