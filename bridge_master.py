@@ -496,24 +496,25 @@ def sendSpeech(self,speech):
 def disconnectedVoice(system):
     _nine = bytes_3(9)
     _source_id = bytes_3(5000)
+    _lang = CONFIG['SYSTEMS'][system]['ANNOUNCEMENT_LANGUAGE']
     logger.debug('(%s) Sending disconnected voice',system)
-    _say = [words['silence']]
-    _say.append(words['silence']) 
+    _say = [words[_lang]['silence']]
+    _say.append(words[_lang]['silence']) 
     if CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'] > 0:
-        _say.append(words['silence'])
-        _say.append(words['linkedto'])
-        _say.append(words['silence'])
-        _say.append(words['to'])
-        _say.append(words['silence'])
-        _say.append(words['silence']) 
+        _say.append(words[_lang]['silence'])
+        _say.append(words[_lang]['linkedto'])
+        _say.append(words[_lang]['silence'])
+        _say.append(words[_lang]['to'])
+        _say.append(words[_lang]['silence'])
+        _say.append(words[_lang]['silence']) 
         
         for number in str(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR']):
-            _say.append(words[number])
-            _say.append(words['silence'])
+            _say.append(words[_lang][number])
+            _say.append(words[_lang]['silence'])
     else:
-        _say.append(words['notlinked'])
+        _say.append(words[_lang]['notlinked'])
     
-    _say.append(words['silence']) 
+    _say.append(words[_lang]['silence']) 
     
     speech = pkt_gen(_source_id, _nine, bytes_4(9), 1, _say)
 
@@ -545,6 +546,7 @@ def ident():
         if CONFIG['SYSTEMS'][system]['MODE'] != 'MASTER':
             continue
         if CONFIG['SYSTEMS'][system]['VOICE_IDENT'] == True:
+            _lang = CONFIG['SYSTEMS'][system]['ANNOUNCEMENT_LANGUAGE']
             if CONFIG['SYSTEMS'][system]['MAX_PEERS'] > 1:
                 logger.debug("(IDENT) %s System has MAX_PEERS > 1, skipping",system)
                 continue
@@ -560,31 +562,31 @@ def ident():
             if (_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _slot['TX_TIME'] > CONFIG['SYSTEMS'][system]['GROUP_HANGTIME']):
                 #_stream_id = hex_str_4(1234567)
                 logger.info('(%s) System idle. Sending voice ident',system)
-                _say = [words['silence']]
-                _say.append(words['silence'])
-                _say.append(words['silence'])
-                _say.append(words['this-is'])
-                _say.append(words['silence'])
-                _say.append(words['silence'])
-                _say.append(words['silence'])
-                _say.append(words['silence'])
-                _say.append(words['silence'])
-                _say.append(words['silence'])
-                _say.append(words['silence'])
+                _say = [words[_lang]['silence']]
+                _say.append(words[_lang]['silence'])
+                _say.append(words[_lang]['silence'])
+                _say.append(words[_lang]['this-is'])
+                _say.append(words[_lang]['silence'])
+                _say.append(words[_lang]['silence'])
+                _say.append(words[_lang]['silence'])
+                _say.append(words[_lang]['silence'])
+                _say.append(words[_lang]['silence'])
+                _say.append(words[_lang]['silence'])
+                _say.append(words[_lang]['silence'])
                 
                 _systemcs = re.sub(r'\W+', '', _callsign)
                 _systemcs.upper()
                 for character in _systemcs:
-                    _say.append(words[character])
-                    _say.append(words['silence'])
-                _say.append(words['silence'])
-                _say.append(words['silence'])
-                _say.append(words['silence'])
-                _say.append(words['silence'])
-                _say.append(words['silence'])
-                _say.append(words['silence'])
+                    _say.append(words[_lang][character])
+                    _say.append(words[_lang]['silence'])
+                _say.append(words[_lang]['silence'])
+                _say.append(words[_lang]['silence'])
+                _say.append(words[_lang]['silence'])
+                _say.append(words[_lang]['silence'])
+                _say.append(words[_lang]['silence'])
+                _say.append(words[_lang]['silence'])
                 
-                _say.append(words['freedmr'])
+                _say.append(words[_lang]['freedmr'])
                 
                 #test 
                 #_say.append(AMBEobj.readSingleFile('alpha.ambe'))
@@ -679,6 +681,10 @@ def options_config():
                     if 'VOICE' in _options and (CONFIG['SYSTEMS'][_system]['VOICE_IDENT'] != bool(int(_options['VOICE']))):
                         CONFIG['SYSTEMS'][_system]['VOICE_IDENT'] = bool(int(_options['VOICE']))
                         logger.debug("(OPTIONS) %s - Setting voice ident to %s",_system,CONFIG['SYSTEMS'][_system]['VOICE_IDENT'])
+                        
+                    if 'LANG' in _options and _options['LANG'] in words and _options['LANG'] != CONFIG['SYSTEMS'][_system]['ANNOUNCEMENT_LANGUAGE'] :
+                        CONFIG['SYSTEMS'][_system]['ANNOUNCEMENT_LANGUAGE'] = _options['LANG']
+                        logger.debug("(OPTIONS) %s - Setting voice language to  %s",_system,CONFIG['SYSTEMS'][_system]['ANNOUNCEMENT_LANGUAGE'])
                         
                     if 'SINGLE' in _options and (CONFIG['SYSTEMS'][_system]['SINGLE_MODE'] != bool(int(_options['SINGLE']))):
                         CONFIG['SYSTEMS'][_system]['SINGLE_MODE'] = bool(int(_options['SINGLE']))
@@ -1643,6 +1649,8 @@ class routerHBP(HBSYSTEM):
         
         _nine = bytes_3(9)
         
+        _lang = CONFIG['SYSTEMS'][self._system]['ANNOUNCEMENT_LANGUAGE']
+        
         _int_dst_id = int_id(_dst_id)
         
         #Handle private calls (for reflectors)
@@ -1711,7 +1719,7 @@ class routerHBP(HBSYSTEM):
             if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
                 
                 #Speak callsign before message
-                _say = [words['silence']]
+                _say = [words[_lang]['silence']]
         #        _systemcs = re.sub(r'\W+', '', self._system)
          #       _systemcs.upper()
           #      for character in _systemcs:
@@ -1721,8 +1729,8 @@ class routerHBP(HBSYSTEM):
                 #If disconnection called
                 if _int_dst_id == 4000:
                     logger.info('(%s) Reflector: voice called - 4000 "not linked"', self._system)
-                    _say.append(words['notlinked'])
-                    _say.append(words['silence'])
+                    _say.append(words[_lang]['notlinked'])
+                    _say.append(words[_lang]['silence'])
                  
                  #If status called
                 elif _int_dst_id == 5000:
@@ -1735,35 +1743,35 @@ class routerHBP(HBSYSTEM):
                             if _system['SYSTEM'] == self._system and _slot == _system['TS']:
                                     if _system['ACTIVE'] == True:
                                         logger.info('(%s) Reflector: voice called - 5000 status - "linked to %s"', self._system,_dehash_bridge)
-                                        _say.append(words['silence'])
-                                        _say.append(words['linkedto'])
-                                        _say.append(words['silence'])
-                                        _say.append(words['to'])
-                                        _say.append(words['silence'])
-                                        _say.append(words['silence']) 
+                                        _say.append(words[_lang]['silence'])
+                                        _say.append(words[_lang]['linkedto'])
+                                        _say.append(words[_lang]['silence'])
+                                        _say.append(words[_lang]['to'])
+                                        _say.append(words[_lang]['silence'])
+                                        _say.append(words[_lang]['silence']) 
                                         
                                         for num in str(_dehash_bridge):
-                                            _say.append(words[num])
+                                            _say.append(words[_lang][num])
                                         
                                         _active = True
                                         break
                         
                     if _active == False:
                         logger.info('(%s) Reflector: voice called - 5000 status - "not linked"', self._system)
-                        _say.append(words['notlinked'])
+                        _say.append(words[_lang]['notlinked'])
                 
                 #Speak what TG was requested to link
                 else:
                     logger.info('(%s) Reflector: voice called (linking)  "linked to %s"', self._system,_int_dst_id)
-                    _say.append(words['silence'])
-                    _say.append(words['linkedto'])
-                    _say.append(words['silence'])
-                    _say.append(words['to'])
-                    _say.append(words['silence'])
-                    _say.append(words['silence'])
+                    _say.append(words[_lang]['silence'])
+                    _say.append(words[_lang]['linkedto'])
+                    _say.append(words[_lang]['silence'])
+                    _say.append(words[_lang]['to'])
+                    _say.append(words[_lang]['silence'])
+                    _say.append(words[_lang]['silence'])
                     
                     for num in str(_int_dst_id):
-                        _say.append(words[num])
+                        _say.append(words[_lang][num])
      
                 speech = pkt_gen(bytes_3(5000), _nine, bytes_4(9), 1, _say)
                 
@@ -2104,7 +2112,7 @@ if __name__ == '__main__':
                     _systemname = system+'-'+str(count)
                     generator[_systemname] = copy.deepcopy(CONFIG['SYSTEMS'][system])
                     generator[_systemname]['PORT'] = generator[_systemname]['PORT'] + count
-                    generator[_systemname]['_default_options'] = "TS1_STATIC={};TS2_STATIC={};SINGLE={};DEFAULT_UA_TIMER={};DEFAULT_REFLECTOR={};VOICE={}".format(generator[_systemname]['TS1_STATIC'],generator[_systemname]['TS2_STATIC'],int(generator[_systemname]['SINGLE_MODE']),generator[_systemname]['DEFAULT_UA_TIMER'],generator[_systemname]['DEFAULT_REFLECTOR'],int(generator[_systemname]['VOICE_IDENT']) )
+                    generator[_systemname]['_default_options'] = "TS1_STATIC={};TS2_STATIC={};SINGLE={};DEFAULT_UA_TIMER={};DEFAULT_REFLECTOR={};VOICE={};LANG={}".format(generator[_systemname]['TS1_STATIC'],generator[_systemname]['TS2_STATIC'],int(generator[_systemname]['SINGLE_MODE']),generator[_systemname]['DEFAULT_UA_TIMER'],generator[_systemname]['DEFAULT_REFLECTOR'],int(generator[_systemname]['VOICE_IDENT']), generator[_systemname]['ANNOUNCEMENT_LANGUAGE'])
                     logger.debug('(GLOBAL) Generator - generated system %s',_systemname)
                     generator[_systemname]['_default_options']
                 systemdelete.append(system)
@@ -2163,18 +2171,21 @@ if __name__ == '__main__':
         logger.info('(REPORT) TCP Socket reporting not configured')
         
     #Read AMBE
-    AMBEobj = readAMBE(CONFIG['GLOBAL']['ANNOUNCEMENT_LANGUAGE'],'./Audio/')
+    AMBEobj = readAMBE(CONFIG['GLOBAL']['ANNOUNCEMENT_LANGUAGES'],'./Audio/')
+    
     #global words
     words = AMBEobj.readfiles()
-    logger.info('(AMBE) Read %s words into voice dict',len(words) - 1)
+    
+    for lang in words.keys():
+        logger.info('(AMBE) for language %s, read %s words into voice dict',lang,len(words[lang]) - 1)
 
-    #Remap words for internationalisation
-    if CONFIG['GLOBAL']['ANNOUNCEMENT_LANGUAGE'] in voiceMap:
-        logger.info('(AMBE) i8n voice map entry for language %s',CONFIG['GLOBAL']['ANNOUNCEMENT_LANGUAGE'])
-        _map = voiceMap[CONFIG['GLOBAL']['ANNOUNCEMENT_LANGUAGE']]
-        for _mapword in _map:
-            logger.info('(AMBE) Mapping \"%s\" to \"%s\"',_mapword,_map[_mapword])
-            words[_mapword] = words[_map[_mapword]]
+        #Remap words for internationalisation
+        if lang in voiceMap:
+            logger.info('(AMBE) i8n voice map entry for language %s',lang)
+            _map = voiceMap[lang]
+            for _mapword in _map:
+                logger.info('(AMBE) Mapping \"%s\" to \"%s\"',_mapword,_map[_mapword])
+                words[lang][_mapword] = words[lang][_map[_mapword]]
 
     # HBlink instance creation
     logger.info('(GLOBAL) FreeDMR \'bridge_master.py\' -- SYSTEM STARTING...')
@@ -2191,6 +2202,9 @@ if __name__ == '__main__':
             if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
                 systems[system] = routerOBP(system, CONFIG, report_server)                
             else:
+                if CONFIG['SYSTEMS'][system]['ANNOUNCEMENT_LANGUAGE'] not in CONFIG['GLOBAL']['ANNOUNCEMENT_LANGUAGES'].split(','):
+                    logger.warning('(GLOBAL) Invalid language in ANNOUNCEMENT_LANGUAGE, skipping system %s',system)
+                    continue
                 systems[system] = routerHBP(system, CONFIG, report_server)
             listeningPorts[system] = reactor.listenUDP(CONFIG['SYSTEMS'][system]['PORT'], systems[system], interface=CONFIG['SYSTEMS'][system]['IP'])
             logger.debug('(GLOBAL) %s instance created: %s, %s', CONFIG['SYSTEMS'][system]['MODE'], system, systems[system])

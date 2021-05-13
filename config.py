@@ -124,7 +124,7 @@ def build_config(_config_file):
                     'TG2_ACL': config.get(section, 'TGID_TS2_ACL'),
                     'GEN_STAT_BRIDGES': config.getboolean(section, 'GEN_STAT_BRIDGES'),
                     'ALLOW_NULL_PASSPHRASE': config.getboolean(section, 'ALLOW_NULL_PASSPHRASE'),
-                    'ANNOUNCEMENT_LANGUAGE': config.get(section, 'ANNOUNCEMENT_LANGUAGE'),
+                    'ANNOUNCEMENT_LANGUAGES': config.get(section, 'ANNOUNCEMENT_LANGUAGES'),
                     'SERVER_ID': config.get(section, 'SERVER_ID')
                     
                 })
@@ -284,7 +284,8 @@ def build_config(_config_file):
                         'TS1_STATIC': config.get(section,'TS1_STATIC'),
                         'TS2_STATIC': config.get(section,'TS2_STATIC'),
                         'DEFAULT_REFLECTOR': config.getint(section, 'DEFAULT_REFLECTOR'),
-                        'GENERATOR': config.getint(section, 'GENERATOR')
+                        'GENERATOR': config.getint(section, 'GENERATOR'),
+                        'ANNOUNCEMENT_LANGUAGE': config.get(section, 'ANNOUNCEMENT_LANGUAGE')
                     }})
                     CONFIG['SYSTEMS'][section].update({'PEERS': {}})
                     
