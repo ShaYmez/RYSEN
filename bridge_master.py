@@ -531,6 +531,27 @@ def disconnectedVoice(system):
         _pkt_time = time()
         reactor.callFromThread(sendVoicePacket,self,pkt,_source_id,_nine,_slot)
         logger.debug('(%s) disconnected voice thread end',system)
+
+#def playFileOnRequest(self,fileNumber,system):
+    #_nine = bytes_3(9)
+    #_source_id = bytes_3(5000)
+    #logger.debug('(%s) Sending contents of AMBE file: %s',system,fileNumber)
+    #_say.append(AMBEobj.readSingleFile('./PlayAudio/'+fileNumber+'.ambe')
+    #speech = pkt_gen(_source_id, _nine, bytes_4(9), 1, _say)
+        #sleep(1)
+    #_slot  = systems[system].STATUS[2]
+    #while True:
+        #try:
+            #pkt = next(speech)
+        #except StopIteration:
+                #break
+        #Packet every 60ms
+        #sleep(0.058)
+        #_stream_id = pkt[16:20]
+        #_pkt_time = time()
+        #reactor.callFromThread(sendVoicePacket,self,pkt,_source_id,_nine,_slot)
+    #logger.debug('(%s) Sending AMBE file %s end',system,fileNumber)
+
     
 
 def threadIdent():
