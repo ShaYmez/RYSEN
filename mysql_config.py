@@ -56,7 +56,7 @@ class useMYSQL:
             logger.info('(MYSQL) error, problem with cursor execute')
             raise Exception('Problem with cursor execute')
         
-        for (callsign, mode, enabled, _repeat, max_peers, export_ambe, ip, port, passphrase, group_hangtime, use_acl, reg_acl, sub_acl, tgid_ts1_acl, tgid_ts2_acl, default_ua_timer, single_mode, voice_ident,ts1_static,ts2_static,default_reflector) in _cursor:
+        for (callsign, mode, enabled, _repeat, max_peers, export_ambe, ip, port, passphrase, group_hangtime, use_acl, reg_acl, sub_acl, tgid_ts1_acl, tgid_ts2_acl, default_ua_timer, single_mode, voice_ident,ts1_static,ts2_static,default_reflector, announce_lang) in _cursor:
             try:
                 CONFIG['SYSTEMS'].update({callsign: {
                             'MODE': mode,
@@ -79,6 +79,7 @@ class useMYSQL:
                             'TS2_STATIC': ts2_static,
                             'DEFAULT_REFLECTOR': int(default_reflector),
                             'GENERATOR': int(1),
+                            'ANNOUNCEMENT_LANGUAGE': announce_lang
                         }})
                 CONFIG['SYSTEMS'][callsign].update({'PEERS': {}})
             except TypeError:

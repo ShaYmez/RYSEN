@@ -1107,6 +1107,9 @@ def mysql_config_check(SQLGETCONFIG):
                         tg = int(tg)
                         make_static_tg(tg,2,_tmout,system)
         
+        if SQLCONFIG[system]['ANNOUNCEMENT_LANGUAGE'] != CONFIG['SYSTEMS'][system]['ANNOUNCEMENT_LANGUAGE']:
+            logger.debug('(MYSQL) %s announcement language changed to %s',system, SQLCONFIG[system]['ANNOUNCEMENT_LANGUAGE'])
+        
         #Rebuild ACLs
         SQLCONFIG[system]['REG_ACL'] = acl_build(SQLCONFIG[system]['REG_ACL'], PEER_MAX)
         SQLCONFIG[system]['SUB_ACL'] = acl_build(SQLCONFIG[system]['SUB_ACL'], ID_MAX)
