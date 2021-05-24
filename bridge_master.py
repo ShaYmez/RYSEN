@@ -78,7 +78,7 @@ import re
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Cortney T. Buffington, N0MJS, Forked by Simon Adlem - G7RZU'
 __copyright__  = 'Copyright (c) 2016-2019 Cortney T. Buffington, N0MJS and the K0USY Group, Simon Adlem, G7RZU 2020,2021'
-__credits__    = 'Colin Durbridge, G4EML, Steve Zingman, N4IRS; Mike Zingman, N4IRR; Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT; Jon Lee, G4TSN'
+__credits__    = 'Colin Durbridge, G4EML, Steve Zingman, N4IRS; Mike Zingman, N4IRR; Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT; Jon Lee, G4TSN; Norman Williams, M6NBP'
 __license__    = 'GNU GPLv3'
 __maintainer__ = 'Simon Adlem G7RZU'
 __email__      = 'simon@gb7fr.org.uk'
@@ -532,25 +532,33 @@ def disconnectedVoice(system):
         reactor.callFromThread(sendVoicePacket,self,pkt,_source_id,_nine,_slot)
         logger.debug('(%s) disconnected voice thread end',system)
 
-#def playFileOnRequest(self,fileNumber,system):
-    #_nine = bytes_3(9)
-    #_source_id = bytes_3(5000)
-    #logger.debug('(%s) Sending contents of AMBE file: %s',system,fileNumber)
-    #_say.append(AMBEobj.readSingleFile('./PlayAudio/'+fileNumber+'.ambe')
-    #speech = pkt_gen(_source_id, _nine, bytes_4(9), 1, _say)
-        #sleep(1)
-    #_slot  = systems[system].STATUS[2]
-    #while True:
-        #try:
-            #pkt = next(speech)
-        #except StopIteration:
-                #break
+def playFileOnRequest(self,fileNumber):
+    system = self._system
+    _lang = CONFIG['SYSTEMS'][system]['ANNOUNCEMENT_LANGUAGE']
+    _nine = bytes_3(9)
+    _source_id = bytes_3(5000)
+    logger.debug('(%s) Sending contents of AMBE file: %s',system,fileNumber)
+    sleep(1)
+    _say = []
+    try:
+        _say.append(AMBEobj.readSingleFile('/'+_lang+'/'+str(fileNumber)+'.ambe'))
+    except IOError:
+        logger.warning('(%s) cannot read file for number %s',system,fileNumber)
+        return
+    speech = pkt_gen(_source_id, _nine, bytes_4(9), 1, _say)
+    sleep(1)
+    _slot  = systems[system].STATUS[2]
+    while True:
+        try:
+            pkt = next(speech)
+        except StopIteration:
+                break
         #Packet every 60ms
-        #sleep(0.058)
-        #_stream_id = pkt[16:20]
-        #_pkt_time = time()
-        #reactor.callFromThread(sendVoicePacket,self,pkt,_source_id,_nine,_slot)
-    #logger.debug('(%s) Sending AMBE file %s end',system,fileNumber)
+        sleep(0.058)
+        _stream_id = pkt[16:20]
+        _pkt_time = time()
+        reactor.callFromThread(sendVoicePacket,self,pkt,_source_id,_nine,_slot)
+    logger.debug('(%s) Sending AMBE file %s end',system,fileNumber)
 
     
 
@@ -1680,11 +1688,14 @@ class routerHBP(HBSYSTEM):
         #Handle private calls (for reflectors)
         if _call_type == 'unit' and _slot == 2:
             if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
+                
+                self.STATUS[_slot]['_stopTgAnnounce'] = False
+                
                 logger.warning('(%s) Reflector: Private call from %s to %s',self._system, int_id(_rf_src), _int_dst_id)
                 #if _int_dst_id >= 4000 and _int_dst_id <= 5000:
                 if _int_dst_id >= 5 and _int_dst_id <= 999999:
                     _bridgename = '#'+ str(_int_dst_id)
-                    if _bridgename not in BRIDGES and not (_int_dst_id >= 4000 and _int_dst_id <= 5000):
+                    if _bridgename not in BRIDGES and not (_int_dst_id >= 4000 and _int_dst_id <= 5000) and not (_int_dst_id >=9991 and _int_dst_id <= 9999):
                             logger.info('(%s) [A] Reflector for TG %s does not exist. Creating as User Activated. Timeout: %s',self._system, _int_dst_id,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
                             make_single_reflector(_dst_id,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'],self._system)
                     
@@ -1784,8 +1795,15 @@ class routerHBP(HBSYSTEM):
                         logger.info('(%s) Reflector: voice called - 5000 status - "not linked"', self._system)
                         _say.append(words[_lang]['notlinked'])
                 
+                #Information services
+                elif _int_dst_id >= 9991 and _int_dst_id <= 9999:
+                    self.STATUS[_slot]['_stopTgAnnounce'] = True
+                    reactor.callInThread(playFileOnRequest,self,_int_dst_id)
+                    #playFileOnRequest(self,_int_dst_id)
+                    
+                
                 #Speak what TG was requested to link
-                else:
+                elif not self.STATUS[_slot]['_stopTgAnnounce']:
                     logger.info('(%s) Reflector: voice called (linking)  "linked to %s"', self._system,_int_dst_id)
                     _say.append(words[_lang]['silence'])
                     _say.append(words[_lang]['linkedto'])
@@ -1797,10 +1815,10 @@ class routerHBP(HBSYSTEM):
                     for num in str(_int_dst_id):
                         _say.append(words[_lang][num])
      
-                speech = pkt_gen(bytes_3(5000), _nine, bytes_4(9), 1, _say)
-                
-                #call speech in a thread as it contains sleep() and hence could block the reactor
-                reactor.callInThread(sendSpeech,self,speech)
+                if not self.STATUS[_slot]['_stopTgAnnounce']:
+                    speech = pkt_gen(bytes_3(5000), _nine, bytes_4(9), 1, _say)
+                    #call speech in a thread as it contains sleep() and hence could block the reactor
+                    reactor.callInThread(sendSpeech,self,speech)
 
             # Mark status variables for use later
             self.STATUS[_slot]['RX_PEER']      = _peer_id

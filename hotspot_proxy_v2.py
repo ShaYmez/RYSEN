@@ -5,6 +5,14 @@ from resettabletimer import ResettableTimer
 from dmr_utils3.utils import int_id
 import random
 
+# Does anybody read this stuff? There's a PEP somewhere that says I should do this.
+__author__     = 'Simon Adlem - G7RZU'
+__copyright__  = 'Copyright (c) Simon Adlem, G7RZU 2020,2021'
+__credits__    = 'Jon Lee, G4TSN; Norman Williams, M6NBP'
+__license__    = 'GNU GPLv3'
+__maintainer__ = 'Simon Adlem G7RZU'
+__email__      = 'simon@gb7fr.org.uk'
+
 class Proxy(DatagramProtocol):
 
     def __init__(self,Master,ListenPort,connTrack,blackList,Timeout,Debug,DestportStart,DestPortEnd):

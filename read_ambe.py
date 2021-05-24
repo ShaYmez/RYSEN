@@ -143,7 +143,7 @@ class readAMBE:
                 _wordBitarray.clear()
                 ambe.close()
         except IOError:
-            return(False)
+            raise
         
         return(_wordBA)
         
