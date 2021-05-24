@@ -1699,7 +1699,7 @@ class routerHBP(HBSYSTEM):
                             logger.info('(%s) [A] Reflector for TG %s does not exist. Creating as User Activated. Timeout: %s',self._system, _int_dst_id,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
                             make_single_reflector(_dst_id,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'],self._system)
                     
-                    if _int_dst_id > 5 and _int_dst_id != 9 and _int_dst_id != 5000:
+                    if _int_dst_id > 5 and _int_dst_id != 9 and _int_dst_id != 5000 and not (_int_dst_id >=9991 and _int_dst_id <= 9999):
                         for _bridge in BRIDGES:
                             if _bridge[0:1] != '#':
                                 continue
