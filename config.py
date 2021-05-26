@@ -204,7 +204,8 @@ def build_config(_config_file):
                         'USE_ACL': config.getboolean(section, 'USE_ACL'),
                         'SUB_ACL': config.get(section, 'SUB_ACL'),
                         'TG1_ACL': config.get(section, 'TGID_TS1_ACL'),
-                        'TG2_ACL': config.get(section, 'TGID_TS2_ACL')
+                        'TG2_ACL': config.get(section, 'TGID_TS2_ACL'),
+                        'ANNOUNCEMENT_LANGUAGE': config.get(section, 'ANNOUNCEMENT_LANGUAGE')
                     }})
                     CONFIG['SYSTEMS'][section].update({'STATS': {
                         'CONNECTION': 'NO',             # NO, RTPL_SENT, AUTHENTICATED, CONFIG-SENT, YES 
@@ -250,7 +251,8 @@ def build_config(_config_file):
                         'USE_ACL': config.getboolean(section, 'USE_ACL'),
                         'SUB_ACL': config.get(section, 'SUB_ACL'),
                         'TG1_ACL': config.get(section, 'TGID_TS1_ACL'),
-                        'TG2_ACL': config.get(section, 'TGID_TS2_ACL')
+                        'TG2_ACL': config.get(section, 'TGID_TS2_ACL'),
+                        'ANNOUNCEMENT_LANGUAGE': config.get(section, 'ANNOUNCEMENT_LANGUAGE')
                     }})
                     CONFIG['SYSTEMS'][section].update({'XLXSTATS': {
                         'CONNECTION': 'NO',             # NO, RTPL_SENT, AUTHENTICATED, CONFIG-SENT, YES 
