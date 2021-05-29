@@ -1321,7 +1321,7 @@ class routerOBP(OPENBRIDGE):
         dmrpkt = _data[20:53]
         _bits = _data[15]
                 
-        if _call_type == 'group':
+        if _call_type == 'group' or call_type == 'vcsbk':
             # Is this a new call stream?
             if (_stream_id not in self.STATUS):
                 
@@ -1831,7 +1831,7 @@ class routerHBP(HBSYSTEM):
                             
 
         #Handle group calls
-        if _call_type == 'group':
+        if _call_type == 'group' or call_type == 'vcsbk':
 
             # Is this a new call stream?
             if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
