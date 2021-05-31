@@ -849,6 +849,9 @@ def mk_aliases(_config):
         # Try updating subscriber aliases file
         result = try_download(_config['ALIASES']['PATH'], _config['ALIASES']['SUBSCRIBER_FILE'], _config['ALIASES']['SUBSCRIBER_URL'], _config['ALIASES']['STALE_TIME'])
         logger.info('(GLOBAL) %s', result)
+        #Try updating tgid aliases file
+        result = try_download(_config['ALIASES']['PATH'], _config['ALIASES']['TGID_FILE'], _config['ALIASES']['TGID_URL'], _config['ALIASES']['STALE_TIME'])
+        logger.info('(GLOBAL) %s', result)
 
     # Make Dictionaries
     peer_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'])

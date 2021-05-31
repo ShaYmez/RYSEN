@@ -156,6 +156,7 @@ def build_config(_config_file):
                     'TGID_FILE': config.get(section, 'TGID_FILE'),
                     'PEER_URL': config.get(section, 'PEER_URL'),
                     'SUBSCRIBER_URL': config.get(section, 'SUBSCRIBER_URL'),
+                    'TGID_URL': config.get(section, 'TGID_URL'),
                     'STALE_TIME': config.getint(section, 'STALE_DAYS') * 86400,
                 })
                 
