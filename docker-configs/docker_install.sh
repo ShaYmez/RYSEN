@@ -155,10 +155,14 @@ echo Run FreeDMR container...
 docker run --name=freedmr -d --read-only -v /etc/freedmr/freedmr.cfg:/opt/freedmr/freedmr.cfg \
 -v /var/log/freedmr/freedmr.log:/opt/freedmr/freedmr.log \
 -v /etc/freedmr/rules.py:/opt/freedmr/rules.py -p 62031:62031/udp -p 62036-62046:62036-62046/udp \
--p 4321:4321/tcp hacknix/freedmr:latest
+-p 4321:4321/tcp hacknix/freedmr:latest &&
 
 echo Set to restart on boot and when it dies...
-docker update --restart unless-stopped freedmr
+docker update --restart unless-stopped freedmr &&
+
+echo Download update script for future use...
+curl https://raw.githubusercontent.com/hacknix/FreeDMR/master/docker-configs/update_freedmr.sh -o update_freedmr.sh &&
+chmod 700 ./update_freedmr.sh
 
 echo FreeDMR setup complete!
 
