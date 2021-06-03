@@ -1,0 +1,14 @@
+version: '3.3'
+services:
+    freedmr:
+        container_name: freedmr
+        volumes:
+            - '/etc/freedmr/freedmr.cfg:/opt/freedmr/freedmr.cfg'
+            - '/var/log/freedmr/freedmr.log:/opt/freedmr/freedmr.log'
+            - '/etc/freedmr/rules.py:/opt/freedmr/rules.py'
+        ports:
+            - '62031:62031/udp'
+            - '62045-62049:62045-62049/udp'
+            - '5900:5900/udp'
+            - '4321:4321/tcp'
+        image: 'hacknix/freedmr:development-latest'
