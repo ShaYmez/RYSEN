@@ -254,7 +254,9 @@ voiceMap = {
     },
     
     'CW': {
-                'to': 'silence'
+                'to': 'silence',
+                'freedmr': 'silence',
+                'this-is': 'silence'
     }
 
 
