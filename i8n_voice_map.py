@@ -64,7 +64,7 @@ voiceMap = {
                 'linkedto': 'linked-to'
     },
 
-    'en_US:': {
+    'en_US': {
                 'to': '2',
                 'freedmr': 'silence',
                 'this-is': 'silence'
@@ -251,7 +251,12 @@ voiceMap = {
                 'to': 'silence',
                 'freedmr': 'silence',
                 'this-is': 'silence'
+    },
+    
+    'CW': {
+                'to': 'silence'
     }
+
 
 }
     
