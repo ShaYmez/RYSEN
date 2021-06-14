@@ -169,6 +169,9 @@ class OPENBRIDGE(DatagramProtocol):
 
             if compare_digest(_hash, _ckhs) and (_sockaddr == self._config['TARGET_SOCK'] or self._config['RELAX_CHECKS']):
                 _peer_id = _data[11:15]
+                if self._config['NETWORK_ID'] != _peer_id:
+                    logger.error('(%s) OpenBridge packet discarded because NETWORK_ID: %s Does not match sent Peer ID: %s', self._system, self._config['NETWORK_ID'], _peer_id)
+                    return
                 _seq = _data[4]
                 _rf_src = _data[5:8]
                 _dst_id = _data[8:11]
