@@ -1185,12 +1185,14 @@ class routerOBP(OPENBRIDGE):
                             'CONTENTION':False,
                             'RFS':       _rf_src,
                             'TGID':      _dst_id,
-                            'RX_PEER': _peer_id
+                            'RX_PEER': _peer_id,
+
                         }
                         # Generate LCs (full and EMB) for the TX stream
                         try:
                             dst_lc = b''.join([self.STATUS[_stream_id]['LC'][0:3], _target['TGID'], _rf_src])
-                        except:
+                        except Exception:
+                            logger.exception('(to_target) caught exception')
                             return
                         _target_status[_stream_id]['H_LC'] = bptc.encode_header_lc(dst_lc)
                         _target_status[_stream_id]['T_LC'] = bptc.encode_terminator_lc(dst_lc)
