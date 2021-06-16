@@ -3,9 +3,9 @@
 echo FreeDMR Docker installer...
 
 echo Installing required packages...
-apt-get install docker.io && 
-apt-get install docker-compose &&
-apt-get install conntrack &&
+apt install docker.io && 
+apt install docker-compose &&
+apt install conntrack &&
 
 echo Set userland-proxy to false...
 echo '{ "userland-proxy": false}' > /etc/docker/daemon.json &&
