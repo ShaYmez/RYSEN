@@ -31,14 +31,17 @@ import sys
 import const
 
 import socket
+import ipaddress 
+from socket import gethostbyname
+
 
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Cortney T. Buffington, N0MJS'
-__copyright__  = 'Copyright (c) 2016-2018 Cortney T. Buffington, N0MJS and the K0USY Group'
+__copyright__  = '(c) Simon Adlem, G7RZU 2020-2021, Copyright (c) 2016-2018 Cortney T. Buffington, N0MJS and the K0USY Group'
 __credits__    = 'Colin Durbridge, G4EML, Steve Zingman, N4IRS; Mike Zingman, N4IRR; Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT'
 __license__    = 'GNU GPLv3'
-__maintainer__ = 'Cort Buffington, N0MJS'
-__email__      = 'n0mjs@me.com'
+__maintainer__ = 'Simon Adlem, G7RZU'
+__email__      = 'simon@gb7fr.org.uk'
 
 # Processing of ALS goes here. It's separated from the acl_build function because this
 # code is hblink config-file format specific, and acl_build is abstracted
@@ -95,6 +98,22 @@ def acl_build(_acl, _max):
                  sys.exit('ACL CREATION ERROR, VALUE OUT OF RANGE ({} - {}) IN SINGLE ID ENTRY: {}'.format(const.ID_MIN, _max, entry))
 
     return (action, acl)
+
+def IsIPv4Address(ip):
+    try:
+        ipaddress.IPv4Address(ip)
+        return True
+    except ValueError as errorCode:
+        pass
+        return False
+    
+def IsIPv6Address(ip):
+    try:
+        ipaddress.IPv6Address(ip)
+        return True
+    except ValueError as errorCode:
+        pass
+        return False   
 
 def build_config(_config_file):
     config = configparser.ConfigParser()
@@ -312,16 +331,30 @@ def build_config(_config_file):
                     }})
                     
                     try:
-                        addr_info = socket.getaddrinfo(CONFIG['SYSTEMS'][section]['TARGET_IP'],CONFIG['SYSTEMS'][section]['TARGET_PORT'],socket.AF_UNSPEC, socket.IPPROTO_IP)
-                            
+                        
+                        if CONFIG['SYSTEMS'][section]['IP'] == '::':
+                            addr_info = socket.getaddrinfo(CONFIG['SYSTEMS'][section]['TARGET_IP'],CONFIG['SYSTEMS'][section]['TARGET_PORT'],socket.AF_UNSPEC, socket.IPPROTO_IP)
+                        
+                        elif CONFIG['SYSTEMS'][section]['IP'] and IsIPv6Address(CONFIG['SYSTEMS'][section]['IP']):
+                            addr_info = socket.getaddrinfo(CONFIG['SYSTEMS'][section]['TARGET_IP'],CONFIG['SYSTEMS'][section]['TARGET_PORT'],socket.AF_INET6, socket.IPPROTO_IP)
+                                
+                        elif not CONFIG['SYSTEMS'][section]['IP'] or IsIPv4Address(CONFIG['SYSTEMS'][section]['IP']):
+                            addr_info = socket.getaddrinfo(CONFIG['SYSTEMS'][section]['TARGET_IP'],CONFIG['SYSTEMS'][section]['TARGET_PORT'],socket.AF_INET, socket.IPPROTO_IP)
+                        else:
+                            raise
+                        
                         family, socktype, proto, canonname, sockaddr = addr_info[0]
-                        CONFIG['SYSTEMS'][section]['TARGET_SOCK'] = sockaddr
                         CONFIG['SYSTEMS'][section]['TARGET_IP'] = sockaddr[0]
-                
+                        
+                        if CONFIG['SYSTEMS'][section]['IP'] == '::' and IsIPv4Address(CONFIG['SYSTEMS'][section]['TARGET_IP']):
+                                CONFIG['SYSTEMS'][section]['TARGET_IP'] = '::ffff:' + CONFIG['SYSTEMS'][section]['TARGET_IP']
+                        
+                        CONFIG['SYSTEMS'][section]['TARGET_SOCK'] = (CONFIG['SYSTEMS'][section]['TARGET_IP'],CONFIG['SYSTEMS'][section]['TARGET_PORT'])
+                    
                     except:
                         CONFIG['SYSTEMS'][section]['TARGET_IP'] = False
                         CONFIG['SYSTEMS'][section]['TARGET_SOCK'] = (CONFIG['SYSTEMS'][section]['TARGET_IP'], CONFIG['SYSTEMS'][section]['TARGET_PORT'])
-                    
+                        
     
     except configparser.Error as err:
         sys.exit('Error processing configuration file -- {}'.format(err))
