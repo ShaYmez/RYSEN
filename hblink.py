@@ -120,6 +120,7 @@ class OPENBRIDGE(DatagramProtocol):
         
 
     def startProtocol(self):
+        logger.info('(%s) Starting OBP. TARGET_IP: %s, TARGET_PORT: %s',self._system, self._config['TARGET_IP'], self._config['TARGET_PORT'])
         if self._config['ENHANCED_OBP']:
             logger.debug('(%s) *BridgeControl* starting KeepAlive timer',self._system)
             self._bcka_task = task.LoopingCall(self.send_bcka)
@@ -130,7 +131,7 @@ class OPENBRIDGE(DatagramProtocol):
         logger.info('(%s) is mode OPENBRIDGE. No De-Registration required, continuing shutdown', self._system)
 
     def send_system(self, _packet):
-        if _packet[:4] == DMRD:
+        if _packet[:4] == DMRD and self._config['TARGET_IP']:
             #_packet = _packet[:11] + self._config['NETWORK_ID'] + _packet[15:]
             _packet = b''.join([_packet[:11], self._CONFIG['GLOBAL']['SERVER_ID'], _packet[15:]])
             #_packet += hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest()
@@ -139,19 +140,30 @@ class OPENBRIDGE(DatagramProtocol):
             # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
             #logger.debug('(%s) TX Packet to OpenBridge %s:%s -- %s', self._system, self._config['TARGET_IP'], self._config['TARGET_PORT'], ahex(_packet))                
         else:
-            logger.error('(%s) OpenBridge system was asked to send non DMRD packet with send_system(): %s', self._system, _packet)
+            
+            if not self._config['TARGET_IP']:
+                logger.debug('(%s) Not sent packet as TARGET_IP not currently known')
+            else:
+                logger.error('(%s) OpenBridge system was asked to send non DMRD packet with send_system(): %s', self._system, _packet)
             
     def send_bcka(self):
-        _packet = BCKA
-        _packet = b''.join([_packet[:4], (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
-        self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
-        logger.debug('(%s) *BridgeControl* sent KeepAlive',self._system)
+        if self._config['TARGET_IP']:
+            _packet = BCKA
+            _packet = b''.join([_packet[:4], (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
+            self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
+            logger.debug('(%s) *BridgeControl* sent KeepAlive',self._system)
+        else:
+            logger.debug('(%s) *BridgeControl* not sending KeepAlive, TARGET_IP currently not known',self._system)
+        
         
     def send_bcsq(self,_tgid,_stream_id):
-        _packet = b''.join([BCSQ, _tgid, _stream_id])
-        _packet = b''.join([_packet, (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
-        self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
-        logger.debug('(%s) *BridgeControl* sent BCSQ Source Quench, TG: %s, Stream ID: %s',self._system,int_id(_tgid), int_id(_stream_id))
+        if self._config['TARGET_IP']:
+            _packet = b''.join([BCSQ, _tgid, _stream_id])
+            _packet = b''.join([_packet, (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
+            self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
+            logger.debug('(%s) *BridgeControl* sent BCSQ Source Quench, TG: %s, Stream ID: %s',self._system,int_id(_tgid), int_id(_stream_id))
+        else:
+            logger.debug('(%s) *BridgeControl* Not sent BCSQ Source Quench TARGET_IP not known , TG: %s, Stream ID: %s',self._system,int_id(_tgid))
     
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):

@@ -30,7 +30,7 @@ import configparser
 import sys
 import const
 
-from socket import gethostbyname
+import socket
 
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Cortney T. Buffington, N0MJS'
@@ -272,7 +272,7 @@ def build_config(_config_file):
                         'ENABLED': config.getboolean(section, 'ENABLED'),
                         'REPEAT': config.getboolean(section, 'REPEAT'),
                         'MAX_PEERS': config.getint(section, 'MAX_PEERS'),
-                        'IP': gethostbyname(config.get(section, 'IP')),
+                        'IP': config.get(section, 'IP'),
                         'PORT': config.getint(section, 'PORT'),
                         'PASSPHRASE': bytes(config.get(section, 'PASSPHRASE'), 'utf-8'),
                         'GROUP_HANGTIME': config.getint(section, 'GROUP_HANGTIME'),
@@ -297,11 +297,11 @@ def build_config(_config_file):
                         'MODE': config.get(section, 'MODE'),
                         'ENABLED': config.getboolean(section, 'ENABLED'),
                         'NETWORK_ID': config.getint(section, 'NETWORK_ID').to_bytes(4, 'big'),
-                        'IP': gethostbyname(config.get(section, 'IP')),
+                        'IP': config.get(section, 'IP'),
                         'PORT': config.getint(section, 'PORT'),
                         'PASSPHRASE': bytes(config.get(section, 'PASSPHRASE').ljust(20,'\x00')[:20], 'utf-8'),
-                        'TARGET_SOCK': (gethostbyname(config.get(section, 'TARGET_IP')), config.getint(section, 'TARGET_PORT')),
-                        'TARGET_IP': gethostbyname(config.get(section, 'TARGET_IP')),
+                        #'TARGET_SOCK': (gethostbyname(config.get(section, 'TARGET_IP')), config.getint(section, 'TARGET_PORT')),
+                        'TARGET_IP': config.get(section, 'TARGET_IP'),
                         'TARGET_PORT': config.getint(section, 'TARGET_PORT'),
                         'USE_ACL': config.getboolean(section, 'USE_ACL'),
                         'SUB_ACL': config.get(section, 'SUB_ACL'),
@@ -310,6 +310,17 @@ def build_config(_config_file):
                         'RELAX_CHECKS': config.getboolean(section, 'RELAX_CHECKS'),
                         'ENHANCED_OBP': config.getboolean(section, 'ENHANCED_OBP')
                     }})
+                    
+                    try:
+                        addr_info = socket.getaddrinfo(CONFIG['SYSTEMS'][section]['TARGET_IP'],CONFIG['SYSTEMS'][section]['TARGET_PORT'],socket.AF_UNSPEC, socket.IPPROTO_IP)
+                            
+                        family, socktype, proto, canonname, sockaddr = addr_info[0]
+                        CONFIG['SYSTEMS'][section]['TARGET_SOCK'] = sockaddr
+                        CONFIG['SYSTEMS'][section]['TARGET_IP'] = sockaddr[0]
+                
+                    except:
+                        CONFIG['SYSTEMS'][section]['TARGET_IP'] = False
+                        CONFIG['SYSTEMS'][section]['TARGET_SOCK'] = (CONFIG['SYSTEMS'][section]['TARGET_IP'], CONFIG['SYSTEMS'][section]['TARGET_PORT'])
                     
     
     except configparser.Error as err:
