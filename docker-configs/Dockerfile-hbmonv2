@@ -4,7 +4,7 @@ COPY entrypoint-proxy /entrypoint
 
 RUN adduser -D -u 54001 hbmon && \
         apk update && \
-        apk add git gcc musl-dev && \
+        apk add git gcc musl-dev  libffi-dev libssl-dev cargo && \
         cd /opt && \
         git clone https://github.com/sp2ong/HBMonv2.git && \
         cd /opt/HBmonv2 && \
