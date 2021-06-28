@@ -6,7 +6,7 @@ services:
             - '/etc/freedmr/freedmr.cfg:/opt/freedmr/freedmr.cfg'
             - '/var/log/freedmr/freedmr.log:/opt/freedmr/freedmr.log'
             - '/etc/freedmr/rules.py:/opt/freedmr/rules.py'
-#Uncomment these are create appropriate path and files if you want to make downloaded
+#Uncomment these and create appropriate path and files if you want to make downloaded
 #JSON files available outside of the container
 #            - '/etc/freedmr/json/talkgroup_ids.json:/opt/freedmr/talkgroup_ids.json'
 #            - '/etc/freedmr/json/subscriber_ids.json:/opt/freedmr/subscriber_ids.json'

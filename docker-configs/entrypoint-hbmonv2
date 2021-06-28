@@ -1,0 +1,4 @@
+#!/bin/sh
+
+cd /opt/HBMonv2
+python /opt/HBMonv2/monitor.py &
