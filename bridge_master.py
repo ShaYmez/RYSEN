@@ -647,6 +647,7 @@ def options_config():
                 if 'OPTIONS' in CONFIG['SYSTEMS'][_system]:
                     _options = {}
                     CONFIG['SYSTEMS'][_system]['OPTIONS'] = CONFIG['SYSTEMS'][_system]['OPTIONS'].rstrip('\x00')
+                    CONFIG['SYSTEMS'][_system]['OPTIONS'] = CONFIG['SYSTEMS'][_system]['OPTIONS'].encode('ascii', 'ignore').decode()
                     CONFIG['SYSTEMS'][_system]['OPTIONS'] = re.sub("\'","",CONFIG['SYSTEMS'][_system]['OPTIONS'])
                     CONFIG['SYSTEMS'][_system]['OPTIONS'] = re.sub("\"","",CONFIG['SYSTEMS'][_system]['OPTIONS'])
                     for x in CONFIG['SYSTEMS'][_system]['OPTIONS'].split(";"):
@@ -824,7 +825,7 @@ def options_config():
                     CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR'] = int(_options['DEFAULT_REFLECTOR'])
                     CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER'] = int(_options['DEFAULT_UA_TIMER'])
         except Exception:
-            logger.exception('(OPTIONS) caught exception: %s',CONFIG['SYSTEMS'][_system])
+            logger.exception('(OPTIONS) caught exception:')
             continue
 
 def mysqlGetConfig():
