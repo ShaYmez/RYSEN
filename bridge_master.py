@@ -681,8 +681,16 @@ def options_config():
                             _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_3')
                         if 'TS1_4' in _options:
                             _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_4')
-                        if 'TS1_4' in _options:
+                        if 'TS1_5' in _options:
                             _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_5')
+                        if 'TS1_6' in _options:
+                            _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_6')
+                        if 'TS1_7' in _options:
+                            _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_7')
+                        if 'TS1_8' in _options:
+                            _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_8')
+                        if 'TS1_9' in _options:
+                            _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_9')
                     if 'TS2_2' in _options:
                         _options['TS2_STATIC'] = _options.pop('TS2_1')
                         if 'TS2_2' in _options:
@@ -691,8 +699,17 @@ def options_config():
                             _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_3')
                         if 'TS2_4' in _options:
                             _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_4')
-                        if 'TS2_4' in _options:
+                        if 'TS2_5' in _options:
                             _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_5')
+                        if 'TS2_6' in _options:
+                            _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_6')
+                        if 'TS2_7' in _options:
+                            _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_7')
+                        if 'TS2_8' in _options:
+                            _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_8')
+                        if 'TS2_9' in _options:
+                            _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_9')
+
                     if 'UserLink' in _options:
                         _options.pop('UserLink')
                     
