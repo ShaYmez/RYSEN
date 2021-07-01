@@ -248,9 +248,8 @@ voiceMap = {
 
     
     'de_DE': {
+
                 'to': 'silence',
-                'freedmr': 'silence',
-                'this-is': 'silence'
     },
     
     'dk_DK': {
