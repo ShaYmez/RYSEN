@@ -4,6 +4,7 @@ from time import time
 from resettabletimer import ResettableTimer
 from dmr_utils3.utils import int_id
 import random
+import ipaddress 
 
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Simon Adlem - G7RZU'
@@ -12,6 +13,21 @@ __credits__    = 'Jon Lee, G4TSN; Norman Williams, M6NBP'
 __license__    = 'GNU GPLv3'
 __maintainer__ = 'Simon Adlem G7RZU'
 __email__      = 'simon@gb7fr.org.uk'
+
+def IsIPv4Address(ip):
+    try:
+        ipaddress.IPv4Address(ip)
+        return True
+    except ValueError as errorCode:
+        pass
+        return False
+    
+def IsIPv6Address(ip):
+    try:
+        ipaddress.IPv6Address(ip)
+        return True
+    except ValueError as errorCode:
+        pass
 
 class Proxy(DatagramProtocol):
 
@@ -30,7 +46,7 @@ class Proxy(DatagramProtocol):
     def reaper(self,_peer_id):
         if self.debug:
             print("dead",_peer_id)
-        self.transport.write(b'RPTCL'+_peer_id, ('127.0.0.1',self.peerTrack[_peer_id]['dport']))
+        self.transport.write(b'RPTCL'+_peer_id, (Master,self.peerTrack[_peer_id]['dport']))
         self.connTrack[self.peerTrack[_peer_id]['dport']] = False
         del self.peerTrack[_peer_id]
         
@@ -56,6 +72,8 @@ class Proxy(DatagramProtocol):
         RPTP    = b'RPTP'
         RPTA    = b'RPTA'
         RPTO    = b'RPTO'
+        
+        _peer_id = False
         
         host,port = addr
         
@@ -124,7 +142,7 @@ class Proxy(DatagramProtocol):
                 _dport = self.peerTrack[_peer_id]['dport']
                 self.peerTrack[_peer_id]['sport'] = port
                 self.peerTrack[_peer_id]['shost'] = host
-                self.transport.write(data, ('127.0.0.1',_dport))
+                self.transport.write(data, (Master,_dport))
                 self.peerTrack[_peer_id]['timer'].reset()
                 if self.debug:
                     print(data)
@@ -158,10 +176,12 @@ if __name__ == '__main__':
     
     Master = "127.0.0.1"
     ListenPort = 62031
+    # '' = all IPv4, '::' = all IPv4 and IPv6 (Dual Stack)
+    ListenIP = ''
     DestportStart = 54000
     DestPortEnd = 54100
     Timeout = 30
-    Stats = True
+    Stats = False
     Debug = False
     BlackList = [1234567]
     
@@ -173,8 +193,12 @@ if __name__ == '__main__':
     for port in range(DestportStart,DestPortEnd+1,1):
         CONNTRACK[port] = False
     
+    #If we are listening IPv6 and Master is an IPv4 IPv4Address
+    #IPv6ify the address. 
+    if ListenIP == '::' and IsIPv4Address(Master):
+        Master = '::ffff:' + Master
 
-    reactor.listenUDP(ListenPort,Proxy(Master,ListenPort,CONNTRACK,BlackList,Timeout,Debug,DestportStart,DestPortEnd))
+    reactor.listenUDP(ListenPort,Proxy(Master,ListenPort,CONNTRACK,BlackList,Timeout,Debug,DestportStart,DestPortEnd),interface=ListenIP)
 
     def loopingErrHandle(failure):
         print('(GLOBAL) STOPPING REACTOR TO AVOID MEMORY LEAK: Unhandled error innowtimed loop.\n {}'.format(failure))
