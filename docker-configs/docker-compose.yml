@@ -9,6 +9,5 @@ services:
         ports:
             - '62031:62031/udp'
             - '62045-62049:62045-62049/udp'
-            - '5900:5900/udp'
             - '4321:4321/tcp'
-        image: 'hacknix/freedmr:development-latest'
+        image: 'hacknix/freedmr:latest'
