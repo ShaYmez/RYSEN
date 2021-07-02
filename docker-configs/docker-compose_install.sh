@@ -13,9 +13,6 @@ echo '{ "userland-proxy": false}' > /etc/docker/daemon.json &&
 echo Restart docker...
 systemctl restart docker &&
 
-echo Pull FreeDMR latest image...
-docker pull hacknix/freedmr:latest &&
-
 echo Make config directory...
 mkdir /etc/freedmr &&
 chmod 755 /etc/freedmr &&
