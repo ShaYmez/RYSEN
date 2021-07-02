@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo FreeDMR Docker (compose) installer...
+echo FreeDMR Docker installer...
 
 echo Installing required packages...
 apt-get -y install docker.io && 
@@ -158,7 +158,7 @@ cd /etc/freedmr &&
 curl https://raw.githubusercontent.com/hacknix/FreeDMR/master/docker-configs/docker-compose.yml -o docker-compose.yml
 
 echo Run FreeDMR container...
-docker-compose -d up 
+docker-compose up -d
 
 
 echo FreeDMR setup complete!
