@@ -45,7 +45,7 @@ from twisted.protocols.basic import NetstringReceiver
 from twisted.internet import reactor, task
 
 # Things we import from the main hblink module
-from hblink import HBSYSTEM, OPENBRIDGE, systems, hblink_handler, reportFactory, REPORT_OPCODES, mk_aliases
+from hblink import HBSYSTEM, OPENBRIDGE, systems, hblink_handler, reportFactory, REPORT_OPCODES, mk_aliases, acl_check
 from dmr_utils3.utils import bytes_3, int_id, get_alias, bytes_4
 from dmr_utils3 import decode, bptc, const
 import config
@@ -1193,6 +1193,16 @@ class routerOBP(OPENBRIDGE):
                     #If target has missed 6 (on 1 min) of keepalives, don't send
                     if _target_system['ENHANCED_OBP'] and ('_bcka' not in _target_system or _target_system['_bcka'] < pkt_time - 60):
                         continue
+                    
+                    #If talkgroup is prohibited by ACL
+                    if self._CONFIG['GLOBAL']['USE_ACL']:
+                        if not acl_check(_target['TGID'], self._CONFIG['GLOBAL']['TG1_ACL']):
+                            #logger.info('(%s) TGID prohibited by ACL, not sending', _target['SYSTEM'], int_id(_dst_id))
+                            continue
+                        
+                        if not acl_check(_target['TGID'],_target_system['TG1_ACL']):
+                            #logger.info('(%s) TGID prohibited by ACL, not sending', _target['SYSTEM'])
+                            continue
                         
                     
                     # Is this a new call stream on the target?
@@ -1561,6 +1571,18 @@ class routerHBP(HBSYSTEM):
                         #If target has missed 6 (on 1 min) of keepalives, don't send
                         if _target_system['ENHANCED_OBP'] and '_bcka' in _target_system and _target_system['_bcka'] < pkt_time - 60:
                             continue
+                        
+                        #If talkgroup is prohibited by ACL
+                        if self._CONFIG['GLOBAL']['USE_ACL']:
+                            if not acl_check(_target['TGID'],self._CONFIG['GLOBAL']['TG1_ACL']):
+                                #logger.info('(%s) TGID prohibited by ACL, not sending', _target['SYSTEM'])
+                                continue
+                        
+                        if _target_system['USE_ACL']:
+                            if not acl_check(_target['TGID'],_target_system['TG1_ACL']):
+                                #logger.info('(%s) TGID prohibited by ACL, not sending', _target['SYSTEM'])
+                                continue
+                        
         
                         # Is this a new call stream on the target?
                         if (_stream_id not in _target_status):
