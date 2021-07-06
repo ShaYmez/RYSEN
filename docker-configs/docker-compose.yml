@@ -11,3 +11,4 @@ services:
             - '62045-62049:62045-62049/udp'
             - '4321:4321/tcp'
         image: 'hacknix/freedmr:latest'
+        restart: "unless-stopped"

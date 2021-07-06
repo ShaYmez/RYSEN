@@ -333,7 +333,10 @@ def build_config(_config_file):
                     try:
                         
                         if CONFIG['SYSTEMS'][section]['IP'] == '::':
-                            addr_info = socket.getaddrinfo(CONFIG['SYSTEMS'][section]['TARGET_IP'],CONFIG['SYSTEMS'][section]['TARGET_PORT'],socket.AF_UNSPEC, socket.IPPROTO_IP)
+                            try:
+                                addr_info = socket.getaddrinfo(CONFIG['SYSTEMS'][section]['TARGET_IP'],CONFIG['SYSTEMS'][section]['TARGET_PORT'],socket.AF_INET6, socket.IPPROTO_IP)
+                            except gaierror:
+                                 addr_info = socket.getaddrinfo(CONFIG['SYSTEMS'][section]['TARGET_IP'],CONFIG['SYSTEMS'][section]['TARGET_PORT'],socket.AF_INET, socket.IPPROTO_IP)
                         
                         elif CONFIG['SYSTEMS'][section]['IP'] and IsIPv6Address(CONFIG['SYSTEMS'][section]['IP']):
                             addr_info = socket.getaddrinfo(CONFIG['SYSTEMS'][section]['TARGET_IP'],CONFIG['SYSTEMS'][section]['TARGET_PORT'],socket.AF_INET6, socket.IPPROTO_IP)
