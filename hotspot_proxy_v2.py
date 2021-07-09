@@ -4,7 +4,8 @@ from time import time
 from resettabletimer import ResettableTimer
 from dmr_utils3.utils import int_id
 import random
-import ipaddress 
+import ipaddress
+import os
 
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Simon Adlem - G7RZU'
@@ -187,6 +188,9 @@ if __name__ == '__main__':
     
 #*******************
 
+    #If IPv6 is enabled by enivornment variable...
+    if ListenIP == '' and 'FDPROXY_IPV6' in os.environ and bool(os.environ['FDPROXY_IPV6']):
+        ListenIP = '::'
     
     CONNTRACK = {}
 
