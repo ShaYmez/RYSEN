@@ -33,6 +33,7 @@ import const
 import socket
 import ipaddress 
 from socket import gethostbyname
+import os
 
 
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
@@ -329,6 +330,10 @@ def build_config(_config_file):
                         'RELAX_CHECKS': config.getboolean(section, 'RELAX_CHECKS'),
                         'ENHANCED_OBP': config.getboolean(section, 'ENHANCED_OBP')
                     }})
+                    
+                    #If IPv6 is enabled by enviornment variable...
+                    if CONFIG['SYSTEMS'][section]['IP'] == '' and 'FD_DEFAULT_IPV6' in os.environ and bool(os.environ['FD_DEFAULT_IPV6']):
+                        CONFIG['SYSTEMS'][section]['IP'] = '::'
                     
                     try:
                         
