@@ -23,7 +23,6 @@ services:
              ipv6_address: fd2a:70b6:9f54:29b6::10
         environment:
             - FDPROXY_IPV6=1
-            - FD_DEFAULT_IPV6=1
 
     ipv6nat:
         container_name: ipv6nat
