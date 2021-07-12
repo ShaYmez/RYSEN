@@ -6,14 +6,14 @@ services:
             - '/etc/freedmr/freedmr.cfg:/opt/freedmr/freedmr.cfg'
             - '/var/log/freedmr/freedmr.log:/opt/freedmr/freedmr.log'
             - '/etc/freedmr/rules.py:/opt/freedmr/rules.py'
-#Uncomment these and create appropriate path and files if you want to make downloaded
-#JSON files available outside of the container
-#            - '/etc/freedmr/json/talkgroup_ids.json:/opt/freedmr/talkgroup_ids.json'
-#            - '/etc/freedmr/json/subscriber_ids.json:/opt/freedmr/subscriber_ids.json'
-#            - '/etc/freedmr/json/peer_ids.json:/opt/freedmr/peer_ids.json'
+            #Write JSON files outside of container
+            - '/etc/freedmr/json/talkgroup_ids.json:/opt/freedmr/talkgroup_ids.json'
+            - '/etc/freedmr/json/subscriber_ids.json:/opt/freedmr/subscriber_ids.json'
+            - '/etc/freedmr/json/peer_ids.json:/opt/freedmr/peer_ids.json'
         ports:
             - '62031:62031/udp'
-            - '62045-62049:62045-62049/udp'
+            - '62044-62049:62044-62049/udp'
+            - '5900:5900/udp'
             - '4321:4321/tcp'
         image: 'hacknix/freedmr:development-latest'
         restart: "unless-stopped"
@@ -23,6 +23,7 @@ services:
              ipv6_address: fd2a:70b6:9f54:29b6::10
         environment:
             - FDPROXY_IPV6=1
+        read_only: "true"
 
     ipv6nat:
         container_name: ipv6nat
@@ -33,6 +34,45 @@ services:
         privileged: "true"
         network_mode: "host"
         restart: "unless-stopped"
+    
+    freedmrmon:
+        container_name: freedmrmon
+        volumes:
+            #This should be kept to a manageable size from
+            #cron or logrotate outisde of the container.
+            - '/var/log/freeDMRmonitor/lastheard.log:/opt/FreeDMRmonitor/log/lastheard.log'
+            - '/var/log/freeDMRmonitor/hbmon.log:/opt/FreeDMRmonitor/log/hbmon.log'
+            #Write JSON files outside of container
+            - '/etc/freedmr/json/talkgroup_ids.json:/opt/FreeDMRmonitor/talkgroup_ids.json'
+            - '/etc/freedmr/json/subscriber_ids.json:/opt/FreeDMRmonitor/subscriber_ids.json'
+            - '/etc/freedmr/json/peer_ids.json:/opt/FreeDMRmonitor/peer_ids.json'
+
+        #Override config file
+        #    - '/etc/freedmr/config.py:/opt/FreeDMRmonitor/config.py'
+        ports:
+            - '9000:9000/tcp'
+        image: 'hacknix/freedmrmonitor:latest'
+        restart: "unless-stopped"
+        networks:
+           app_net:
+             ipv4_address: 172.16.238.20
+             ipv6_address: fd2a:70b6:9f54:29b6::20
+     
+    freedmrmonpache:
+        container_name: freedmrmonapache
+        #Use to override html files
+        #And images
+        #volumes:
+        #    - '/var/www/html/:/var/www/html/'
+        #    - '/var/www/html/images/:/var/www/html/images/'
+        ports:
+            - '80:80/tcp'
+        image: hacknix/freedmrmonitor-apache:latest
+        restart: "unless-stopped"
+        networks:
+           app_net:
+             ipv4_address: 172.16.238.30
+             ipv6_address: fd2a:70b6:9f54:29b6::30
 
 networks:
   app_net:
