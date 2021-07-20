@@ -133,10 +133,7 @@ class OPENBRIDGE(DatagramProtocol):
     def send_system(self, _packet):
         if _packet[:4] == DMRD and self._config['TARGET_IP']:
             #_packet = _packet[:11] + self._config['NETWORK_ID'] + _packet[15:]
-            if self._config['OVERRIDE_SERVER_ID']:
-                _packet = b''.join([_packet[:11], self._config['OVERRIDE_SERVER_ID'], _packet[15:]])
-            else: 
-                _packet = b''.join([_packet[:11], self._CONFIG['GLOBAL']['SERVER_ID'], _packet[15:]])
+            _packet = b''.join([_packet[:11], self._CONFIG['GLOBAL']['SERVER_ID'], _packet[15:]])
             #_packet += hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest()
             _packet = b''.join([_packet, (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
             self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
