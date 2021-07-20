@@ -7,8 +7,14 @@ apt-get -y install docker.io &&
 apt-get -y install docker-compose &&
 apt-get -y  install conntrack &&
 
-echo Set userland-proxy to false...
-echo '{ "userland-proxy": false}' > /etc/docker/daemon.json &&
+echo Set userland-proxy to false and enable ipv6...
+cat  > /etc/docker/daemon.json &&
+{
+     "userland-proxy": false,
+     "fixed-cidr-v6": "fd2a:70b6:9f54:29b5::/64",
+     "ipv6": true
+}
+EOF
 
 echo Restart docker...
 systemctl restart docker &&
@@ -30,7 +36,7 @@ TGID_TS1_ACL: PERMIT:ALL
 TGID_TS2_ACL: PERMIT:ALL
 GEN_STAT_BRIDGES: True
 ALLOW_NULL_PASSPHRASE: True
-ANNOUNCEMENT_LANGUAGES: en_GB,en_GB_2,en_US,es_ES,es_ES_2,fr_FR,de_DE,dk_DK,it_IT,no_NO,pl_PL,se_SE
+ANNOUNCEMENT_LANGUAGES: en_GB,en_GB_2,en_US,es_ES,es_ES_2,fr_FR,de_DE,dk_DK,it_IT,no_NO,pl_PL,se_SE,CW
 SERVER_ID: 0
 
 [REPORTS]
@@ -70,6 +76,7 @@ MODE: OPENBRIDGE
 ENABLED: False
 IP:
 PORT: 62044
+OVERRIDE_SERVER_ID: False
 NETWORK_ID: 1
 PASSPHRASE: mypass
 TARGET_IP: 
@@ -145,17 +152,38 @@ echo "BRIDGES = {'9990': [{'SYSTEM': 'ECHO', 'TS': 2, 'TGID': 9990, 'ACTIVE': Tr
 echo Set perms on config directory...
 chown -R 54000 /etc/freedmr &&
 
+echo install JSON files...
+mkdir -p /etc/freedmr/json &&
+curl https://www.radioid.net/static/rptrs.json -o /etc/freedmr/json/peer_ids.json && 
+curl https://www.radioid.net/static/users.json -o /etc/freedmr/json/subscriber_ids.json &&
+curl http://downloads.freedmr.uk/downloads/talkgroup_ids.json -o /etc/freedmr/json/talkgroup_ids.json &&
+chmod 777 -R /etc/freedmr/json &&
+
 echo Setup logging...
 mkdir -p /var/log/freedmr &&
 touch /var/log/freedmr/freedmr.log &&
 chown -R 54000 /var/log/freedmr &&
+mkdir -p /var/log/FreeDMRmonitor &&
+touch /var/log/FreeDMRmonitor/hbmon.log &&
+touch /var/log/FreeDMRmonitor/lastheard.log &&
+
+echo Setup lastheard pruning cron job...
+cat << EOF > /etc/cron.hourly/lastheard
+#!/bin/bash
+mv /var/log/FreeDMRmonitor/lastheard.log /var/log/FreeDMRmonitor/lastheard.log.save
+/usr/bin/tail -150 /var/log/FreeDMRmonitor/lastheard.log.save > /var/log/FreeDMRmonitor/lastheard.log
+mv /var/log/FreeDMRmonitor/lastheard.log /var/log/FreeDMRmonitor/lastheard.log.save
+/usr/bin/tail -150 /var/log/FreeDMRmonitor/lastheard.log.save > /var/log/FreeDMRmonitor/lastheard.log
+EOF
 
 echo Get docker-compose.yml...
 cd /etc/freedmr &&
-curl https://raw.githubusercontent.com/hacknix/FreeDMR/master/docker-configs/docker-compose.yml -o docker-compose.yml
+curl https://raw.githubusercontent.com/hacknix/FreeDMR/master/docker-configs/docker-compose-ipv6.yml -o docker-compose.yml
 
-echo Run FreeDMR container...
+echo Run FreeDMR containers...
 docker-compose up -d
 
 
 echo FreeDMR setup complete!
+echo try:
+echo 'tail -f /var/log/freedmr/freedmr.log'
