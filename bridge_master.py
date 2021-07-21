@@ -1399,7 +1399,7 @@ class routerOBP(OPENBRIDGE):
                 for system in systems:                            
                    # if system  == self._system:
                    #     continue
-                    if system != self._system CONFIG['SYSTEMS'][system]['MODE'] != 'OPENBRIDGE':
+                    if system != self._system and CONFIG['SYSTEMS'][system]['MODE'] != 'OPENBRIDGE':
                         for _sysslot in systems[system].STATUS:
                             if 'RX_STREAM_ID' in systems[system].STATUS[_sysslot] and _stream_id == systems[system].STATUS[_sysslot]['RX_STREAM_ID']:
                                 if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']: 
