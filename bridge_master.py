@@ -34,7 +34,7 @@ This program currently only works with group voice calls.
 # Python modules we need
 import sys
 from bitarray import bitarray
-from time import time,sleep,perf_counter
+from time import time,sleep
 import importlib.util
 import re
 import copy
@@ -1362,7 +1362,7 @@ class routerOBP(OPENBRIDGE):
                     'CONTENTION':False,
                     'RFS':       _rf_src,
                     'TGID':      _dst_id,
-                    '1ST': perf_counter(),
+                    '1ST': True,
                     'lastSeq': False,
                     'lastData': False,
                     'RX_PEER': _peer_id
@@ -1393,9 +1393,8 @@ class routerOBP(OPENBRIDGE):
                         logger.warning("(%s) OBP *LoopControl* STREAM ID: %s ALREADY FINISHED FROM THIS SOURCE, IGNORING",self._system, int_id(_stream_id))
                     self.STATUS[_stream_id]['_finlog'] = True
                     return
-                
-                #LoopControl
-                hr_times = {}
+               
+                #LoopControl#
                 for system in systems:                            
                     if system  == self._system:
                         continue
@@ -1410,25 +1409,16 @@ class routerOBP(OPENBRIDGE):
                     else:
                         #if _stream_id in systems[system].STATUS and systems[system].STATUS[_stream_id]['START'] <= self.STATUS[_stream_id]['START']:
                         if _stream_id in systems[system].STATUS and '1ST' in systems[system].STATUS[_stream_id] and systems[system].STATUS[_stream_id]['TGID'] == _dst_id:
-                             hr_times[system] = systems[system].STATUS[_stream_id]['1ST']
-                
-                #use the minimum perf_counter to ensure
-                #We always use only the earliest packet
-                fi = min(hr_times, key=hr_times.get)      
-                
-                hr_times = None
-                
-                if self._system != fi:             
-                    if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
-                        logger.warning("(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id))
-                        self.STATUS[_stream_id]['LOOPLOG'] = True
-                    self.STATUS[_stream_id]['LAST'] = pkt_time
-                    
-                    if CONFIG['SYSTEMS'][self._system]['ENHANCED_OBP'] and '_bcsq' not in self.STATUS[_stream_id]:
-                        systems[self._system].send_bcsq(_dst_id,_stream_id)
-                        #logger.warning("(%s) OBP *BridgeControl* Sent BCSQ , STREAM ID: %s, TG %s",self._system, int_id(_stream_id), int_id(_dst_id))
-                        self.STATUS[_stream_id]['_bcsq'] = True
-                    return
+                            if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
+                                logger.warning("(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id))
+                                self.STATUS[_stream_id]['LOOPLOG'] = True
+                            self.STATUS[_stream_id]['LAST'] = pkt_time
+                            
+                            if CONFIG['SYSTEMS'][self._system]['ENHANCED_OBP'] and '_bcsq' not in self.STATUS[_stream_id]:
+                                systems[self._system].send_bcsq(_dst_id,_stream_id)
+                                #logger.warning("(%s) OBP *BridgeControl* Sent BCSQ , STREAM ID: %s, TG %s",self._system, int_id(_stream_id), int_id(_dst_id))
+                                self.STATUS[_stream_id]['_bcsq'] = True
+                            return
                         
                 #Duplicate handling#
                 #Duplicate complete packet
