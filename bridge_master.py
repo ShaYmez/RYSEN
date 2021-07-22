@@ -415,16 +415,8 @@ def stream_trimmer_loop():
                     _stream = systems[system].STATUS[stream_id]
                     _sysconfig = CONFIG['SYSTEMS'][system]
                     #systems[system].STATUS[stream_id]['_fin'] = True
-                    if '_bcsq' in _sysconfig and _stream['TGID'] in _sysconfig['_bcsq'] and _sysconfig['_bcsq'][_stream['TGID']] == stream_id:
-                        logger.debug('(%s) *TIME OUT*   STREAM ID: %s SUB: %s PEER: %s TGID: %s TS 1 (BCSQ)', \
-                            system, int_id(stream_id), get_alias(int_id(_stream['RFS']), subscriber_ids), get_alias(int_id(_stream['RX_PEER']), peer_ids), get_alias(int_id(_stream['TGID']), talkgroup_ids))
-                    elif '_bcsq' in systems[system].STATUS[stream_id] :
-                        logger.debug('(%s) *TIME OUT*   STREAM ID: %s SUB: %s PEER: %s TGID: %s TS 1 (BCSQ)', \
-                            system, int_id(stream_id), get_alias(int_id(_stream['RFS']), subscriber_ids), get_alias(int_id(_stream['RX_PEER']), peer_ids), get_alias(int_id(_stream['TGID']), talkgroup_ids))
-                    else:
-                        logger.info('(%s) *TIME OUT*   STREAM ID: %s SUB: %s PEER: %s TGID: %s TS 1 Duration: %.2f', \
-                            system, int_id(stream_id), get_alias(int_id(_stream['RFS']), subscriber_ids), get_alias(int_id(_stream['RX_PEER']), peer_ids), get_alias(int_id(_stream['TGID']), talkgroup_ids), _stream['LAST'] - _stream['START'])
-                        
+                    logger.info('(%s) *TIME OUT*   STREAM ID: %s SUB: %s PEER: %s TGID: %s TS 1 Duration: %.2f', \
+                        system, int_id(stream_id), get_alias(int_id(_stream['RFS']), subscriber_ids), get_alias(int_id(_stream['RX_PEER']), peer_ids), get_alias(int_id(_stream['TGID']), talkgroup_ids), _stream['LAST'] - _stream['START'])
                     if CONFIG['REPORTS']['REPORT']:
                             systems[system]._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(stream_id), int_id(_stream['RX_PEER']), int_id(_stream['RFS']), 1, int_id(_stream['TGID']), _stream['LAST'] - _stream['START']).encode(encoding='utf-8', errors='ignore'))
                     systems[system].STATUS[stream_id]['_to'] = True
@@ -1404,9 +1396,9 @@ class routerOBP(OPENBRIDGE):
                
                 #LoopControl#
                 for system in systems:                            
-                   # if system  == self._system:
-                   #     continue
-                    if system != self._system and CONFIG['SYSTEMS'][system]['MODE'] != 'OPENBRIDGE':
+                    if system  == self._system:
+                        continue
+                    if CONFIG['SYSTEMS'][system]['MODE'] != 'OPENBRIDGE':
                         for _sysslot in systems[system].STATUS:
                             if 'RX_STREAM_ID' in systems[system].STATUS[_sysslot] and _stream_id == systems[system].STATUS[_sysslot]['RX_STREAM_ID']:
                                 if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']: 
@@ -1417,26 +1409,16 @@ class routerOBP(OPENBRIDGE):
                     else:
                         #if _stream_id in systems[system].STATUS and systems[system].STATUS[_stream_id]['START'] <= self.STATUS[_stream_id]['START']:
                         if _stream_id in systems[system].STATUS and '1ST' in systems[system].STATUS[_stream_id] and systems[system].STATUS[_stream_id]['TGID'] == _dst_id:
-
-                             hr_times[system] = systems[system].STATUS[_stream_id]['1ST']
-                
-                #use the minimum perf_counter to ensure
-                #We always use only the earliest packet
-                fi = min(hr_times, key=hr_times.get)      
-                
-                hr_times = None
-                
-                if self._system != fi:             
-                    if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
-                        logger.warning("(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE",self._system, fi, int_id(_stream_id), int_id(_dst_id))
-                        self.STATUS[_stream_id]['LOOPLOG'] = True
-                    self.STATUS[_stream_id]['LAST'] = pkt_time
-                    
-                    if CONFIG['SYSTEMS'][self._system]['ENHANCED_OBP'] and '_bcsq' not in self.STATUS[_stream_id]:
-                        systems[self._system].send_bcsq(_dst_id,_stream_id)
-                        #logger.warning("(%s) OBP *BridgeControl* Sent BCSQ , STREAM ID: %s, TG %s",self._system, int_id(_stream_id), int_id(_dst_id))
-                        self.STATUS[_stream_id]['_bcsq'] = True
-                    return
+                            if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
+                                logger.warning("(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id))
+                                self.STATUS[_stream_id]['LOOPLOG'] = True
+                            self.STATUS[_stream_id]['LAST'] = pkt_time
+                            
+                            if CONFIG['SYSTEMS'][self._system]['ENHANCED_OBP'] and '_bcsq' not in self.STATUS[_stream_id]:
+                                systems[self._system].send_bcsq(_dst_id,_stream_id)
+                                #logger.warning("(%s) OBP *BridgeControl* Sent BCSQ , STREAM ID: %s, TG %s",self._system, int_id(_stream_id), int_id(_dst_id))
+                                self.STATUS[_stream_id]['_bcsq'] = True
+                            return
                         
                 #Duplicate handling#
                 #Duplicate complete packet
