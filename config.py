@@ -316,10 +316,7 @@ def build_config(_config_file):
                         'MODE': config.get(section, 'MODE'),
                         'ENABLED': config.getboolean(section, 'ENABLED'),
                         'NETWORK_ID': config.getint(section, 'NETWORK_ID').to_bytes(4, 'big'),
-<<<<<<< HEAD
-=======
                         #'OVERRIDE_SERVER_ID': config.getint(section, 'OVERRIDE_SERVER_ID').to_bytes(4, 'big'),
->>>>>>> hrt
                         'IP': config.get(section, 'IP'),
                         'PORT': config.getint(section, 'PORT'),
                         'PASSPHRASE': bytes(config.get(section, 'PASSPHRASE').ljust(20,'\x00')[:20], 'utf-8'),
