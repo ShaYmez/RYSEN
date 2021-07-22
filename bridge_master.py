@@ -418,7 +418,7 @@ def stream_trimmer_loop():
                     if '_bcsq' not in systems[system].STATUS[stream_id]:
                         logger.info('(%s) *TIME OUT*   STREAM ID: %s SUB: %s PEER: %s TGID: %s TS 1 Duration: %.2f', \
                             system, int_id(stream_id), get_alias(int_id(_stream['RFS']), subscriber_ids), get_alias(int_id(_stream['RX_PEER']), peer_ids), get_alias(int_id(_stream['TGID']), talkgroup_ids), _stream['LAST'] - _stream['START'])
-                    elif '_bcsq' in _sysconfig and _tgid in _sysconfig['_bcsq'] and _sysconfig['_bcsq'][_stream['TGID']] == stream_id:
+                    elif '_bcsq' in _sysconfig and _stream['TGID'] in _sysconfig['_bcsq'] and _sysconfig['_bcsq'][_stream['TGID']] == stream_id:
                         logger.info('(%s) *TIME OUT*   STREAM ID: %s SUB: %s PEER: %s TGID: %s TS 1 (RX BCSQ)', \
                             system, int_id(stream_id), get_alias(int_id(_stream['RFS']), subscriber_ids), get_alias(int_id(_stream['RX_PEER']), peer_ids), get_alias(int_id(_stream['TGID']), talkgroup_ids))
                     else:
