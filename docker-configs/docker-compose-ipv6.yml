@@ -2,6 +2,8 @@ version: '2.1'
 services:
     freedmr:
         container_name: freedmr
+        depends_on:
+            - ipv6nat
         volumes:
             - '/etc/freedmr/freedmr.cfg:/opt/freedmr/freedmr.cfg'
             - '/var/log/freedmr/freedmr.log:/opt/freedmr/freedmr.log'
@@ -37,6 +39,8 @@ services:
     
     freedmrmon:
         container_name: freedmrmon
+        depends_on:
+            - freedmr
         volumes:
             #This should be kept to a manageable size from
             #cron or logrotate outisde of the container.
@@ -60,6 +64,8 @@ services:
      
     freedmrmonpache:
         container_name: freedmrmonapache
+        depends_on:
+             - freedmrmon
         #Use to override html files
         #And images
         #volumes:

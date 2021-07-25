@@ -17,6 +17,16 @@ echo Make config directory...
 mkdir /etc/freedmr &&
 chmod 755 /etc/freedmr &&
 
+echo make json directory...
+mkdir -p /etc/freedmr/json &&
+
+echo get json files...
+cd /etc/freedmr/json &&
+curl http://downloads.freedmr.uk/downloads/local_subscriber_ids.json -o subscriber_ids.json &&
+curl http://downloads.freedmr.uk/downloads/talkgroup_ids.json -o talkgroup_ids.json &&
+curl https://www.radioid.net/static/rptrs.json -o peer_ids.json &&
+chmod -R 777 /etc/freedmr/json &&
+
 echo Install /etc/freedmr/freedmr.cfg ... 
 cat << EOF > /etc/freedmr/freedmr.cfg
 [GLOBAL]
@@ -30,7 +40,7 @@ TGID_TS1_ACL: PERMIT:ALL
 TGID_TS2_ACL: PERMIT:ALL
 GEN_STAT_BRIDGES: True
 ALLOW_NULL_PASSPHRASE: True
-ANNOUNCEMENT_LANGUAGES: en_GB,en_GB_2,en_US,es_ES,es_ES_2,fr_FR,de_DE,dk_DK,it_IT,no_NO,pl_PL,se_SE
+ANNOUNCEMENT_LANGUAGES: en_GB,en_GB_2,en_US,es_ES,es_ES_2,fr_FR,de_DE,dk_DK,it_IT,no_NO,pl_PL,se_SE,CW,cy_GB
 SERVER_ID: 0
 
 [REPORTS]
@@ -52,7 +62,7 @@ PEER_FILE: peer_ids.json
 SUBSCRIBER_FILE: subscriber_ids.json
 TGID_FILE: talkgroup_ids.json
 PEER_URL: https://www.radioid.net/static/rptrs.json
-SUBSCRIBER_URL: https://www.radioid.net/static/users.json
+SUBSCRIBER_URL: http://downloads.freedmr.uk/downloads/local_subscriber_ids.json
 TGID_URL: TGID_URL: http://downloads.freedmr.uk/downloads/talkgroup_ids.json
 STALE_DAYS: 7
 
@@ -149,10 +159,25 @@ echo Setup logging...
 mkdir -p /var/log/freedmr &&
 touch /var/log/freedmr/freedmr.log &&
 chown -R 54000 /var/log/freedmr &&
+mkdir -p /var/log/FreeDMRmonitor &&
+touch /var/log/FreeDMRmonitor/lastheard.log &&
+touch /var/log/FreeDMRmonitor/hbmon.log &&
+chown -R 54001 /var/log/FreeDMRmonitor &&
 
 echo Get docker-compose.yml...
 cd /etc/freedmr &&
-curl https://raw.githubusercontent.com/hacknix/FreeDMR/master/docker-configs/docker-compose.yml -o docker-compose.yml
+curl https://raw.githubusercontent.com/hacknix/FreeDMR/master/docker-configs/docker-compose.yml -o docker-compose.yml &&
+
+echo Install crontab...
+cat << EOF > /etc/cron.daily/lastheard
+#!/bin/bash
+mv /var/log/FreeDMRmonitor/lastheard.log /var/log/FreeDMRmonitor/lastheard.log.save
+/usr/bin/tail -150 /var/log/FreeDMRmonitor/lastheard.log.save > /var/log/FreeDMRmonitor/lastheard.log
+mv /var/log/FreeDMRmonitor/lastheard.log /var/log/FreeDMRmonitor/lastheard.log.save
+/usr/bin/tail -150 /var/log/FreeDMRmonitor/lastheard.log.save > /var/log/FreeDMRmonitor/lastheard.log
+EOF
+chmod 755 /etc/cron.daily/lastheard
+
 
 echo Run FreeDMR container...
 docker-compose up -d
