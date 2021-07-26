@@ -27,8 +27,8 @@ services:
         volumes:
             #This should be kept to a manageable size from
             #cron or logrotate outisde of the container.
-            - '/var/log/freeDMRmonitor/lastheard.log:/opt/FreeDMRmonitor/log/lastheard.log'
-            - '/var/log/freeDMRmonitor/hbmon.log:/opt/FreeDMRmonitor/log/hbmon.log'
+            - '/var/log/FreeDMRmonitor/lastheard.log:/opt/FreeDMRmonitor/log/lastheard.log'
+            - '/var/log/FreeDMRmonitor/hbmon.log:/opt/FreeDMRmonitor/log/hbmon.log'
             #Write JSON files outside of container
             - '/etc/freedmr/json/talkgroup_ids.json:/opt/FreeDMRmonitor/talkgroup_ids.json'
             - '/etc/freedmr/json/subscriber_ids.json:/opt/FreeDMRmonitor/subscriber_ids.json'
