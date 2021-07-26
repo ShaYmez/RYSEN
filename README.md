@@ -1,6 +1,6 @@
-### FreeDMR Master Server is a (now quite diverged) fork of the hblink3 project ###
+### FreeDMR Peer Server is a (now very diverged) fork of the hblink3 project ###
 
-FreeDMR Master Server extends hblink3 to assist in building a master server using HBLink3
+FreeDMR Peer Server - software to assist in building a peer mesh network
 
 Please see the wiki for documentation:
 
