@@ -1422,9 +1422,13 @@ class routerOBP(OPENBRIDGE):
                 
                 #use the minimum perf_counter to ensure
                 #We always use only the earliest packet
-                fi = min(hr_times, key=hr_times.get)      
+                fi = min(hr_times, key=hr_times.get, default = False)
                 
                 hr_times = None
+                
+                if not fi:
+                    logger.warning("(%s) OBP *LoopControl* fi is empty for some reason : %s, STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
+                    return
                 
                 if self._system != fi:             
                     if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
