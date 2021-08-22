@@ -537,7 +537,7 @@ def disconnectedVoice(system):
         sleep(0.058)
         _stream_id = pkt[16:20]
         _pkt_time = time()
-        reactor.callFromThread(sendVoicePacket,self,pkt,_source_id,_nine,_slot)
+        reactor.callFromThread(sendVoicePacket,systems[system],pkt,_source_id,_nine,_slot)
         logger.debug('(%s) disconnected voice thread end',system)
 
 def playFileOnRequest(self,fileNumber):
