@@ -616,11 +616,15 @@ class HBSYSTEM(DatagramProtocol):
         elif _command == RPTO:
             _peer_id = _data[4:8]
             if _peer_id in self._peers and self._peers[_peer_id]['SOCKADDR'] == _sockaddr:
-                    _this_peer = self._peers[_peer_id]
-            _this_peer['OPTIONS'] = _data[8:]
-            self.send_peer(_peer_id, b''.join([RPTACK, _peer_id]))
-            logger.info('(%s) Peer %s has sent options %s', self._system, _this_peer['CALLSIGN'], _this_peer['OPTIONS'])
-            self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = _this_peer['OPTIONS'].decode()
+                _this_peer = self._peers[_peer_id]
+                _this_peer['OPTIONS'] = _data[8:]
+                self.send_peer(_peer_id, b''.join([RPTACK, _peer_id]))
+                logger.info('(%s) Peer %s has sent options %s', self._system, _this_peer['CALLSIGN'], _this_peer['OPTIONS'])
+                self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = _this_peer['OPTIONS'].decode()
+            else:
+                self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
+                logger.warning('(%s) Options from Radio ID that is not logged: %s', self._system, int_id(_peer_id))
+        
         
         elif _command == RPTP:    # RPTPing -- peer is pinging us
                 _peer_id = _data[7:11]
