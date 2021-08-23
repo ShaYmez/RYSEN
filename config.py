@@ -33,6 +33,7 @@ import const
 import socket
 import ipaddress 
 from socket import gethostbyname
+from languages import languages
 
 
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
@@ -147,6 +148,8 @@ def build_config(_config_file):
                     'SERVER_ID': config.getint(section, 'SERVER_ID').to_bytes(4, 'big')
                     
                 })
+                if not CONFIG['GLOBAL']['ANNOUNCEMENT_LANGUAGES']:
+                    CONFIG['GLOBAL']['ANNOUNCEMENT_LANGUAGES'] = languages
 
             elif section == 'REPORTS':
                 CONFIG['REPORTS'].update({
