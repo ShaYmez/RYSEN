@@ -14,8 +14,8 @@ services:
             - '/etc/freedmr/json/peer_ids.json:/opt/freedmr/peer_ids.json'
         ports:
             - '62031:62031/udp'
-            - '62044-62049:62044-62049/udp'
-            - '5900:5900/udp'
+            #Change the below to inlude ports used for your OBP(s)
+            - '62041:62041/udp'
             - '4321:4321/tcp'
         image: 'hacknix/freedmr:development-latest'
         restart: "unless-stopped"
