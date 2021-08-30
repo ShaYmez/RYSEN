@@ -40,6 +40,7 @@ from collections import deque
 from twisted.internet.protocol import DatagramProtocol, Factory, Protocol
 from twisted.protocols.basic import NetstringReceiver
 from twisted.internet import reactor, task
+from twisted.names import client
 
 # Other files we pull from -- this is mostly for readability and segmentation
 import log
@@ -356,6 +357,11 @@ class HBSYSTEM(DatagramProtocol):
             self._stats['NUM_OUTSTANDING'] = 0
             self._stats['PING_OUTSTANDING'] = False
             self._stats['CONNECTION'] = 'RPTL_SENT'
+            if self._stats['DNS_TIME'] < (time() - 1):
+                self._stats['DNS_TIME'] = time()
+                _d = client.getHostByName(self._config['_MASTER_IP'])
+                _d.addCallback(self.updateSockaddr)
+                _d.addErrback(self,_d)
             self.send_master(b''.join([RPTL, self._config['RADIO_ID']]))
             logger.info('(%s) Sending login request to master %s:%s', self._system, self._config['MASTER_IP'], self._config['MASTER_PORT'])
         # If we are connected, sent a ping to the master and increment the counter
@@ -364,6 +370,14 @@ class HBSYSTEM(DatagramProtocol):
             logger.debug('(%s) RPTPING Sent to Master. Total Sent: %s, Total Missed: %s, Currently Outstanding: %s', self._system, self._stats['PINGS_SENT'], self._stats['PINGS_SENT'] - self._stats['PINGS_ACKD'], self._stats['NUM_OUTSTANDING'])
             self._stats['PINGS_SENT'] += 1
             self._stats['PING_OUTSTANDING'] = True
+            
+    def updateSockaddr(self,ip):
+        self._config['MASTER_IP'] = ip
+        self._config['MASTER_SOCKADDR'] = (ip, self._config['MASTER_PORT'])
+        logger.debug('(%s) hostname resolution performed',self._system)
+        
+    def updateSockaddr_errback(self,d):
+        logger.debug('(%s) hostname resolution error',self._system)
 
     def send_peers(self, _packet):
         for _peer in self._peers:
