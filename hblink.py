@@ -306,6 +306,7 @@ class HBSYSTEM(DatagramProtocol):
 
         elif self._config['MODE'] == 'PEER':
             self._stats = self._config['STATS']
+            self._stats['DNS_TIME'] = time()
             self.send_system = self.send_master
             self.maintenance_loop = self.peer_maintenance_loop
             self.datagramReceived = self.peer_datagramReceived
@@ -317,11 +318,15 @@ class HBSYSTEM(DatagramProtocol):
             self.maintenance_loop = self.peer_maintenance_loop
             self.datagramReceived = self.peer_datagramReceived
             self.dereg = self.peer_dereg
+            
+    def loopingErrHandle(self,failure):
+        logger.error('(GLOBAL - hblink.py) Unhandled error in timed loop.\n %s', failure)
 
     def startProtocol(self):
         # Set up periodic loop for tracking pings from peers. Run every 'PING_TIME' seconds
         self._system_maintenance = task.LoopingCall(self.maintenance_loop)
         self._system_maintenance_loop = self._system_maintenance.start(self._CONFIG['GLOBAL']['PING_TIME'])
+        self._system_maintenance_loop.addErrback(self.loopingErrHandle)
 
     # Aliased in __init__ to maintenance_loop if system is a master
     def master_maintenance_loop(self):
@@ -357,11 +362,11 @@ class HBSYSTEM(DatagramProtocol):
             self._stats['NUM_OUTSTANDING'] = 0
             self._stats['PING_OUTSTANDING'] = False
             self._stats['CONNECTION'] = 'RPTL_SENT'
-            if self._stats['DNS_TIME'] < (time() - 1):
+            if self._stats['DNS_TIME'] < (time() - 600):
                 self._stats['DNS_TIME'] = time()
                 _d = client.getHostByName(self._config['_MASTER_IP'])
                 _d.addCallback(self.updateSockaddr)
-                _d.addErrback(self,_d)
+                _d.addErrback(self.updateSockaddr_errback)
             self.send_master(b''.join([RPTL, self._config['RADIO_ID']]))
             logger.info('(%s) Sending login request to master %s:%s', self._system, self._config['MASTER_IP'], self._config['MASTER_PORT'])
         # If we are connected, sent a ping to the master and increment the counter
@@ -374,10 +379,10 @@ class HBSYSTEM(DatagramProtocol):
     def updateSockaddr(self,ip):
         self._config['MASTER_IP'] = ip
         self._config['MASTER_SOCKADDR'] = (ip, self._config['MASTER_PORT'])
-        logger.debug('(%s) hostname resolution performed',self._system)
+        logger.debug('(%s) hostname resolution performed: %s',self._system,ip)
         
-    def updateSockaddr_errback(self,d):
-        logger.debug('(%s) hostname resolution error',self._system)
+    def updateSockaddr_errback(self,failure):
+        logger.debug('(%s) hostname resolution error: %s',self._system,failure)
 
     def send_peers(self, _packet):
         for _peer in self._peers:

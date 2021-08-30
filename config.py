@@ -205,6 +205,7 @@ def build_config(_config_file):
                         'PORT': config.getint(section, 'PORT'),
                         'MASTER_SOCKADDR': (gethostbyname(config.get(section, 'MASTER_IP')), config.getint(section, 'MASTER_PORT')),
                         'MASTER_IP': gethostbyname(config.get(section, 'MASTER_IP')),
+                        '_MASTER_IP': config.get(section, 'MASTER_IP'),
                         'MASTER_PORT': config.getint(section, 'MASTER_PORT'),
                         'PASSPHRASE': bytes(config.get(section, 'PASSPHRASE'), 'utf-8'),
                         'CALLSIGN': bytes(config.get(section, 'CALLSIGN').ljust(8)[:8], 'utf-8'),
