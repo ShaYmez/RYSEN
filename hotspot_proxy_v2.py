@@ -1,7 +1,6 @@
 from twisted.internet.protocol import DatagramProtocol
 from twisted.internet import reactor, task
 from time import time
-from resettabletimer import ResettableTimer
 from dmr_utils3.utils import int_id
 import random
 import ipaddress
@@ -95,23 +94,21 @@ class Proxy(DatagramProtocol):
                         _peer_id = self.connTrack[port]
             elif _command == MSTN:
                     _peer_id = data[6:10]
-                    self.peerTrack[_peer_id]['timer'].cancel()
-                    self.reaper(_peer_id)
-                    return
             elif _command == MSTP:
                     _peer_id = data[7:11]
             elif _command == MSTC:
                     _peer_id = data[5:9]
-                    self.peerTrack[_peer_id]['timer'].cancel()
-                    self.reaper(_peer_id)
-                    return
                 
           #  _peer_id = self.connTrack[port]
             if self.debug:
                 print(data)
-            if _peer_id and _peer_id in self.peerTrack:
+            if _peer_id in self.peerTrack:
                 self.transport.write(data,(self.peerTrack[_peer_id]['shost'],self.peerTrack[_peer_id]['sport']))
                 #self.peerTrack[_peer_id]['timer'].reset()
+                # Remove the client after send a MSTN or MSTC packet
+                if _command in (MSTN,MSTC):
+                    self.peerTrack[_peer_id]['timer'].cancel()
+                    self.reaper(_peer_id)
             return
             
                 
@@ -122,7 +119,7 @@ class Proxy(DatagramProtocol):
             if _command == DMRD:                # DMRData -- encapsulated DMR data frame
                 _peer_id = data[11:15]
             elif _command == DMRA:              # DMRAlias -- Talker Alias information
-                _peer_id = _data[4:8]
+                _peer_id = data[4:8]
             elif _command == RPTL:              # RPTLogin -- a repeater wants to login
                 _peer_id = data[4:8]
             elif _command == RPTK:              # Repeater has answered our login challenge
@@ -144,7 +141,7 @@ class Proxy(DatagramProtocol):
                 self.peerTrack[_peer_id]['sport'] = port
                 self.peerTrack[_peer_id]['shost'] = host
                 self.transport.write(data, (Master,_dport))
-                self.peerTrack[_peer_id]['timer'].reset()
+                self.peerTrack[_peer_id]['timer'].reset(self.timeout)
                 if self.debug:
                     print(data)
                 return
@@ -163,8 +160,7 @@ class Proxy(DatagramProtocol):
                 self.peerTrack[_peer_id]['dport'] = _dport
                 self.peerTrack[_peer_id]['sport'] = port
                 self.peerTrack[_peer_id]['shost'] = host
-                self.peerTrack[_peer_id]['timer'] = ResettableTimer(self.timeout,self.reaper,[_peer_id])
-                self.peerTrack[_peer_id]['timer'].start()
+                self.peerTrack[_peer_id]['timer'] = reactor.callLater(self.timeout,self.reaper,_peer_id)
                 self.transport.write(data, (self.master,_dport))
                 if self.debug:
                     print(data)
