@@ -595,7 +595,8 @@ def ident():
                 continue
             _callsign = False
             for _peerid in CONFIG['SYSTEMS'][system]['PEERS']:
-                _callsign = CONFIG['SYSTEMS'][system]['PEERS'][_peerid]['CALLSIGN'].decode()
+                if CONFIG['SYSTEMS'][system]['PEERS'][_peerid]['CALLSIGN']:
+                    _callsign = CONFIG['SYSTEMS'][system]['PEERS'][_peerid]['CALLSIGN'].decode()
             if not _callsign:
                 logger.debug("(IDENT) %s System has no peers or no recorded callsign (%s), skipping",system,_callsign)
                 continue
