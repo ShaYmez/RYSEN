@@ -40,7 +40,6 @@ from collections import deque
 from twisted.internet.protocol import DatagramProtocol, Factory, Protocol
 from twisted.protocols.basic import NetstringReceiver
 from twisted.internet import reactor, task
-from twisted.names import client
 
 # Other files we pull from -- this is mostly for readability and segmentation
 import log
@@ -314,6 +313,7 @@ class HBSYSTEM(DatagramProtocol):
 
         elif self._config['MODE'] == 'XLXPEER':
             self._stats = self._config['XLXSTATS']
+            self._stats['DNS_TIME'] = time()
             self.send_system = self.send_master
             self.maintenance_loop = self.peer_maintenance_loop
             self.datagramReceived = self.peer_datagramReceived
@@ -364,7 +364,7 @@ class HBSYSTEM(DatagramProtocol):
             self._stats['CONNECTION'] = 'RPTL_SENT'
             if self._stats['DNS_TIME'] < (time() - 600):
                 self._stats['DNS_TIME'] = time()
-                _d = client.getHostByName(self._config['_MASTER_IP'])
+                _d = reactor.resolve(self._config['_MASTER_IP'])
                 _d.addCallback(self.updateSockaddr)
                 _d.addErrback(self.updateSockaddr_errback)
             self.send_master(b''.join([RPTL, self._config['RADIO_ID']]))
