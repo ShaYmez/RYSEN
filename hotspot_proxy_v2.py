@@ -5,7 +5,7 @@ from dmr_utils3.utils import int_id
 import random
 import ipaddress
 import os
-from setproctitle import proctitle
+from setproctitle import setproctitle
 
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Simon Adlem - G7RZU'
