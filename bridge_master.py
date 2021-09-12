@@ -38,6 +38,7 @@ from time import time,sleep,perf_counter
 import importlib.util
 import re
 import copy
+from setproctitle import setproctitle
 
 # Twisted is pretty important, so I keep it separate
 from twisted.internet.protocol import Factory, Protocol
@@ -94,6 +95,11 @@ def config_reports(_config, _factory):
             logger.debug('(REPORT) Periodic reporting loop started')
             _server.send_config()
             _server.send_bridge()
+            i = 0
+            for system in CONFIG['SYSTEMS']:
+                if 'PEERS' in CONFIG['SYSTEMS'][system] and CONFIG['SYSTEMS'][system]['PEERS']:
+                    i = i +1
+            logger.info('(REPORT) %s systems have at least one peer',i)
 
         logger.info('(REPORT) HBlink TCP reporting server configured')
 
@@ -2129,6 +2135,9 @@ if __name__ == '__main__':
     
     ID_MAX = 16776415
 
+    #Set process title early
+    setproctitle(__file__)
+    
     # Change the current directory to the location of the application
     os.chdir(os.path.dirname(os.path.realpath(sys.argv[0])))
 

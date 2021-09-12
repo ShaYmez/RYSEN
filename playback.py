@@ -25,6 +25,7 @@ from bitarray import bitarray
 from time import time, sleep
 from importlib import import_module
 from random import randint
+from setproctitle import setproctitle
 
 # Twisted is pretty important, so I keep it separate
 from twisted.internet.protocol import Factory, Protocol
@@ -171,6 +172,9 @@ if __name__ == '__main__':
     import os
     import signal
     from dmr_utils3.utils import try_download, mk_id_dict
+    
+    #Set process title early
+    setproctitle(__file__)
     
     # Change the current directory to the location of the application
     os.chdir(os.path.dirname(os.path.realpath(sys.argv[0])))
