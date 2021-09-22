@@ -69,6 +69,10 @@ RPTA    = b'RPTA'
 RPTO    = b'RPTO'
 DMRA    = b'DMRA'
 
+# Sever Data and Encrypted OBP
+SVRD    = b'SVRD'
+EOBP    = b'EOBP'
+
 #Bridge Control commands
 BC      = b'BC'
 BCKA    = b'BCKA'

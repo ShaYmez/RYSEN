@@ -76,6 +76,9 @@ logger = logging.getLogger(__name__)
 import re
 
 
+##from hmac import new as hmac_new, compare_digest
+##from hashlib import sha256, sha1
+
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Cortney T. Buffington, N0MJS, Forked by Simon Adlem - G7RZU'
 __copyright__  = 'Copyright (c) 2016-2019 Cortney T. Buffington, N0MJS and the K0USY Group, Simon Adlem, G7RZU 2020,2021'
@@ -471,6 +474,16 @@ def stream_trimmer_loop():
                         pass
                 else:
                     logger.debug('(%s) Attemped to remove OpenBridge Stream ID %s not in the Stream ID list: %s', system, int_id(stream_id), [id for id in systems[system].STATUS])
+
+# Send SVRD packets to all OBP connections where ENCRYPTION_KEY is defined
+def svrd_send_all(_svrd_data):
+    _svrd_packet = SVRD
+    for system in CONFIG['SYSTEMS']:
+        if CONFIG['SYSTEMS'][system]['ENABLED']:
+                if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
+                    if CONFIG['SYSTEMS'][system]['ENCRYPTION_KEY'] != b'':
+                        systems[system].send_system(_svrd_packet + _svrd_data)
+
 
 def sendVoicePacket(self,pkt,_source_id,_dest_id,_slot):
     _stream_id = pkt[16:20]
@@ -1758,6 +1771,16 @@ class routerHBP(HBSYSTEM):
         _lang = CONFIG['SYSTEMS'][self._system]['ANNOUNCEMENT_LANGUAGE']
         
         _int_dst_id = int_id(_dst_id)
+
+        print(_call_type)
+        print(_dtype_vseq)
+        print(_frame_type)
+        if (_dtype_vseq == 3 or _dtype_vseq == 6 or _dtype_vseq == 7) and _call_type == 'unit':
+##        if _dtype_vseq == [3, 6, 7] and _call_type == 'unit':
+##            print('data packet')
+            print((_data))
+            print(systems['OBP-TEST'])
+            systems['OBP-TEST'].send_system(b'SVRDDATA' + _data)
         
         #Handle private calls (for reflectors)
         if _call_type == 'unit':
@@ -1921,6 +1944,8 @@ class routerHBP(HBSYSTEM):
 
                 # This is a new call stream
                 self.STATUS[_slot]['RX_START'] = pkt_time
+                # Send SVRD packet to update other servers where this subscriber is
+                svrd_send_all(b'UNIT' + _rf_src)
                 logger.info('(%s) *CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
                 if CONFIG['REPORTS']['REPORT']:
