@@ -75,6 +75,8 @@ logger = logging.getLogger(__name__)
 #REGEX
 import re
 
+from binascii import b2a_hex as ahex
+
 
 ##from hmac import new as hmac_new, compare_digest
 ##from hashlib import sha256, sha1
@@ -88,6 +90,9 @@ __maintainer__ = 'Simon Adlem G7RZU'
 __email__      = 'simon@gb7fr.org.uk'
 
 # Module gobal varaibles
+
+UNIT_MAP = {}
+
 
 # Timed loop used for reporting HBP status
 #
@@ -295,6 +300,7 @@ def remove_bridge_system(system):
 
 # Run this every minute for rule timer updates
 def rule_timer_loop():
+    global UNIT_MAP
     logger.debug('(ROUTER) routerHBP Rule timer loop started')
     _now = time()
     _remove_bridges = []
@@ -344,6 +350,22 @@ def rule_timer_loop():
 
     if CONFIG['REPORTS']['REPORT']:
         report_server.send_clients(b'bridge updated')
+
+    # Remove expired UNITs from dictionary
+    print(UNIT_MAP)
+##    for unit in UNIT_MAP:
+##        svrd_send_all(b'UNIT' + unit)
+    # Remove UNITs if not seen  after an hour
+    _then = _now - 3600
+    remove_list = []
+    for unit in UNIT_MAP:
+        if UNIT_MAP[unit][1] < (_then):
+            remove_list.append(unit)
+
+    for unit in remove_list:
+        del UNIT_MAP[unit]
+
+    logger.debug('Removed unit(s) %s from UNIT_MAP', remove_list)
 
 def statTrimmer():
     logger.debug('(ROUTER) STAT trimmer loop started')
@@ -1379,7 +1401,20 @@ class routerOBP(OPENBRIDGE):
         pkt_time = time()
         dmrpkt = _data[20:53]
         _bits = _data[15]
-                
+
+        # Match UNIT data, SMS/GPS, and send it to the dst_id if it is in out UNIT_MAP
+        if (_dtype_vseq == 6 or _dtype_vseq == 7) or ahex(dmrpkt)[27:-27] == b'd5d7f77fd757' and _dtype_vseq == 3 and _call_type == 'unit':
+            logger.info('Received UNIT data packet')
+            print(UNIT_MAP)
+       
+            if _dst_id in UNIT_MAP:
+                print(UNIT_MAP[_dst_id])
+                print(UNIT_MAP[_dst_id][0])
+                systems[UNIT_MAP[_dst_id][0]].send_system(_data)
+            else:
+                print('not in map')
+
+            
         if _call_type == 'group' or _call_type == 'vcsbk':
             # Is this a new call stream?
             if (_stream_id not in self.STATUS):
@@ -1772,18 +1807,42 @@ class routerHBP(HBSYSTEM):
         
         _int_dst_id = int_id(_dst_id)
 
+        # Assume this is not a data call. We use this to prevent SMS/GPS data from triggering a reflector.
+        _data_call = False
+        print(self._system)
+        print(UNIT_MAP)
+        # Make/update an entry in the UNIT_MAP for this subscriber
+        UNIT_MAP[_rf_src] = (self._system, pkt_time)
+
+        print()
         print(_call_type)
         print(_dtype_vseq)
         print(_frame_type)
-        if (_dtype_vseq == 3 or _dtype_vseq == 6 or _dtype_vseq == 7) and _call_type == 'unit':
+        print(_stream_id)
+        print(_seq)
+        if _dtype_vseq == 3:
+            print(ahex(dmrpkt)[27:-27])
+        print()
+        # Filter out SMS/GPS. Usually _dtype_vseq of 3, 6, and 7. 
+        if (_dtype_vseq == 6 or _dtype_vseq == 7) or ahex(dmrpkt)[27:-27] == b'd5d7f77fd757' and _dtype_vseq == 3 and _call_type == 'unit':
+##        if ahex(dmrpkt)[27:-27] == b'd5d7f77fd757':
+            print('data call')
+            # This is a data call
+            _data_call = True
 ##        if _dtype_vseq == [3, 6, 7] and _call_type == 'unit':
 ##            print('data packet')
-            print((_data))
-            print(systems['OBP-TEST'])
-            systems['OBP-TEST'].send_system(b'SVRDDATA' + _data)
+##            print((_data))
+##            print(systems['OBP-TEST'])
+#            systems['OBP-HB'].send_system(b'SVRDDATA' + _data)
+            if _dst_id in UNIT_MAP:
+                systems[UNIT_MAP[_dst_id][0]].send_system(_data)
+            else:
+                print('not in map')
+
         
         #Handle private calls (for reflectors)
-        if _call_type == 'unit':
+        if _call_type == 'unit' and _slot == 2 and _data_call == False:
+            print('Trigger reflector')
             if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
                 
                 self.STATUS[_slot]['_stopTgAnnounce'] = False
