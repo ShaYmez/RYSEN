@@ -50,12 +50,13 @@ def IsIPv6Address(ip):
 
 class Proxy(DatagramProtocol):
 
-    def __init__(self,Master,ListenPort,connTrack,blackList,Timeout,Debug,DestportStart,DestPortEnd):
+    def __init__(self,Master,ListenPort,connTrack,blackList,Timeout,Debug,ClientInfo,DestportStart,DestPortEnd):
         self.master = Master
         self.connTrack = connTrack
         self.peerTrack = {}
         self.timeout = Timeout
         self.debug = Debug
+        self.clientinfo = ClientInfo
         self.blackList = blackList
         self.destPortStart = DestportStart
         self.destPortEnd = DestPortEnd
@@ -65,7 +66,9 @@ class Proxy(DatagramProtocol):
     def reaper(self,_peer_id):
         if self.debug:
             print("dead",_peer_id)
-        self.transport.write(b'RPTCL'+_peer_id, (Master,self.peerTrack[_peer_id]['dport']))
+        if self.clientinfo and _peer_id != b'\x00m@\xd7':
+            print(f"Client: ID:{str(int_id(_peer_id)).rjust(9)} IP:{self.peerTrack[_peer_id]['shost'].rjust(15)} Port:{self.peerTrack[_peer_id]['sport']} Removed.")
+        self.transport.write(b'RPTCL'+_peer_id, (self.master,self.peerTrack[_peer_id]['dport']))
         self.connTrack[self.peerTrack[_peer_id]['dport']] = False
         del self.peerTrack[_peer_id]
         
@@ -118,20 +121,18 @@ class Proxy(DatagramProtocol):
             elif _command == MSTC:
                     _peer_id = data[5:9]
                 
-          #  _peer_id = self.connTrack[port]
             if self.debug:
                 print(data)
             if _peer_id in self.peerTrack:
                 self.transport.write(data,(self.peerTrack[_peer_id]['shost'],self.peerTrack[_peer_id]['sport']))
-                #self.peerTrack[_peer_id]['timer'].reset()
                 # Remove the client after send a MSTN or MSTC packet
                 if _command in (MSTN,MSTC):
-                    self.peerTrack[_peer_id]['timer'].cancel()
-                    self.reaper(_peer_id)
+                    # Give time to the client for a reply to prevent port reassignment 
+                    self.peerTrack[_peer_id]['timer'].reset(15)
+ 
             return
             
-                
-            
+                   
         else:
             _command = data[:4]
             
@@ -144,10 +145,10 @@ class Proxy(DatagramProtocol):
             elif _command == RPTK:              # Repeater has answered our login challenge
                 _peer_id = data[4:8]
             elif _command == RPTC:              # Repeater is sending it's configuraiton OR disconnecting
-                if data[:5] == RPTCL:          # Disconnect command
+                if data[:5] == RPTCL:           # Disconnect command
                     _peer_id = data[5:9]
                 else:
-                    _peer_id = data[4:8]       # Configure Command
+                    _peer_id = data[4:8]        # Configure Command
             elif _command == RPTO:              # options
                 _peer_id = data[4:8]
             elif _command == RPTP:              # RPTPing -- peer is pinging us
@@ -159,21 +160,21 @@ class Proxy(DatagramProtocol):
                 _dport = self.peerTrack[_peer_id]['dport']
                 self.peerTrack[_peer_id]['sport'] = port
                 self.peerTrack[_peer_id]['shost'] = host
-                self.transport.write(data, (Master,_dport))
+                self.transport.write(data, (self.master,_dport))
                 self.peerTrack[_peer_id]['timer'].reset(self.timeout)
                 if self.debug:
                     print(data)
                 return
+
             else:
-                
                 if int_id(_peer_id) in self.blackList:
+                    return   
+                # Make a list with the available ports
+                _ports_avail = [port for port in self.connTrack if not self.connTrack[port]]
+                if len(_ports_avail) > 0:
+                    _dport = random.choice(_ports_avail)
+                else:
                     return
-                #for _dport in self.connTrack:
-                while True:
-                    _dport = random.randint(1,(self.numPorts - 1))
-                    _dport = _dport + self.destPortStart
-                    if not self.connTrack[_dport]:
-                        break
                 self.connTrack[_dport] = _peer_id
                 self.peerTrack[_peer_id] = {}
                 self.peerTrack[_peer_id]['dport'] = _dport
@@ -181,6 +182,9 @@ class Proxy(DatagramProtocol):
                 self.peerTrack[_peer_id]['shost'] = host
                 self.peerTrack[_peer_id]['timer'] = reactor.callLater(self.timeout,self.reaper,_peer_id)
                 self.transport.write(data, (self.master,_dport))
+
+                if self.clientinfo and _peer_id != b'\x00m@\xd7':
+                    print(f'New client: ID:{str(int_id(_peer_id)).rjust(9)} IP:{host.rjust(15)} Port:{port}, assigned to port:{_dport}.')
                 if self.debug:
                     print(data)
                 return
@@ -199,6 +203,7 @@ if __name__ == '__main__':
     Timeout = 30
     Stats = False
     Debug = False
+    ClientInfo = False
     BlackList = [1234567]
     
 #*******************
@@ -221,7 +226,7 @@ if __name__ == '__main__':
     if ListenIP == '::' and IsIPv4Address(Master):
         Master = '::ffff:' + Master
 
-    reactor.listenUDP(ListenPort,Proxy(Master,ListenPort,CONNTRACK,BlackList,Timeout,Debug,DestportStart,DestPortEnd),interface=ListenIP)
+    reactor.listenUDP(ListenPort,Proxy(Master,ListenPort,CONNTRACK,BlackList,Timeout,Debug,ClientInfo,DestportStart,DestPortEnd),interface=ListenIP)
 
     def loopingErrHandle(failure):
         print('(GLOBAL) STOPPING REACTOR TO AVOID MEMORY LEAK: Unhandled error innowtimed loop.\n {}'.format(failure))
