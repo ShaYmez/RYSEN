@@ -104,7 +104,7 @@ networks:
     ipam:
       driver: default
       config:
-      - subnet: 172.16.238.0/24
-        gateway: 172.16.238.1
-      - subnet: fd2a:70b6:9f54:29b6::/64
-        gateway: fd2a:70b6:9f54:29b6::1
+        - subnet: 172.16.238.0/24
+          gateway: 172.16.238.1
+        - subnet: fd2a:70b6:9f54:29b6::/64
+          gateway: fd2a:70b6:9f54:29b6::1
