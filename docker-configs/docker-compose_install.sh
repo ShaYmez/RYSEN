@@ -69,7 +69,7 @@ REPORT_CLIENTS: *
 
 [LOGGER]
 LOG_FILE: freedmr.log
-LOG_HANDLERS: file-timed
+LOG_HANDLERS: console-timed
 LOG_LEVEL: INFO
 LOG_NAME: FreeDMR
 
@@ -174,9 +174,9 @@ echo Set perms on config directory...
 chown -R 54000 /etc/freedmr &&
 
 echo Setup logging...
-mkdir -p /var/log/freedmr &&
-touch /var/log/freedmr/freedmr.log &&
-chown -R 54000 /var/log/freedmr &&
+#mkdir -p /var/log/freedmr &&
+#touch /var/log/freedmr/freedmr.log &&
+#chown -R 54000 /var/log/freedmr &&
 mkdir -p /var/log/FreeDMRmonitor &&
 touch /var/log/FreeDMRmonitor/lastheard.log &&
 touch /var/log/FreeDMRmonitor/hbmon.log &&

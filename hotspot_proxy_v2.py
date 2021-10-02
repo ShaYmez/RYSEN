@@ -215,6 +215,15 @@ if __name__ == '__main__':
     #If IPv6 is enabled by enivornment variable...
     if ListenIP == '' and 'FDPROXY_IPV6' in os.environ and bool(os.environ['FDPROXY_IPV6']):
         ListenIP = '::'
+        
+    #Override static config from Environment
+    if 'FDPROXY_STATS' in os.environ:
+        Stats = bool(os.environ['FDPROXY_STATS'])
+    if 'FDPROXY_DEBUG' in os.environ:
+        Debug = bool(os.environ['FDPROXY_DEBUG'])
+    if 'FDPROXY_CLIENTINFO' in os.environ:
+        ClientInfo = bool(os.environ['FDPROXY_CLIENTINFO']) 
+        
     
     CONNTRACK = {}
 

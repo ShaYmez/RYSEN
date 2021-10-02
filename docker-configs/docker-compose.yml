@@ -24,7 +24,7 @@ services:
          mem_reservation: 600m
         volumes:
             - '/etc/freedmr/freedmr.cfg:/opt/freedmr/freedmr.cfg'
-            - '/var/log/freedmr/freedmr.log:/opt/freedmr/freedmr.log'
+        #    - '/var/log/freedmr/freedmr.log:/opt/freedmr/freedmr.log'
             - '/etc/freedmr/rules.py:/opt/freedmr/rules.py'
             #Write JSON files outside of container
             - '/etc/freedmr/json/talkgroup_ids.json:/opt/freedmr/talkgroup_ids.json'
@@ -39,6 +39,16 @@ services:
         networks:
            app_net:
              ipv4_address: 172.16.238.10
+        #Control parameters inside container
+        environment:
+            #IPV6 support 
+            - FDPROXY_IPV6=0
+            #Display connection stats in log
+            - FDPROXY_STATS=1
+            #Display conneting client info in log
+            - FDPROXY_CLIENTINFO=1
+            #Debug HBP session in log (lots of data!!)
+            - FDPROXY_DEBUG=0
         read_only: "true"
 
     freedmrmon:

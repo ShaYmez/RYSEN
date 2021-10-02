@@ -40,8 +40,16 @@ services:
            app_net:
              ipv4_address: 172.16.238.10
              ipv6_address: fd2a:70b6:9f54:29b6::10
+        #Control parameters inside container
         environment:
+            #IPV6 support 
             - FDPROXY_IPV6=1
+            #Display connection stats in log
+            - FDPROXY_STATS=1
+            #Display conneting client info in log
+            - FDPROXY_CLIENTINFO=1
+            #Debug HBP session in log (lots of data!!)
+            - FDPROXY_DEBUG=0
         read_only: "true"
 
     ipv6nat:
