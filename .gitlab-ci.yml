@@ -22,7 +22,7 @@ build-job:       # This job runs in the build stage, which runs first.
   stage: build
   script:
     - echo "Compiling the code..."
-    - docker-config
+    - cd docker-config
     - docker buildx build --no-cache -f Dockerfile-proxy -t hacknix/freedmr:development-latest --platform linux/arm/v7,linux/amd64,linux/i386,linux/arm64 --push .
 
 
