@@ -184,8 +184,7 @@ chown -R 54001 /var/log/FreeDMRmonitor &&
 
 echo Get docker-compose.yml...
 cd /etc/freedmr &&
-curl https://raw.githubusercontent.com/hacknix/FreeDMR/master/docker-configs/docker-compose.yml -o docker-compose.yml &&
-
+curl https://gitlab.hacknix.net/hacknix/FreeDMR/-/raw/master/docker-configs/docker-compose.yml -o docker-compose.yml &&
 echo Install crontab...
 cat << EOF > /etc/cron.daily/lastheard
 #!/bin/bash
