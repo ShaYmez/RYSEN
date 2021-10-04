@@ -44,5 +44,4 @@ build-release:       # This job runs in the build stage, which runs first.
 
     - echo "Compile complete."
   only:
-    - master
     - tags
