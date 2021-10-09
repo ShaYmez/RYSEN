@@ -20,8 +20,8 @@ version: '2.4'
 services:
     freedmr:
         container_name: freedmr
-         cpu_shares: 1024
-         mem_reservation: 600m
+        cpu_shares: 1024
+        mem_reservation: 600m
         volumes:
             - '/etc/freedmr/freedmr.cfg:/opt/freedmr/freedmr.cfg'
         #    - '/var/log/freedmr/freedmr.log:/opt/freedmr/freedmr.log'
@@ -53,7 +53,7 @@ services:
 
     freedmrmon:
         container_name: freedmrmon
-         cpu_shares: 512
+        cpu_shares: 512
         depends_on:
             - freedmr
         volumes:
@@ -78,7 +78,7 @@ services:
      
     freedmrmonpache:
         container_name: freedmrmonapache
-         cpu_shares: 512
+        cpu_shares: 512
         depends_on:
              - freedmrmon
         #Use to override html files
