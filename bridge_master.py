@@ -1760,7 +1760,7 @@ class routerHBP(HBSYSTEM):
         _int_dst_id = int_id(_dst_id)
         
         #Handle private calls (for reflectors)
-        if _call_type == 'unit' and _slot == 2:
+        if _call_type == 'unit':
             if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
                 
                 self.STATUS[_slot]['_stopTgAnnounce'] = False
