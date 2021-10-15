@@ -1839,6 +1839,7 @@ class routerHBP(HBSYSTEM):
                     logger.info('(%s) Reflector: voice called - TG < 5 or 9 - "busy""', self._system)
                     _say.append(words[_lang]['busy'])
                     _say.append(words[_lang]['silence'])
+                    self.STATUS[_slot]['_stopTgAnnounce']
                 
                 #If disconnection called
                 if _int_dst_id == 4000:
