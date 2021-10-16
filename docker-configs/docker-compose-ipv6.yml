@@ -50,6 +50,8 @@ services:
             - FDPROXY_CLIENTINFO=1
             #Debug HBP session in log (lots of data!!)
             - FDPROXY_DEBUG=0
+            #Override proxy external port
+            #- FDPROXY_LISTENPORT=62031
         read_only: "true"
 
     ipv6nat:
