@@ -222,7 +222,9 @@ if __name__ == '__main__':
     if 'FDPROXY_DEBUG' in os.environ:
         Debug = bool(os.environ['FDPROXY_DEBUG'])
     if 'FDPROXY_CLIENTINFO' in os.environ:
-        ClientInfo = bool(os.environ['FDPROXY_CLIENTINFO']) 
+        ClientInfo = bool(os.environ['FDPROXY_CLIENTINFO'])
+    if 'FDPROXY_LISTENPORT' in os.environ:
+        ListenPort = os.environ['FDPROXY_LISTENPORT']
         
     
     CONNTRACK = {}
