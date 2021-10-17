@@ -1895,7 +1895,7 @@ class routerHBP(HBSYSTEM):
                     for num in str(_int_dst_id):
                         _say.append(words[_lang][num])
      
-                if not self.STATUS[_slot]['_stopTgAnnounce']:
+                if _say:
                     speech = pkt_gen(bytes_3(5000), _nine, bytes_4(9), 1, _say)
                     #call speech in a thread as it contains sleep() and hence could block the reactor
                     reactor.callInThread(sendSpeech,self,speech)
