@@ -487,7 +487,7 @@ def sendVoicePacket(self,pkt,_source_id,_dest_id,_slot):
     else:
         systems[system].STATUS[_stream_id]['LAST'] = _pkt_time
         _slot['TX_TIME'] = _pkt_time
-                                        
+                                            
     self.send_system(pkt)
     
 def sendSpeech(self,speech):
@@ -1760,7 +1760,7 @@ class routerHBP(HBSYSTEM):
         _int_dst_id = int_id(_dst_id)
         
         #Handle private calls (for reflectors)
-        if _call_type == 'unit' and _slot == 2 and int_id(_dst_id) != 234999:
+        if _call_type == 'unit':
             if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
                 
                 self.STATUS[_slot]['_stopTgAnnounce'] = False
@@ -1828,7 +1828,7 @@ class routerHBP(HBSYSTEM):
             if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
                 
                 #Speak callsign before message
-        #        _say = [words[_lang]['silence']]
+                _say = [words[_lang]['silence']]
         #        _systemcs = re.sub(r'\W+', '', self._system)
          #       _systemcs.upper()
           #      for character in _systemcs:
@@ -1838,8 +1838,6 @@ class routerHBP(HBSYSTEM):
                 if _int_dst_id <= 5 or _int_dst_id == 9:
                     logger.info('(%s) Reflector: voice called - TG < 5 or 9 - "busy""', self._system)
                     _say.append(words[_lang]['busy'])
-                    _say.append(words[_lang]['silence'])
-                    _say.append(words[_lang]['notlinked'])
                     _say.append(words[_lang]['silence'])
                     self.STATUS[_slot]['_stopTgAnnounce'] = True
                 
@@ -1910,13 +1908,10 @@ class routerHBP(HBSYSTEM):
             self.STATUS[_slot]['RX_TGID']      = _dst_id
             self.STATUS[_slot]['RX_TIME']      = pkt_time
             self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id    
-        
-        #Placeholder for slot 1 unit calls
-        if _call_type == 'unit' and _slot == 1:
-            pass
+                            
 
         #Handle group calls
-        if _call_type == 'group' or _call_type == 'vcsbk' or (_call_type == 'unit' and int_id(_dst_id) == 234999):
+        if _call_type == 'group' or _call_type == 'vcsbk':
 
             # Is this a new call stream?
             if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
@@ -1932,8 +1927,7 @@ class routerHBP(HBSYSTEM):
                     self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
 
                 # If we can, use the LC from the voice header as to keep all options intact
-                # If we see a unit call to the private ID used for D-APRS, rewrite to a group call.
-                if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and int_id(_dst_id) != 234999:
+                if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
                     decoded = decode.voice_head_term(dmrpkt)
                     self.STATUS[_slot]['RX_LC'] = decoded['LC']
 
