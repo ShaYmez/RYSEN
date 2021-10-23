@@ -24,6 +24,7 @@ import random
 import ipaddress
 import os
 from setproctitle import setproctitle
+from datetime import datetime
 
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Simon Adlem - G7RZU'
@@ -66,8 +67,8 @@ class Proxy(DatagramProtocol):
     def reaper(self,_peer_id):
         if self.debug:
             print("dead",_peer_id)
-        if self.clientinfo and _peer_id != b'\x00m@\xd7':
-            print(f"Client: ID:{str(int_id(_peer_id)).rjust(9)} IP:{self.peerTrack[_peer_id]['shost'].rjust(15)} Port:{self.peerTrack[_peer_id]['sport']} Removed.")
+        if self.clientinfo and _peer_id != b'\xff\xff\xff\xff':
+            print(f"{datetime.now().replace(microsecond=0)} Client: ID:{str(int_id(_peer_id)).rjust(9)} IP:{self.peerTrack[_peer_id]['shost'].rjust(15)} Port:{self.peerTrack[_peer_id]['sport']} Removed.")
         self.transport.write(b'RPTCL'+_peer_id, (self.master,self.peerTrack[_peer_id]['dport']))
         self.connTrack[self.peerTrack[_peer_id]['dport']] = False
         del self.peerTrack[_peer_id]
@@ -171,7 +172,7 @@ class Proxy(DatagramProtocol):
                     return   
                 # Make a list with the available ports
                 _ports_avail = [port for port in self.connTrack if not self.connTrack[port]]
-                if len(_ports_avail) > 0:
+                if _ports_avail:
                     _dport = random.choice(_ports_avail)
                 else:
                     return
@@ -183,8 +184,8 @@ class Proxy(DatagramProtocol):
                 self.peerTrack[_peer_id]['timer'] = reactor.callLater(self.timeout,self.reaper,_peer_id)
                 self.transport.write(data, (self.master,_dport))
 
-                if self.clientinfo and _peer_id != b'\x00m@\xd7':
-                    print(f'New client: ID:{str(int_id(_peer_id)).rjust(9)} IP:{host.rjust(15)} Port:{port}, assigned to port:{_dport}.')
+                if self.clientinfo and _peer_id != b'\xff\xff\xff\xff':
+                    print(f'{datetime.now().replace(microsecond=0)} New client: ID:{str(int_id(_peer_id)).rjust(9)} IP:{host.rjust(15)} Port:{port}, assigned to port:{_dport}.')
                 if self.debug:
                     print(data)
                 return
