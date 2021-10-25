@@ -549,7 +549,10 @@ class HBSYSTEM(DatagramProtocol):
                         'SOFTWARE_ID': '',
                         'PACKAGE_ID': '',
                     }})
-                    logger.info('(%s) Repeater Logging in with Radio ID: %s, %s:%s', self._system, int_id(_peer_id), _sockaddr[0], _sockaddr[1])
+                    if _peer_id == b'\xff\xff\xff\xff':
+                        logger.info('(%s) Server Status Probe Logging in with Radio ID: %s, %s:%s', self._system, int_id(_peer_id), _sockaddr[0], _sockaddr[1])
+                    else:
+                        logger.info('(%s) Repeater Logging in with Radio ID: %s, %s:%s', self._system, int_id(_peer_id), _sockaddr[0], _sockaddr[1])
                     _salt_str = bytes_4(self._peers[_peer_id]['SALT'])
                     self.send_peer(_peer_id, b''.join([RPTACK, _salt_str]))
                     self._peers[_peer_id]['CONNECTION'] = 'CHALLENGE_SENT'
