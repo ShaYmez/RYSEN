@@ -1410,15 +1410,22 @@ class routerOBP(OPENBRIDGE):
         # Match UNIT data, SMS/GPS, and send it to the dst_id if it is in out UNIT_MAP
         if (_dtype_vseq == 6 or _dtype_vseq == 7) or ahex(dmrpkt)[27:-27] == b'd5d7f77fd757' and _dtype_vseq == 3 and _call_type == 'unit':
             logger.info('Received UNIT data packet')
+            print(UNIT_MAP)
+            print(int_id(_dst_id))
+            print(int_id(_rf_src))
       
             if _dst_id in UNIT_MAP:
+                print(UNIT_MAP[_dst_id][0])
                 systems[UNIT_MAP[_dst_id][0]].send_system(_data)
             else:
+                print(UNIT_MAP[_dst_id])
                 logger.info('UNIT not in map, sending to ALL SYSTEMS that are not OpenBridge')
                 for s in CONFIG['SYSTEMS'].items():
                     if s[1]['MODE'] == 'OPENBRIDGE':
                         pass
                     elif s[1]['MODE'] != 'OPENBRIDGE':
+                        print(s[0])
+                        print(ahex(_data))
                         systems[s[0]].send_system(_data)
 
             
@@ -1839,7 +1846,7 @@ class routerHBP(HBSYSTEM):
             if _dst_id in UNIT_MAP:
                 systems[UNIT_MAP[_dst_id][0]].send_system(_data)
             else:
-                logger.info('UNIT not in map, sending to ALL SYSTEMS that are not OpenBridge')
+                logger.info('UNIT not in map, sending to ALL SYSTEMS')
                 for s in CONFIG['SYSTEMS'].items():
 ##                    if s[1]['MODE'] == 'OPENBRIDGE':
 ##                        pass
