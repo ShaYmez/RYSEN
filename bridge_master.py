@@ -353,10 +353,8 @@ def rule_timer_loop():
 
     # Remove expired UNITs from dictionary
     print(UNIT_MAP)
-##    for unit in UNIT_MAP:
-##        svrd_send_all(b'UNIT' + unit)
-    # Remove UNITs if not seen  after an hour
-    _then = _now - 3600
+    # Remove UNIT IDs not seen in the last 24 hours
+    _then = _now - (3600 * 24)
     remove_list = []
     for unit in UNIT_MAP:
         if UNIT_MAP[unit][1] < (_then):
@@ -1396,6 +1394,13 @@ class routerOBP(OPENBRIDGE):
                 #Ignore this system and TS pair if it's called again on this packet
         return(_sysIgnore)
 
+    # Process SVRD packets
+    def svrd_received(self, _mode, _data):
+        print(UNIT_MAP)
+        logger.info('SVRD Received. Mode: ' + str(_mode) + ' Data: ' + str(_data))
+        # Add UNIT ID to UNIT_MAP
+        if _mode == b'UNIT':
+            UNIT_MAP[_data] = (self._system, time())
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pkt_time = time()
@@ -1405,14 +1410,16 @@ class routerOBP(OPENBRIDGE):
         # Match UNIT data, SMS/GPS, and send it to the dst_id if it is in out UNIT_MAP
         if (_dtype_vseq == 6 or _dtype_vseq == 7) or ahex(dmrpkt)[27:-27] == b'd5d7f77fd757' and _dtype_vseq == 3 and _call_type == 'unit':
             logger.info('Received UNIT data packet')
-            print(UNIT_MAP)
-       
+      
             if _dst_id in UNIT_MAP:
-                print(UNIT_MAP[_dst_id])
-                print(UNIT_MAP[_dst_id][0])
                 systems[UNIT_MAP[_dst_id][0]].send_system(_data)
             else:
-                print('not in map')
+                logger.info('UNIT not in map, sending to ALL SYSTEMS that are not OpenBridge')
+                for s in CONFIG['SYSTEMS'].items():
+                    if s[1]['MODE'] == 'OPENBRIDGE':
+                        pass
+                    elif s[1]['MODE'] != 'OPENBRIDGE':
+                        systems[s[0]].send_system(_data)
 
             
         if _call_type == 'group' or _call_type == 'vcsbk':
@@ -1809,35 +1816,36 @@ class routerHBP(HBSYSTEM):
 
         # Assume this is not a data call. We use this to prevent SMS/GPS data from triggering a reflector.
         _data_call = False
-        print(self._system)
-        print(UNIT_MAP)
+##        print(self._system)
+##        print(UNIT_MAP)
         # Make/update an entry in the UNIT_MAP for this subscriber
         UNIT_MAP[_rf_src] = (self._system, pkt_time)
 
-        print()
+##        print()
         print(_call_type)
         print(_dtype_vseq)
-        print(_frame_type)
-        print(_stream_id)
-        print(_seq)
+##        print(_frame_type)
+##        print(_stream_id)
+##        print(_seq)
+        print(ahex(dmrpkt))
         if _dtype_vseq == 3:
             print(ahex(dmrpkt)[27:-27])
-        print()
+##        print()
         # Filter out SMS/GPS. Usually _dtype_vseq of 3, 6, and 7. 
         if (_dtype_vseq == 6 or _dtype_vseq == 7) or ahex(dmrpkt)[27:-27] == b'd5d7f77fd757' and _dtype_vseq == 3 and _call_type == 'unit':
 ##        if ahex(dmrpkt)[27:-27] == b'd5d7f77fd757':
-            print('data call')
             # This is a data call
             _data_call = True
-##        if _dtype_vseq == [3, 6, 7] and _call_type == 'unit':
-##            print('data packet')
-##            print((_data))
-##            print(systems['OBP-TEST'])
-#            systems['OBP-HB'].send_system(b'SVRDDATA' + _data)
             if _dst_id in UNIT_MAP:
                 systems[UNIT_MAP[_dst_id][0]].send_system(_data)
             else:
-                print('not in map')
+                logger.info('UNIT not in map, sending to ALL SYSTEMS that are not OpenBridge')
+                for s in CONFIG['SYSTEMS'].items():
+##                    if s[1]['MODE'] == 'OPENBRIDGE':
+##                        pass
+##                    elif s[1]['MODE'] != 'OPENBRIDGE':
+                    systems[s[0]].send_system(_data)
+
 
         
         #Handle private calls (for reflectors)

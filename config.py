@@ -335,7 +335,7 @@ def build_config(_config_file):
                         'RELAX_CHECKS': config.getboolean(section, 'RELAX_CHECKS'),
                         'ENHANCED_OBP': config.getboolean(section, 'ENHANCED_OBP'),
                         'ENCRYPTION_KEY': bytes(config.get(section, 'ENCRYPTION_KEY'), 'utf-8'),
-                        'USE_ENCRYPTION': config.getboolean(section, 'USE_ENCRYPTION'),
+                        'ENCRYPT_ALL_TRAFFIC': config.getboolean(section, 'ENCRYPT_ALL_TRAFFIC'),
                     }})
                     
                     try:
