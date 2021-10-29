@@ -1401,6 +1401,30 @@ class routerOBP(OPENBRIDGE):
         # Add UNIT ID to UNIT_MAP
         if _mode == b'UNIT':
             UNIT_MAP[_data] = (self._system, time())
+        if _mode == b'DATA' or _mode == b'MDATA':
+        # DMR Data packet, sent via SVRD
+            _peer_id = _data[11:15]
+            _seq = _data[4]
+            _rf_src = _data[5:8]
+            _dst_id = _data[8:11]
+            _bits = _data[15]
+            _slot = 2 if (_bits & 0x80) else 1
+            #_call_type = 'unit' if (_bits & 0x40) else 'group'
+            if _bits & 0x40:
+                _call_type = 'unit'
+            elif (_bits & 0x23) == 0x23:
+                _call_type = 'vcsbk'
+            else:
+                _call_type = 'group'
+            _frame_type = (_bits & 0x30) >> 4
+            _dtype_vseq = (_bits & 0xF) # data, 1=voice header, 2=voice terminator; voice, 0=burst A ... 5=burst F
+            _stream_id = _data[16:20]
+
+##            # Record last packet to prevent duplicates, think finger printing.
+##            PACKET_MATCH[_rf_src] = [_data, time()]
+
+            
+            self.dmrd_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data)
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pkt_time = time()
@@ -1410,22 +1434,22 @@ class routerOBP(OPENBRIDGE):
         # Match UNIT data, SMS/GPS, and send it to the dst_id if it is in out UNIT_MAP
         if (_dtype_vseq == 6 or _dtype_vseq == 7) or ahex(dmrpkt)[27:-27] == b'd5d7f77fd757' and _dtype_vseq == 3 and _call_type == 'unit':
             logger.info('Received UNIT data packet')
-            print(UNIT_MAP)
-            print(int_id(_dst_id))
-            print(int_id(_rf_src))
+##            print(UNIT_MAP)
+##            print(int_id(_dst_id))
+##            print(int_id(_rf_src))
       
             if _dst_id in UNIT_MAP:
-                print(UNIT_MAP[_dst_id][0])
-                systems[UNIT_MAP[_dst_id][0]].send_system(_data)
+##                print(UNIT_MAP[_rf_src][0])
+                systems[UNIT_MAP[_rf_src][0]].send_system(_data)
             else:
-                print(UNIT_MAP[_dst_id])
+##                print(UNIT_MAP[_rf_src])
                 logger.info('UNIT not in map, sending to ALL SYSTEMS that are not OpenBridge')
                 for s in CONFIG['SYSTEMS'].items():
                     if s[1]['MODE'] == 'OPENBRIDGE':
                         pass
                     elif s[1]['MODE'] != 'OPENBRIDGE':
-                        print(s[0])
-                        print(ahex(_data))
+##                        print(s[0])
+##                        print(ahex(_data))
                         systems[s[0]].send_system(_data)
 
             
@@ -1848,10 +1872,10 @@ class routerHBP(HBSYSTEM):
             else:
                 logger.info('UNIT not in map, sending to ALL SYSTEMS')
                 for s in CONFIG['SYSTEMS'].items():
-##                    if s[1]['MODE'] == 'OPENBRIDGE':
-##                        pass
-##                    elif s[1]['MODE'] != 'OPENBRIDGE':
-                    systems[s[0]].send_system(_data)
+                    if s[1]['MODE'] == 'OPENBRIDGE':
+                        systems[s[0]].send_system(b'SVRDDATA' + _data)
+                    elif s[1]['MODE'] != 'OPENBRIDGE':
+                        systems[s[0]].send_system(_data)
 
 
         
