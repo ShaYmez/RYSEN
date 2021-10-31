@@ -1796,7 +1796,7 @@ class routerHBP(HBSYSTEM):
 ##        if ahex(dmrpkt)[27:-27] == b'd5d7f77fd757':
             # This is a data call
             _data_call = True
-            logger.info('(%s) UNIT Data call: dtype_vseq %s, src_id: %s dst_id: %s',self._system, int_id(_rf_src), _int_dst_id)
+        logger.info('(%s) UNIT Data call: dtype_vseq %s, src_id: %s dst_id: %s',self._system, _dtype_vseq, int_id(_rf_src), _int_dst_id)
  ##           if _dst_id in UNIT_MAP:
  ##               systems[UNIT_MAP[_dst_id][0]].send_system(_data)
  ##           else:
