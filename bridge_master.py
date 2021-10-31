@@ -1793,10 +1793,7 @@ class routerHBP(HBSYSTEM):
 ##            print(ahex(dmrpkt)[27:-27])
 ##        print()
         # Filter out SMS/GPS. Usually _dtype_vseq of 3, 6, and 7. 
-        logger.info('(%s) DBG Data call: dtype_vseq %s, src_id: %s, dst_id: %s, call_type: %s, stream_id: %s',self._system, _dtype_vseq, int_id(_rf_src), _int_dst_id, _call_type,bytes_4(_stream_id))
-        if _dtype_vseq == 1:
-            logger.info('(%s) FLCO - call is VOICE: dtype_vseq %s, src_id: %s dst_id: %s',self._system, _dtype_vseq, int_id(_rf_src), _int_dst_id)
-            _voice_call = True
+        logger.info('(%s) DBG Data call: dtype_vseq %s, src_id: %s, dst_id: %s, call_type: %s, stream_id: %s',self._system, _dtype_vseq, int_id(_rf_src), _int_dst_id, _call_type,int_id(_stream_id))
  ##         
         if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or (_stream_id != self.STATUS[_slot]['RX_STREAM_ID'] and _dtype_vseq == 3)):
 ##        if ahex(dmrpkt)[27:-27] == b'd5d7f77fd757':
