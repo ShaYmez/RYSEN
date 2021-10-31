@@ -1792,6 +1792,7 @@ class routerHBP(HBSYSTEM):
 ##            print(ahex(dmrpkt)[27:-27])
 ##        print()
         # Filter out SMS/GPS. Usually _dtype_vseq of 3, 6, and 7. 
+        logger.info('(%s) DBG Data call: dtype_vseq %s, src_id: %s dst_id: %s',self._system, _dtype_vseq, int_id(_rf_src), _int_dst_id)
         if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7) or (ahex(dmrpkt)[27:-27] == b'd5d7f77fd757' and _dtype_vseq == 3):
 ##        if ahex(dmrpkt)[27:-27] == b'd5d7f77fd757':
             # This is a data call
@@ -1810,7 +1811,7 @@ class routerHBP(HBSYSTEM):
 
         
         #Handle private calls (for reflectors)
-        if _call_type == 'unit' and _slot == 2 and _data_call == False:
+        if _call_type == 'unit' and _slot == 2 and not _data_call:
             if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
                 
                 self.STATUS[_slot]['_stopTgAnnounce'] = False
