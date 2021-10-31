@@ -1822,16 +1822,14 @@ class routerHBP(HBSYSTEM):
             else:
                     logger.info('(%s) *UNKNOW TYPE* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
                             self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
-#
- ##           if _dst_id in UNIT_MAP:
- ##               systems[UNIT_MAP[_dst_id][0]].send_system(_data)
- ##           else:
- ##               logger.info('UNIT not in map, sending to ALL SYSTEMS')
- ##               for s in CONFIG['SYSTEMS'].items():
- ##                   if s[1]['MODE'] == 'OPENBRIDGE':
- ##                       systems[s[0]].send_system(b'SVRDDATA' + _data)
- ##                   elif s[1]['MODE'] != 'OPENBRIDGE':
- ##                       systems[s[0]].send_system(_data)
+            
+            #Send to all openbridges 
+            for system in CONFIG['SYSTEMS']:
+                if system['MODE'] == 'OPENBRIDGE':
+                    systems[system].send_system(_data)
+                    logger.info('(%s) UNIT Data: %s, Bridged to OBP System: %s TS: %s, DST_ID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
+                            if CONFIG['REPORTS']['REPORT']:
+                                systems[_target['SYSTEM']]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID'])).encode(encoding='utf-8', errors='ignore'))
 
 
         
