@@ -1776,6 +1776,7 @@ class routerHBP(HBSYSTEM):
 
         # Assume this is not a data call. We use this to prevent SMS/GPS data from triggering a reflector.
         _data_call = False
+        _voice_call = False
 ##        print(self._system)
 ##        print(UNIT_MAP)
         # Make/update an entry in the UNIT_MAP for this subscriber
@@ -1793,7 +1794,11 @@ class routerHBP(HBSYSTEM):
 ##        print()
         # Filter out SMS/GPS. Usually _dtype_vseq of 3, 6, and 7. 
         logger.info('(%s) DBG Data call: dtype_vseq %s, src_id: %s dst_id: %s',self._system, _dtype_vseq, int_id(_rf_src), _int_dst_id)
-        if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7) or (ahex(dmrpkt)[27:-27] == b'd5d7f77fd757' and _dtype_vseq == 3):
+        if _dtype_vseq == 1:
+            logger.info('(%s) FLCO - call is VOICE: dtype_vseq %s, src_id: %s dst_id: %s',self._system, _dtype_vseq, int_id(_rf_src), _int_dst_id)
+            _voice_call = True
+ ##         
+        if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7) or (_stream_id != self.STATUS[_slot]['RX_STREAM_ID'] and _dtype_vseq == 3):
 ##        if ahex(dmrpkt)[27:-27] == b'd5d7f77fd757':
             # This is a data call
             _data_call = True
@@ -1958,7 +1963,9 @@ class routerHBP(HBSYSTEM):
             self.STATUS[_slot]['RX_TYPE']      = _dtype_vseq
             self.STATUS[_slot]['RX_TGID']      = _dst_id
             self.STATUS[_slot]['RX_TIME']      = pkt_time
-            self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id    
+            self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
+            self.STATUS[_slot]['VOICE_STREAM'] = _voice_call
+            
                             
 
         #Handle group calls
