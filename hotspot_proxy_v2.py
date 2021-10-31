@@ -196,7 +196,7 @@ if __name__ == '__main__':
 #*** CONFIG HERE ***
     
     Master = "127.0.0.1"
-    ListenPort = 62032
+    ListenPort = 62031
     # '' = all IPv4, '::' = all IPv4 and IPv6 (Dual Stack)
     ListenIP = ''
     DestportStart = 54000

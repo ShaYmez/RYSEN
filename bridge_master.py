@@ -84,14 +84,11 @@ from binascii import b2a_hex as ahex
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Cortney T. Buffington, N0MJS, Forked by Simon Adlem - G7RZU'
 __copyright__  = 'Copyright (c) 2016-2019 Cortney T. Buffington, N0MJS and the K0USY Group, Simon Adlem, G7RZU 2020,2021'
-__credits__    = 'Colin Durbridge, G4EML, Steve Zingman, N4IRS; Mike Zingman, N4IRR; Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT; Jon Lee, G4TSN; Norman Williams, M6NBP'
+__credits__    = 'Colin Durbridge, G4EML, Steve Zingman, N4IRS; Mike Zingman, N4IRR; Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT; Jon Lee, G4TSN; Norman Williams, M6NBP, Eric Craw KF7EEL'
 __license__    = 'GNU GPLv3'
 __maintainer__ = 'Simon Adlem G7RZU'
 __email__      = 'simon@gb7fr.org.uk'
 
-# Module gobal varaibles
-
-UNIT_MAP = {}
 
 
 # Timed loop used for reporting HBP status
@@ -300,7 +297,6 @@ def remove_bridge_system(system):
 
 # Run this every minute for rule timer updates
 def rule_timer_loop():
-    global UNIT_MAP
     logger.debug('(ROUTER) routerHBP Rule timer loop started')
     _now = time()
     _remove_bridges = []
@@ -350,20 +346,6 @@ def rule_timer_loop():
 
     if CONFIG['REPORTS']['REPORT']:
         report_server.send_clients(b'bridge updated')
-
-    # Remove expired UNITs from dictionary
-    print(UNIT_MAP)
-    # Remove UNIT IDs not seen in the last 24 hours
-    _then = _now - (3600 * 24)
-    remove_list = []
-    for unit in UNIT_MAP:
-        if UNIT_MAP[unit][1] < (_then):
-            remove_list.append(unit)
-
-    for unit in remove_list:
-        del UNIT_MAP[unit]
-
-    logger.debug('Removed unit(s) %s from UNIT_MAP', remove_list)
 
 def statTrimmer():
     logger.debug('(ROUTER) STAT trimmer loop started')
@@ -494,16 +476,6 @@ def stream_trimmer_loop():
                         pass
                 else:
                     logger.debug('(%s) Attemped to remove OpenBridge Stream ID %s not in the Stream ID list: %s', system, int_id(stream_id), [id for id in systems[system].STATUS])
-
-# Send SVRD packets to all OBP connections where ENCRYPTION_KEY is defined
-def svrd_send_all(_svrd_data):
-    _svrd_packet = SVRD
-    for system in CONFIG['SYSTEMS']:
-        if CONFIG['SYSTEMS'][system]['ENABLED']:
-                if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
-                    if CONFIG['SYSTEMS'][system]['ENCRYPTION_KEY'] != b'':
-                        systems[system].send_system(_svrd_packet + _svrd_data)
-
 
 def sendVoicePacket(self,pkt,_source_id,_dest_id,_slot):
     _stream_id = pkt[16:20]
@@ -1394,38 +1366,6 @@ class routerOBP(OPENBRIDGE):
                 #Ignore this system and TS pair if it's called again on this packet
         return(_sysIgnore)
 
-    # Process SVRD packets
-    def svrd_received(self, _mode, _data):
-        print(UNIT_MAP)
-        logger.info('SVRD Received. Mode: ' + str(_mode) + ' Data: ' + str(_data))
-        # Add UNIT ID to UNIT_MAP
-        if _mode == b'UNIT':
-            UNIT_MAP[_data] = (self._system, time())
-        if _mode == b'DATA' or _mode == b'MDATA':
-        # DMR Data packet, sent via SVRD
-            _peer_id = _data[11:15]
-            _seq = _data[4]
-            _rf_src = _data[5:8]
-            _dst_id = _data[8:11]
-            _bits = _data[15]
-            _slot = 2 if (_bits & 0x80) else 1
-            #_call_type = 'unit' if (_bits & 0x40) else 'group'
-            if _bits & 0x40:
-                _call_type = 'unit'
-            elif (_bits & 0x23) == 0x23:
-                _call_type = 'vcsbk'
-            else:
-                _call_type = 'group'
-            _frame_type = (_bits & 0x30) >> 4
-            _dtype_vseq = (_bits & 0xF) # data, 1=voice header, 2=voice terminator; voice, 0=burst A ... 5=burst F
-            _stream_id = _data[16:20]
-
-##            # Record last packet to prevent duplicates, think finger printing.
-##            PACKET_MATCH[_rf_src] = [_data, time()]
-
-            
-            self.dmrd_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data)
-
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pkt_time = time()
         dmrpkt = _data[20:53]
@@ -1433,24 +1373,13 @@ class routerOBP(OPENBRIDGE):
 
         # Match UNIT data, SMS/GPS, and send it to the dst_id if it is in out UNIT_MAP
         if (_dtype_vseq == 6 or _dtype_vseq == 7) or ahex(dmrpkt)[27:-27] == b'd5d7f77fd757' and _dtype_vseq == 3 and _call_type == 'unit':
-            logger.info('Received UNIT data packet')
+            logger.info('(%s) Received UNIT data packet',self._system)
 ##            print(UNIT_MAP)
 ##            print(int_id(_dst_id))
 ##            print(int_id(_rf_src))
       
             if _dst_id in UNIT_MAP:
-##                print(UNIT_MAP[_rf_src][0])
-                systems[UNIT_MAP[_rf_src][0]].send_system(_data)
-            else:
-##                print(UNIT_MAP[_rf_src])
-                logger.info('UNIT not in map, sending to ALL SYSTEMS that are not OpenBridge')
-                for s in CONFIG['SYSTEMS'].items():
-                    if s[1]['MODE'] == 'OPENBRIDGE':
-                        pass
-                    elif s[1]['MODE'] != 'OPENBRIDGE':
-##                        print(s[0])
-##                        print(ahex(_data))
-                        systems[s[0]].send_system(_data)
+                pass
 
             
         if _call_type == 'group' or _call_type == 'vcsbk':
@@ -1850,38 +1779,38 @@ class routerHBP(HBSYSTEM):
 ##        print(self._system)
 ##        print(UNIT_MAP)
         # Make/update an entry in the UNIT_MAP for this subscriber
-        UNIT_MAP[_rf_src] = (self._system, pkt_time)
+        #UNIT_MAP[_rf_src] = (self._system, pkt_time)
 
 ##        print()
-        print(_call_type)
-        print(_dtype_vseq)
+##        print(_call_type)
+##        print(_dtype_vseq)
 ##        print(_frame_type)
 ##        print(_stream_id)
 ##        print(_seq)
-        print(ahex(dmrpkt))
-        if _dtype_vseq == 3:
-            print(ahex(dmrpkt)[27:-27])
+##        print(ahex(dmrpkt))
+##        if _dtype_vseq == 3:
+##            print(ahex(dmrpkt)[27:-27])
 ##        print()
         # Filter out SMS/GPS. Usually _dtype_vseq of 3, 6, and 7. 
         if (_dtype_vseq == 6 or _dtype_vseq == 7) or ahex(dmrpkt)[27:-27] == b'd5d7f77fd757' and _dtype_vseq == 3 and _call_type == 'unit':
 ##        if ahex(dmrpkt)[27:-27] == b'd5d7f77fd757':
             # This is a data call
             _data_call = True
-            if _dst_id in UNIT_MAP:
-                systems[UNIT_MAP[_dst_id][0]].send_system(_data)
-            else:
-                logger.info('UNIT not in map, sending to ALL SYSTEMS')
-                for s in CONFIG['SYSTEMS'].items():
-                    if s[1]['MODE'] == 'OPENBRIDGE':
-                        systems[s[0]].send_system(b'SVRDDATA' + _data)
-                    elif s[1]['MODE'] != 'OPENBRIDGE':
-                        systems[s[0]].send_system(_data)
+            logger.info('(%s) UNIT Data call: dtype_vseq %s, src_id: %s dst_id: %s',self._system, int_id(_rf_src), _int_dst_id)
+ ##           if _dst_id in UNIT_MAP:
+ ##               systems[UNIT_MAP[_dst_id][0]].send_system(_data)
+ ##           else:
+ ##               logger.info('UNIT not in map, sending to ALL SYSTEMS')
+ ##               for s in CONFIG['SYSTEMS'].items():
+ ##                   if s[1]['MODE'] == 'OPENBRIDGE':
+ ##                       systems[s[0]].send_system(b'SVRDDATA' + _data)
+ ##                   elif s[1]['MODE'] != 'OPENBRIDGE':
+ ##                       systems[s[0]].send_system(_data)
 
 
         
         #Handle private calls (for reflectors)
         if _call_type == 'unit' and _slot == 2 and _data_call == False:
-            print('Trigger reflector')
             if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
                 
                 self.STATUS[_slot]['_stopTgAnnounce'] = False
@@ -2042,8 +1971,6 @@ class routerHBP(HBSYSTEM):
 
                 # This is a new call stream
                 self.STATUS[_slot]['RX_START'] = pkt_time
-                # Send SVRD packet to update other servers where this subscriber is
-                svrd_send_all(b'UNIT' + _rf_src)
                 logger.info('(%s) *CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
                 if CONFIG['REPORTS']['REPORT']:
