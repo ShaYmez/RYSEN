@@ -1792,11 +1792,11 @@ class routerHBP(HBSYSTEM):
 ##            print(ahex(dmrpkt)[27:-27])
 ##        print()
         # Filter out SMS/GPS. Usually _dtype_vseq of 3, 6, and 7. 
-        if (_dtype_vseq == 6 or _dtype_vseq == 7) or ahex(dmrpkt)[27:-27] == b'd5d7f77fd757' and _dtype_vseq == 3 and _call_type == 'unit':
+        if (_dtype_vseq == 6 or _dtype_vseq == 7) or (ahex(dmrpkt)[27:-27] == b'd5d7f77fd757' and _dtype_vseq == 3) and _call_type == 'unit':
 ##        if ahex(dmrpkt)[27:-27] == b'd5d7f77fd757':
             # This is a data call
             _data_call = True
-        logger.info('(%s) UNIT Data call: dtype_vseq %s, src_id: %s dst_id: %s',self._system, _dtype_vseq, int_id(_rf_src), _int_dst_id)
+            logger.info('(%s) UNIT Data call: dtype_vseq %s, src_id: %s dst_id: %s',self._system, _dtype_vseq, int_id(_rf_src), _int_dst_id)
  ##           if _dst_id in UNIT_MAP:
  ##               systems[UNIT_MAP[_dst_id][0]].send_system(_data)
  ##           else:
