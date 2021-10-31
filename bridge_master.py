@@ -1793,7 +1793,7 @@ class routerHBP(HBSYSTEM):
 ##            print(ahex(dmrpkt)[27:-27])
 ##        print()
         # Filter out SMS/GPS. Usually _dtype_vseq of 3, 6, and 7. 
-        logger.info('(%s) DBG Data call: dtype_vseq %s, src_id: %s, dst_id: %s, call_type: %s, stream_id: %s',self._system, _dtype_vseq, int_id(_rf_src), _int_dst_id, _call_type,int_id(_stream_id))
+        #logger.info('(%s) DBG Data call: dtype_vseq %s, src_id: %s, dst_id: %s, call_type: %s, stream_id: %s',self._system, _dtype_vseq, int_id(_rf_src), _int_dst_id, _call_type,int_id(_stream_id))
  ##         
         if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or (_stream_id != self.STATUS[_slot]['RX_STREAM_ID'] and _dtype_vseq == 3)):
 ##        if ahex(dmrpkt)[27:-27] == b'd5d7f77fd757':
@@ -1979,10 +1979,10 @@ class routerHBP(HBSYSTEM):
                 
                 if _call_type == 'group' :
                     if _dtype_vseq == 6:
-                        logger.info('(%s) *VCSBK DATA HEADER* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
+                        logger.info('(%s) *DATA HEADER* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
                                 self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
                         if CONFIG['REPORTS']['REPORT']:
-                            self._report.send_bridgeEvent('VCSBK DATA HEADER,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                            self._report.send_bridgeEvent('DATA HEADER,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
                     
                     else:
                         logger.info('(%s) *CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
@@ -1990,7 +1990,7 @@ class routerHBP(HBSYSTEM):
                         if CONFIG['REPORTS']['REPORT']:
                             self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
                 else:
-                    logger.info('(%s) *VCSBK* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s _dtype_vseq: %s', 
+                    logger.info('(%s) *CSBK* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s _dtype_vseq: %s', 
                             self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, _dtype_vseq)
                     if CONFIG['REPORTS']['REPORT']:
                         self._report.send_bridgeEvent('OTHER DATA,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
