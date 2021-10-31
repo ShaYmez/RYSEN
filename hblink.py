@@ -55,9 +55,6 @@ from reporting_const import *
 import logging
 logger = logging.getLogger(__name__)
 
-# Encryption library
-from cryptography.fernet import Fernet
-
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Cortney T. Buffington, N0MJS, Forked by Simon Adlem - G7RZU'
 __copyright__  = 'Copyright (c) 2016-2019 Cortney T. Buffington, N0MJS and the K0USY Group, Simon Adlem, G7RZU 2020,2021'
@@ -69,21 +66,6 @@ __email__      = 'simon@gb7fr.org.uk'
 
 # Global variables used whether we are a module or __main__
 systems = {}
-
-# Functions that provide a basic symetrical encryption using Fernet
-def encrypt_packet(key, message):
-    f = Fernet(key)
-    token = f.encrypt(message)
-
-    return token
-
-def decrypt_packet(key, message):
-    f = Fernet(key)
-    token = f.decrypt(message)
-
-    return token
-
-
 
 # Timed loop used for reporting HBP status
 def config_reports(_config, _factory):
@@ -149,34 +131,14 @@ class OPENBRIDGE(DatagramProtocol):
         logger.info('(%s) is mode OPENBRIDGE. No De-Registration required, continuing shutdown', self._system)
 
     def send_system(self, _packet):
-        print('----')
-        print(_packet)
-        if _packet[:4] == DMRD and self._config['TARGET_IP'] or _packet[:4] == EOBP and self._config['TARGET_IP']:
-            print(ahex(_packet))
+        if _packet[:4] == DMRD and self._config['TARGET_IP']:
             #_packet = _packet[:11] + self._config['NETWORK_ID'] + _packet[15:]
             _packet = b''.join([_packet[:11], self._CONFIG['GLOBAL']['SERVER_ID'], _packet[15:]])
             #_packet += hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest()
-            #print(hmac_new(self._config['PASSPHRASE'],_packet,sha1))
             _packet = b''.join([_packet, (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
-##            print(ahex(hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest()))
-##            print(len(hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest()))
-            if self._config['ENCRYPT_ALL_TRAFFIC'] == True or _packet[:4] == EOBP:
-                _enc_pkt = encrypt_packet(self._config['ENCRYPTION_KEY'], _packet)
-                _packet = b'EOBP' + _enc_pkt
-                print('Use EOBP')
-##                print(_packet)
             self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
             # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
-            #logger.debug('(%s) TX Packet to OpenBridge %s:%s -- %s', self._system, self._config['TARGET_IP'], self._config['TARGET_PORT'], ahex(_packet))
-
-##        elif _packet[:4] == EOBP and self._config['TARGET_IP']:
-            
-        elif _packet[:4] == SVRD:
-##            print(_packet)
-            _enc_pkt = encrypt_packet(self._config['ENCRYPTION_KEY'], _packet)
-            _packet = b'SVRD' + _enc_pkt
-            self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
-            logger.info('SVRD packet')
+            #logger.debug('(%s) TX Packet to OpenBridge %s:%s -- %s', self._system, self._config['TARGET_IP'], self._config['TARGET_PORT'], ahex(_packet))                
         else:
             
             if not self._config['TARGET_IP']:
@@ -203,10 +165,6 @@ class OPENBRIDGE(DatagramProtocol):
         else:
             logger.debug('(%s) *BridgeControl* Not sent BCSQ Source Quench TARGET_IP not known , TG: %s, Stream ID: %s',self._system,int_id(_tgid))
     
-    # Process SVRD data
-    def svrd_received(self, _mode, _data):
-        pass
-
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pass
@@ -216,14 +174,7 @@ class OPENBRIDGE(DatagramProtocol):
         # Keep This Line Commented Unless HEAVILY Debugging!
         #logger.debug('(%s) RX packet from %s -- %s', self._system, _sockaddr, ahex(_packet))
 
-        # DMRData -- encapsulated DMR data frame
-        if _packet[:4] == DMRD or _packet[:4] == EOBP:
-            if _packet[:4] == EOBP:
-##                print(_packet)
-                print('Decrypt')
-                _d_pkt = decrypt_packet(self._config['ENCRYPTION_KEY'], _packet[4:])
-                _packet = _d_pkt
-##                print(_packet)
+        if _packet[:4] == DMRD:    # DMRData -- encapsulated DMR data frame
             _data = _packet[:53]
             _hash = _packet[53:]
             _ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
@@ -291,11 +242,6 @@ class OPENBRIDGE(DatagramProtocol):
             else:
                 h,p = _sockaddr
                 logger.info('(%s) OpenBridge HMAC failed, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:53]), len(_packet[53:]), repr(_packet[53:]),h,p) 
-
-        
-        elif _packet[:4] == SVRD:
-            _d_pkt = decrypt_packet(self._config['ENCRYPTION_KEY'], _packet[4:])
-            self.svrd_received(_d_pkt[4:8], _d_pkt[8:]) 
 
         if self._config['ENHANCED_OBP']:
             if _packet[:2] == BC:    # Bridge Control packet (Extended OBP)
