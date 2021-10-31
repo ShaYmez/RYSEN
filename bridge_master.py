@@ -1798,7 +1798,7 @@ class routerHBP(HBSYSTEM):
             logger.info('(%s) FLCO - call is VOICE: dtype_vseq %s, src_id: %s dst_id: %s',self._system, _dtype_vseq, int_id(_rf_src), _int_dst_id)
             _voice_call = True
  ##         
-        if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7) or (_stream_id != self.STATUS[_slot]['RX_STREAM_ID'] and _dtype_vseq == 3):
+        if (_call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7)) or (_stream_id != self.STATUS[_slot]['RX_STREAM_ID'] and _dtype_vseq == 3):
 ##        if ahex(dmrpkt)[27:-27] == b'd5d7f77fd757':
             # This is a data call
             _data_call = True
