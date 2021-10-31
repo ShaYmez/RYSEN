@@ -1792,7 +1792,7 @@ class routerHBP(HBSYSTEM):
 ##            print(ahex(dmrpkt)[27:-27])
 ##        print()
         # Filter out SMS/GPS. Usually _dtype_vseq of 3, 6, and 7. 
-        if _ call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7) or (ahex(dmrpkt)[27:-27] == b'd5d7f77fd757' and _dtype_vseq == 3):
+        if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7) or (ahex(dmrpkt)[27:-27] == b'd5d7f77fd757' and _dtype_vseq == 3):
 ##        if ahex(dmrpkt)[27:-27] == b'd5d7f77fd757':
             # This is a data call
             _data_call = True
