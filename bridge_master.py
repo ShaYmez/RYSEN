@@ -1827,6 +1827,7 @@ class routerHBP(HBSYSTEM):
             for system in systems:
                 if system  == self._system:
                     continue
+                print(system)
                 if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
                     systems[system].send_system(_data)
                     logger.info('(%s) UNIT Data Bridged to OBP System: %s DST_ID: %s', self._system, system,_int_dst_id)
