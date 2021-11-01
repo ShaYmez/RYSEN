@@ -1829,9 +1829,9 @@ class routerHBP(HBSYSTEM):
                     continue
                 if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
                     systems[system].send_system(_data)
-                    logger.info('(%s) UNIT Data Bridged to OBP System: %s TS: %s, DST_ID: %s', self._system, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
+                    logger.info('(%s) UNIT Data Bridged to OBP System: %s DST_ID: %s', self._system, system, _target['TS'],_int_dst_id)
                     if CONFIG['REPORTS']['REPORT']:
-                        systems[_target['SYSTEM']]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID'])).encode(encoding='utf-8', errors='ignore'))
+                        systems[_target['SYSTEM']]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
 
 
         
