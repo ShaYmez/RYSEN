@@ -220,8 +220,8 @@ if __name__ == '__main__':
     #Override static config from Environment
     if 'FDPROXY_STATS' in os.environ:
         Stats = bool(os.environ['FDPROXY_STATS'])
-    if 'FDPROXY_DEBUG' in os.environ:
-        Debug = bool(os.environ['FDPROXY_DEBUG'])
+   # if 'FDPROXY_DEBUG' in os.environ:
+   #     Debug = bool(os.environ['FDPROXY_DEBUG'])
     if 'FDPROXY_CLIENTINFO' in os.environ:
         ClientInfo = bool(os.environ['FDPROXY_CLIENTINFO'])
     if 'FDPROXY_LISTENPORT' in os.environ:
