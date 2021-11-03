@@ -1401,17 +1401,23 @@ class routerOBP(OPENBRIDGE):
                             self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
             
             #Send to all openbridges 
-            for system in systems:
-                if system  == self._system:
-                    continue
-                if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
-                    # Assemble transmit HBP packet header
-                    _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
-                    _tmp_data = b''.join([_tmp_data, dmrpkt])
-                    systems[system].send_system(_tmp_data)
-                    logger.info('(%s) UNIT Data Bridged to OBP System: %s DST_ID: %s', self._system, system,_int_dst_id)
-                    if CONFIG['REPORTS']['REPORT']:
-                        systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
+            # We don't want to do this without more thought! 
+            # If we are going to do this is requires loop control 
+            # for data packets 
+            #
+            # Best for now to send all data packet to a single gateway 
+            
+            #for system in systems:
+                #if system  == self._system:
+                    #continue
+                #if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
+                    #Assemble transmit HBP packet header
+                    #_tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
+                    #_tmp_data = b''.join([_tmp_data, dmrpkt])
+                    #systems[system].send_system(_tmp_data)
+                    #logger.info('(%s) UNIT Data Bridged to OBP System: %s DST_ID: %s', self._system, system,_int_dst_id)
+                    #if CONFIG['REPORTS']['REPORT']:
+                        #systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
 
             
         if _call_type == 'group' or _call_type == 'vcsbk':
@@ -1856,19 +1862,25 @@ class routerHBP(HBSYSTEM):
                             self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
             
             #Send to all openbridges 
-            for system in systems:
-                if system  == self._system:
-                    continue
-                if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
-                    # Clear the TS bit -- all OpenBridge streams are effectively on TS1
-                    _tmp_bits = _bits & ~(1 << 7)
-                    # Assemble transmit HBP packet header
-                    _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
-                    _tmp_data = b''.join([_tmp_data, dmrpkt])
-                    systems[system].send_system(_tmp_data)
-                    logger.info('(%s) UNIT Data Bridged to OBP System: %s DST_ID: %s', self._system, system,_int_dst_id)
-                    if CONFIG['REPORTS']['REPORT']:
-                        systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
+            # We don't want to do this without more thought! 
+            # If we are going to do this is requires loop control 
+            # for data packets 
+            #
+            # Best for now to send all data packet to a single gateway 
+             
+            #for system in systems:
+                #if system  == self._system:
+                    #continue
+                #if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
+                    #Clear the TS bit -- all OpenBridge streams are effectively on TS1
+                    #_tmp_bits = _bits & ~(1 << 7)
+                    #Assemble transmit HBP packet header
+                    #_tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
+                    #_tmp_data = b''.join([_tmp_data, dmrpkt])
+                    #systems[system].send_system(_tmp_data)
+                    #logger.info('(%s) UNIT Data Bridged to OBP System: %s DST_ID: %s', self._system, system,_int_dst_id)
+                    #if CONFIG['REPORTS']['REPORT']:
+                        #systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
 
 
         
