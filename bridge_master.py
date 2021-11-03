@@ -1372,14 +1372,46 @@ class routerOBP(OPENBRIDGE):
         _bits = _data[15]
 
         # Match UNIT data, SMS/GPS, and send it to the dst_id if it is in out UNIT_MAP
-        if (_dtype_vseq == 6 or _dtype_vseq == 7) or ahex(dmrpkt)[27:-27] == b'd5d7f77fd757' and _dtype_vseq == 3 and _call_type == 'unit':
-            logger.info('(%s) Received UNIT data packet',self._system)
-##            print(UNIT_MAP)
-##            print(int_id(_dst_id))
-##            print(int_id(_rf_src))
-      
-            if _dst_id in UNIT_MAP:
-                pass
+        if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or ((_stream_id not in self.STATUS) and _dtype_vseq == 3)):
+##        if ahex(dmrpkt)[27:-27] == b'd5d7f77fd757':
+            # This is a data call
+            _data_call = True
+            if _dtype_vseq == 3:
+                logger.info('(%s) *UNIT CSBK* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) DST_ID %s (%s), TS %s', \
+                        self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+                if CONFIG['REPORTS']['REPORT']:
+                        self._report.send_bridgeEvent('UNIT CSBK,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+            elif _dtype_vseq == 6:
+                logger.info('(%s) *UNIT DATA HEADER* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) DST_ID %s (%s), TS %s', \
+                        self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+                if CONFIG['REPORTS']['REPORT']:
+                        self._report.send_bridgeEvent('UNIT DATA HEADER,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+            elif _dtype_vseq == 7:
+                    logger.info('(%s) *UNIT VCSBK 1/2 DATA BLOCK * STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
+                            self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+                    if CONFIG['REPORTS']['REPORT']:
+                        self._report.send_bridgeEvent('UNIT VCSBK 1/2 DATA BLOCK,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+            elif _dtype_vseq == 8:
+                    logger.info('(%s) *UNIT VCSBK 3/4 DATA BLOCK * STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
+                            self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+                    if CONFIG['REPORTS']['REPORT']:
+                        self._report.send_bridgeEvent('UNIT VCSBK 3/4 DATA BLOCK,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+            else:
+                    logger.info('(%s) *UNKNOWN DATA TYPE* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
+                            self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+            
+            #Send to all openbridges 
+            for system in systems:
+                if system  == self._system:
+                    continue
+                if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
+                    # Assemble transmit HBP packet header
+                    _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
+                    _tmp_data = b''.join([_tmp_data, dmrpkt])
+                    systems[system].send_system(_tmp_data)
+                    logger.info('(%s) UNIT Data Bridged to OBP System: %s DST_ID: %s', self._system, system,_int_dst_id)
+                    if CONFIG['REPORTS']['REPORT']:
+                        systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
 
             
         if _call_type == 'group' or _call_type == 'vcsbk':
@@ -1827,7 +1859,6 @@ class routerHBP(HBSYSTEM):
             for system in systems:
                 if system  == self._system:
                     continue
-                print(system)
                 if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
                     # Clear the TS bit -- all OpenBridge streams are effectively on TS1
                     _tmp_bits = _bits & ~(1 << 7)
@@ -1835,7 +1866,7 @@ class routerHBP(HBSYSTEM):
                     _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
                     _tmp_data = b''.join([_tmp_data, dmrpkt])
                     systems[system].send_system(_tmp_data)
-                    logger.info('(%s) UNIT Data Bridged to OBP System: %s DST_ID: %s, length: %s, data: %s', self._system, system,_int_dst_id,len(_tmp_data),_tmp_data)
+                    logger.info('(%s) UNIT Data Bridged to OBP System: %s DST_ID: %s', self._system, system,_int_dst_id)
                     if CONFIG['REPORTS']['REPORT']:
                         systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
 
