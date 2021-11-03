@@ -1428,7 +1428,7 @@ class routerOBP(OPENBRIDGE):
                     #Assemble transmit HBP packet header
                     _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
                     _tmp_data = b''.join([_tmp_data, dmrpkt])
-                    systems[system].send_system(_tmp_data)
+                    systems[CONFIG['GLOBAL']['DATA_GATEWAY']].send_system(_tmp_data)
                     logger.info('(%s) UNIT Data Bridged to DATA_GATEWAY: %s DST_ID: %s', self._system,CONFIG['GLOBAL']['DATA_GATEWAY'],_int_dst_id)
                     if CONFIG['REPORTS']['REPORT']:
                         systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
@@ -1910,7 +1910,7 @@ class routerHBP(HBSYSTEM):
                     #Assemble transmit HBP packet header
                     _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
                     _tmp_data = b''.join([_tmp_data, dmrpkt])
-                    systems[system].send_system(_tmp_data)
+                    systems[CONFIG['GLOBAL']['DATA_GATEWAY']].send_system(_tmp_data)
                     logger.info('(%s) UNIT Data Bridged to DATA_GATEWAY: %s DST_ID: %s', self._system,CONFIG['GLOBAL']['DATA_GATEWAY'],_int_dst_id)
                     if CONFIG['REPORTS']['REPORT']:
                         systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
