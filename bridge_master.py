@@ -1902,7 +1902,7 @@ class routerHBP(HBSYSTEM):
                         #systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
             
             #Send UNIT data to data gateway
-            if CONFIG['GLOBAL']['DATA_GATEWAY'] and CONFIG['GLOBAL']['DATA_GATEWAY'] in systems \
+            if CONFIG['GLOBAL']['DATA_GATEWAY'] and (CONFIG['GLOBAL']['DATA_GATEWAY'] in systems) \
                 and CONFIG['SYSTEMS'][CONFIG['GLOBAL']['DATA_GATEWAY']]['MODE'] == OPENBRIDGE:
                     #Clear the TS bit -- all OpenBridge streams are effectively on TS1
                     _tmp_bits = _bits & ~(1 << 7)
@@ -1917,7 +1917,7 @@ class routerHBP(HBSYSTEM):
                 if not CONFIG['GLOBAL']['DATA_GATEWAY']:
                     logger.info('(%s) UNIT Data not Bridged - no DATA_GATEWAY: %s DST_ID: %s',self._system,_int_dst_id)
                 else:
-                    logger.info('(%s) UNIT Data not Bridged - Problem with DATA_GATEWAY: %s DST_ID: %s',self._system,_int_dst_id)
+                    logger.info('(%s) UNIT Data not Bridged - Problem with DATA_GATEWAY: %s DST_ID: %s',self._system, CONFIG['GLOBAL']['DATA_GATEWAY'],_int_dst_id)
                 
 
 
