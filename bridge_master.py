@@ -1422,7 +1422,7 @@ class routerOBP(OPENBRIDGE):
             #This allow careful daisychaining to reach a DATA_GATEWAY
             #Send UNIT data to data gateway
             if CONFIG['GLOBAL']['DATA_GATEWAY'] and CONFIG['GLOBAL']['DATA_GATEWAY'] in systems \
-                and CONFIG['SYSTEMS'][CONFIG['SYSTEMS']['DATA_GATEWAY']]['MODE'] == OPENBRIDGE:
+                and CONFIG['SYSTEMS'][CONFIG['GLOBAL']['DATA_GATEWAY']]['MODE'] == OPENBRIDGE:
                     #Clear the TS bit -- all OpenBridge streams are effectively on TS1
                     _tmp_bits = _bits & ~(1 << 7)
                     #Assemble transmit HBP packet header
@@ -1903,7 +1903,7 @@ class routerHBP(HBSYSTEM):
             
             #Send UNIT data to data gateway
             if CONFIG['GLOBAL']['DATA_GATEWAY'] and CONFIG['GLOBAL']['DATA_GATEWAY'] in systems \
-                and CONFIG['SYSTEMS'][CONFIG['SYSTEMS']['DATA_GATEWAY']]['MODE'] == OPENBRIDGE:
+                and CONFIG['SYSTEMS'][CONFIG['GLOBAL']['DATA_GATEWAY']]['MODE'] == OPENBRIDGE:
                     #Clear the TS bit -- all OpenBridge streams are effectively on TS1
                     _tmp_bits = _bits & ~(1 << 7)
                     #Assemble transmit HBP packet header
