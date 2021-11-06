@@ -1828,7 +1828,7 @@ class routerHBP(HBSYSTEM):
         if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or (_stream_id != self.STATUS[_slot]['RX_STREAM_ID'] and _dtype_vseq == 3)):
             _data_call = True
             
-            SUB_MAP['_int_dst_id'] = (self._system,_slot,pkt_time)
+            SUB_MAP['_dst_id'] = (self._system,_slot,pkt_time)
             
             if _dtype_vseq == 3:
                 logger.info('(%s) *UNIT CSBK* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) DST_ID %s (%s), TS %s', \
