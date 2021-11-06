@@ -1518,7 +1518,6 @@ class routerOBP(OPENBRIDGE):
                     
                     if CONFIG['SYSTEMS'][self._system]['ENHANCED_OBP'] and '_bcsq' not in self.STATUS[_stream_id]:
                         systems[self._system].send_bcsq(_dst_id,_stream_id)
-                        #logger.warning("(%s) OBP *BridgeControl* Sent BCSQ , STREAM ID: %s, TG %s",self._system, int_id(_stream_id), int_id(_dst_id))
                         self.STATUS[_stream_id]['_bcsq'] = True
                     return
                         
@@ -1557,8 +1556,6 @@ class routerOBP(OPENBRIDGE):
             
             _sysIgnore = []
             for _bridge in BRIDGES:
-                #if _bridge[0:1] != '#':
-                #if True:
                     for _system in BRIDGES[_bridge]:
                         
                         if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
@@ -1573,12 +1570,7 @@ class routerOBP(OPENBRIDGE):
                 if CONFIG['REPORTS']['REPORT']:
                    self._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), call_duration).encode(encoding='utf-8', errors='ignore'))
                    self.STATUS[_stream_id]['_fin'] = True
-                #removed = self.STATUS.pop(_stream_id)
-                #logger.debug('(%s) OpenBridge sourced call stream end, remove terminated Stream ID: %s', self._system, int_id(_stream_id))
-                #if not removed:
-                    #selflogger.error('(%s) *CALL END*   STREAM ID: %s NOT IN LIST -- THIS IS A REAL PROBLEM', self._system, int_id(_stream_id))
-                
-                #Reset sequence number 
+                   
                 self.STATUS[_stream_id]['lastSeq'] = False
 
 class routerHBP(HBSYSTEM):
@@ -1667,7 +1659,6 @@ class routerHBP(HBSYSTEM):
                         
                         #If target has quenched us, don't send
                         if ('_bcsq' in _target_system) and (_dst_id in _target_system['_bcsq']) and (_target_system['_bcsq'][_target['TGID']] == _stream_id):
-                        #logger.info('(%s) Conference Bridge: %s, is Source Quenched for Stream ID: %s, skipping system: %s TS: %s, TGID: %s', self._system, _bridge, int_id(_stream_id), _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                             continue
                         
                         #If target has missed 6 (on 1 min) of keepalives, don't send
@@ -1677,12 +1668,10 @@ class routerHBP(HBSYSTEM):
                         #If talkgroup is prohibited by ACL
                         if self._CONFIG['GLOBAL']['USE_ACL']:
                             if not acl_check(_target['TGID'],self._CONFIG['GLOBAL']['TG1_ACL']):
-                                #logger.info('(%s) TGID prohibited by ACL, not sending', _target['SYSTEM'])
                                 continue
                         
                         if _target_system['USE_ACL']:
                             if not acl_check(_target['TGID'],_target_system['TG1_ACL']):
-                                #logger.info('(%s) TGID prohibited by ACL, not sending', _target['SYSTEM'])
                                 continue
                         
         
@@ -1818,7 +1807,7 @@ class routerHBP(HBSYSTEM):
 
                     # Transmit the packet to the destination system
                     systems[_target['SYSTEM']].send_system(_tmp_data)
-                    #logger.debug('(%s) Packet routed by bridge: %s to system: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))        
+       
         return _sysIgnore
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
@@ -1835,27 +1824,8 @@ class routerHBP(HBSYSTEM):
         # Assume this is not a data call. We use this to prevent SMS/GPS data from triggering a reflector.
         _data_call = False
         _voice_call = False
-##        print(self._system)
-##        print(UNIT_MAP)
-        # Make/update an entry in the UNIT_MAP for this subscriber
-        #UNIT_MAP[_rf_src] = (self._system, pkt_time)
-
-##        print()
-##        print(_call_type)
-##        print(_dtype_vseq)
-##        print(_frame_type)
-##        print(_stream_id)
-##        print(_seq)
-##        print(ahex(dmrpkt))
-##        if _dtype_vseq == 3:
-##            print(ahex(dmrpkt)[27:-27])
-##        print()
-        # Filter out SMS/GPS. Usually _dtype_vseq of 3, 6, and 7. 
-        #logger.info('(%s) DBG Data call: dtype_vseq %s, src_id: %s, dst_id: %s, call_type: %s, stream_id: %s',self._system, _dtype_vseq, int_id(_rf_src), _int_dst_id, _call_type,int_id(_stream_id))
- ##         
+       
         if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or (_stream_id != self.STATUS[_slot]['RX_STREAM_ID'] and _dtype_vseq == 3)):
-##        if ahex(dmrpkt)[27:-27] == b'd5d7f77fd757':
-            # This is a data call
             _data_call = True
             if _dtype_vseq == 3:
                 logger.info('(%s) *UNIT CSBK* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) DST_ID %s (%s), TS %s', \
@@ -1933,7 +1903,6 @@ class routerHBP(HBSYSTEM):
                 self.STATUS[_slot]['_stopTgAnnounce'] = False
                 
                 logger.warning('(%s) Reflector: Private call from %s to %s',self._system, int_id(_rf_src), _int_dst_id)
-                #if _int_dst_id >= 4000 and _int_dst_id <= 5000:
                 if _int_dst_id >= 5 and _int_dst_id != 9 and _int_dst_id <= 999999:
                     _bridgename = '#'+ str(_int_dst_id)
                     if _bridgename not in BRIDGES and not (_int_dst_id >= 4000 and _int_dst_id <= 5000) and not (_int_dst_id >=9991 and _int_dst_id <= 9999):
@@ -1974,7 +1943,6 @@ class routerHBP(HBSYSTEM):
                                         # Set the matching rule as ACTIVE
                                         #Single TG mode
                                         if _dst_id in _system['OFF'] or _int_dst_id != int(_dehash_bridge) :
-                                        #if _dst_id in _system['OFF']:
                                             if _system['ACTIVE'] == True:
                                                 _system['ACTIVE'] = False
                                                 logger.info('(%s) [F] Reflector: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
@@ -1994,14 +1962,8 @@ class routerHBP(HBSYSTEM):
             
             if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
                 
-                #Speak callsign before message
                 _say = [words[_lang]['silence']]
-        #        _systemcs = re.sub(r'\W+', '', self._system)
-         #       _systemcs.upper()
-          #      for character in _systemcs:
-           #         _say.append(words[character])
-            #        _say.append(words['silence'])
-            
+
                 if _int_dst_id <= 5 or _int_dst_id == 9:
                     logger.info('(%s) Reflector: voice called - TG < 5 or 9 - "busy""', self._system)
                     _say.append(words[_lang]['busy'])
@@ -2149,7 +2111,6 @@ class routerHBP(HBSYSTEM):
                             self.STATUS[_slot]['LAST'] = pkt_time
                             return
                 else:
-                    #if _stream_id in systems[system].STATUS and systems[system].STATUS[_stream_id]['START'] <= self.STATUS[_stream_id]['START']:
                     if _stream_id in systems[system].STATUS and '1ST' in systems[system].STATUS[_stream_id] and systems[system].STATUS[_stream_id]['TGID'] == _dst_id:
                         if 'LOOPLOG' not in self.STATUS[_slot] or not self.STATUS[_slot]['LOOPLOG']:
                             logger.info("(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id))
@@ -2158,7 +2119,6 @@ class routerHBP(HBSYSTEM):
                         
                         if CONFIG['SYSTEMS'][self._system]['ENHANCED_OBP'] and '_bcsq' not in self.STATUS[_slot]:
                             systems[self._system].send_bcsq(_dst_id,_stream_id)
-                            #logger.warning("(%s) OBP *BridgeControl* Sent BCSQ , STREAM ID: %s, TG %s",self._system, int_id(_stream_id), int_id(_dst_id))
                             self.STATUS[_slot]['_bcsq'] = True
                         return
         
@@ -2272,10 +2232,8 @@ class routerHBP(HBSYSTEM):
                             else:
                                 
                                 if (_dst_id in _system['OFF']  or _dst_id in _system['RESET']) and _slot == _system['TS']:
-                                #if (_dst_id in _system['OFF']  or _dst_id in _system['RESET']) and _slot == _system['TS']:
                                     # Set the matching rule as ACTIVE
                                     if _dst_id in _system['OFF']:
-                                    #if _dst_id in _system['OFF']:
                                         if _system['ACTIVE'] == True:
                                             _system['ACTIVE'] = False
                                             logger.info('(%s) [9] Bridge: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
@@ -2422,6 +2380,9 @@ if __name__ == '__main__':
     # Build the routing rules file
     BRIDGES = make_bridges(rules_module.BRIDGES)
     
+    #Subscriber map for unit calls
+    SUB_MAP = {}
+    
     #Generator
     generator = {}
     systemdelete = []
@@ -2466,12 +2427,6 @@ if __name__ == '__main__':
         if CONFIG['SYSTEMS'][system]['TS2_STATIC']:
             ts2 = CONFIG['SYSTEMS'][system]['TS2_STATIC'].split(',')
             
-        #if CONFIG['SYSTEMS'][system]['SINGLE_MODE'] == True:
-            #if ts1:
-                #make_static_tg(int(ts1[0]),1,system)
-            #if ts2:
-                #make_static_tg(int(ts2[0]),2,system)
-        #else:
         for tg in ts1:
                 if not tg:
                     continue
@@ -2516,9 +2471,6 @@ if __name__ == '__main__':
     
     for system in CONFIG['SYSTEMS']:
         if CONFIG['SYSTEMS'][system]['ENABLED']:
-           # if CONFIG['SYSTEMS'][system]['MODE'] == 'XLXPEER':
-           #     logger.warning('(GLOBAL) system %s not started - XLXPEER connections currently unsupported ', system)
-           #     continue
             if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
                 systems[system] = routerOBP(system, CONFIG, report_server)                
             else:
