@@ -1900,7 +1900,7 @@ class routerHBP(HBSYSTEM):
                 _dst_slot  = systems[system].STATUS[_d_slot]
                 #If slot is idle for RX and TX
                 #print("RX:"+str(_slot['RX_TYPE'])+" TX:"+str(_slot['TX_TYPE'])+" TIME:"+str(time() - _slot['TX_TIME']))
-                if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][system]['GROUP_HANGTIME']):
+                if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][d_system]['GROUP_HANGTIME']):
                 #Clear the TS bit -- all inbound data on slot 1
                     _tmp_bits = _bits & ~(1 << 7)
                     #Assemble transmit HBP packet header
