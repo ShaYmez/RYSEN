@@ -1828,7 +1828,7 @@ class routerHBP(HBSYSTEM):
         if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or (_stream_id != self.STATUS[_slot]['RX_STREAM_ID'] and _dtype_vseq == 3)):
             _data_call = True
             
-            SUB_MAP['_int_id'] = (_peer_id,_slot,pkt_time)
+            SUB_MAP['_int_id'] = (self._system,_slot,pkt_time)
             
             if _dtype_vseq == 3:
                 logger.info('(%s) *UNIT CSBK* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) DST_ID %s (%s), TS %s', \
@@ -1896,11 +1896,27 @@ class routerHBP(HBSYSTEM):
                     logger.warning('(%s) UNIT Data not Bridged - DATA_GATEWAY: %s not OPENBRIDGE. DST_ID: %s',self._system, CONFIG['GLOBAL']['DATA_GATEWAY'],_int_dst_id)
                 
             if _dst_id in SUB_MAP:
-                (_d_peer_id,_d_slot,_d_time) = SUB_MAP[_dst_id]:
-                    _dst_slot  = systems[system].STATUS[_d_slot]
+                (_d_system,_d_slot,_d_time) = SUB_MAP[_dst_id]
+                _dst_slot  = systems[system].STATUS[_d_slot]
                 #If slot is idle for RX and TX
                 #print("RX:"+str(_slot['RX_TYPE'])+" TX:"+str(_slot['TX_TYPE'])+" TIME:"+str(time() - _slot['TX_TIME']))
-                if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _slot['TX_TIME'] > CONFIG['SYSTEMS'][system]['GROUP_HANGTIME']):
+                if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][system]['GROUP_HANGTIME']):
+                #Clear the TS bit -- all inbound data on slot 1
+                    _tmp_bits = _bits & ~(1 << 7)
+                    #Assemble transmit HBP packet header
+                    _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
+                    _tmp_data = b''.join([_tmp_data, dmrpkt])
+                    systems[_d_system].send_system(_tmp_data)
+                    logger.info('(%s) UNIT Data Bridged to HBP on slot 1: %s DST_ID: %s',_d_system,_int_dst_id)
+                    if CONFIG['REPORTS']['REPORT']:
+                        systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
+                        
+                    _dst_slot['TX_TIME'] = pkt_time
+                else:
+                    logger.info('(%s) UNIT Data not bridged to HBP on slot 1 - target busy: %s DST_ID: %s',_d_system,_int_dst_id)
+                    
+                    
+                
                     
 
 
