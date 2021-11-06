@@ -75,16 +75,21 @@ logger = logging.getLogger(__name__)
 #REGEX
 import re
 
+from binascii import b2a_hex as ahex
+
+
+##from hmac import new as hmac_new, compare_digest
+##from hashlib import sha256, sha1
 
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Cortney T. Buffington, N0MJS, Forked by Simon Adlem - G7RZU'
 __copyright__  = 'Copyright (c) 2016-2019 Cortney T. Buffington, N0MJS and the K0USY Group, Simon Adlem, G7RZU 2020,2021'
-__credits__    = 'Colin Durbridge, G4EML, Steve Zingman, N4IRS; Mike Zingman, N4IRR; Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT; Jon Lee, G4TSN; Norman Williams, M6NBP'
+__credits__    = 'Colin Durbridge, G4EML, Steve Zingman, N4IRS; Mike Zingman, N4IRR; Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT; Jon Lee, G4TSN; Norman Williams, M6NBP, Eric Craw KF7EEL'
 __license__    = 'GNU GPLv3'
 __maintainer__ = 'Simon Adlem G7RZU'
 __email__      = 'simon@gb7fr.org.uk'
 
-# Module gobal varaibles
+
 
 # Timed loop used for reporting HBP status
 #
@@ -1361,12 +1366,80 @@ class routerOBP(OPENBRIDGE):
                 #Ignore this system and TS pair if it's called again on this packet
         return(_sysIgnore)
 
-
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pkt_time = time()
         dmrpkt = _data[20:53]
         _bits = _data[15]
-                
+
+        # Match UNIT data, SMS/GPS, and send it to the dst_id if it is in out UNIT_MAP
+        if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or ((_stream_id not in self.STATUS) and _dtype_vseq == 3)):
+##        if ahex(dmrpkt)[27:-27] == b'd5d7f77fd757':
+            # This is a data call
+            _data_call = True
+            if _dtype_vseq == 3:
+                logger.info('(%s) *UNIT CSBK* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) DST_ID %s (%s), TS %s', \
+                        self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+                if CONFIG['REPORTS']['REPORT']:
+                        self._report.send_bridgeEvent('UNIT CSBK,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+            elif _dtype_vseq == 6:
+                logger.info('(%s) *UNIT DATA HEADER* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) DST_ID %s (%s), TS %s', \
+                        self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+                if CONFIG['REPORTS']['REPORT']:
+                        self._report.send_bridgeEvent('UNIT DATA HEADER,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+            elif _dtype_vseq == 7:
+                    logger.info('(%s) *UNIT VCSBK 1/2 DATA BLOCK * STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
+                            self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+                    if CONFIG['REPORTS']['REPORT']:
+                        self._report.send_bridgeEvent('UNIT VCSBK 1/2 DATA BLOCK,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+            elif _dtype_vseq == 8:
+                    logger.info('(%s) *UNIT VCSBK 3/4 DATA BLOCK * STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
+                            self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+                    if CONFIG['REPORTS']['REPORT']:
+                        self._report.send_bridgeEvent('UNIT VCSBK 3/4 DATA BLOCK,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+            else:
+                    logger.info('(%s) *UNKNOWN DATA TYPE* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
+                            self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+            
+            #Send to all openbridges 
+            # We don't want to do this without more thought! 
+            # If we are going to do this is requires loop control 
+            # for data packets 
+            #
+            # Best for now to send all data packet to a single gateway 
+            
+            #for system in systems:
+                #if system  == self._system:
+                    #continue
+                #if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
+                    #Assemble transmit HBP packet header
+                    #_tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
+                    #_tmp_data = b''.join([_tmp_data, dmrpkt])
+                    #systems[system].send_system(_tmp_data)
+                    #logger.info('(%s) UNIT Data Bridged to OBP System: %s DST_ID: %s', self._system, system,_int_dst_id)
+                    #if CONFIG['REPORTS']['REPORT']:
+                        #systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
+            
+            #This allow careful daisychaining to reach a DATA_GATEWAY
+            #Send UNIT data to data gateway
+            if CONFIG['GLOBAL']['DATA_GATEWAY'] and (CONFIG['GLOBAL']['DATA_GATEWAY'] in systems) \
+                and CONFIG['SYSTEMS'][CONFIG['GLOBAL']['DATA_GATEWAY']]['MODE'] == 'OPENBRIDGE':
+                    #Clear the TS bit -- all OpenBridge streams are effectively on TS1
+                    _tmp_bits = _bits & ~(1 << 7)
+                    #Assemble transmit HBP packet header
+                    _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
+                    _tmp_data = b''.join([_tmp_data, dmrpkt])
+                    systems[CONFIG['GLOBAL']['DATA_GATEWAY']].send_system(_tmp_data)
+                    logger.info('(%s) UNIT Data Bridged to DATA_GATEWAY: %s DST_ID: %s', self._system,CONFIG['GLOBAL']['DATA_GATEWAY'],_int_dst_id)
+                    if CONFIG['REPORTS']['REPORT']:
+                        systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
+            else:
+                if not bool(CONFIG['GLOBAL']['DATA_GATEWAY']):
+                    logger.info('(%s) UNIT Data not Bridged - no DATA_GATEWAY: %s, DST_ID: %s',self._system,_int_dst_id)
+                elif CONFIG['GLOBAL']['DATA_GATEWAY'] not in systems:
+                    logger.warning('(%s) UNIT Data not Bridged - DATA_GATEWAY: %s not valid. DST_ID: %s',self._system, CONFIG['GLOBAL']['DATA_GATEWAY'],_int_dst_id)
+                elif CONFIG['SYSTEMS'][CONFIG['GLOBAL']['DATA_GATEWAY']]['MODE'] != 'OPENBRIDGE':
+                    logger.warning('(%s) UNIT Data not Bridged - DATA_GATEWAY: %s not OPENBRIDGE. DST_ID: %s',self._system, CONFIG['GLOBAL']['DATA_GATEWAY'],_int_dst_id)
+                    
         if _call_type == 'group' or _call_type == 'vcsbk':
             # Is this a new call stream?
             if (_stream_id not in self.STATUS):
@@ -1758,9 +1831,103 @@ class routerHBP(HBSYSTEM):
         _lang = CONFIG['SYSTEMS'][self._system]['ANNOUNCEMENT_LANGUAGE']
         
         _int_dst_id = int_id(_dst_id)
+
+        # Assume this is not a data call. We use this to prevent SMS/GPS data from triggering a reflector.
+        _data_call = False
+        _voice_call = False
+##        print(self._system)
+##        print(UNIT_MAP)
+        # Make/update an entry in the UNIT_MAP for this subscriber
+        #UNIT_MAP[_rf_src] = (self._system, pkt_time)
+
+##        print()
+##        print(_call_type)
+##        print(_dtype_vseq)
+##        print(_frame_type)
+##        print(_stream_id)
+##        print(_seq)
+##        print(ahex(dmrpkt))
+##        if _dtype_vseq == 3:
+##            print(ahex(dmrpkt)[27:-27])
+##        print()
+        # Filter out SMS/GPS. Usually _dtype_vseq of 3, 6, and 7. 
+        #logger.info('(%s) DBG Data call: dtype_vseq %s, src_id: %s, dst_id: %s, call_type: %s, stream_id: %s',self._system, _dtype_vseq, int_id(_rf_src), _int_dst_id, _call_type,int_id(_stream_id))
+ ##         
+        if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or (_stream_id != self.STATUS[_slot]['RX_STREAM_ID'] and _dtype_vseq == 3)):
+##        if ahex(dmrpkt)[27:-27] == b'd5d7f77fd757':
+            # This is a data call
+            _data_call = True
+            if _dtype_vseq == 3:
+                logger.info('(%s) *UNIT CSBK* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) DST_ID %s (%s), TS %s', \
+                        self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+                if CONFIG['REPORTS']['REPORT']:
+                        self._report.send_bridgeEvent('UNIT CSBK,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+            elif _dtype_vseq == 6:
+                logger.info('(%s) *UNIT DATA HEADER* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) DST_ID %s (%s), TS %s', \
+                        self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+                if CONFIG['REPORTS']['REPORT']:
+                        self._report.send_bridgeEvent('UNIT DATA HEADER,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+            elif _dtype_vseq == 7:
+                    logger.info('(%s) *UNIT VCSBK 1/2 DATA BLOCK * STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
+                            self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+                    if CONFIG['REPORTS']['REPORT']:
+                        self._report.send_bridgeEvent('UNIT VCSBK 1/2 DATA BLOCK,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+            elif _dtype_vseq == 8:
+                    logger.info('(%s) *UNIT VCSBK 3/4 DATA BLOCK * STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
+                            self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+                    if CONFIG['REPORTS']['REPORT']:
+                        self._report.send_bridgeEvent('UNIT VCSBK 3/4 DATA BLOCK,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+            else:
+                    logger.info('(%s) *UNKNOW TYPE* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
+                            self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+            
+            #Send to all openbridges 
+            # We don't want to do this without more thought! 
+            # If we are going to do this is requires loop control 
+            # for data packets 
+            #
+            # Best for now to send all data packet to a single gateway 
+             
+            #for system in systems:
+                #if system  == self._system:
+                    #continue
+                #if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
+                    #Clear the TS bit -- all OpenBridge streams are effectively on TS1
+                    #_tmp_bits = _bits & ~(1 << 7)
+                    #Assemble transmit HBP packet header
+                    #_tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
+                    #_tmp_data = b''.join([_tmp_data, dmrpkt])
+                    #systems[system].send_system(_tmp_data)
+                    #logger.info('(%s) UNIT Data Bridged to OBP System: %s DST_ID: %s', self._system, system,_int_dst_id)
+                    #if CONFIG['REPORTS']['REPORT']:
+                        #systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
+            
+            #Send UNIT data to data gateway
+            if CONFIG['GLOBAL']['DATA_GATEWAY'] and (CONFIG['GLOBAL']['DATA_GATEWAY'] in systems) \
+                and CONFIG['SYSTEMS'][CONFIG['GLOBAL']['DATA_GATEWAY']]['MODE'] == 'OPENBRIDGE':
+                    #Clear the TS bit -- all OpenBridge streams are effectively on TS1
+                    _tmp_bits = _bits & ~(1 << 7)
+                    #Assemble transmit HBP packet header
+                    _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
+                    _tmp_data = b''.join([_tmp_data, dmrpkt])
+                    systems[CONFIG['GLOBAL']['DATA_GATEWAY']].send_system(_tmp_data)
+                    logger.info('(%s) UNIT Data Bridged to DATA_GATEWAY: %s DST_ID: %s', self._system,CONFIG['GLOBAL']['DATA_GATEWAY'],_int_dst_id)
+                    if CONFIG['REPORTS']['REPORT']:
+                        systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
+            else:
+                if not bool(CONFIG['GLOBAL']['DATA_GATEWAY']):
+                    logger.info('(%s) UNIT Data not Bridged - no DATA_GATEWAY: %s, DST_ID: %s',self._system,_int_dst_id)
+                elif CONFIG['GLOBAL']['DATA_GATEWAY'] not in systems:
+                    logger.warning('(%s) UNIT Data not Bridged - DATA_GATEWAY: %s not valid. DST_ID: %s',self._system, CONFIG['GLOBAL']['DATA_GATEWAY'],_int_dst_id)
+                elif CONFIG['SYSTEMS'][CONFIG['GLOBAL']['DATA_GATEWAY']]['MODE'] != 'OPENBRIDGE':
+                    logger.warning('(%s) UNIT Data not Bridged - DATA_GATEWAY: %s not OPENBRIDGE. DST_ID: %s',self._system, CONFIG['GLOBAL']['DATA_GATEWAY'],_int_dst_id)
+                
+
+
+
         
         #Handle private calls (for reflectors)
-        if _call_type == 'unit':
+        if _call_type == 'unit' and _slot == 2 and not _data_call:
             if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
                 
                 self.STATUS[_slot]['_stopTgAnnounce'] = False
@@ -1907,7 +2074,9 @@ class routerHBP(HBSYSTEM):
             self.STATUS[_slot]['RX_TYPE']      = _dtype_vseq
             self.STATUS[_slot]['RX_TGID']      = _dst_id
             self.STATUS[_slot]['RX_TIME']      = pkt_time
-            self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id    
+            self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
+            self.STATUS[_slot]['VOICE_STREAM'] = _voice_call
+            
                             
 
         #Handle group calls
@@ -1921,10 +2090,24 @@ class routerHBP(HBSYSTEM):
 
                 # This is a new call stream
                 self.STATUS[_slot]['RX_START'] = pkt_time
-                logger.info('(%s) *CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
-                        self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
-                if CONFIG['REPORTS']['REPORT']:
-                    self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                
+                if _call_type == 'group' :
+                    if _dtype_vseq == 6:
+                        logger.info('(%s) *DATA HEADER* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
+                                self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+                        if CONFIG['REPORTS']['REPORT']:
+                            self._report.send_bridgeEvent('DATA HEADER,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                    
+                    else:
+                        logger.info('(%s) *CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
+                            self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+                        if CONFIG['REPORTS']['REPORT']:
+                            self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                else:
+                    logger.info('(%s) *VCSBK* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s _dtype_vseq: %s', 
+                            self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, _dtype_vseq)
+                    if CONFIG['REPORTS']['REPORT']:
+                        self._report.send_bridgeEvent('OTHER DATA,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
 
                 # If we can, use the LC from the voice header as to keep all options intact
                 if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
@@ -1941,6 +2124,18 @@ class routerHBP(HBSYSTEM):
                     logger.info('(%s) Bridge for TG %s does not exist. Creating as User Activated. Timeout %s',self._system, int_id(_dst_id),CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
                     make_single_bridge(_dst_id,self._system,_slot,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
 
+            if _call_type == 'vcsbk':
+                if _dtype_vseq == 7:
+                    logger.info('(%s) *VCSBK 1/2 DATA BLOCK * STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
+                            self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+                    if CONFIG['REPORTS']['REPORT']:
+                        self._report.send_bridgeEvent('VCSBK 1/2 DATA BLOCK,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                elif _dtype_vseq == 8:
+                    logger.info('(%s) *VCSBK 3/4 DATA BLOCK * STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
+                            self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+                    if CONFIG['REPORTS']['REPORT']:
+                        self._report.send_bridgeEvent('VCSBK 3/4 DATA BLOCK,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+            
             #LoopControl#
             for system in systems:                            
                 if system  == self._system:
