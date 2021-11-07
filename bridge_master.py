@@ -1828,6 +1828,7 @@ class routerHBP(HBSYSTEM):
         if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or (_stream_id != self.STATUS[_slot]['RX_STREAM_ID'] and _dtype_vseq == 3)):
             _data_call = True
             
+            logger.info('boing')
             SUB_MAP['_rf_src'] = (self._system,_slot,pkt_time)
             logger.info('(%s) Added subscriber %s to SUB_MAP. Slot: %s, Time: %s', self._system,_slot,pkt_time)
             
