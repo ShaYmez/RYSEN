@@ -1829,7 +1829,7 @@ class routerHBP(HBSYSTEM):
             _data_call = True
             
             SUB_MAP['_rf_src'] = (self._system,_slot,pkt_time)
-            logger.info('(%s) Added subscriber %s to SUB_MAP. Slot: %s, Time: %s', self._system,int_id(_rf_src),pkt_time)
+            logger.info('(%s) Added subscriber %s to SUB_MAP. Slot: %s, Time: %s', self._system,int_id(_rf_src),_slot,pkt_time)
             
             if _dtype_vseq == 3:
                 logger.info('(%s) *UNIT CSBK* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) DST_ID %s (%s), TS %s', \
