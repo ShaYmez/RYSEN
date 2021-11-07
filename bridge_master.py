@@ -1901,7 +1901,7 @@ class routerHBP(HBSYSTEM):
             if _dst_id in SUB_MAP:
                 (_d_system,_d_slot,_d_time) = SUB_MAP[_dst_id]
                 _dst_slot  = systems[_d_system].STATUS[_d_slot]
-                logger.info('(%s) SUB_MAP matched, System: %s Slot: %s, Time: %s'self._system _d_system,_d_slot,_d_time)
+                logger.info('(%s) SUB_MAP matched, System: %s Slot: %s, Time: %s'self._system, _d_system,_d_slot,_d_time)
                 #If slot is idle for RX and TX
                 #print("RX:"+str(_slot['RX_TYPE'])+" TX:"+str(_slot['TX_TYPE'])+" TIME:"+str(time() - _slot['TX_TIME']))
                 if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):
