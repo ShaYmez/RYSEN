@@ -2565,7 +2565,7 @@ if __name__ == '__main__':
     
     #Subscriber map trimmer
     sub_trimmer_task = task.LoopingCall(SubMapTrimmer)
-    sub_trimmer = stat_trimmer_task.start(3600)#3600
+    sub_trimmer = sub_trimmer_task.start(3600)#3600
     sub_trimmer.addErrback(loopingErrHandle)
     
     #more threads
