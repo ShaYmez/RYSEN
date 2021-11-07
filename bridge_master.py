@@ -385,7 +385,7 @@ def SubMapTrimmer():
     _remove_list = []
     for _subscriber in SUB_MAP:
         if _subscriber[2] < (_sub_time - 86400):
-            _remove.append(_subscriber)
+            _remove_list.append(_subscriber)
     
     for _remove in _remove_list:
         SUB_MAP.pop(_remove)
