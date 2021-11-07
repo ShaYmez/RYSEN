@@ -1829,6 +1829,7 @@ class routerHBP(HBSYSTEM):
             _data_call = True
             
             SUB_MAP['_rf_src'] = (self._system,_slot,pkt_time)
+            logger.info('(%s) Added subscriber %s to SUB_MAP. Slot: %s, Time: %s', self._system,_slot,pkt_time)
             
             if _dtype_vseq == 3:
                 logger.info('(%s) *UNIT CSBK* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) DST_ID %s (%s), TS %s', \
@@ -1898,9 +1899,10 @@ class routerHBP(HBSYSTEM):
             if _dst_id in SUB_MAP:
                 (_d_system,_d_slot,_d_time) = SUB_MAP[_dst_id]
                 _dst_slot  = systems[system].STATUS[_d_slot]
+                logger.info('(%s) SUB_MAP matched, System: %s Slot: %s, Time: %s', _d_system,_d_slot,_d_time)
                 #If slot is idle for RX and TX
                 #print("RX:"+str(_slot['RX_TYPE'])+" TX:"+str(_slot['TX_TYPE'])+" TIME:"+str(time() - _slot['TX_TIME']))
-                if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][d_system]['GROUP_HANGTIME']):
+                if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):
                 #Clear the TS bit -- all inbound data on slot 1
                     _tmp_bits = _bits & ~(1 << 7)
                     #Assemble transmit HBP packet header
