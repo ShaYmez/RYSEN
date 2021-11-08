@@ -1941,7 +1941,7 @@ class routerHBP(HBSYSTEM):
                                 _dst_slot  = systems[_d_system].STATUS[2]
                                 logger.info('(%s) User Peer Hotspot ID matched, System: %s Slot: %s',self._system, _d_system,_d_slot)
                                 #If slot is idle for RX and TX
-                                logger.info("rxt: %s, txt: %s, txtime: %s, hangtime: %s."_dst_slot['RX_TYPE'],_dst_slot['TX_TYPE'],_dst_slot['TX_TIME'],CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME')
+                                logger.info("rxt: %s, txt: %s, txtime: %s, hangtime: %s.",_dst_slot['RX_TYPE'],_dst_slot['TX_TYPE'],_dst_slot['TX_TIME'],CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME')
                                 if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):
                                 #Currently we send on the same slot received on
                                     _tmp_bits = _bits # & ~(1 << 7)
