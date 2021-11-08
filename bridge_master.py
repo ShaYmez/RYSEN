@@ -1923,7 +1923,7 @@ class routerHBP(HBSYSTEM):
                     systems[_d_system].send_system(_tmp_data)
                     logger.info('(%s) UNIT Data Bridged to HBP on slot 1: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
                     if CONFIG['REPORTS']['REPORT']:
-                        systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
+                        systems[_d_system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
                         
                     _dst_slot['TX_TIME'] = pkt_time
                 else:
@@ -1947,7 +1947,7 @@ class routerHBP(HBSYSTEM):
                                     systems[_d_system].send_system(_tmp_data)
                                     logger.info('(%s) UNIT Data Bridged to HBP on slot: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
                                     if CONFIG['REPORTS']['REPORT']:
-                                        systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
+                                        systems[_d_system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
                                         
                                     _dst_slot['TX_TIME'] = pkt_time
                     
