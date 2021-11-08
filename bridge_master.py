@@ -1926,7 +1926,7 @@ class routerHBP(HBSYSTEM):
                     if CONFIG['REPORTS']['REPORT']:
                         systems[_d_system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
                         
-                    _dst_slot['TX_TIME'] = pkt_time
+                    #_dst_slot['TX_TIME'] = pkt_time
                 else:
                     logger.info('(%s) UNIT Data not bridged to HBP on slot 1 - target busy: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
             else:                
@@ -1953,7 +1953,7 @@ class routerHBP(HBSYSTEM):
                                     if CONFIG['REPORTS']['REPORT']:
                                         systems[_d_system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
                                         
-                                    _dst_slot['TX_TIME'] = pkt_time
+                                    #_dst_slot['TX_TIME'] = pkt_time
                                 else:
                                     logger.info('(%s) UNIT Data not bridged to HBP on slot 1 - target busy: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
                                 
