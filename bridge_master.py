@@ -1927,13 +1927,14 @@ class routerHBP(HBSYSTEM):
                         
                     _dst_slot['TX_TIME'] = pkt_time
                 else:
-                    logger.info('(%s) UNIT Data not bridged to HBP on slot 1 - target busy: %s DST_ID: %s',_d_system,_int_dst_id)
-                
+                    logger.info('(%s) UNIT Data not bridged to HBP on slot 1 - target busy: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
+            else:                
                 #If destination ID is logged in as a hotspot
                 for _to_system in systems:
                     if CONFIG['SYSTEMS'][_to_system]['MODE'] == 'MASTER':
-                        for _to_peer in ['SYSTEMS'][_to_system]['PEERS']:
-                            if _to_peer[:7] == _dst_id[:7]:
+                        for _to_peer in CONFIG['SYSTEMS'][_to_system]['PEERS']:
+                            _int_to_peer = int_id(_to_peer)
+                            if int_id(_int_to_peer[:7]) == _int_dst_id[:7]:
                                 (_d_system,_d_slot,_d_time) = SUB_MAP[_dst_id]
                                 _dst_slot  = systems[_d_system].STATUS[_d_slot]
                                 logger.info('(%s) User Peer Hotspot ID matched, System: %s Slot: %s, Time: %s',self._system, _d_system,_d_slot,_d_time)
@@ -1950,7 +1951,7 @@ class routerHBP(HBSYSTEM):
                                         systems[_d_system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
                                         
                                     _dst_slot['TX_TIME'] = pkt_time
-                    
+                
                     
                 
                     
