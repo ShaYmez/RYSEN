@@ -1909,6 +1909,7 @@ class routerHBP(HBSYSTEM):
                     logger.warning('(%s) UNIT Data not Bridged - DATA_GATEWAY: %s not OPENBRIDGE. DST_ID: %s',self._system, CONFIG['GLOBAL']['DATA_GATEWAY'],_int_dst_id)
             
             #If destination ID is in the Subscriber Map
+            logger.info(SUB_MAP)
             if _dst_id in SUB_MAP:
                 (_d_system,_d_slot,_d_time) = SUB_MAP[_dst_id]
                 _dst_slot  = systems[_d_system].STATUS[_d_slot]
@@ -1934,7 +1935,7 @@ class routerHBP(HBSYSTEM):
                     if CONFIG['SYSTEMS'][_to_system]['MODE'] == 'MASTER':
                         for _to_peer in CONFIG['SYSTEMS'][_to_system]['PEERS']:
                             _int_to_peer = int_id(_to_peer)
-                            if int_id(_int_to_peer[:7]) == _int_dst_id[:7]:
+                            if _int_to_peer[:7] == _int_dst_id[:7]:
                                 (_d_system,_d_slot,_d_time) = SUB_MAP[_dst_id]
                                 _dst_slot  = systems[_d_system].STATUS[_d_slot]
                                 logger.info('(%s) User Peer Hotspot ID matched, System: %s Slot: %s, Time: %s',self._system, _d_system,_d_slot,_d_time)
@@ -2444,7 +2445,7 @@ if __name__ == '__main__':
     # Build the routing rules file
     BRIDGES = make_bridges(rules_module.BRIDGES)
     
-    #Subscriber map for unit calls
+    #Subscriber map for unit calls - complete with test entry
     SUB_MAP = {bytes_3(7357):('REP-1',1,time())}
     
     #Generator
