@@ -1837,13 +1837,13 @@ class routerHBP(HBSYSTEM):
         # Assume this is not a data call. We use this to prevent SMS/GPS data from triggering a reflector.
         _data_call = False
         _voice_call = False
+        
+        #Add system to SUB_MAP
+        SUB_MAP[_rf_src] = (self._system,_slot,pkt_time)
        
         if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or (_stream_id != self.STATUS[_slot]['RX_STREAM_ID'] and _dtype_vseq == 3)):
             _data_call = True
             
-            global SUB_MAP
-            SUB_MAP[_rf_src] = (self._system,_slot,pkt_time)
-     
             if _dtype_vseq == 3:
                 logger.info('(%s) *UNIT CSBK* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) DST_ID %s (%s), TS %s', \
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
