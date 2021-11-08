@@ -1910,6 +1910,7 @@ class routerHBP(HBSYSTEM):
             
             #If destination ID is in the Subscriber Map
             logger.info(SUB_MAP)
+            logger.info(_dst_id)
             if _dst_id in SUB_MAP:
                 (_d_system,_d_slot,_d_time) = SUB_MAP[_dst_id]
                 _dst_slot  = systems[_d_system].STATUS[_d_slot]
@@ -1935,7 +1936,7 @@ class routerHBP(HBSYSTEM):
                     if CONFIG['SYSTEMS'][_to_system]['MODE'] == 'MASTER':
                         for _to_peer in CONFIG['SYSTEMS'][_to_system]['PEERS']:
                             _int_to_peer = int_id(_to_peer)
-                            if _int_to_peer[:7] == _int_dst_id[:7]:
+                            if str(_int_to_peer)[:7] == str(_int_dst_id)[:7]:
                                 (_d_system,_d_slot,_d_time) = SUB_MAP[_dst_id]
                                 _dst_slot  = systems[_d_system].STATUS[_d_slot]
                                 logger.info('(%s) User Peer Hotspot ID matched, System: %s Slot: %s, Time: %s',self._system, _d_system,_d_slot,_d_time)
