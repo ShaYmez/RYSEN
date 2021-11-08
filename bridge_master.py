@@ -1841,6 +1841,7 @@ class routerHBP(HBSYSTEM):
         if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or (_stream_id != self.STATUS[_slot]['RX_STREAM_ID'] and _dtype_vseq == 3)):
             _data_call = True
             
+            global SUB_MAP
             SUB_MAP[_rf_src] = (self._system,_slot,pkt_time)
      
             if _dtype_vseq == 3:
@@ -2447,8 +2448,7 @@ if __name__ == '__main__':
     BRIDGES = make_bridges(rules_module.BRIDGES)
     
     #Subscriber map for unit calls - complete with test entry
-    SUB_MAP = {}
-    SUB_MAP[bytes_3(7357)] = ('REP-1',1,time())
+    SUB_MAP = {bytes_3(73578):('REP-1',1,time())}
     
     #Generator
     generator = {}
