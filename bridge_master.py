@@ -1933,14 +1933,15 @@ class routerHBP(HBSYSTEM):
                     logger.info('(%s) UNIT Data not bridged to HBP on slot 1 - target busy: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
             else:                
                 #If destination ID is logged in as a hotspot
-                for _to_system in systems:
+                for _d_system in systems:
                     if CONFIG['SYSTEMS'][_to_system]['MODE'] == 'MASTER':
                         for _to_peer in CONFIG['SYSTEMS'][_to_system]['PEERS']:
                             _int_to_peer = int_id(_to_peer)
-                            if str(_int_to_peer)[:7] == str(_int_dst_id)[:7]:
-                                (_d_system,_d_slot,_d_time) = SUB_MAP[_dst_id]
+                            if (str(_int_to_peer)[:7] == str(_int_dst_id)[:7]):
+                                #(_d_system,_d_slot,_d_time) = SUB_MAP[_dst_id]
+                                _d_slot = _slot
                                 _dst_slot  = systems[_d_system].STATUS[_d_slot]
-                                logger.info('(%s) User Peer Hotspot ID matched, System: %s Slot: %s, Time: %s',self._system, _d_system,_d_slot,_d_time)
+                                logger.info('(%s) User Peer Hotspot ID matched, System: %s Slot: %s',self._system, _d_system,_d_slot)
                                 #If slot is idle for RX and TX
                                 if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):
                                 #Currently we send on the same slot received on
