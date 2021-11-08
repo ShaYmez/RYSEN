@@ -1951,6 +1951,7 @@ class routerHBP(HBSYSTEM):
                                         systems[_d_system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
                                         
                                     _dst_slot['TX_TIME'] = pkt_time
+                                    
                 
                     
                 
@@ -2444,7 +2445,7 @@ if __name__ == '__main__':
     BRIDGES = make_bridges(rules_module.BRIDGES)
     
     #Subscriber map for unit calls
-    SUB_MAP = {}
+    SUB_MAP = {bytes_3(7357):('REP-1',1,time())}
     
     #Generator
     generator = {}
