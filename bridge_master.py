@@ -1938,10 +1938,10 @@ class routerHBP(HBSYSTEM):
                             if (str(_int_to_peer)[:7] == str(_int_dst_id)[:7]):
                                 #(_d_system,_d_slot,_d_time) = SUB_MAP[_dst_id]
                                 _d_slot = _slot
-                                _dst_slot  = systems[_d_system].STATUS[2]
+                                _dst_slot  = systems[_d_system].STATUS[_slot]
                                 logger.info('(%s) User Peer Hotspot ID matched, System: %s Slot: %s',self._system, _d_system,_d_slot)
                                 #If slot is idle for RX and TX
-                                logger.info("rxt: %s, txt: %s, txtime: %s, hangtime: %s.",_dst_slot['RX_TYPE'],_dst_slot['TX_TYPE'],_dst_slot['TX_TIME'],CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME'])
+                                logger.info("rxt: %s, txt: %s, txtime: %s, hangtime: %s, calc: %s ",_dst_slot['RX_TYPE'],_dst_slot['TX_TYPE'],_dst_slot['TX_TIME'],CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME'],time() - _dst_slot['TX_TIME'])
                                 if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):
                                 #Currently we send on the same slot received on
                                     _tmp_bits = _bits # & ~(1 << 7)
@@ -1954,6 +1954,9 @@ class routerHBP(HBSYSTEM):
                                         systems[_d_system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
                                         
                                     _dst_slot['TX_TIME'] = pkt_time
+                                else:
+                                    logger.info('(%s) UNIT Data not bridged to HBP on slot 1 - target busy: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
+                                
                                     
                 
                     
