@@ -2447,7 +2447,8 @@ if __name__ == '__main__':
     BRIDGES = make_bridges(rules_module.BRIDGES)
     
     #Subscriber map for unit calls - complete with test entry
-    SUB_MAP = {bytes_3(73578):('REP-1',1,time())}
+    SUB_MAP = {}
+    SUB_MAP[bytes_3(7357] = ('REP-1',1,time())
     
     #Generator
     generator = {}
