@@ -1934,8 +1934,8 @@ class routerHBP(HBSYSTEM):
             else:                
                 #If destination ID is logged in as a hotspot
                 for _d_system in systems:
-                    if CONFIG['SYSTEMS'][_to_system]['MODE'] == 'MASTER':
-                        for _to_peer in CONFIG['SYSTEMS'][_to_system]['PEERS']:
+                    if CONFIG['SYSTEMS'][_d_system]['MODE'] == 'MASTER':
+                        for _to_peer in CONFIG['SYSTEMS'][_d_system]['PEERS']:
                             _int_to_peer = int_id(_to_peer)
                             if (str(_int_to_peer)[:7] == str(_int_dst_id)[:7]):
                                 #(_d_system,_d_slot,_d_time) = SUB_MAP[_dst_id]
