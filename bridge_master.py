@@ -1929,9 +1929,37 @@ class routerHBP(HBSYSTEM):
                     if CONFIG['REPORTS']['REPORT']:
                         systems[_d_system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
                         
-                    #_dst_slot['TX_TIME'] = pkt_time
+                    #_dst_slot['TX_TIME'] = pkt_time                                          
                 else:
                     logger.info('(%s) UNIT Data not bridged to HBP on slot 1 - target busy: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
+            
+            elif _int_dst_id == 900999:
+                    if 'D-APRS' in systems and CONFIG['SYSTEMS']['D-APRS']['MODE'] == 'MASTER':
+                        _d_system = 'D-APRS'
+                        _dst_slot  = systems['D-APRS'].STATUS[2]
+                        logger.info('(%s) D-APRS ID matched, System: %s Slot: %s',self._system, _d_system,_d_slot)
+                                #If slot is idle for RX and TX
+                                if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):
+                                #Always use slot2 for hotspots - many of them are simplex and this 
+                                #is the convention 
+                                    logger.info(_bits)
+                                    #rewrite slot if required (slot 2 is used on hotspots)
+                                    if _slot != 2:
+                                        _tmp_bits = _bits ^ 1 << 7
+                                    else: 
+                                        _tmp_bits = _bits
+                                    #Assemble transmit HBP packet header
+                                    _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
+                                    _tmp_data = b''.join([_tmp_data, dmrpkt])
+                                    systems[_d_system].send_system(_tmp_data)
+                                    logger.info('(%s) UNIT Data Bridged to HBP on slot: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
+                                    if CONFIG['REPORTS']['REPORT']:
+                                        systems[_d_system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
+                                        
+                                    #_dst_slot['TX_TIME'] = pkt_time
+                                else:
+                                    logger.info('(%s) UNIT Data not bridged to HBP on slot 1 - target busy: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
+      
             else:                
                 #If destination ID is logged in as a hotspot
                 for _d_system in systems:
@@ -1941,14 +1969,14 @@ class routerHBP(HBSYSTEM):
                             if (str(_int_to_peer)[:7] == str(_int_dst_id)[:7]):
                                 #(_d_system,_d_slot,_d_time) = SUB_MAP[_dst_id]
                                 _d_slot = _slot
-                                _dst_slot  = systems[_d_system].STATUS[_slot]
+                                _dst_slot  = systems[_d_system].STATUS[_d_slot]
                                 logger.info('(%s) User Peer Hotspot ID matched, System: %s Slot: %s',self._system, _d_system,_d_slot)
                                 #If slot is idle for RX and TX
                                 if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):
                                 #Always use slot2 for hotspots - many of them are simplex and this 
                                 #is the convention 
                                     logger.info(_bits)
-                                    #rewrite slot if required
+                                    #rewrite slot if required (slot 2 is used on hotspots)
                                     if _slot != 2:
                                         _tmp_bits = _bits ^ 1 << 7
                                     else: 
