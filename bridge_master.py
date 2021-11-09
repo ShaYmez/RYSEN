@@ -1915,9 +1915,12 @@ class routerHBP(HBSYSTEM):
                 _dst_slot  = systems[_d_system].STATUS[_d_slot]
                 logger.info('(%s) SUB_MAP matched, System: %s Slot: %s, Time: %s',self._system, _d_system,_d_slot,_d_time)
                 #If slot is idle for RX and TX
-                if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):
-                #Currently we send on the same slot received on
-                    _tmp_bits = _bits # & ~(1 << 7)
+                if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):                
+                #rewrite slot if required
+                    if _slot != _d_slot:
+                        _tmp_bits = _bits ^ 1 << 7
+                    else: 
+                        _tmp_bits = _bits                        
                     #Assemble transmit HBP packet header
                     _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
                     _tmp_data = b''.join([_tmp_data, dmrpkt])
@@ -1942,9 +1945,14 @@ class routerHBP(HBSYSTEM):
                                 logger.info('(%s) User Peer Hotspot ID matched, System: %s Slot: %s',self._system, _d_system,_d_slot)
                                 #If slot is idle for RX and TX
                                 if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):
-                                #Currently we send on the same slot received on
+                                #Always use slot2 for hotspots - many of them are simplex and this 
+                                #is the convention 
                                     logger.info(_bits)
-                                    _tmp_bits = _bits # & ~(1 << 7)
+                                    #rewrite slot if required
+                                    if _slot != 2:
+                                        _tmp_bits = _bits ^ 1 << 7
+                                    else: 
+                                        _tmp_bits = _bits
                                     #Assemble transmit HBP packet header
                                     _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
                                     _tmp_data = b''.join([_tmp_data, dmrpkt])
