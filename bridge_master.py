@@ -1938,27 +1938,27 @@ class routerHBP(HBSYSTEM):
                         _d_system = 'D-APRS'
                         _dst_slot  = systems['D-APRS'].STATUS[2]
                         logger.info('(%s) D-APRS ID matched, System: %s Slot: %s',self._system, _d_system,_d_slot)
-                                #If slot is idle for RX and TX
-                                if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):
-                                #Always use slot2 for hotspots - many of them are simplex and this 
-                                #is the convention 
-                                    logger.info(_bits)
-                                    #rewrite slot if required (slot 2 is used on hotspots)
-                                    if _slot != 2:
-                                        _tmp_bits = _bits ^ 1 << 7
-                                    else: 
-                                        _tmp_bits = _bits
-                                    #Assemble transmit HBP packet header
-                                    _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
-                                    _tmp_data = b''.join([_tmp_data, dmrpkt])
-                                    systems[_d_system].send_system(_tmp_data)
-                                    logger.info('(%s) UNIT Data Bridged to HBP on slot: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
-                                    if CONFIG['REPORTS']['REPORT']:
-                                        systems[_d_system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
-                                        
-                                    #_dst_slot['TX_TIME'] = pkt_time
-                                else:
-                                    logger.info('(%s) UNIT Data not bridged to HBP on slot 1 - target busy: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
+                        #If slot is idle for RX and TX
+                        if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):
+                        #Always use slot2 for hotspots - many of them are simplex and this 
+                        #is the convention 
+                            logger.info(_bits)
+                            #rewrite slot if required (slot 2 is used on hotspots)
+                            if _slot != 2:
+                                _tmp_bits = _bits ^ 1 << 7
+                            else: 
+                                _tmp_bits = _bits
+                            #Assemble transmit HBP packet header
+                            _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
+                            _tmp_data = b''.join([_tmp_data, dmrpkt])
+                            systems[_d_system].send_system(_tmp_data)
+                            logger.info('(%s) UNIT Data Bridged to HBP on slot: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
+                            if CONFIG['REPORTS']['REPORT']:
+                                systems[_d_system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
+                                
+                            #_dst_slot['TX_TIME'] = pkt_time
+                        else:
+                            logger.info('(%s) UNIT Data not bridged to HBP on slot 1 - target busy: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
       
             else:                
                 #If destination ID is logged in as a hotspot
