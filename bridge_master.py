@@ -1967,7 +1967,7 @@ class routerHBP(HBSYSTEM):
 
         
         #Handle private calls (for reflectors)
-        if _call_type == 'unit' and _slot == 2 and not _data_call:
+        if _call_type == 'unit' and not _data_call:
             if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
                 
                 logger.info(_bits)
