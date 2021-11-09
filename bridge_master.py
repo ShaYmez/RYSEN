@@ -1934,6 +1934,7 @@ class routerHBP(HBSYSTEM):
                     logger.info('(%s) UNIT Data not bridged to HBP on slot 1 - target busy: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
             
             elif _int_dst_id == 900999:
+                    logger.info('flob')
                     if 'D-APRS' in systems and CONFIG['SYSTEMS']['D-APRS']['MODE'] == 'MASTER':
                         _d_system = 'D-APRS'
                         _dst_slot  = systems['D-APRS'].STATUS[2]
