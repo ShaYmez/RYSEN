@@ -1943,6 +1943,7 @@ class routerHBP(HBSYSTEM):
                                 #If slot is idle for RX and TX
                                 if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):
                                 #Currently we send on the same slot received on
+                                    logger.info(_bits)
                                     _tmp_bits = _bits # & ~(1 << 7)
                                     #Assemble transmit HBP packet header
                                     _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
@@ -1969,6 +1970,7 @@ class routerHBP(HBSYSTEM):
         if _call_type == 'unit' and _slot == 2 and not _data_call:
             if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
                 
+                logger.info(_bits)
                 self.STATUS[_slot]['_stopTgAnnounce'] = False
                 
                 logger.warning('(%s) Reflector: Private call from %s to %s',self._system, int_id(_rf_src), _int_dst_id)
