@@ -1934,11 +1934,10 @@ class routerHBP(HBSYSTEM):
                     logger.info('(%s) UNIT Data not bridged to HBP on slot 1 - target busy: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
             
             elif _int_dst_id == 900999:
-                    logger.info('flob')
                     if 'D-APRS' in systems and CONFIG['SYSTEMS']['D-APRS']['MODE'] == 'MASTER':
                         _d_system = 'D-APRS'
                         _dst_slot  = systems['D-APRS'].STATUS[2]
-                        logger.info('(%s) D-APRS ID matched, System: %s Slot: %s',self._system, _d_system,_d_slot)
+                        logger.info('(%s) D-APRS ID matched, System: %s Slot: 2',self._system, _d_system)
                         #If slot is idle for RX and TX
                         if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):
                         #Always use slot2 for hotspots - many of them are simplex and this 
