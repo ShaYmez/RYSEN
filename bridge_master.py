@@ -1940,13 +1940,8 @@ class routerHBP(HBSYSTEM):
                         logger.info('(%s) D-APRS ID matched, System: %s Slot: 2',self._system, _d_system)
                         #If slot is idle for RX and TX
                         if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):
-                        #Always use slot2 for hotspots - many of them are simplex and this 
-                        #is the convention 
-                            #rewrite slot if required (slot 2 is used on hotspots)
-                            if _slot != 2:
-                                _tmp_bits = _bits ^ 1 << 7
-                            else: 
-                                _tmp_bits = _bits
+                            #We will allow the system to use both slots
+                            _tmp_bits = _bits
                             #Assemble transmit HBP packet header
                             _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
                             _tmp_data = b''.join([_tmp_data, dmrpkt])
