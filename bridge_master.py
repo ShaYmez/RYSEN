@@ -1942,7 +1942,6 @@ class routerHBP(HBSYSTEM):
                         if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):
                         #Always use slot2 for hotspots - many of them are simplex and this 
                         #is the convention 
-                            logger.info(_bits)
                             #rewrite slot if required (slot 2 is used on hotspots)
                             if _slot != 2:
                                 _tmp_bits = _bits ^ 1 << 7
@@ -1975,7 +1974,6 @@ class routerHBP(HBSYSTEM):
                                 if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):
                                 #Always use slot2 for hotspots - many of them are simplex and this 
                                 #is the convention 
-                                    logger.info(_bits)
                                     #rewrite slot if required (slot 2 is used on hotspots)
                                     if _slot != 2:
                                         _tmp_bits = _bits ^ 1 << 7
@@ -1993,20 +1991,12 @@ class routerHBP(HBSYSTEM):
                                 else:
                                     logger.info('(%s) UNIT Data not bridged to HBP on slot 1 - target busy: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
                                 
-                                    
-                
-                    
-                
-                    
-
-
 
         
-        #Handle private calls (for reflectors)
+        #Handle  private voice calls (for reflectors)
         if _call_type == 'unit' and not _data_call:
             if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
                 
-                logger.info(_bits)
                 self.STATUS[_slot]['_stopTgAnnounce'] = False
                 
                 logger.warning('(%s) Reflector: Private call from %s to %s',self._system, int_id(_rf_src), _int_dst_id)
