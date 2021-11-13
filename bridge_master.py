@@ -1832,7 +1832,7 @@ class routerHBP(HBSYSTEM):
         if CONFIG['REPORTS']['REPORT']:
             systems[_d_system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
             
-    def sendDatatoOBP(_target,_data,dmrpkt):
+    def sendDatatoOBP(self,_target,_data,dmrpkt):
  #       _sysIgnore = sysIgnore
         _target_status = systems[_target['SYSTEM']].STATUS
         _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
