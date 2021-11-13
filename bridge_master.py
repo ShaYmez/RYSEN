@@ -1922,7 +1922,7 @@ class routerHBP(HBSYSTEM):
                         _tmp_bits = _bits ^ 1 << 7
                     else: 
                         _tmp_bits = _bits                        
-                    self.sendDataToHBP(_d_system,_d_slot,_dst_id,_tmp_bits,_data,dmrpkt,_rf_src)
+                    #self.sendDataToHBP(_d_system,_d_slot,_dst_id,_tmp_bits,_data,dmrpkt,_rf_src)
                         
                 else:
                     logger.info('(%s) UNIT Data not bridged to HBP on slot 1 - target busy: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
