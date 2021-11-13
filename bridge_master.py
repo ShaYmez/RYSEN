@@ -1389,39 +1389,39 @@ class routerOBP(OPENBRIDGE):
         if CONFIG['REPORTS']['REPORT']:
             systems[_d_system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
             
-        def sendDataToOBP(self,_target,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits):
+    def sendDataToOBP(self,_target,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits):
 
-            _int_dst_id = int_id(_dst_id)
-            _target_status = systems[_target].STATUS
-            _target_system = self._CONFIG['SYSTEMS'][_target]
+        _int_dst_id = int_id(_dst_id)
+        _target_status = systems[_target].STATUS
+        _target_system = self._CONFIG['SYSTEMS'][_target]
 
+        
+        #If target has missed 6 (on 1 min) of keepalives, don't send
+        if _target_system['ENHANCED_OBP'] and '_bcka' in _target_system and _target_system['_bcka'] < pkt_time - 60:
+            return
+        
+        if (_stream_id not in _target_status):
+            # This is a new call stream on the target
+            _target_status[_stream_id] = {
+                'START':     pkt_time,
+                'CONTENTION':False,
+                'RFS':       _rf_src,
+                'TGID':      _dst_id,
+                'RX_PEER':   _peer_id
+            }
             
-            #If target has missed 6 (on 1 min) of keepalives, don't send
-            if _target_system['ENHANCED_OBP'] and '_bcka' in _target_system and _target_system['_bcka'] < pkt_time - 60:
-                return
-            
-            if (_stream_id not in _target_status):
-                # This is a new call stream on the target
-                _target_status[_stream_id] = {
-                    'START':     pkt_time,
-                    'CONTENTION':False,
-                    'RFS':       _rf_src,
-                    'TGID':      _dst_id,
-                    'RX_PEER':   _peer_id
-                }
-                
-            # Record the time of this packet so we can later identify a stale stream
-            _target_status[_stream_id]['LAST'] = pkt_time
-            # Clear the TS bit -- all OpenBridge streams are effectively on TS1
-            _tmp_bits = _bits & ~(1 << 7)
-            #Assemble transmit HBP packet header
-            _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
-            _tmp_data = b''.join([_tmp_data, dmrpkt])
-            systems[_target].send_system(_tmp_data)
-            logger.info('(%s) UNIT Data Bridged to OBP System: %s DST_ID: %s', self._system, _target,_int_dst_id)
-            if CONFIG['REPORTS']['REPORT']:
-                systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
-    
+        # Record the time of this packet so we can later identify a stale stream
+        _target_status[_stream_id]['LAST'] = pkt_time
+        # Clear the TS bit -- all OpenBridge streams are effectively on TS1
+        _tmp_bits = _bits & ~(1 << 7)
+        #Assemble transmit HBP packet header
+        _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
+        _tmp_data = b''.join([_tmp_data, dmrpkt])
+        systems[_target].send_system(_tmp_data)
+        logger.info('(%s) UNIT Data Bridged to OBP System: %s DST_ID: %s', self._system, _target,_int_dst_id)
+        if CONFIG['REPORTS']['REPORT']:
+            systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
+
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pkt_time = time()
