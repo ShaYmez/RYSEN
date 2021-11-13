@@ -1378,6 +1378,49 @@ class routerOBP(OPENBRIDGE):
                     #logger.debug('(%s) Packet routed by bridge: %s to system: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                 #Ignore this system and TS pair if it's called again on this packet
         return(_sysIgnore)
+    
+    def sendDataToHBP(self,_d_system,_d_slot,_dst_id,_tmp_bits,_data,dmrpkt,_rf_src):
+        #Assemble transmit HBP packet header
+        _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
+        _tmp_data = b''.join([_tmp_data, dmrpkt])
+        systems[_d_system].send_system(_tmp_data)
+        logger.info('(%s) UNIT Data Bridged to HBP on slot 1: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
+        if CONFIG['REPORTS']['REPORT']:
+            systems[_d_system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
+            
+        def sendDatatoOBP(self,_target,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits):
+
+            _int_dst_id = int_id(_dst_id)
+            _target_status = systems[_target].STATUS
+            _target_system = self._CONFIG['SYSTEMS'][_target]
+
+            
+            #If target has missed 6 (on 1 min) of keepalives, don't send
+            if _target_system['ENHANCED_OBP'] and '_bcka' in _target_system and _target_system['_bcka'] < pkt_time - 60:
+                return
+            
+            if (_stream_id not in _target_status):
+                # This is a new call stream on the target
+                _target_status[_stream_id] = {
+                    'START':     pkt_time,
+                    'CONTENTION':False,
+                    'RFS':       _rf_src,
+                    'TGID':      _dst_id,
+                    'RX_PEER':   _peer_id
+                }
+                
+            # Record the time of this packet so we can later identify a stale stream
+            _target_status[_stream_id]['LAST'] = pkt_time
+            # Clear the TS bit -- all OpenBridge streams are effectively on TS1
+            _tmp_bits = _bits & ~(1 << 7)
+            #Assemble transmit HBP packet header
+            _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
+            _tmp_data = b''.join([_tmp_data, dmrpkt])
+            systems[_target].send_system(_tmp_data)
+            logger.info('(%s) UNIT Data Bridged to OBP System: %s DST_ID: %s', self._system, _target,_int_dst_id)
+            if CONFIG['REPORTS']['REPORT']:
+                systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
+    
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pkt_time = time()
@@ -1389,6 +1432,45 @@ class routerOBP(OPENBRIDGE):
 ##        if ahex(dmrpkt)[27:-27] == b'd5d7f77fd757':
             # This is a data call
             _data_call = True
+            
+            # Is this a new call stream?
+            if (_stream_id not in self.STATUS):
+                
+                # This is a new call stream
+                self.STATUS[_stream_id] = {
+                    'START':     pkt_time,
+                    'CONTENTION':False,
+                    'RFS':       _rf_src,
+                    'TGID':      _dst_id,
+                    '1ST': perf_counter(),
+                    'lastSeq': False,
+                    'lastData': False,
+                    'RX_PEER': _peer_id
+
+                }
+                
+            if _stream_id in systems[system].STATUS and '1ST' in systems[system].STATUS[_stream_id] and systems[system].STATUS[_stream_id]['TGID'] == _dst_id:
+                             hr_times[system] = systems[system].STATUS[_stream_id]['1ST']
+                
+            #use the minimum perf_counter to ensure
+            #We always use only the earliest packet
+            fi = min(hr_times, key=hr_times.get, default = False)
+            
+            hr_times = None
+            
+            if not fi:
+                logger.warning("(%s) OBP UNIT *LoopControl* fi is empty for some reason : %s, STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
+                return
+            
+            if self._system != fi:             
+                if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
+                    logger.warning("(%s) OBP UNIT *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE",self._system, fi, int_id(_stream_id), int_id(_dst_id))
+                    self.STATUS[_stream_id]['LOOPLOG'] = True
+                self.STATUS[_stream_id]['LAST'] = pkt_time
+                return
+            
+
+            
             if _dtype_vseq == 3:
                 logger.info('(%s) *UNIT CSBK* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) DST_ID %s (%s), TS %s', \
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
@@ -1413,7 +1495,7 @@ class routerOBP(OPENBRIDGE):
                     logger.info('(%s) *UNKNOWN DATA TYPE* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
                             self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
             
-
+            self.STATUS[_stream_id]['LAST'] = pkt_time
                     
         if _call_type == 'group' or _call_type == 'vcsbk':
             # Is this a new call stream?
@@ -1829,8 +1911,6 @@ class routerHBP(HBSYSTEM):
         if CONFIG['REPORTS']['REPORT']:
             systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
         
-        #return(_sysIgnore)
-    
         
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
@@ -1880,15 +1960,13 @@ class routerHBP(HBSYSTEM):
             
             #Send to all openbridges 
             # sysIgnore = []
-            #Don't forward if ID is local
-            if _dst_id not in SUB_MAP:
-                for system in systems:
-                    if system  == self._system:
-                        continue
-                    #We only want to send data calls to individual IDs vis OpenBridge
-                    if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE' and _int_dst_id >= 1000000:
-                        #Disabled in master for now 
-                        self.sendDatatoOBP(system,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits)
+            for system in systems:
+                if system  == self._system:
+                    continue
+                #We only want to send data calls to individual IDs vis OpenBridge
+                if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE' and _int_dst_id >= 1000000:
+                    #Disabled in master for now 
+                    self.sendDatatoOBP(system,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits)
             
             #Send UNIT data to data gateway
             #if CONFIG['GLOBAL']['DATA_GATEWAY'] and (CONFIG['GLOBAL']['DATA_GATEWAY'] in systems) \
