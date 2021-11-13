@@ -1834,11 +1834,11 @@ class routerHBP(HBSYSTEM):
             
     def sendDatatoOBP(self,_target,_data,dmrpkt):
  #       _sysIgnore = sysIgnore
-        _target_status = systems[_target['SYSTEM']].STATUS
-        _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
+        _target_status = systems[_target].STATUS
+        _target_system = self._CONFIG['SYSTEMS'][_target]
         
         #We want to ignore this system and TS combination if it's called again for this packet
-#        _sysIgnore.append((_target['SYSTEM'],_target['TS']))
+#        _sysIgnore.append((_target,_target['TS']))
         
         #If target has missed 6 (on 1 min) of keepalives, don't send
         if _target_system['ENHANCED_OBP'] and '_bcka' in _target_system and _target_system['_bcka'] < pkt_time - 60:
