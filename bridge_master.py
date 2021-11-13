@@ -1917,12 +1917,14 @@ class routerHBP(HBSYSTEM):
             
             #Send to all openbridges 
             # sysIgnore = []
-            for system in systems:
-                if system  == self._system:
-                    continue
-                #We only want to send data calls to individual IDs vis OpenBridge
-                if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE' and _int_dst_id >= 1000000:
-                    sysIgnore = self.sendDatatoOBP(system,sysIgnore,_data,dmrpkt)
+            #Don't forward if ID is local
+            if _dst_id not in SUB_MAP:
+                for system in systems:
+                    if system  == self._system:
+                        continue
+                    #We only want to send data calls to individual IDs vis OpenBridge
+                    if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE' and _int_dst_id >= 1000000:
+                        self.sendDatatoOBP(system,sysIgnore,_data,dmrpkt)
             
             #Send UNIT data to data gateway
             #if CONFIG['GLOBAL']['DATA_GATEWAY'] and (CONFIG['GLOBAL']['DATA_GATEWAY'] in systems) \
