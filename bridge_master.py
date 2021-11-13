@@ -1512,6 +1512,14 @@ class routerOBP(OPENBRIDGE):
                     logger.info('(%s) *UNKNOWN DATA TYPE* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
                             self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
             
+            #Send other openbridges
+            for system in systems:
+                if system  == self._system:
+                    continue
+                #We only want to send data calls to individual IDs via OpenBridge
+                if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE' and _int_dst_id >= 1000000:
+                    self.sendDatatoOBP(system,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits)
+            
             #If destination ID is in the Subscriber Map
             if _dst_id in SUB_MAP:
                 (_d_system,_d_slot,_d_time) = SUB_MAP[_dst_id]
@@ -2035,7 +2043,7 @@ class routerHBP(HBSYSTEM):
             for system in systems:
                 if system  == self._system:
                     continue
-                #We only want to send data calls to individual IDs vis OpenBridge
+                #We only want to send data calls to individual IDs via OpenBridge
                 if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE' and _int_dst_id >= 1000000:
                     #Disabled in master for now 
                     self.sendDatatoOBP(system,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits)
