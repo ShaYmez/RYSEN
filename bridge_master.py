@@ -1946,6 +1946,7 @@ class routerHBP(HBSYSTEM):
             elif _int_dst_id == 900999:
                     if 'D-APRS' in systems and CONFIG['SYSTEMS']['D-APRS']['MODE'] == 'MASTER':
                         _d_system = 'D-APRS'
+                        _d_slot = _slot
                         _dst_slot  = systems['D-APRS'].STATUS[_slot]
                         logger.info('(%s) D-APRS ID matched, System: %s Slot: %s',self._system, _d_system,_slot)
                         #If slot is idle for RX and TX
