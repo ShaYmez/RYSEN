@@ -1823,7 +1823,7 @@ class routerHBP(HBSYSTEM):
        
         return _sysIgnore
     
-    def sendDataToHBP(self,_d_system,_d_slot,_dst_id,_tmp_bits,_data,_dmrpkt,_rf_src):
+    def sendDataToHBP(self,_d_system,_d_slot,_dst_id,_tmp_bits,_data,dmrpkt,_rf_src):
         #Assemble transmit HBP packet header
         _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
         _tmp_data = b''.join([_tmp_data, dmrpkt])
