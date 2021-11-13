@@ -1389,7 +1389,7 @@ class routerOBP(OPENBRIDGE):
         if CONFIG['REPORTS']['REPORT']:
             systems[_d_system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
             
-        def sendDatatoOBP(self,_target,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits):
+        def sendDataToOBP(self,_target,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits):
 
             _int_dst_id = int_id(_dst_id)
             _target_status = systems[_target].STATUS
@@ -1518,7 +1518,7 @@ class routerOBP(OPENBRIDGE):
                     continue
                 #We only want to send data calls to individual IDs via OpenBridge
                 if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE' and _int_dst_id >= 1000000:
-                    self.sendDatatoOBP(system,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits)
+                    self.sendDataToOBP(system,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits)
             
             #If destination ID is in the Subscriber Map
             if _dst_id in SUB_MAP:
@@ -1956,7 +1956,7 @@ class routerHBP(HBSYSTEM):
         if CONFIG['REPORTS']['REPORT']:
             systems[_d_system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
             
-    def sendDatatoOBP(self,_target,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits):
+    def sendDataToOBP(self,_target,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits):
  #       _sysIgnore = sysIgnore
         _int_dst_id = int_id(_dst_id)
         _target_status = systems[_target].STATUS
@@ -2046,7 +2046,7 @@ class routerHBP(HBSYSTEM):
                 #We only want to send data calls to individual IDs via OpenBridge
                 if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE' and _int_dst_id >= 1000000:
                     #Disabled in master for now 
-                    self.sendDatatoOBP(system,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits)
+                    self.sendDataToOBP(system,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits)
             
             #Send UNIT data to data gateway
             #if CONFIG['GLOBAL']['DATA_GATEWAY'] and (CONFIG['GLOBAL']['DATA_GATEWAY'] in systems) \
