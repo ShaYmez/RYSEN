@@ -1449,29 +1449,29 @@ class routerOBP(OPENBRIDGE):
 
                 }
             
-            self.STATUS[_stream_id]['LAST'] = pkt_time
             
-            
-            if _stream_id in systems[system].STATUS and '1ST' in systems[system].STATUS[_stream_id] and systems[system].STATUS[_stream_id]['TGID'] == _dst_id:
-                hr_times[system] = systems[system].STATUS[_stream_id]['1ST']
+            hr_times = {}
+            for system in systems: 
+                if _stream_id in systems[system].STATUS and '1ST' in systems[system].STATUS[_stream_id] and systems[system].STATUS[_stream_id]['TGID'] == _dst_id:
+                    hr_times[system] = systems[system].STATUS[_stream_id]['1ST']
+                    
+                #use the minimum perf_counter to ensure
+                #We always use only the earliest packet
+                fi = min(hr_times, key=hr_times.get, default = False)
                 
-            #use the minimum perf_counter to ensure
-            #We always use only the earliest packet
-            fi = min(hr_times, key=hr_times.get, default = False)
-            
-            hr_times = None
-            
-            if not fi:
-                logger.warning("(%s) OBP UNIT *LoopControl* fi is empty for some reason : %s, STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
-                self.STATUS[_stream_id]['LAST'] = pkt_time
-                return
-            
-            if self._system != fi:             
-                if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
-                    logger.warning("(%s) OBP UNIT *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE",self._system, fi, int_id(_stream_id), int_id(_dst_id))
-                    self.STATUS[_stream_id]['LOOPLOG'] = True
-                self.STATUS[_stream_id]['LAST'] = pkt_time
-                return
+                hr_times = None
+                
+                if not fi:
+                    logger.warning("(%s) OBP UNIT *LoopControl* fi is empty for some reason : %s, STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
+                    self.STATUS[_stream_id]['LAST'] = pkt_time
+                    return
+                
+                if self._system != fi:             
+                    if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
+                        logger.warning("(%s) OBP UNIT *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE",self._system, fi, int_id(_stream_id), int_id(_dst_id))
+                        self.STATUS[_stream_id]['LOOPLOG'] = True
+                    self.STATUS[_stream_id]['LAST'] = pkt_time
+                    return
             
 
             
