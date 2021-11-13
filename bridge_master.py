@@ -1832,7 +1832,7 @@ class routerHBP(HBSYSTEM):
         if CONFIG['REPORTS']['REPORT']:
             systems[_d_system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
             
-    def sendDatatoOBP(_target,sysIgnore,_data,dmrpkt):
+    def sendDatatoOBP(_target,_data,dmrpkt):
  #       _sysIgnore = sysIgnore
         _target_status = systems[_target['SYSTEM']].STATUS
         _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
@@ -1924,7 +1924,7 @@ class routerHBP(HBSYSTEM):
                         continue
                     #We only want to send data calls to individual IDs vis OpenBridge
                     if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE' and _int_dst_id >= 1000000:
-                        self.sendDatatoOBP(system,sysIgnore,_data,dmrpkt)
+                        self.sendDatatoOBP(system,_data,dmrpkt)
             
             #Send UNIT data to data gateway
             #if CONFIG['GLOBAL']['DATA_GATEWAY'] and (CONFIG['GLOBAL']['DATA_GATEWAY'] in systems) \
