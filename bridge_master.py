@@ -1834,6 +1834,7 @@ class routerHBP(HBSYSTEM):
             
     def sendDatatoOBP(self,_target,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits):
  #       _sysIgnore = sysIgnore
+        _int_dst_id = int_id(_dst_id)
         _target_status = systems[_target].STATUS
         _target_system = self._CONFIG['SYSTEMS'][_target]
         
