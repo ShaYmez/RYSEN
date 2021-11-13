@@ -1831,6 +1831,44 @@ class routerHBP(HBSYSTEM):
         logger.info('(%s) UNIT Data Bridged to HBP on slot 1: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
         if CONFIG['REPORTS']['REPORT']:
             systems[_d_system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
+            
+    def sendDatatoOBP(_target,sysIgnore,_data,dmrpkt):
+ #       _sysIgnore = sysIgnore
+        _target_status = systems[_target['SYSTEM']].STATUS
+        _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
+        
+        #We want to ignore this system and TS combination if it's called again for this packet
+#        _sysIgnore.append((_target['SYSTEM'],_target['TS']))
+        
+        #If target has missed 6 (on 1 min) of keepalives, don't send
+        if _target_system['ENHANCED_OBP'] and '_bcka' in _target_system and _target_system['_bcka'] < pkt_time - 60:
+            return
+        
+        if (_stream_id not in _target_status):
+            # This is a new call stream on the target
+            _target_status[_stream_id] = {
+                'START':     pkt_time,
+                'CONTENTION':False,
+                'RFS':       _rf_src,
+                'TGID':      _dst_id,
+                'RX_PEER':   _peer_id
+            }
+            
+        # Record the time of this packet so we can later identify a stale stream
+        _target_status[_stream_id]['LAST'] = pkt_time
+        # Clear the TS bit -- all OpenBridge streams are effectively on TS1
+        _tmp_bits = _bits & ~(1 << 7)
+        #Assemble transmit HBP packet header
+        _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
+        _tmp_data = b''.join([_tmp_data, dmrpkt])
+        systems[system].send_system(_tmp_data)
+        logger.info('(%s) UNIT Data Bridged to OBP System: %s DST_ID: %s', self._system, system,_int_dst_id)
+        if CONFIG['REPORTS']['REPORT']:
+            systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
+        
+        #return(_sysIgnore)
+    
+        
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pkt_time = time()
@@ -1878,45 +1916,33 @@ class routerHBP(HBSYSTEM):
                             self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
             
             #Send to all openbridges 
-            # We don't want to do this without more thought! 
-            # If we are going to do this is requires loop control 
-            # for data packets 
-            #
-            # Best for now to send all data packet to a single gateway 
-             
-            #for system in systems:
-                #if system  == self._system:
-                    #continue
-                #if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
+            # sysIgnore = []
+            for system in systems:
+                if system  == self._system:
+                    continue
+                #We only want to send data calls to individual IDs vis OpenBridge
+                if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE' and _int_dst_id >= 1000000:
+                    sysIgnore = self.sendDatatoOBP(system,sysIgnore,_data,dmrpkt)
+            
+            #Send UNIT data to data gateway
+            #if CONFIG['GLOBAL']['DATA_GATEWAY'] and (CONFIG['GLOBAL']['DATA_GATEWAY'] in systems) \
+                #and CONFIG['SYSTEMS'][CONFIG['GLOBAL']['DATA_GATEWAY']]['MODE'] == 'OPENBRIDGE':
                     #Clear the TS bit -- all OpenBridge streams are effectively on TS1
                     #_tmp_bits = _bits & ~(1 << 7)
                     #Assemble transmit HBP packet header
                     #_tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
                     #_tmp_data = b''.join([_tmp_data, dmrpkt])
-                    #systems[system].send_system(_tmp_data)
-                    #logger.info('(%s) UNIT Data Bridged to OBP System: %s DST_ID: %s', self._system, system,_int_dst_id)
+                    #systems[CONFIG['GLOBAL']['DATA_GATEWAY']].send_system(_tmp_data)
+                    #logger.info('(%s) UNIT Data Bridged to DATA_GATEWAY: %s DST_ID: %s', self._system,CONFIG['GLOBAL']['DATA_GATEWAY'],_int_dst_id)
                     #if CONFIG['REPORTS']['REPORT']:
                         #systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
-            
-            #Send UNIT data to data gateway
-            if CONFIG['GLOBAL']['DATA_GATEWAY'] and (CONFIG['GLOBAL']['DATA_GATEWAY'] in systems) \
-                and CONFIG['SYSTEMS'][CONFIG['GLOBAL']['DATA_GATEWAY']]['MODE'] == 'OPENBRIDGE':
-                    #Clear the TS bit -- all OpenBridge streams are effectively on TS1
-                    _tmp_bits = _bits & ~(1 << 7)
-                    #Assemble transmit HBP packet header
-                    _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
-                    _tmp_data = b''.join([_tmp_data, dmrpkt])
-                    systems[CONFIG['GLOBAL']['DATA_GATEWAY']].send_system(_tmp_data)
-                    logger.info('(%s) UNIT Data Bridged to DATA_GATEWAY: %s DST_ID: %s', self._system,CONFIG['GLOBAL']['DATA_GATEWAY'],_int_dst_id)
-                    if CONFIG['REPORTS']['REPORT']:
-                        systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
-            else:
-                if not bool(CONFIG['GLOBAL']['DATA_GATEWAY']):
-                    logger.info('(%s) UNIT Data not Bridged - no DATA_GATEWAY: %s, DST_ID: %s',self._system,_int_dst_id)
-                elif CONFIG['GLOBAL']['DATA_GATEWAY'] not in systems:
-                    logger.warning('(%s) UNIT Data not Bridged - DATA_GATEWAY: %s not valid. DST_ID: %s',self._system, CONFIG['GLOBAL']['DATA_GATEWAY'],_int_dst_id)
-                elif CONFIG['SYSTEMS'][CONFIG['GLOBAL']['DATA_GATEWAY']]['MODE'] != 'OPENBRIDGE':
-                    logger.warning('(%s) UNIT Data not Bridged - DATA_GATEWAY: %s not OPENBRIDGE. DST_ID: %s',self._system, CONFIG['GLOBAL']['DATA_GATEWAY'],_int_dst_id)
+            #else:
+                #if not bool(CONFIG['GLOBAL']['DATA_GATEWAY']):
+                    #logger.info('(%s) UNIT Data not Bridged - no DATA_GATEWAY: %s, DST_ID: %s',self._system,_int_dst_id)
+                #elif CONFIG['GLOBAL']['DATA_GATEWAY'] not in systems:
+                    #logger.warning('(%s) UNIT Data not Bridged - DATA_GATEWAY: %s not valid. DST_ID: %s',self._system, CONFIG['GLOBAL']['DATA_GATEWAY'],_int_dst_id)
+                #elif CONFIG['SYSTEMS'][CONFIG['GLOBAL']['DATA_GATEWAY']]['MODE'] != 'OPENBRIDGE':
+                    #logger.warning('(%s) UNIT Data not Bridged - DATA_GATEWAY: %s not OPENBRIDGE. DST_ID: %s',self._system, CONFIG['GLOBAL']['DATA_GATEWAY'],_int_dst_id)
             
             #If destination ID is in the Subscriber Map
             if _dst_id in SUB_MAP:
