@@ -1460,6 +1460,7 @@ class routerOBP(OPENBRIDGE):
             
             if not fi:
                 logger.warning("(%s) OBP UNIT *LoopControl* fi is empty for some reason : %s, STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
+                self.STATUS[_stream_id]['LAST'] = pkt_time
                 return
             
             if self._system != fi:             
