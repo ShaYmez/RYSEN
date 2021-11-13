@@ -1449,7 +1449,7 @@ class routerOBP(OPENBRIDGE):
 
                 }
             
-            #self.STATUS[_stream_id]['LAST'] = pkt_time
+            self.STATUS[_stream_id]['LAST'] = pkt_time
             
             hr_times = {}
             for system in systems: 
