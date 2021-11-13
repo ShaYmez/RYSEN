@@ -1429,6 +1429,8 @@ class routerOBP(OPENBRIDGE):
 
         # Match UNIT data, SMS/GPS, and send it to the dst_id if it is in out UNIT_MAP
         if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or ((_stream_id not in self.STATUS) and _dtype_vseq == 3)):
+        
+            _int_dst_id = int_id(_dst_id)
 ##        if ahex(dmrpkt)[27:-27] == b'd5d7f77fd757':
             # This is a data call
             _data_call = True
