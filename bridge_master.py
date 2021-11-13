@@ -1937,7 +1937,7 @@ class routerHBP(HBSYSTEM):
                     #logger.info('(%s) UNIT Data Bridged to HBP on slot 1: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
                     #if CONFIG['REPORTS']['REPORT']:
                         #systems[_d_system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
-                    self.sendDataToHBP(d_system, d_slot,_dst_id,_tmp_bits,_data,_dmrpkt,_rf_src)
+                    self.sendDataToHBP(_d_system, d_slot,_dst_id,_tmp_bits,_data,_dmrpkt,_rf_src)
                         
                     #_dst_slot['TX_TIME'] = pkt_time                                          
                 else:
@@ -1959,7 +1959,7 @@ class routerHBP(HBSYSTEM):
                             #logger.info('(%s) UNIT Data Bridged to HBP on slot: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
                             #if CONFIG['REPORTS']['REPORT']:
                                 #systems[_d_system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
-                            self.sendDataToHBP(d_system, d_slot,_dst_id,_tmp_bits,_data,_dmrpkt,_rf_src)
+                            self.sendDataToHBP(_d_system, d_slot,_dst_id,_tmp_bits,_data,_dmrpkt,_rf_src)
                                 
                             #_dst_slot['TX_TIME'] = pkt_time
                         else:
@@ -1992,7 +1992,7 @@ class routerHBP(HBSYSTEM):
                                     #logger.info('(%s) UNIT Data Bridged to HBP on slot: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
                                     #if CONFIG['REPORTS']['REPORT']:
                                         #systems[_d_system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
-                                    self.sendDataToHBP(d_system, d_slot,_dst_id,_tmp_bits,_data,_dmrpkt,_rf_src)
+                                    self.sendDataToHBP(_d_system, d_slot,_dst_id,_tmp_bits,_data,_dmrpkt,_rf_src)
                                     #_dst_slot['TX_TIME'] = pkt_time
                                 else:
                                     logger.info('(%s) UNIT Data not bridged to HBP on slot 1 - target busy: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
