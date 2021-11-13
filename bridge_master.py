@@ -1449,12 +1449,21 @@ class routerOBP(OPENBRIDGE):
 
                 }
             
-            self.STATUS[_stream_id]['LAST'] = pkt_time
+            #self.STATUS[_stream_id]['LAST'] = pkt_time
             
             hr_times = {}
             for system in systems: 
-                if _stream_id in systems[system].STATUS and '1ST' in systems[system].STATUS[_stream_id] and systems[system].STATUS[_stream_id]['TGID'] == _dst_id:
-                    hr_times[system] = systems[system].STATUS[_stream_id]['1ST']
+                if system != self._system and CONFIG['SYSTEMS'][system]['MODE'] != 'OPENBRIDGE':
+                        for _sysslot in systems[system].STATUS:
+                            if 'RX_STREAM_ID' in systems[system].STATUS[_sysslot] and _stream_id == systems[system].STATUS[_sysslot]['RX_STREAM_ID']:
+                                if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']: 
+                                    logger.warning("(%s) OBP UNIT *LoopControl* FIRST HBP: %s, STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id),_sysslot)
+                                    self.STATUS[_stream_id]['LOOPLOG'] = True
+                                self.STATUS[_stream_id]['LAST'] = pkt_time
+                                return
+                else:
+                    if _stream_id in systems[system].STATUS and '1ST' in systems[system].STATUS[_stream_id] and    systems[system].STATUS[_stream_id]['TGID'] == _dst_id:
+                        hr_times[system] = systems[system].STATUS[_stream_id]['1ST']
                     
             #use the minimum perf_counter to ensure
             #We always use only the earliest packet
