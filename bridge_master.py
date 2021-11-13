@@ -1509,6 +1509,62 @@ class routerOBP(OPENBRIDGE):
                     logger.info('(%s) *UNKNOWN DATA TYPE* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
                             self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
             
+            #If destination ID is in the Subscriber Map
+            if _dst_id in SUB_MAP:
+                (_d_system,_d_slot,_d_time) = SUB_MAP[_dst_id]
+                _dst_slot  = systems[_d_system].STATUS[_d_slot]
+                logger.info('(%s) SUB_MAP matched, System: %s Slot: %s, Time: %s',self._system, _d_system,_d_slot,_d_time)
+                #If slot is idle for RX and TX
+                if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):                
+                #rewrite slot if required
+                    if _slot != _d_slot:
+                        _tmp_bits = _bits ^ 1 << 7
+                    else: 
+                        _tmp_bits = _bits                        
+                    self.sendDataToHBP(_d_system,_d_slot,_dst_id,_tmp_bits,_data,dmrpkt,_rf_src)
+                        
+                else:
+                    logger.info('(%s) UNIT Data not bridged to HBP on slot 1 - target busy: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
+            
+            elif _int_dst_id == 900999:
+                    if 'D-APRS' in systems and CONFIG['SYSTEMS']['D-APRS']['MODE'] == 'MASTER':
+                        _d_system = 'D-APRS'
+                        _d_slot = _slot
+                        _dst_slot  = systems['D-APRS'].STATUS[_slot]
+                        logger.info('(%s) D-APRS ID matched, System: %s Slot: %s',self._system, _d_system,_slot)
+                        #If slot is idle for RX and TX
+                        if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):
+                            #We will allow the system to use both slots
+                            _tmp_bits = _bits
+                            self.sendDataToHBP(_d_system,_d_slot,_dst_id,_tmp_bits,_data,dmrpkt,_rf_src)
+                                
+                        else:
+                            logger.info('(%s) UNIT Data not bridged to HBP on slot %s - target busy: %s DST_ID: %s',self._system,_d_slot,_d_system,_int_dst_id)
+      
+            else:                
+                #If destination ID is logged in as a hotspot
+                for _d_system in systems:
+                    if CONFIG['SYSTEMS'][_d_system]['MODE'] == 'MASTER':
+                        for _to_peer in CONFIG['SYSTEMS'][_d_system]['PEERS']:
+                            _int_to_peer = int_id(_to_peer)
+                            if (str(_int_to_peer)[:7] == str(_int_dst_id)[:7]):
+                                #(_d_system,_d_slot,_d_time) = SUB_MAP[_dst_id]
+                                _d_slot = 2
+                                _dst_slot  = systems[_d_system].STATUS[_d_slot]
+                                logger.info('(%s) User Peer Hotspot ID matched, System: %s Slot: %s',self._system, _d_system,_d_slot)
+                                #If slot is idle for RX and TX
+                                if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):
+                                #Always use slot2 for hotspots - many of them are simplex and this 
+                                #is the convention 
+                                    #rewrite slot if required (slot 2 is used on hotspots)
+                                    if _slot != 2:
+                                        _tmp_bits = _bits ^ 1 << 7
+                                    else: 
+                                        _tmp_bits = _bits
+                                    self.sendDataToHBP(_d_system,_d_slot,_dst_id,_tmp_bits,_data,dmrpkt,_rf_src)
+                                    
+                                else:
+                                    logger.info('(%s) UNIT Data not bridged to HBP on slot %s - target busy: %s DST_ID: %s',self._system,_d_slot,_d_system,_int_dst_id)
                     
         if _call_type == 'group' or _call_type == 'vcsbk':
             # Is this a new call stream?
