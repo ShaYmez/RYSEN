@@ -1380,6 +1380,7 @@ class routerOBP(OPENBRIDGE):
         return(_sysIgnore)
     
     def sendDataToHBP(self,_d_system,_d_slot,_dst_id,_tmp_bits,_data,dmrpkt,_rf_src):
+        _int_dst_id = int_id(_dst_id)
         #Assemble transmit HBP packet header
         _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
         _tmp_data = b''.join([_tmp_data, dmrpkt])
