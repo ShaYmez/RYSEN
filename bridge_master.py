@@ -2048,26 +2048,7 @@ class routerHBP(HBSYSTEM):
                 if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE' and _int_dst_id >= 1000000:
                     #Disabled in master for now 
                     self.sendDataToOBP(system,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits)
-            
-            #Send UNIT data to data gateway
-            #if CONFIG['GLOBAL']['DATA_GATEWAY'] and (CONFIG['GLOBAL']['DATA_GATEWAY'] in systems) \
-                #and CONFIG['SYSTEMS'][CONFIG['GLOBAL']['DATA_GATEWAY']]['MODE'] == 'OPENBRIDGE':
-                    #Clear the TS bit -- all OpenBridge streams are effectively on TS1
-                    #_tmp_bits = _bits & ~(1 << 7)
-                    #Assemble transmit HBP packet header
-                    #_tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
-                    #_tmp_data = b''.join([_tmp_data, dmrpkt])
-                    #systems[CONFIG['GLOBAL']['DATA_GATEWAY']].send_system(_tmp_data)
-                    #logger.info('(%s) UNIT Data Bridged to DATA_GATEWAY: %s DST_ID: %s', self._system,CONFIG['GLOBAL']['DATA_GATEWAY'],_int_dst_id)
-                    #if CONFIG['REPORTS']['REPORT']:
-                        #systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
-            #else:
-                #if not bool(CONFIG['GLOBAL']['DATA_GATEWAY']):
-                    #logger.info('(%s) UNIT Data not Bridged - no DATA_GATEWAY: %s, DST_ID: %s',self._system,_int_dst_id)
-                #elif CONFIG['GLOBAL']['DATA_GATEWAY'] not in systems:
-                    #logger.warning('(%s) UNIT Data not Bridged - DATA_GATEWAY: %s not valid. DST_ID: %s',self._system, CONFIG['GLOBAL']['DATA_GATEWAY'],_int_dst_id)
-                #elif CONFIG['SYSTEMS'][CONFIG['GLOBAL']['DATA_GATEWAY']]['MODE'] != 'OPENBRIDGE':
-                    #logger.warning('(%s) UNIT Data not Bridged - DATA_GATEWAY: %s not OPENBRIDGE. DST_ID: %s',self._system, CONFIG['GLOBAL']['DATA_GATEWAY'],_int_dst_id)
+
             
             #If destination ID is in the Subscriber Map
             if _dst_id in SUB_MAP:
