@@ -1448,9 +1448,12 @@ class routerOBP(OPENBRIDGE):
                     'RX_PEER': _peer_id
 
                 }
-                
+            
+            self.STATUS[_stream_id]['LAST'] = pkt_time
+            
+            
             if _stream_id in systems[system].STATUS and '1ST' in systems[system].STATUS[_stream_id] and systems[system].STATUS[_stream_id]['TGID'] == _dst_id:
-                             hr_times[system] = systems[system].STATUS[_stream_id]['1ST']
+                hr_times[system] = systems[system].STATUS[_stream_id]['1ST']
                 
             #use the minimum perf_counter to ensure
             #We always use only the earliest packet
@@ -1496,7 +1499,6 @@ class routerOBP(OPENBRIDGE):
                     logger.info('(%s) *UNKNOWN DATA TYPE* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
                             self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
             
-            self.STATUS[_stream_id]['LAST'] = pkt_time
                     
         if _call_type == 'group' or _call_type == 'vcsbk':
             # Is this a new call stream?
