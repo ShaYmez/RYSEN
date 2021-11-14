@@ -1389,7 +1389,7 @@ class routerOBP(OPENBRIDGE):
         if CONFIG['REPORTS']['REPORT']:
             systems[_d_system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
             
-    def sendDataToOBP(self,_target,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits):
+    def sendDataToOBP(self,_target,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot):
 
         _int_dst_id = int_id(_dst_id)
         _target_status = systems[_target].STATUS
@@ -1413,7 +1413,12 @@ class routerOBP(OPENBRIDGE):
         # Record the time of this packet so we can later identify a stale stream
         _target_status[_stream_id]['LAST'] = pkt_time
         # Clear the TS bit -- all OpenBridge streams are effectively on TS1
-        _tmp_bits = _bits & ~(1 << 7)
+        #_tmp_bits = _bits & ~(1 << 7)
+        #rewrite slot if required
+        if _slot == 2:
+            _tmp_bits = _bits ^ 1 << 7
+        else: 
+            _tmp_bits = _bits 
         #Assemble transmit HBP packet header
         _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
         _tmp_data = b''.join([_tmp_data, dmrpkt])
@@ -1517,8 +1522,8 @@ class routerOBP(OPENBRIDGE):
                 if system  == self._system:
                     continue
                 #We only want to send data calls to individual IDs via OpenBridge
-                if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE' and _int_dst_id >= 1000000:
-                    self.sendDataToOBP(system,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits)
+                if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE' and (_int_dst_id >= 1000000 or _int_dst_id == 900999):
+                    self.sendDataToOBP(system,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot)
             
             #If destination ID is in the Subscriber Map
             if _dst_id in SUB_MAP:
@@ -1957,7 +1962,7 @@ class routerHBP(HBSYSTEM):
         if CONFIG['REPORTS']['REPORT']:
             systems[_d_system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
             
-    def sendDataToOBP(self,_target,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits):
+    def sendDataToOBP(self,_target,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot):
  #       _sysIgnore = sysIgnore
         _int_dst_id = int_id(_dst_id)
         _target_status = systems[_target].STATUS
@@ -1983,7 +1988,12 @@ class routerHBP(HBSYSTEM):
         # Record the time of this packet so we can later identify a stale stream
         _target_status[_stream_id]['LAST'] = pkt_time
         # Clear the TS bit -- all OpenBridge streams are effectively on TS1
-        _tmp_bits = _bits & ~(1 << 7)
+        #_tmp_bits = _bits & ~(1 << 7)
+        #rewrite slot if required
+        if _slot == 2:
+            _tmp_bits = _bits ^ 1 << 7
+        else: 
+            _tmp_bits = _bits 
         #Assemble transmit HBP packet header
         _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
         _tmp_data = b''.join([_tmp_data, dmrpkt])
@@ -1991,8 +2001,7 @@ class routerHBP(HBSYSTEM):
         logger.info('(%s) UNIT Data Bridged to OBP System: %s DST_ID: %s', self._system, _target,_int_dst_id)
         if CONFIG['REPORTS']['REPORT']:
             systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
-        
-        
+    
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pkt_time = time()
@@ -2045,9 +2054,8 @@ class routerHBP(HBSYSTEM):
                 if system  == self._system:
                     continue
                 #We only want to send data calls to individual IDs via OpenBridge
-                if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE' and _int_dst_id >= 1000000:
-                    #Disabled in master for now 
-                    self.sendDataToOBP(system,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits)
+                if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE' and (_int_dst_id >= 1000000 or _int_dst_id == 900999):
+                    self.sendDataToOBP(system,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot)
 
             
             #If destination ID is in the Subscriber Map
