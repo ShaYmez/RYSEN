@@ -2123,7 +2123,7 @@ class routerHBP(HBSYSTEM):
                 
                 self.STATUS[_slot]['_stopTgAnnounce'] = False
                 
-                logger.warning('(%s) Reflector: Private call from %s to %s : _dtype_vseq: %s',self._system, int_id(_rf_src), _int_dst_id,_dtype_vseq)
+                logger.warning('(%s) Reflector: Private call from %s to %s',self._system, int_id(_rf_src), _int_dst_id)
                 if _int_dst_id >= 5 and _int_dst_id != 9 and _int_dst_id <= 999999:
                     _bridgename = '#'+ str(_int_dst_id)
                     if _bridgename not in BRIDGES and not (_int_dst_id >= 4000 and _int_dst_id <= 5000) and not (_int_dst_id >=9991 and _int_dst_id <= 9999):
