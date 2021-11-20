@@ -2021,7 +2021,7 @@ class routerHBP(HBSYSTEM):
         #Add system to SUB_MAP
         SUB_MAP[_rf_src] = (self._system,_slot,pkt_time)
        
-        if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or (_stream_id != self.STATUS[_slot]['RX_STREAM_ID'] and _dtype_vseq == 3)):
+        if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or _dtype_vseq == 8 or (_stream_id != self.STATUS[_slot]['RX_STREAM_ID'] and _dtype_vseq == 3)):
             _data_call = True
             
             if _dtype_vseq == 3:
