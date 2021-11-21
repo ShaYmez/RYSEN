@@ -89,7 +89,22 @@ __license__    = 'GNU GPLv3'
 __maintainer__ = 'Simon Adlem G7RZU'
 __email__      = 'simon@gb7fr.org.uk'
 
-
+#Set header bits
+#used for slot rewrite and type rewrite
+def header(slot,call_type,bits):
+    
+    if not bits:
+        bits = 0b00100000
+    
+    bits = slot << 7 | bits
+    
+    if call_type == 'unit':
+        
+        bits = 0b00000011 | bits
+    
+    return bits
+    
+        
 
 # Timed loop used for reporting HBP status
 #
@@ -1433,7 +1448,7 @@ class routerOBP(OPENBRIDGE):
         dmrpkt = _data[20:53]
         _bits = _data[15]
 
-        # Match UNIT data, SMS/GPS, and send it to the dst_id if it is in out UNIT_MAP
+        # Match UNIT data, SMS/GPS, and send it to the dst_id if it is in SUB_MAP
         if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or _dtype_vseq == 8 or ((_stream_id not in self.STATUS) and _dtype_vseq == 3)):
         
             _int_dst_id = int_id(_dst_id)
@@ -1541,21 +1556,6 @@ class routerOBP(OPENBRIDGE):
                         
                 else:
                     logger.info('(%s) UNIT Data not bridged to HBP on slot 1 - target busy: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
-            
-            elif _int_dst_id == 900999:
-                    if 'D-APRS' in systems and CONFIG['SYSTEMS']['D-APRS']['MODE'] == 'MASTER':
-                        _d_system = 'D-APRS'
-                        _d_slot = _slot
-                        _dst_slot  = systems['D-APRS'].STATUS[_slot]
-                        logger.info('(%s) D-APRS ID matched, System: %s Slot: %s',self._system, _d_system,_slot)
-                        #If slot is idle for RX and TX
-                        if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):
-                            #We will allow the system to use both slots
-                            _tmp_bits = _bits
-                            self.sendDataToHBP(_d_system,_d_slot,_dst_id,_tmp_bits,_data,dmrpkt,_rf_src,_stream_id,_peer_id)
-                                
-                        else:
-                            logger.info('(%s) UNIT Data not bridged to HBP on slot %s - target busy: %s DST_ID: %s',self._system,_d_slot,_d_system,_int_dst_id)
       
             else:                
                 #If destination ID is logged in as a hotspot
