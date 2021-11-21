@@ -2025,11 +2025,13 @@ class routerHBP(HBSYSTEM):
         if (_call_type == 'group' or _call_type == 'vcsbk') and _int_dst_id == 900999:
             _bits = header(_slot,'unit',_bits)
             logger.info('(%s) Type Rewrite - GPS data from ID: %s,  on TG 900999 rewritten to unit call to ID 900999',self._system,int_id(_rf_src))
+            _call_type == 'unit'
        
         #Rewrite incoming loro request to group call
         if _call_type == 'unit' and _int_dst_id == 9990:
             _bits = header(_slot,'group',_bits)
             logger.info('(%s) Type Rewrite - Echo data from ID: %s,  on PC 9990 rewritten to group call to TG 9990',self._system,int_id(_rf_src))
+            _call_type == 'group'
        
        
         if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or _dtype_vseq == 8 or (_stream_id != self.STATUS[_slot]['RX_STREAM_ID'] and _dtype_vseq == 3)):
