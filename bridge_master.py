@@ -2028,7 +2028,7 @@ class routerHBP(HBSYSTEM):
        
         #Rewrite incoming loro request to group call
         if _call_type == 'group' and _int_dst_id == 9990:
-           _bits = header(_slot,'group',_bits)
+            _bits = header(_slot,'group',_bits)
             logger.info('(%s) Type Rewrite - Echo data from ID: %s,  on PC 9990 rewritten to group call to TG 9990',self._system,int_id(_rf_src))
        
        
