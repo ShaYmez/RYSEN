@@ -2022,10 +2022,10 @@ class routerHBP(HBSYSTEM):
         SUB_MAP[_rf_src] = (self._system,_slot,pkt_time)
         
         #Rewrite GPS Data comming in as a group call to a unit call
-        if (_call_type == 'group' or _call_type == 'vcsbk') and _int_dst_id == 900999:
-            _bits = header(_slot,'unit',_bits)
-            logger.info('(%s) Type Rewrite - GPS data from ID: %s,  on TG 900999 rewritten to unit call to ID 900999 : bits %s',self._system,int_id(_rf_src),_bits)
-            _call_type == 'unit'
+        #if (_call_type == 'group' or _call_type == 'vcsbk') and _int_dst_id == 900999:
+            #_bits = header(_slot,'unit',_bits)
+            #logger.info('(%s) Type Rewrite - GPS data from ID: %s,  on TG 900999 rewritten to unit call to ID 900999 : bits %s',self._system,int_id(_rf_src),_bits)
+            #_call_type == 'unit'
        
         #Rewrite incoming loro request to group call
         #if _call_type == 'unit' and _int_dst_id == 9990:
