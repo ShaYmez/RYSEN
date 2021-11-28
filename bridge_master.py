@@ -2721,7 +2721,7 @@ if __name__ == '__main__':
 
     # Initialize the rule timer -- this if for user activated stuff
     rule_timer_task = task.LoopingCall(rule_timer_loop)
-    rule_timer = rule_timer_task.start(60)
+    rule_timer = rule_timer_task.start(52)
     rule_timer.addErrback(loopingErrHandle)
 
     # Initialize the stream trimmer
@@ -2732,25 +2732,25 @@ if __name__ == '__main__':
     # Ident
     #This runs in a thread so as not to block the reactor
     ident_task = task.LoopingCall(threadIdent)
-    identa = ident_task.start(900)
+    identa = ident_task.start(914)
     identa.addErrback(loopingErrHandle)
     
     #Options parsing
     options_task = task.LoopingCall(options_config)
-    options = options_task.start(30)
+    options = options_task.start(26)
     options.addErrback(loopingErrHandle)
     
     #Mysql config checker
     #This runs in a thread so as not to block the reactor
     if CONFIG['MYSQL']['USE_MYSQL'] == True:
         mysql_task = task.LoopingCall(threadedMysql)
-        mysql = mysql_task.start(30)
+        mysql = mysql_task.start(33)
         mysql.addErrback(loopingErrHandle)
         
-    #STAT trimmer - once every hour
+    #STAT trimmer - once every hour (roughly - shifted so all timed tasks don't run at once
     if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:
         stat_trimmer_task = task.LoopingCall(statTrimmer)
-        stat_trimmer = stat_trimmer_task.start(3600)#3600
+        stat_trimmer = stat_trimmer_task.start(3700)#3600
         stat_trimmer.addErrback(loopingErrHandle)
         
     #KA Reporting
