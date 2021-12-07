@@ -26,18 +26,7 @@ apt-get -y install docker-compose &&
 apt-get -y  install conntrack &&
 
 echo Set userland-proxy to false...
-#echo '{ "userland-proxy": false}' > /etc/docker/daemon.json &&
-echo << EOF > /etc/docker/daemon.json &&
-{
-     "userland-proxy": false,
-     "log-driver": "json-file",
-     "log-opts": {
-        "max-size": "10m",
-        "max-file": "3"
-      }
-
-EOF
-
+echo '{ "userland-proxy": false}' > /etc/docker/daemon.json &&
 
 echo Restart docker...
 systemctl restart docker &&
@@ -82,7 +71,7 @@ REPORT_CLIENTS: *
 
 [LOGGER]
 LOG_FILE: freedmr.log
-LOG_HANDLERS: console-timed
+LOG_HANDLERS: file-timed
 LOG_LEVEL: INFO
 LOG_NAME: FreeDMR
 
@@ -178,32 +167,6 @@ SUB_ACL: DENY:1
 TGID_TS1_ACL: PERMIT:ALL
 TGID_TS2_ACL: PERMIT:ALL
 ANNOUNCEMENT_LANGUAGE: en_GB
-
-#Allow D-APRS gateway to connect
-[D-APRS]
-MODE: MASTER
-ENABLED: True
-REPEAT: True
-MAX_PEERS: 1
-EXPORT_AMBE: False
-IP: 172.16.238.10
-PORT: 52555
-PASSPHRASE:
-GROUP_HANGTIME: 0
-USE_ACL: True
-REG_ACL: DENY:1
-SUB_ACL: DENY:1
-TGID_TS1_ACL: PERMIT:ALL
-TGID_TS2_ACL: PERMIT:ALL
-DEFAULT_UA_TIMER: 10
-SINGLE_MODE: False
-VOICE_IDENT: False
-TS1_STATIC:
-TS2_STATIC:
-DEFAULT_REFLECTOR: 0
-GENERATOR: 0
-ANNOUNCEMENT_LANGUAGE: en_GB
-
 EOF
 
 echo Install rules.py ...
