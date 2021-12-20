@@ -33,6 +33,7 @@ This program currently only works with group voice calls.
 
 # Python modules we need
 import sys
+import json
 from bitarray import bitarray
 from time import time,sleep,perf_counter
 import importlib.util
@@ -392,7 +393,18 @@ def kaReporting():
                    logger.warning('(ROUTER) not sending to system %s as KeepAlive never seen',system)
                 elif CONFIG['SYSTEMS'][system]['_bcka'] < time() - 60:
                     logger.warning('(ROUTER) not sending to system %s as last KeepAlive was %s seconds ago',system, int(time() - CONFIG['SYSTEMS'][system]['_bcka']))
-                    
+ 
+#Write SUB_MAP to disk 
+def subMapWrite():
+    _json = json.dumps(SUB_MAP)
+    try:
+        _file = open(CONFIG['ALIASES']['SUB_MAP_FILE'],'w')
+        _file.write(_json)
+        _file.close()
+        logger.debug('(SUBSCRIBER) Writing SUB_MAP to disk')
+    except IOError:
+        logger.warning('(SUBSCRIBER) Cannot write SUB_MAP to file: IOError')
+        
 #Subscriber Map trimmer loop
 def SubMapTrimmer():
     logger.debug('(SUBSCRIBER) Subscriber Map trimmer loop started')
@@ -404,6 +416,10 @@ def SubMapTrimmer():
     
     for _remove in _remove_list:
         SUB_MAP.pop(_remove)
+    
+    subMapWrite()
+ 
+    
         
 
 # run this every 10 seconds to trim stream ids
@@ -2594,6 +2610,7 @@ if __name__ == '__main__':
         hblink_handler(_signal, _frame)
         logger.info('(GLOBAL) SHUTDOWN: ALL SYSTEM HANDLERS EXECUTED - STOPPING REACTOR')
         reactor.stop()
+        subMapWrite()
 
     # Set signal handers so that we can gracefully exit if need be
     for sig in [signal.SIGINT, signal.SIGTERM]:
@@ -2615,7 +2632,16 @@ if __name__ == '__main__':
     BRIDGES = make_bridges(rules_module.BRIDGES)
     
     #Subscriber map for unit calls - complete with test entry
-    SUB_MAP = {bytes_3(73578):('REP-1',1,time())}
+    #SUB_MAP = {bytes_3(73578):('REP-1',1,time())}
+    SUB_MAP = {}
+    
+    try:
+        with open(CONFIG['ALIASES']['SUB_MAP_FILE']) as _json_file:
+            SUB_MAP = json.load(_json_file)
+    except:
+        logger.warning('(SUBSCRIBER) Cannot load SUB_MAP file')
+        #sys.exit('(SUBSCRIBER) TERMINATING: SUB_MAP file not found or invalid')
+    
     
     #Generator
     generator = {}

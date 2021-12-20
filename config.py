@@ -180,6 +180,7 @@ def build_config(_config_file):
                     'SUBSCRIBER_URL': config.get(section, 'SUBSCRIBER_URL'),
                     'TGID_URL': config.get(section, 'TGID_URL'),
                     'STALE_TIME': config.getint(section, 'STALE_DAYS') * 86400,
+                    'SUB_MAP_FILE': config.get(section, 'SUB_MAP_FILE')
                 })
                 
             elif section == 'MYSQL':
