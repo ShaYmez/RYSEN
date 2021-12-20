@@ -588,7 +588,7 @@ def playFileOnRequest(self,fileNumber):
     sleep(1)
     _say = []
     try:
-        _say.append(AMBEobj.readSingleFile('/'+_lang+'/'+str(fileNumber)+'.ambe'))
+        _say.append(AMBEobj.readSingleFile('/'+_lang+'/ondemand/'+str(fileNumber)+'.ambe'))
     except IOError:
         logger.warning('(%s) cannot read file for number %s',system,fileNumber)
         return
