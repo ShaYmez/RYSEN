@@ -336,8 +336,13 @@ voiceMap = {
                 'freedmr': 'silence',
                 'this-is': 'silence',
                 'linkedto': 'silence'
-    }
+    },
 
+    'th_TH': {
+
+                'to': 'silence',
+    },
+    
 
 }
     
