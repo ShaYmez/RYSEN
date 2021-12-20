@@ -85,6 +85,7 @@ PEER_URL: https://www.radioid.net/static/rptrs.json
 SUBSCRIBER_URL: http://downloads.freedmr.uk/downloads/local_subscriber_ids.json
 TGID_URL: TGID_URL: http://downloads.freedmr.uk/downloads/talkgroup_ids.json
 STALE_DAYS: 7
+SUB_MAP_FILE:
 
 [MYSQL]
 USE_MYSQL: False

@@ -417,7 +417,8 @@ def SubMapTrimmer():
     for _remove in _remove_list:
         SUB_MAP.pop(_remove)
     
-    subMapWrite()
+    if CONFIG['ALIASES']['SUB_MAP_FILE']:
+        subMapWrite()
  
     
         
@@ -2610,7 +2611,8 @@ if __name__ == '__main__':
         hblink_handler(_signal, _frame)
         logger.info('(GLOBAL) SHUTDOWN: ALL SYSTEM HANDLERS EXECUTED - STOPPING REACTOR')
         reactor.stop()
-        subMapWrite()
+        if CONFIG['ALIASES']['SUB_MAP_FILE']:
+            subMapWrite()
 
     # Set signal handers so that we can gracefully exit if need be
     for sig in [signal.SIGINT, signal.SIGTERM]:
@@ -2635,12 +2637,13 @@ if __name__ == '__main__':
     #SUB_MAP = {bytes_3(73578):('REP-1',1,time())}
     SUB_MAP = {}
     
-    try:
-        with open(CONFIG['ALIASES']['SUB_MAP_FILE']) as _json_file:
-            SUB_MAP = json.load(_json_file)
-    except:
-        logger.warning('(SUBSCRIBER) Cannot load SUB_MAP file')
-        #sys.exit('(SUBSCRIBER) TERMINATING: SUB_MAP file not found or invalid')
+    if CONFIG['ALIASES']['SUB_MAP_FILE']:
+        try:
+            with open(CONFIG['ALIASES']['SUB_MAP_FILE']) as _json_file:
+                SUB_MAP = json.load(_json_file)
+        except:
+            logger.warning('(SUBSCRIBER) Cannot load SUB_MAP file')
+            #sys.exit('(SUBSCRIBER) TERMINATING: SUB_MAP file not found or invalid')
     
     
     #Generator
