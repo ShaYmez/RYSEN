@@ -33,7 +33,6 @@ This program currently only works with group voice calls.
 
 # Python modules we need
 import sys
-import json
 from bitarray import bitarray
 from time import time,sleep,perf_counter
 import importlib.util
@@ -396,14 +395,13 @@ def kaReporting():
  
 #Write SUB_MAP to disk 
 def subMapWrite():
-    _json = json.dumps(SUB_MAP)
     try:
-        _file = open(CONFIG['ALIASES']['SUB_MAP_FILE'],'w')
-        _file.write(_json)
-        _file.close()
-        logger.info('(SUBSCRIBER) Writing SUB_MAP to disk %s',_json)
-    except IOError:
-        logger.warning('(SUBSCRIBER) Cannot write SUB_MAP to file: IOError')
+        _fh = open(CONFIG['ALIASES']['SUB_MAP_FILE'],'wb')
+        pickle.dump(SUB_MAP,_fh)
+        _fh.close()
+        logger.info('(SUBSCRIBER) Writing SUB_MAP to disk')
+    except:
+        logger.warning('(SUBSCRIBER) Cannot write SUB_MAP to file')
         
 #Subscriber Map trimmer loop
 def SubMapTrimmer():
@@ -411,12 +409,11 @@ def SubMapTrimmer():
     _sub_time = time()
     _remove_list = []
     for _subscriber in SUB_MAP:
-        if _subscriber[2] < (_sub_time - 86400):
+        if SUB_MAP[_subscriber][2] < (_sub_time - 86400):
             _remove_list.append(_subscriber)
     
     for _remove in _remove_list:
         SUB_MAP.pop(_remove)
-    
     if CONFIG['ALIASES']['SUB_MAP_FILE']:
         subMapWrite()
  
@@ -2637,13 +2634,17 @@ if __name__ == '__main__':
     #SUB_MAP = {bytes_3(73578):('REP-1',1,time())}
     SUB_MAP = {}
     
+    
     if CONFIG['ALIASES']['SUB_MAP_FILE']:
         try:
-            with open(CONFIG['ALIASES']['SUB_MAP_FILE']) as _json_file:
-                SUB_MAP = json.load(_json_file)
+            with open(CONFIG['ALIASES']['SUB_MAP_FILE'],'rb') as _fh:
+                SUB_MAP = pickle.load(_fh)
         except:
             logger.warning('(SUBSCRIBER) Cannot load SUB_MAP file')
             #sys.exit('(SUBSCRIBER) TERMINATING: SUB_MAP file not found or invalid')
+        
+        #Test value
+        #SUB_MAP[bytes_3(73578)] = ('REP-1',1,time())
     
     
     #Generator
