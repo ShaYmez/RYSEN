@@ -401,7 +401,7 @@ def subMapWrite():
         _file = open(CONFIG['ALIASES']['SUB_MAP_FILE'],'w')
         _file.write(_json)
         _file.close()
-        logger.debug('(SUBSCRIBER) Writing SUB_MAP to disk')
+        logger.info('(SUBSCRIBER) Writing SUB_MAP to disk %s',_json)
     except IOError:
         logger.warning('(SUBSCRIBER) Cannot write SUB_MAP to file: IOError')
         
