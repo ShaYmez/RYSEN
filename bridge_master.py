@@ -120,7 +120,8 @@ def config_reports(_config, _factory):
                 if 'PEERS' in CONFIG['SYSTEMS'][system] and CONFIG['SYSTEMS'][system]['PEERS']:
                     i = i +1
             logger.info('(REPORT) %s systems have at least one peer',i)
-
+            logger.info('(REPORT) Subscriber Map has %s entries',len(SUB_MAP))
+            
         logger.info('(REPORT) HBlink TCP reporting server configured')
 
         report_server = _factory(_config)

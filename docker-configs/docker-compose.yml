@@ -30,6 +30,7 @@ services:
             - '/etc/freedmr/json/talkgroup_ids.json:/opt/freedmr/talkgroup_ids.json'
             - '/etc/freedmr/json/subscriber_ids.json:/opt/freedmr/subscriber_ids.json'
             - '/etc/freedmr/json/peer_ids.json:/opt/freedmr/peer_ids.json'
+            - '/etc/freedmr/json/sub_map.pkl:/opt/freedmr/sub_map.pkl'
         ports:
             - '62031:62031/udp'
             #Change the below to inlude ports used for your OBP(s)
