@@ -32,8 +32,8 @@ from twisted.internet.protocol import Factory, Protocol
 from twisted.protocols.basic import NetstringReceiver
 from twisted.internet import reactor, task
 
-# Things we import from the main hblink module
-from hblink import HBSYSTEM, systems, hblink_handler, reportFactory, REPORT_OPCODES, config_reports, mk_aliases
+# Things we import from the main freedmr module
+from freedmr import HBSYSTEM, systems, freedmr_handler, reportFactory, REPORT_OPCODES, config_reports, mk_aliases
 from dmr_utils3.utils import bytes_3, bytes_4, int_id, get_alias
 from dmr_utils3 import decode, bptc, const
 import config
@@ -181,13 +181,13 @@ if __name__ == '__main__':
 
     # CLI argument parser - handles picking up the config file from the command line, and sending a "help" message
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', action='store', dest='CONFIG_FILE', help='/full/path/to/config.file (usually hblink.cfg)')
+    parser.add_argument('-c', '--config', action='store', dest='CONFIG_FILE', help='/full/path/to/config.file (usually freedmr.cfg)')
     parser.add_argument('-l', '--logging', action='store', dest='LOG_LEVEL', help='Override config file logging level.')
     cli_args = parser.parse_args()
 
     # Ensure we have a path for the config file, if one wasn't specified, then use the default (top of file)
     if not cli_args.CONFIG_FILE:
-        cli_args.CONFIG_FILE = os.path.dirname(os.path.abspath(__file__))+'/hblink.cfg'
+        cli_args.CONFIG_FILE = os.path.dirname(os.path.abspath(__file__))+'/freedmr.cfg'
 
     # Call the external routine to build the configuration dictionary
     CONFIG = config.build_config(cli_args.CONFIG_FILE)
@@ -202,7 +202,7 @@ if __name__ == '__main__':
     # Set up the signal handler
     def sig_handler(_signal, _frame):
         logger.info('SHUTDOWN: HBROUTER IS TERMINATING WITH SIGNAL %s', str(_signal))
-        hblink_handler(_signal, _frame)
+        freedmr_handler(_signal, _frame)
         logger.info('SHUTDOWN: ALL SYSTEM HANDLERS EXECUTED - STOPPING REACTOR')
         reactor.stop()
         
