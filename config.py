@@ -28,7 +28,7 @@ change.
 
 import configparser
 import sys
-import const
+import FreeDMR.Const.const as const
 
 import socket
 import ipaddress 
