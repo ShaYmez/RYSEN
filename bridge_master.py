@@ -46,24 +46,24 @@ from twisted.protocols.basic import NetstringReceiver
 from twisted.internet import reactor, task
 
 # Things we import from the main freedmr module
-from FreeDMR.freedmr import HBSYSTEM, OPENBRIDGE, systems, freedmr_handler, reportFactory, REPORT_OPCODES, mk_aliases, acl_check
+from freedmr import HBSYSTEM, OPENBRIDGE, systems, freedmr_handler, reportFactory, REPORT_OPCODES, mk_aliases, acl_check
 from dmr_utils3.utils import bytes_3, int_id, get_alias, bytes_4
 from dmr_utils3 import decode, bptc, const
 import config
 from config import acl_build
 import log
-from FreeDMR.Const.const import *
+from const import *
 from mk_voice import pkt_gen
 #from voice_lib import words
 
 #Read voices
-from FreeDMR.Utilities.read_ambe import readAMBE
+from read_ambe import readAMBE
 #Remap some words for certain languages
-from FreeDMR.i8n.i8n_voice_map import voiceMap
+from i8n_voice_map import voiceMap
 
 
 #MySQL
-from FreeDMR.Utilities.mysql_config import useMYSQL
+from mysql_config import useMYSQL
 
 # Stuff for socket reporting
 import pickle
