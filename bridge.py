@@ -45,8 +45,8 @@ from twisted.internet import reactor, task
 from FreeDMR.freedmr import HBSYSTEM, OPENBRIDGE, systems, freedmr_handler, reportFactory, REPORT_OPCODES, mk_aliases
 from dmr_utils3.utils import bytes_3, int_id, get_alias
 from dmr_utils3 import decode, bptc, const
-import FreeDMR.Config.config as config
-import FreeDMR.Utilities.log as log
+import config
+import log
 from FreeDMR.Const.const import *
 
 # Stuff for socket reporting
