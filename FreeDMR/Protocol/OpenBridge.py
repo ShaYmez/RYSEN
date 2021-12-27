@@ -41,6 +41,7 @@ from twisted.internet.protocol import DatagramProtocol, Factory, Protocol
 from twisted.protocols.basic import NetstringReceiver
 from twisted.internet import reactor, task
 
+from FreeDMR.Utilities.supporting import *
 # Other files we pull from -- this is mostly for readability and segmentation
 import FreeDMR.Utilities.log as log
 import FreeDMR.Config.config as config

@@ -51,6 +51,7 @@ from dmr_utils3.utils import int_id, bytes_4, try_download, mk_id_dict
 import pickle
 from FreeDMR.Const.reporting_const import *
 
+from FreeDMR.Utilities.supporting import *
 #Protocols
 from FreeDMR.Protocol.OpenBridge import OPENBRIDGE
 from FreeDMR.Protocol.HomeBrewProtocol import HBSYSTEM
@@ -70,72 +71,7 @@ __maintainer__ = 'Simon Adlem G7RZU'
 __email__      = 'simon@gb7fr.org.uk'
 
 
-# Global variables used whether we are a module or __main__
-systems = {}
-
-# Timed loop used for reporting HBP status
-def config_reports(_config, _factory):
-    def reporting_loop(_logger, _server):
-        _logger.debug('(GLOBAL) Periodic reporting loop started')
-        _server.send_config()
-
-    logger.info('(GLOBAL) freedmr TCP reporting server configured')
-
-    report_server = _factory(_config)
-    report_server.clients = []
-    reactor.listenTCP(_config['REPORTS']['REPORT_PORT'], report_server)
-
-    reporting = task.LoopingCall(reporting_loop, logger, report_server)
-    reporting.start(_config['REPORTS']['REPORT_INTERVAL'])
-
-    return report_server
-
-
-# Shut ourselves down gracefully by disconnecting from the masters and peers.
-def freedmr_handler(_signal, _frame):
-    for system in systems:
-        logger.info('(GLOBAL) SHUTDOWN: DE-REGISTER SYSTEM: %s', system)
-        systems[system].dereg()
-
-# Check a supplied ID against the ACL provided. Returns action (True|False) based
-# on matching and the action specified.
-def acl_check(_id, _acl):
-    id = int_id(_id)
-    for entry in _acl[1]:
-        if entry[0] <= id <= entry[1]:
-            return _acl[0]
-    return not _acl[0]
-
-# ID ALIAS CREATION
-# Download
-def mk_aliases(_config):
-    if _config['ALIASES']['TRY_DOWNLOAD'] == True:
-        # Try updating peer aliases file
-        result = try_download(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'], _config['ALIASES']['PEER_URL'], _config['ALIASES']['STALE_TIME'])
-        logger.info('(GLOBAL) %s', result)
-        # Try updating subscriber aliases file
-        result = try_download(_config['ALIASES']['PATH'], _config['ALIASES']['SUBSCRIBER_FILE'], _config['ALIASES']['SUBSCRIBER_URL'], _config['ALIASES']['STALE_TIME'])
-        logger.info('(GLOBAL) %s', result)
-        #Try updating tgid aliases file
-        result = try_download(_config['ALIASES']['PATH'], _config['ALIASES']['TGID_FILE'], _config['ALIASES']['TGID_URL'], _config['ALIASES']['STALE_TIME'])
-        logger.info('(GLOBAL) %s', result)
-
-    # Make Dictionaries
-    peer_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'])
-    if peer_ids:
-        logger.info('(GLOBAL) ID ALIAS MAPPER: peer_ids dictionary is available')
-
-    subscriber_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['SUBSCRIBER_FILE'])
-    if subscriber_ids:
-        logger.info('(GLOBAL) ID ALIAS MAPPER: subscriber_ids dictionary is available')
-
-    talkgroup_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['TGID_FILE'])
-    if talkgroup_ids:
-        logger.info('(GLOBAL) ID ALIAS MAPPER: talkgroup_ids dictionary is available')
-
-    return peer_ids, subscriber_ids, talkgroup_ids
-       
-                    
+                           
       
 
 #************************************************
