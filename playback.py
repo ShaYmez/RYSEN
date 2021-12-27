@@ -33,12 +33,12 @@ from twisted.protocols.basic import NetstringReceiver
 from twisted.internet import reactor, task
 
 # Things we import from the main freedmr module
-from freedmr import HBSYSTEM, systems, freedmr_handler, reportFactory, REPORT_OPCODES, config_reports, mk_aliases
+from FreeDMR.freedmr import HBSYSTEM, systems, freedmr_handler, reportFactory, REPORT_OPCODES, config_reports, mk_aliases
 from dmr_utils3.utils import bytes_3, bytes_4, int_id, get_alias
 from dmr_utils3 import decode, bptc, const
-import config
-import log
-import const
+import FreeDMR.Config.config as config
+import FreeDMR.Utilities.log as log
+from FreeDMR.Const.const import *
 
 # The module needs logging logging, but handlers, etc. are controlled by the parent
 import logging

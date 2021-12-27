@@ -42,8 +42,8 @@ from twisted.protocols.basic import NetstringReceiver
 from twisted.internet import reactor, task
 
 # Other files we pull from -- this is mostly for readability and segmentation
-import log
-import config
+import FreeDMR.Utilities.log as log
+import FreeDMR.Config.config as config
 from FreeDMR.Const.const import *
 from dmr_utils3.utils import int_id, bytes_4, try_download, mk_id_dict
 
