@@ -1636,6 +1636,7 @@ class routerOBP(OPENBRIDGE):
 
 
             else:
+                print(self.STATUS[_stream_id])
                 self.STATUS[_stream_id]['packets'] = self.STATUS[_stream_id]['packets'] +1
                 #Finished stream handling#
                 if '_fin' in self.STATUS[_stream_id]:
