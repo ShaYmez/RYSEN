@@ -1519,7 +1519,10 @@ class routerOBP(OPENBRIDGE):
             
             if self._system != fi:             
                 if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
-                    logger.warning("(%s) OBP UNIT *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE",self._system, fi, int_id(_stream_id), int_id(_dst_id))
+                    call_duration = pkt_time - self.STATUS[_stream_id]['START']
+                    packet_rate = 0
+                    packet_rate = self.STATUS[_stream_id]['packets'] / call_duration
+                    logger.warning("(%s) OBP UNIT *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE. PACKET RATE %0.2f/s",self._system, fi, int_id(_stream_id), int_id(_dst_id),packet_rate)
                     self.STATUS[_stream_id]['LOOPLOG'] = True
                 self.STATUS[_stream_id]['LAST'] = pkt_time
                 return
