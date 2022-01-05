@@ -1437,8 +1437,7 @@ class routerOBP(OPENBRIDGE):
                 'CONTENTION':False,
                 'RFS':       _rf_src,
                 'TGID':      _dst_id,
-                'RX_PEER':   _peer_id,
-                'packets': 0
+                'RX_PEER':   _peer_id
             }
             
         # Record the time of this packet so we can later identify a stale stream
