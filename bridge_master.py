@@ -1617,8 +1617,6 @@ class routerOBP(OPENBRIDGE):
 
                 }
 
-            self.STATUS[_stream_id]['packets'] = self.STATUS[_stream_id]['packets'] +1
-
                 # If we can, use the LC from the voice header as to keep all options intact
                 if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
                     decoded = decode.voice_head_term(dmrpkt)
@@ -1637,6 +1635,7 @@ class routerOBP(OPENBRIDGE):
 
 
             else:
+                self.STATUS[_stream_id]['packets'] = self.STATUS[_stream_id]['packets'] +1
                 #Finished stream handling#
                 if '_fin' in self.STATUS[_stream_id]:
                     if '_finlog' not in self.STATUS[_stream_id]:
