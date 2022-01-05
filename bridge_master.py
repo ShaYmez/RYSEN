@@ -1636,8 +1636,8 @@ class routerOBP(OPENBRIDGE):
 
 
             else:
-                print(self.STATUS[_stream_id])
-                self.STATUS[_stream_id]['packets'] = self.STATUS[_stream_id]['packets'] +1
+                if 'packets' in self.STATUS[_stream_id]:
+                    self.STATUS[_stream_id]['packets'] = self.STATUS[_stream_id]['packets'] +1
                 #Finished stream handling#
                 if '_fin' in self.STATUS[_stream_id]:
                     if '_finlog' not in self.STATUS[_stream_id]:
@@ -1737,7 +1737,9 @@ class routerOBP(OPENBRIDGE):
             # Final actions - Is this a voice terminator?
             if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM):
                 call_duration = pkt_time - self.STATUS[_stream_id]['START']
-                packet_rate = self.STATUS[_stream_id][packets] / call_duration
+                packet_rate = 100
+                if 'packets' in self.STATUS[_stream_id]:
+                    packet_rate = self.STATUS[_stream_id]['packets'] / call_duration
                 logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %.2f, Packet rate: %s', \
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration, packet_rate)
                 if CONFIG['REPORTS']['REPORT']:
