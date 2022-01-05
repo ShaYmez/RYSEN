@@ -1617,7 +1617,7 @@ class routerOBP(OPENBRIDGE):
 
                 }
 
-            self.STATUS[_stream_id]['packets'] = self.STATUS[_stream_id]['packets'] +1
+                self.STATUS[_stream_id]['packets'] = self.STATUS[_stream_id]['packets'] +1
 
                 # If we can, use the LC from the voice header as to keep all options intact
                 if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
