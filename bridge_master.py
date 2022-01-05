@@ -1437,7 +1437,8 @@ class routerOBP(OPENBRIDGE):
                 'CONTENTION':False,
                 'RFS':       _rf_src,
                 'TGID':      _dst_id,
-                'RX_PEER':   _peer_id
+                'RX_PEER':   _peer_id,
+                'packets': 0
             }
             
         # Record the time of this packet so we can later identify a stale stream
@@ -1483,11 +1484,13 @@ class routerOBP(OPENBRIDGE):
                     '1ST': perf_counter(),
                     'lastSeq': False,
                     'lastData': False,
-                    'RX_PEER': _peer_id
+                    'RX_PEER': _peer_id,
+                    'packets': 0
 
                 }
             
             self.STATUS[_stream_id]['LAST'] = pkt_time
+            self.STATUS[_stream_id][packets] = self.STATUS[_stream_id][packets] + 1
             
             hr_times = {}
             for system in systems: 
@@ -1518,7 +1521,8 @@ class routerOBP(OPENBRIDGE):
                 if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
                     call_duration = pkt_time - self.STATUS[_stream_id]['START']
                     packet_rate = 0
-                    packet_rate = self.STATUS[_stream_id]['packets'] / call_duration
+                    if 'packets' in self.STATUS[_stream_id]:
+                        packet_rate = self.STATUS[_stream_id]['packets'] / call_duration
                     logger.warning("(%s) OBP UNIT *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE. PACKET RATE %0.2f/s",self._system, fi, int_id(_stream_id), int_id(_dst_id),packet_rate)
                     self.STATUS[_stream_id]['LOOPLOG'] = True
                 self.STATUS[_stream_id]['LAST'] = pkt_time
@@ -1613,7 +1617,8 @@ class routerOBP(OPENBRIDGE):
                     '1ST': perf_counter(),
                     'lastSeq': False,
                     'lastData': False,
-                    'RX_PEER': _peer_id
+                    'RX_PEER': _peer_id,
+                    'packets': 0
 
                 }
 
@@ -1637,7 +1642,6 @@ class routerOBP(OPENBRIDGE):
             else:
                 if 'packets' in self.STATUS[_stream_id]:
                     self.STATUS[_stream_id]['packets'] = self.STATUS[_stream_id]['packets'] +1
-
                 #Finished stream handling#
                 if '_fin' in self.STATUS[_stream_id]:
                     if '_finlog' not in self.STATUS[_stream_id]:
@@ -1677,7 +1681,8 @@ class routerOBP(OPENBRIDGE):
                     if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
                         call_duration = pkt_time - self.STATUS[_stream_id]['START']
                         packet_rate = 0
-                        packet_rate = self.STATUS[_stream_id]['packets'] / call_duration
+                        if 'packets' in self.STATUS[_stream_id]:
+                            packet_rate = self.STATUS[_stream_id]['packets'] / call_duration
                         logger.warning("(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE. PACKET RATE %0.2f/s",self._system, fi, int_id(_stream_id), int_id(_dst_id),call_duration)
                         self.STATUS[_stream_id]['LOOPLOG'] = True
                     self.STATUS[_stream_id]['LAST'] = pkt_time
@@ -1740,7 +1745,6 @@ class routerOBP(OPENBRIDGE):
             # Final actions - Is this a voice terminator?
             if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM):
                 call_duration = pkt_time - self.STATUS[_stream_id]['START']
-
                 packet_rate = 0
                 packet_rate = self.STATUS[_stream_id]['packets'] / call_duration
                 logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %.2f, Packet rate: %.2f/s', \
