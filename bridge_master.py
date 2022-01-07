@@ -1696,23 +1696,14 @@ class routerOBP(OPENBRIDGE):
                 #Duplicate complete packet
                 if self.STATUS[_stream_id]['lastData'] and self.STATUS[_stream_id]['lastData'] == _data and _seq > 1:
                     logger.warning("(%s) *PacketControl* last packet is a complete duplicate of the previous one, disgarding. Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
-                    self.STATUS[_stream_id]['lastSeq'] = _seq
-                    #Save this packet
-                    self.STATUS[_stream_id]['lastData'] = _data
                     return
                 #Handle inbound duplicates
                 if _seq and _seq == self.STATUS[_stream_id]['lastSeq']:
                     logger.warning("(%s) *PacketControl* Duplicate sequence number %s, disgarding. Stream ID:, %s TGID: %s",self._system,_seq,int_id(_stream_id),int_id(_dst_id))
-                    self.STATUS[_stream_id]['lastSeq'] = _seq
-                    #Save this packet
-                    self.STATUS[_stream_id]['lastData'] = _data
                     return
                 #Inbound out-of-order packets
                 if _seq and self.STATUS[_stream_id]['lastSeq']  and (_seq != 1) and (_seq < self.STATUS[_stream_id]['lastSeq']):
                     logger.warning("%s) *PacketControl* Out of order packet - last SEQ: %s, this SEQ: %s,  disgarding. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_stream_id]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
-                    self.STATUS[_stream_id]['lastSeq'] = _seq
-                    #Save this packet
-                    self.STATUS[_stream_id]['lastData'] = _data
                     return
                 #Inbound missed packets
                 if _seq and self.STATUS[_stream_id]['lastSeq'] and _seq > (self.STATUS[_stream_id]['lastSeq']+1):
@@ -2409,24 +2400,14 @@ class routerHBP(HBSYSTEM):
             #Duplicate complete packet
             if self.STATUS[_slot]['lastData'] and self.STATUS[_slot]['lastData'] == _data and _seq > 1:
                 logger.warning("(%s) *PacketControl* last packet is a complete duplicate of the previous one, disgarding. Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
-                self.STATUS[_slot]['lastSeq'] = _seq
-                #Save this packet
-                self.STATUS[_slot]['lastData'] = _data
                 return
             #Handle inbound duplicates
             if _seq and _seq == self.STATUS[_slot]['lastSeq']:
                 logger.warning("(%s) *PacketControl* Duplicate sequence number %s, disgarding. Stream ID:, %s TGID: %s",self._system,_seq,int_id(_stream_id),int_id(_dst_id))
-                self.STATUS[_slot]['lastSeq'] = _seq
-                #Save this packet
-                self.STATUS[_slot]['lastData'] = _data
                 return
             #Inbound out-of-order packets
             if _seq and self.STATUS[_slot]['lastSeq']  and (_seq != 1) and (_seq < self.STATUS[_slot]['lastSeq']):
                 logger.warning("%s) *PacketControl* Out of order packet - last SEQ: %s, this SEQ: %s,  disgarding. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_slot]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
-                            #Save this sequence number 
-                self.STATUS[_slot]['lastSeq'] = _seq
-                #Save this packet
-                self.STATUS[_slot]['lastData'] = _data
                 return
             #Inbound missed packets
             if _seq and self.STATUS[_slot]['lastSeq'] and _seq > (self.STATUS[_slot]['lastSeq']+1):
@@ -2458,7 +2439,7 @@ class routerHBP(HBSYSTEM):
                 packet_rate = 0
                 call_duration = pkt_time - self.STATUS[_slot]['RX_START']
                 packet_rate = self.STATUS[_slot]['packets'] / call_duration
-                logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %.2f, Packet rate: %.2f', \
+                logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %.2f, Packet rate: %.2f/s', \
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration,packet_rate)
                 if CONFIG['REPORTS']['REPORT']:
                    self._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), call_duration).encode(encoding='utf-8', errors='ignore'))
