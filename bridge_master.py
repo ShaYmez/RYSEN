@@ -1789,7 +1789,8 @@ class routerHBP(HBSYSTEM):
                     4: b'\x00',
                     },
                 'lastSeq': False,
-                'lastData': False
+                'lastData': False,
+                'packets': 0
                 },
             2: {
                 'RX_START':     time(),
@@ -1817,7 +1818,8 @@ class routerHBP(HBSYSTEM):
                     4: b'\x00',
                     },
                 'lastSeq': False,
-                'lastData': False
+                'lastData': False,
+                'packets': 0
                 }
             }
 
@@ -2174,6 +2176,8 @@ class routerHBP(HBSYSTEM):
         if _call_type == 'unit' and not _data_call:
             if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
                 
+                self.STATUS[_slot]['packets'] = 0
+                
                 self.STATUS[_slot]['_stopTgAnnounce'] = False
                 
                 logger.warning('(%s) Reflector: Private call from %s to %s',self._system, int_id(_rf_src), _int_dst_id)
@@ -2313,13 +2317,16 @@ class routerHBP(HBSYSTEM):
             self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
             self.STATUS[_slot]['VOICE_STREAM'] = _voice_call
             
-                            
+            self.STATUS[_slot]['packets'] = self.STATUS[_slot]['packets'] +1                
 
         #Handle group calls
         if _call_type == 'group' or _call_type == 'vcsbk':
 
             # Is this a new call stream?
             if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
+                
+                self.STATUS[_slot]['packets'] = 0
+                
                 if (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM) and (pkt_time < (self.STATUS[_slot]['RX_TIME'] + STREAM_TO)) and (_rf_src != self.STATUS[_slot]['RX_RFS']):
                     logger.warning('(%s) Packet received with STREAM ID: %s <FROM> SUB: %s PEER: %s <TO> TGID %s, SLOT %s collided with existing call', self._system, int_id(_stream_id), int_id(_rf_src), int_id(_peer_id), int_id(_dst_id), _slot)
                     return
@@ -2360,6 +2367,8 @@ class routerHBP(HBSYSTEM):
                     logger.info('(%s) Bridge for TG %s does not exist. Creating as User Activated. Timeout %s',self._system, int_id(_dst_id),CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
                     make_single_bridge(_dst_id,self._system,_slot,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
 
+            self.STATUS[_slot]['packets'] = self.STATUS[_slot]['packets'] +1
+            
             if _call_type == 'vcsbk':
                 if _dtype_vseq == 7:
                     logger.info('(%s) *VCSBK 1/2 DATA BLOCK * STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
@@ -2446,9 +2455,11 @@ class routerHBP(HBSYSTEM):
 
             # Final actions - Is this a voice terminator?
             if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
+                packet_rate = 0
                 call_duration = pkt_time - self.STATUS[_slot]['RX_START']
-                logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %.2f', \
-                        self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration)
+                packet_rate = self.STATUS[_slot]['packets'] / call_duration
+                logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %.2f, Packet rate: %.2f', \
+                        self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration,packet_rate)
                 if CONFIG['REPORTS']['REPORT']:
                    self._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), call_duration).encode(encoding='utf-8', errors='ignore'))
                 
