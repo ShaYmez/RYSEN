@@ -39,7 +39,6 @@ import importlib.util
 import re
 import copy
 from setproctitle import setproctitle
-import crccheck
 
 # Twisted is pretty important, so I keep it separate
 from twisted.internet.protocol import Factory, Protocol
@@ -1464,7 +1463,6 @@ class routerOBP(OPENBRIDGE):
         pkt_time = time()
         dmrpkt = _data[20:53]
         _bits = _data[15]
-        _pkt_crc = Crc16.calc(dmrpkt)
 
         # Match UNIT data, SMS/GPS, and send it to the dst_id if it is in SUB_MAP
         if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or _dtype_vseq == 8 or ((_stream_id not in self.STATUS) and _dtype_vseq == 3)):
@@ -1620,13 +1618,10 @@ class routerOBP(OPENBRIDGE):
                     'lastSeq': False,
                     'lastData': False,
                     'RX_PEER': _peer_id,
-                    'packets': 0,
-                    'crcs': []
+                    'packets': 0
 
                 }
 
-                self.STATUS[_stream_id][crcs].append(_pkt_crc)
-                
                 # If we can, use the LC from the voice header as to keep all options intact
                 if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
                     decoded = decode.voice_head_term(dmrpkt)
@@ -1647,7 +1642,6 @@ class routerOBP(OPENBRIDGE):
             else:
                 if 'packets' in self.STATUS[_stream_id]:
                     self.STATUS[_stream_id]['packets'] = self.STATUS[_stream_id]['packets'] +1
-                    
                 #Finished stream handling#
                 if '_fin' in self.STATUS[_stream_id]:
                     if '_finlog' not in self.STATUS[_stream_id]:
@@ -1699,16 +1693,13 @@ class routerOBP(OPENBRIDGE):
                     return
                         
                 #Duplicate handling#
-                #Handle inbound duplicates
-                if _seq and _seq == self.STATUS[_stream_id]['lastSeq']:
-                    logger.warning("(%s) *PacketControl* Duplicate sequence number %s, disgarding. Stream ID:, %s TGID: %s",self._system,_seq,int_id(_stream_id),int_id(_dst_id))
-                    return
                 #Duplicate complete packet
                 if self.STATUS[_stream_id]['lastData'] and self.STATUS[_stream_id]['lastData'] == _data and _seq > 1:
                     logger.warning("(%s) *PacketControl* last packet is a complete duplicate of the previous one, disgarding. Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
                     return
-                if _pkt_crc in self.STATUS[_stream_id]['crcs']:
-                    logger.warning("(%s) *PacketControl* DMR packet payload with CRC16: %s seen before in this stream, disgarding. Stream ID:, %s TGID: %s",self._system,_pkt_crc,int_id(_stream_id),int_id(_dst_id))
+                #Handle inbound duplicates
+                if _seq and _seq == self.STATUS[_stream_id]['lastSeq']:
+                    logger.warning("(%s) *PacketControl* Duplicate sequence number %s, disgarding. Stream ID:, %s TGID: %s",self._system,_seq,int_id(_stream_id),int_id(_dst_id))
                     return
                 #Inbound out-of-order packets
                 if _seq and self.STATUS[_stream_id]['lastSeq']  and (_seq != 1) and (_seq < self.STATUS[_stream_id]['lastSeq']):
