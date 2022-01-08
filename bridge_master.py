@@ -1713,10 +1713,6 @@ class routerOBP(OPENBRIDGE):
                 if _seq and _seq == self.STATUS[_stream_id]['lastSeq']:
                     logger.warning("(%s) *PacketControl* Duplicate sequence number %s, disgarding. Stream ID:, %s TGID: %s",self._system,_seq,int_id(_stream_id),int_id(_dst_id))
                     return
-                #Duplicate DMR payload to previuos packet (by Crc32)
-                if  _seq > 0 and _pkt_crc in self.STATUS[_stream_id]['crcs']:
-                    logger.warning("(%s) *PacketControl* DMR packet payload with Crc32: %s seen before in this stream, disgarding. Stream ID:, %s TGID: %s: SEQ:%s packets: %s ",self._system,_pkt_crc,int_id(_stream_id),int_id(_dst_id),_seq, self.STATUS[_stream_id]['packets'])
-                    return
                 #Inbound out-of-order packets
                 if _seq and self.STATUS[_stream_id]['lastSeq']  and (_seq != 1) and (_seq < self.STATUS[_stream_id]['lastSeq']):
                     logger.warning("%s) *PacketControl* Out of order packet - last SEQ: %s, this SEQ: %s,  disgarding. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_stream_id]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
@@ -1724,6 +1720,10 @@ class routerOBP(OPENBRIDGE):
                 #Inbound missed packets
                 if _seq and self.STATUS[_stream_id]['lastSeq'] and _seq > (self.STATUS[_stream_id]['lastSeq']+1):
                     logger.warning("(%s) *PacketControl* Missed packet(s) - last SEQ: %s, this SEQ: %s. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_stream_id]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
+                #Duplicate DMR payload to previuos packet (by Crc32)
+                if  _seq > 0 and _pkt_crc in self.STATUS[_stream_id]['crcs']:
+                    logger.warning("(%s) *PacketControl* DMR packet payload with Crc32: %s seen before in this stream, disgarding. Stream ID:, %s TGID: %s: SEQ:%s packets: %s ",self._system,_pkt_crc,int_id(_stream_id),int_id(_dst_id),_seq, self.STATUS[_stream_id]['packets'])
+                    return
             
                 #Save this sequence number 
                 self.STATUS[_stream_id]['lastSeq'] = _seq
@@ -2432,10 +2432,6 @@ class routerHBP(HBSYSTEM):
             if _seq and _seq == self.STATUS[_slot]['lastSeq']:
                 logger.warning("(%s) *PacketControl* Duplicate sequence number %s, disgarding. Stream ID:, %s TGID: %s",self._system,_seq,int_id(_stream_id),int_id(_dst_id))
                 return
-            #Duplicate DMR payload to previuos packet (by Crc32)
-            if _seq > 0 and _pkt_crc in self.STATUS[_slot]['crcs']:
-                logger.warning("(%s) *PacketControl* DMR packet payload with Crc32: %s seen before in this stream, disgarding. Stream ID:, %s TGID: %s, SEQ: %s, packets %s: ",self._system,_pkt_crc,int_id(_stream_id),int_id(_dst_id),_seq,self.STATUS[_slot]['packets'])
-                return
             #Inbound out-of-order packets
             if _seq and self.STATUS[_slot]['lastSeq']  and (_seq != 1) and (_seq < self.STATUS[_slot]['lastSeq']):
                 logger.warning("%s) *PacketControl* Out of order packet - last SEQ: %s, this SEQ: %s,  disgarding. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_slot]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
@@ -2443,6 +2439,10 @@ class routerHBP(HBSYSTEM):
             #Inbound missed packets
             if _seq and self.STATUS[_slot]['lastSeq'] and _seq > (self.STATUS[_slot]['lastSeq']+1):
                 logger.warning("(%s) *PacketControl* Missed packet(s) - last SEQ: %s, this SEQ: %s. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_slot]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
+            #Duplicate DMR payload to previuos packet (by Crc32)
+            if _seq > 0 and _pkt_crc in self.STATUS[_slot]['crcs']:
+                logger.warning("(%s) *PacketControl* DMR packet payload with Crc32: %s seen before in this stream, disgarding. Stream ID:, %s TGID: %s, SEQ: %s, packets %s: ",self._system,_pkt_crc,int_id(_stream_id),int_id(_dst_id),_seq,self.STATUS[_slot]['packets'])
+                return
         
             #Save this sequence number 
             self.STATUS[_slot]['lastSeq'] = _seq
