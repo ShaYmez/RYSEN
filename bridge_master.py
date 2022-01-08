@@ -1464,7 +1464,9 @@ class routerOBP(OPENBRIDGE):
         pkt_time = time()
         dmrpkt = _data[20:53]
         _bits = _data[15]
-        _pkt_crc = Crc16.calc(_data[4:53])
+        #_pkt_crc = Crc16.calc(_data[4:53])
+        _pkt_crc = Crc16.calc(dmrpkt)
+        
 
         # Match UNIT data, SMS/GPS, and send it to the dst_id if it is in SUB_MAP
         if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or _dtype_vseq == 8 or ((_stream_id not in self.STATUS) and _dtype_vseq == 3)):
