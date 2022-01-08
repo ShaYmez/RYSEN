@@ -1727,7 +1727,7 @@ class routerOBP(OPENBRIDGE):
 
             
             self.STATUS[_stream_id]['crcs'].append(_pkt_crc)
-            print(self.STATUS[_stream_id]['crcs']
+            print(self.STATUS[_stream_id]['crcs'])
             
             self.STATUS[_stream_id]['LAST'] = pkt_time
             
