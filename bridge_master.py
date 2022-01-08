@@ -1699,13 +1699,15 @@ class routerOBP(OPENBRIDGE):
                         
                 #Duplicate handling#
                 #Handle inbound duplicates
-                if _seq and _seq == self.STATUS[_stream_id]['lastSeq']:
-                    logger.warning("(%s) *PacketControl* Duplicate sequence number %s, disgarding. Stream ID:, %s TGID: %s",self._system,_seq,int_id(_stream_id),int_id(_dst_id))
-                    return
                 #Duplicate complete packet
                 if self.STATUS[_stream_id]['lastData'] and self.STATUS[_stream_id]['lastData'] == _data and _seq > 1:
                     logger.warning("(%s) *PacketControl* last packet is a complete duplicate of the previous one, disgarding. Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
                     return
+                #Duplicate SEQ number
+                if _seq and _seq == self.STATUS[_stream_id]['lastSeq']:
+                    logger.warning("(%s) *PacketControl* Duplicate sequence number %s, disgarding. Stream ID:, %s TGID: %s",self._system,_seq,int_id(_stream_id),int_id(_dst_id))
+                    return
+                #Duplicate DMR payload to previuos packet (by CRC16)
                 if _pkt_crc in self.STATUS[_stream_id]['crcs']:
                     logger.warning("(%s) *PacketControl* DMR packet payload with CRC16: %s seen before in this stream, disgarding. Stream ID:, %s TGID: %s",self._system,_pkt_crc,int_id(_stream_id),int_id(_dst_id))
                     return
@@ -1724,7 +1726,8 @@ class routerOBP(OPENBRIDGE):
                
 
             
-            self.STATUS[_stream_id][crcs].append(_pkt_crc)
+            self.STATUS[_stream_id]['crcs'].append(_pkt_crc)
+            print(self.STATUS[_stream_id]['crcs']
             
             self.STATUS[_stream_id]['LAST'] = pkt_time
             
