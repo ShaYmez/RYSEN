@@ -1464,7 +1464,7 @@ class routerOBP(OPENBRIDGE):
         pkt_time = time()
         dmrpkt = _data[20:53]
         _bits = _data[15]
-        _pkt_crc = Crc16.calc(_data[5:53])
+        _pkt_crc = Crc16.calc(_data[4:53])
         #_pkt_crc = Crc16.calc(dmrpkt)
         
 
