@@ -1713,7 +1713,7 @@ class routerOBP(OPENBRIDGE):
                     return
                 #Duplicate DMR payload to previuos packet (by Crc16)
                 if _pkt_crc in self.STATUS[_stream_id]['crcs']:
-                    logger.warning("(%s) *PacketControl* DMR packet payload with Crc16: %s seen before in this stream, disgarding. Stream ID:, %s TGID: %s, crcs: %s",self._system,_pkt_crc,int_id(_stream_id),int_id(_dst_id),self.STATUS[_stream_id]['crcs'])
+                    logger.warning("(%s) *PacketControl* DMR packet payload with Crc16: %s seen before in this stream, disgarding. Stream ID:, %s TGID: %s: SEQ:%s",self._system,_pkt_crc,int_id(_stream_id),int_id(_dst_id),_seq)
                     return
                 #Inbound out-of-order packets
                 if _seq and self.STATUS[_stream_id]['lastSeq']  and (_seq != 1) and (_seq < self.STATUS[_stream_id]['lastSeq']):
