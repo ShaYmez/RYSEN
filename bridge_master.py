@@ -1487,7 +1487,8 @@ class routerOBP(OPENBRIDGE):
                     'lastSeq': False,
                     'lastData': False,
                     'RX_PEER': _peer_id,
-                    'packets': 0
+                    'packets': 0,
+                    'crcs': []
 
                 }
             
@@ -1605,6 +1606,9 @@ class routerOBP(OPENBRIDGE):
                                     
                                 else:
                                     logger.info('(%s) UNIT Data not bridged to HBP on slot %s - target busy: %s DST_ID: %s',self._system,_d_slot,_d_system,_int_dst_id)
+            
+            self.STATUS[_stream_id]['crcs'].append(_pkt_crc)
+            
                     
         if _call_type == 'group' or _call_type == 'vcsbk':
             # Is this a new call stream?
@@ -1727,7 +1731,6 @@ class routerOBP(OPENBRIDGE):
 
             
             self.STATUS[_stream_id]['crcs'].append(_pkt_crc)
-            print(self.STATUS[_stream_id]['crcs'])
             
             self.STATUS[_stream_id]['LAST'] = pkt_time
             
@@ -1794,7 +1797,8 @@ class routerHBP(HBSYSTEM):
                     },
                 'lastSeq': False,
                 'lastData': False,
-                'packets': 0
+                'packets': 0,
+                'crcs': []
                 },
             2: {
                 'RX_START':     time(),
@@ -1823,7 +1827,8 @@ class routerHBP(HBSYSTEM):
                     },
                 'lastSeq': False,
                 'lastData': False,
-                'packets': 0
+                'packets': 0,
+                'crcs': []
                 }
             }
 
@@ -2054,6 +2059,8 @@ class routerHBP(HBSYSTEM):
         dmrpkt = _data[20:53]
         _bits = _data[15]
         
+        _pkt_crc = Crc16.calc(dmrpkt)
+        
         _nine = bytes_3(9)
         
         _lang = CONFIG['SYSTEMS'][self._system]['ANNOUNCEMENT_LANGUAGE']
@@ -2082,6 +2089,9 @@ class routerHBP(HBSYSTEM):
        
         if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or _dtype_vseq == 8 or (_stream_id != self.STATUS[_slot]['RX_STREAM_ID'] and _dtype_vseq == 3)):
             _data_call = True
+            
+            self.STATUS[_slot]['packets'] = 0
+            self.STATUS[_slot]['crcs'] = []
             
             if _dtype_vseq == 3:
                 logger.info('(%s) *UNIT CSBK* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) DST_ID %s (%s), TS %s', \
@@ -2181,6 +2191,7 @@ class routerHBP(HBSYSTEM):
             if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
                 
                 self.STATUS[_slot]['packets'] = 0
+                self.STATUS[_slot]['crcs'] = []
                 
                 self.STATUS[_slot]['_stopTgAnnounce'] = False
                 
@@ -2330,6 +2341,7 @@ class routerHBP(HBSYSTEM):
             if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
                 
                 self.STATUS[_slot]['packets'] = 0
+                self.STATUS[_slot]['crcs'] = []
                 
                 if (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM) and (pkt_time < (self.STATUS[_slot]['RX_TIME'] + STREAM_TO)) and (_rf_src != self.STATUS[_slot]['RX_RFS']):
                     logger.warning('(%s) Packet received with STREAM ID: %s <FROM> SUB: %s PEER: %s <TO> TGID %s, SLOT %s collided with existing call', self._system, int_id(_stream_id), int_id(_rf_src), int_id(_peer_id), int_id(_dst_id), _slot)
@@ -2417,6 +2429,10 @@ class routerHBP(HBSYSTEM):
             #Handle inbound duplicates
             if _seq and _seq == self.STATUS[_slot]['lastSeq']:
                 logger.warning("(%s) *PacketControl* Duplicate sequence number %s, disgarding. Stream ID:, %s TGID: %s",self._system,_seq,int_id(_stream_id),int_id(_dst_id))
+                return
+            #Duplicate DMR payload to previuos packet (by CRC16)
+            if _pkt_crc in self.STATUS[_slot]['crcs']:
+                logger.warning("(%s) *PacketControl* DMR packet payload with CRC16: %s seen before in this stream, disgarding. Stream ID:, %s TGID: %s",self._system,_pkt_crc,int_id(_stream_id),int_id(_dst_id))
                 return
             #Inbound out-of-order packets
             if _seq and self.STATUS[_slot]['lastSeq']  and (_seq != 1) and (_seq < self.STATUS[_slot]['lastSeq']):
@@ -2552,6 +2568,8 @@ class routerHBP(HBSYSTEM):
             self.STATUS[_slot]['RX_TGID']      = _dst_id
             self.STATUS[_slot]['RX_TIME']      = pkt_time
             self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
+            
+            self.STATUS[_slot]['crcs'].append(_pkt_crc)
 
 #
 # Socket-based reporting section
