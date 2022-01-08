@@ -39,7 +39,7 @@ import importlib.util
 import re
 import copy
 from setproctitle import setproctitle
-from crccheck.crc import Crc16
+from crccheck.crc import Crc32
 
 # Twisted is pretty important, so I keep it separate
 from twisted.internet.protocol import Factory, Protocol
@@ -1464,8 +1464,8 @@ class routerOBP(OPENBRIDGE):
         pkt_time = time()
         dmrpkt = _data[20:53]
         _bits = _data[15]
-        _pkt_crc = Crc16.calc(_data[4:53])
-        #_pkt_crc = Crc16.calc(dmrpkt)
+        _pkt_crc = Crc32.calc(_data[4:53])
+        #_pkt_crc = Crc32.calc(dmrpkt)
         
 
         # Match UNIT data, SMS/GPS, and send it to the dst_id if it is in SUB_MAP
@@ -1713,9 +1713,9 @@ class routerOBP(OPENBRIDGE):
                 if _seq and _seq == self.STATUS[_stream_id]['lastSeq']:
                     logger.warning("(%s) *PacketControl* Duplicate sequence number %s, disgarding. Stream ID:, %s TGID: %s",self._system,_seq,int_id(_stream_id),int_id(_dst_id))
                     return
-                #Duplicate DMR payload to previuos packet (by Crc16)
+                #Duplicate DMR payload to previuos packet (by Crc32)
                 if  self.STATUS[_stream_id]['packets'] > 1 and _pkt_crc in self.STATUS[_stream_id]['crcs']:
-                    logger.warning("(%s) *PacketControl* DMR packet payload with Crc16: %s seen before in this stream, disgarding. Stream ID:, %s TGID: %s: SEQ:%s packets: %s ",self._system,_pkt_crc,int_id(_stream_id),int_id(_dst_id),_seq, self.STATUS[_stream_id]['packets'])
+                    logger.warning("(%s) *PacketControl* DMR packet payload with Crc32: %s seen before in this stream, disgarding. Stream ID:, %s TGID: %s: SEQ:%s packets: %s ",self._system,_pkt_crc,int_id(_stream_id),int_id(_dst_id),_seq, self.STATUS[_stream_id]['packets'])
                     return
                 #Inbound out-of-order packets
                 if _seq and self.STATUS[_stream_id]['lastSeq']  and (_seq != 1) and (_seq < self.STATUS[_stream_id]['lastSeq']):
@@ -2061,7 +2061,7 @@ class routerHBP(HBSYSTEM):
         dmrpkt = _data[20:53]
         _bits = _data[15]
         
-        _pkt_crc = Crc16.calc(dmrpkt)
+        _pkt_crc = Crc32.calc(_data[4:53])
         
         _nine = bytes_3(9)
         
@@ -2432,9 +2432,9 @@ class routerHBP(HBSYSTEM):
             if _seq and _seq == self.STATUS[_slot]['lastSeq']:
                 logger.warning("(%s) *PacketControl* Duplicate sequence number %s, disgarding. Stream ID:, %s TGID: %s",self._system,_seq,int_id(_stream_id),int_id(_dst_id))
                 return
-            #Duplicate DMR payload to previuos packet (by Crc16)
+            #Duplicate DMR payload to previuos packet (by Crc32)
             if _pkt_crc in self.STATUS[_slot]['crcs']:
-                logger.warning("(%s) *PacketControl* DMR packet payload with Crc16: %s seen before in this stream, disgarding. Stream ID:, %s TGID: %s",self._system,_pkt_crc,int_id(_stream_id),int_id(_dst_id))
+                logger.warning("(%s) *PacketControl* DMR packet payload with Crc32: %s seen before in this stream, disgarding. Stream ID:, %s TGID: %s",self._system,_pkt_crc,int_id(_stream_id),int_id(_dst_id))
                 return
             #Inbound out-of-order packets
             if _seq and self.STATUS[_slot]['lastSeq']  and (_seq != 1) and (_seq < self.STATUS[_slot]['lastSeq']):
