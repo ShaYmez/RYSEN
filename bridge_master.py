@@ -2434,7 +2434,7 @@ class routerHBP(HBSYSTEM):
                 return
             #Duplicate DMR payload to previuos packet (by Crc32)
             if self.STATUS[_slot]['packets'] > 1 and _pkt_crc in self.STATUS[_slot]['crcs']:
-                logger.warning("(%s) *PacketControl* DMR packet payload with Crc32: %s seen before in this stream, disgarding. Stream ID:, %s TGID: %s, SEQ: %s",self._system,_pkt_crc,int_id(_stream_id),int_id(_dst_id),_seq)
+                logger.warning("(%s) *PacketControl* DMR packet payload with Crc32: %s seen before in this stream, disgarding. Stream ID:, %s TGID: %s, SEQ: %s, packets: ",self._system,_pkt_crc,int_id(_stream_id),int_id(_dst_id),_seq,self.STATUS[_slot]['packets'])
                 return
             #Inbound out-of-order packets
             if _seq and self.STATUS[_slot]['lastSeq']  and (_seq != 1) and (_seq < self.STATUS[_slot]['lastSeq']):
