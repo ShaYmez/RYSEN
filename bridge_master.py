@@ -39,7 +39,7 @@ import importlib.util
 import re
 import copy
 from setproctitle import setproctitle
-from crccheck.crc import Crc16
+import crccheck
 
 # Twisted is pretty important, so I keep it separate
 from twisted.internet.protocol import Factory, Protocol
