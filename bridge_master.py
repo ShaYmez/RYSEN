@@ -1625,7 +1625,6 @@ class routerOBP(OPENBRIDGE):
 
                 }
 
-                self.STATUS[_stream_id][crcs].append(_pkt_crc)
                 
                 # If we can, use the LC from the voice header as to keep all options intact
                 if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
@@ -1724,7 +1723,9 @@ class routerOBP(OPENBRIDGE):
                 self.STATUS[_stream_id]['lastData'] = _data
                
 
-
+            
+            self.STATUS[_stream_id][crcs].append(_pkt_crc)
+            
             self.STATUS[_stream_id]['LAST'] = pkt_time
             
             
