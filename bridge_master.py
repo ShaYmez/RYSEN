@@ -1611,7 +1611,7 @@ class routerOBP(OPENBRIDGE):
                                 else:
                                     logger.info('(%s) UNIT Data not bridged to HBP on slot %s - target busy: %s DST_ID: %s',self._system,_d_slot,_d_system,_int_dst_id)
             
-            self.STATUS[_stream_id]['crcs'].append(_pkt_crc)
+            self.STATUS[_stream_id]['crcs'].add(_pkt_crc)
             
                     
         if _call_type == 'group' or _call_type == 'vcsbk':
@@ -1735,7 +1735,7 @@ class routerOBP(OPENBRIDGE):
                
 
             
-            self.STATUS[_stream_id]['crcs'].append(_pkt_crc)
+            self.STATUS[_stream_id]['crcs'].add(_pkt_crc)
             
             self.STATUS[_stream_id]['LAST'] = pkt_time
             
@@ -2575,7 +2575,7 @@ class routerHBP(HBSYSTEM):
             self.STATUS[_slot]['RX_TIME']      = pkt_time
             self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
             
-            self.STATUS[_slot]['crcs'].append(_pkt_crc)
+            self.STATUS[_slot]['crcs'].add(_pkt_crc)
 
 #
 # Socket-based reporting section
