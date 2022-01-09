@@ -1467,7 +1467,7 @@ class routerOBP(OPENBRIDGE):
         _bits = _data[15]
         _#pkt_crc = Crc32.calc(_data[4:53])
         #_pkt_crc = Crc32.calc(dmrpkt)
-        )pkt_crc = _hash
+        pkt_crc = _hash
         
 
         # Match UNIT data, SMS/GPS, and send it to the dst_id if it is in SUB_MAP
