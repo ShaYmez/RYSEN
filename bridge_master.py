@@ -40,6 +40,7 @@ import re
 import copy
 from setproctitle import setproctitle
 from crccheck.crc import Crc32
+from hashlib import sha1
 
 # Twisted is pretty important, so I keep it separate
 from twisted.internet.protocol import Factory, Protocol
@@ -2062,7 +2063,8 @@ class routerHBP(HBSYSTEM):
         dmrpkt = _data[20:53]
         _bits = _data[15]
         
-        _pkt_crc = Crc32.calc(_data[4:53])
+        #_pkt_crc = Crc32.calc(_data[4:53])
+        _pkt_crc = sha1(_data).hexdigest()
         
         _nine = bytes_3(9)
         
