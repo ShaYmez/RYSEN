@@ -2097,7 +2097,7 @@ class routerHBP(HBSYSTEM):
             _data_call = True
             
             self.STATUS[_slot]['packets'] = 0
-            self.STATUS[_slot]['crcs'] = []
+            self.STATUS[_slot]['crcs'] = set()
             
             if _dtype_vseq == 3:
                 logger.info('(%s) *UNIT CSBK* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) DST_ID %s (%s), TS %s', \
@@ -2197,7 +2197,7 @@ class routerHBP(HBSYSTEM):
             if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
                 
                 self.STATUS[_slot]['packets'] = 0
-                self.STATUS[_slot]['crcs'] = []
+                self.STATUS[_slot]['crcs'] = set()
                 
                 self.STATUS[_slot]['_stopTgAnnounce'] = False
                 
@@ -2347,7 +2347,7 @@ class routerHBP(HBSYSTEM):
             if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
                 
                 self.STATUS[_slot]['packets'] = 0
-                self.STATUS[_slot]['crcs'] = []
+                self.STATUS[_slot]['crcs'] = set()
                 
                 if (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM) and (pkt_time < (self.STATUS[_slot]['RX_TIME'] + STREAM_TO)) and (_rf_src != self.STATUS[_slot]['RX_RFS']):
                     logger.warning('(%s) Packet received with STREAM ID: %s <FROM> SUB: %s PEER: %s <TO> TGID %s, SLOT %s collided with existing call', self._system, int_id(_stream_id), int_id(_rf_src), int_id(_peer_id), int_id(_dst_id), _slot)
