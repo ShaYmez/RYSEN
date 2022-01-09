@@ -1493,7 +1493,7 @@ class routerOBP(OPENBRIDGE):
                     'lastData': False,
                     'RX_PEER': _peer_id,
                     'packets': 0,
-                    'crcs': []
+                    'crcs': set()
 
                 }
             
