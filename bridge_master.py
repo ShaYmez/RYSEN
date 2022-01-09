@@ -1629,7 +1629,7 @@ class routerOBP(OPENBRIDGE):
                     'lastData': False,
                     'RX_PEER': _peer_id,
                     'packets': 0,
-                    'crcs': []
+                    'crcs': {}
 
                 }
 
@@ -1803,7 +1803,7 @@ class routerHBP(HBSYSTEM):
                 'lastSeq': False,
                 'lastData': False,
                 'packets': 0,
-                'crcs': []
+                'crcs': {}
                 },
             2: {
                 'RX_START':     time(),
@@ -1833,7 +1833,7 @@ class routerHBP(HBSYSTEM):
                 'lastSeq': False,
                 'lastData': False,
                 'packets': 0,
-                'crcs': []
+                'crcs': {}
                 }
             }
 
