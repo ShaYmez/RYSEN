@@ -34,7 +34,7 @@ This program currently only works with group voice calls.
 # Python modules we need
 import sys
 from bitarray import bitarray
-from time import time,sleep,perf_counter
+from time import time,sleep,perf_counter,time_ns
 import importlib.util
 import re
 import copy
@@ -1469,7 +1469,9 @@ class routerOBP(OPENBRIDGE):
 
         #pkt_crc = Crc32.calc(_data[4:53])
         #_pkt_crc = Crc32.calc(dmrpkt)
-        _pkt_crc = _hash
+        #_pkt_crc = _hash
+        _time_b = bytes(str(pkt_time),'utf8')
+        _pkt_crc = sha1(_data + _time_b).digest()
 
         # Match UNIT data, SMS/GPS, and send it to the dst_id if it is in SUB_MAP
         if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or _dtype_vseq == 8 or ((_stream_id not in self.STATUS) and _dtype_vseq == 3)):
@@ -2063,9 +2065,9 @@ class routerHBP(HBSYSTEM):
         dmrpkt = _data[20:53]
         _bits = _data[15]
         
-        #_pkt_crc = Crc32.calc(_data[4:53])
-        _pkt_crc = sha1(_data).digest()
-        
+        _time_b = bytes(str(time_ns()),'utf8')
+        _pkt_crc = sha1(_data + _time_b).digest()
+ 
         _nine = bytes_3(9)
         
         _lang = CONFIG['SYSTEMS'][self._system]['ANNOUNCEMENT_LANGUAGE']
