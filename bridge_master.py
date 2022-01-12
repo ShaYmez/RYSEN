@@ -1662,7 +1662,7 @@ class routerOBP(OPENBRIDGE):
                     return
                 
                 #TIMEOUT
-                if _target_status[_stream_id]['START'] + 180 < pkt_time:
+                if _self.STATUS[_stream_id]['START'] + 180 < pkt_time:
                     if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']: 
                         logger.warning("(%s) OBP *TIMEOUT*, STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
                         self.STATUS[_stream_id]['LOOPLOG'] = True
