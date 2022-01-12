@@ -2419,7 +2419,7 @@ class routerHBP(HBSYSTEM):
                         
             #Packet rate limit
             #Rate drop
-            if self.STATUS[_slot]['packets'] > 18 and (self.STATUS[_slot]['packets'] / (pkt_time - self.STATUS[_slot]['RX_START'])):
+            if self.STATUS[_slot]['packets'] > 18 and (self.STATUS[_slot]['packets'] / (pkt_time - self.STATUS[_slot]['RX_START']) > 25):
                 logger.warning("(%s) *PacketControl* RATE DROP! Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
                 self.STATUS[_slot]['LAST'] = pkt_time
                 return
