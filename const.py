@@ -73,6 +73,7 @@ DMRA    = b'DMRA'
 BC      = b'BC'
 BCKA    = b'BCKA'
 BCSQ    = b'BCSQ'
+BCST    = b'BCST'
 
 # Higheset peer ID permitted by HBP
 PEER_MAX = 4294967295
