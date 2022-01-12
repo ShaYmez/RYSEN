@@ -206,6 +206,14 @@ class OPENBRIDGE(DatagramProtocol):
                     logger.error('(%s) OpenBridge packet discarded because it was not received on slot 1. SID: %s, TGID %s', self._system, int_id(_rf_src), int_id(_dst_id))
                     return
                 
+                #Don't do anything if we are STUNned
+                if self._config['_STUN']:
+                        if _stream_id not in self._laststrid:
+                            logger.info('(%s) Bridge STUNned, discarding', self._system)
+                            self._laststrid.append(_stream_id)
+                        return
+                
+                
                 #Low-level TG filtering 
                 if _call_type != 'unit':
                     _int_dst_id = int_id(_dst_id)
@@ -288,6 +296,17 @@ class OPENBRIDGE(DatagramProtocol):
                     else:
                         h,p = _sockaddr
                         logger.warning('(%s) *BridgeControl* BCSQ invalid Source Quench, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:53]), len(_packet[53:]), repr(_packet[53:]),h,p)  
+                #Stun
+                if _packet[:4] == BCST:
+                    #_data = _packet[:11]
+                    _hash = _packet[4:]
+                    _ckhs = hmac_new(self._config['PASSPHRASE'],_packet[4:],sha1).digest()
+                    if compare_digest(_hash, _ckhs):
+                        logger.debug('(%s) *BridgeControl*  BCST STUN request received for TGID: %s, Stream ID: %s',self._system,int_id(_tgid), int_id(_stream_id))
+                        self._config['_STUN'] = True
+                    else:
+                        h,p = _sockaddr
+                        logger.warning('(%s) *BridgeControl* BCST invalid STUN, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:53]), len(_packet[53:]), repr(_packet[53:]),h,p) 
                 
                     
       
