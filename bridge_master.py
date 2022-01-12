@@ -2418,7 +2418,7 @@ class routerHBP(HBSYSTEM):
                         self._report.send_bridgeEvent('VCSBK 3/4 DATA BLOCK,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
                         
             #Timeout
-            if self.STATUS[_slot]['RX_START'] + 180 < _pkt_time:
+            if self.STATUS[_slot]['RX_START'] + 180 < pkt_time:
                 if 'LOOPLOG' not in self.STATUS[_slot] or not self.STATUS[_slot]['LOOPLOG']: 
                     logger.info("(%s) HBP * SOURCE TIMEOUT* FIRST HBP: %s, STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id),_sysslot)
                     self.STATUS[_slot]['LOOPLOG'] = True
