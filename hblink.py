@@ -207,7 +207,7 @@ class OPENBRIDGE(DatagramProtocol):
                     return
                 
                 #Don't do anything if we are STUNned
-                if self._config['_STUN']:
+                if 'STUN' in self.config:
                         if _stream_id not in self._laststrid:
                             logger.info('(%s) Bridge STUNned, discarding', self._system)
                             self._laststrid.append(_stream_id)
