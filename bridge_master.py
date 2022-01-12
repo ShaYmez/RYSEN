@@ -1661,6 +1661,15 @@ class routerOBP(OPENBRIDGE):
                     self.STATUS[_stream_id]['_finlog'] = True
                     return
                 
+                #TIMEOUT
+                if _target_status[_stream_id]['START'] + 180 < pkt_time:
+                    if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']: 
+                        logger.warning("(%s) OBP *TIMEOUT*, STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
+                        self.STATUS[_stream_id]['LOOPLOG'] = True
+                    self.STATUS[_stream_id]['LAST'] = pkt_time
+                    return
+                    
+                
                 #LoopControl
                 hr_times = {}
                 for system in systems:                            
@@ -2407,6 +2416,14 @@ class routerHBP(HBSYSTEM):
                             self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
                     if CONFIG['REPORTS']['REPORT']:
                         self._report.send_bridgeEvent('VCSBK 3/4 DATA BLOCK,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                        
+            #Timeout
+            if self.STATUS[_slot]['RX_START'] + 180 < _pkt_time:
+                if 'LOOPLOG' not in self.STATUS[_slot] or not self.STATUS[_slot]['LOOPLOG']: 
+                    logger.info("(%s) HBP * SOURCE TIMEOUT* FIRST HBP: %s, STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id),_sysslot)
+                    self.STATUS[_slot]['LOOPLOG'] = True
+                self.STATUS[_slot]['LAST'] = pkt_time
+                return
             
             #LoopControl#
             for system in systems:                            
@@ -2431,7 +2448,7 @@ class routerHBP(HBSYSTEM):
                             systems[self._system].send_bcsq(_dst_id,_stream_id)
                             self.STATUS[_slot]['_bcsq'] = True
                         return
-        
+            
             #Duplicate handling#
             #Duplicate complete packet
             if self.STATUS[_slot]['lastData'] and self.STATUS[_slot]['lastData'] == _data and _seq > 1:
