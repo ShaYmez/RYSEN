@@ -1703,6 +1703,12 @@ class routerOBP(OPENBRIDGE):
                         systems[self._system].send_bcsq(_dst_id,_stream_id)
                         self.STATUS[_stream_id]['_bcsq'] = True
                     return
+                
+                #Rate drop
+                if self.STATUS[_stream_id]['packets'] > 18 and (self.STATUS[_stream_id]['packets'] / self.STATUS[_stream_id]['START'] > 25):
+                    logger.warning("(%s) *PacketControl* RATE DROP! Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
+                    return
+                
                         
                 #Duplicate handling#
                 #Handle inbound duplicates
