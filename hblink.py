@@ -130,7 +130,11 @@ class OPENBRIDGE(DatagramProtocol):
     def dereg(self):
         logger.info('(%s) is mode OPENBRIDGE. No De-Registration required, continuing shutdown', self._system)
 
-    def send_system(self, _packet):
+    def send_system(self, _packet):                        
+        #Don't do anything if we are STUNned
+        if 'STUN' in self._CONFIG:
+            logger.info('(%s) Bridge STUNned, discarding', self._system)
+            return
         if _packet[:4] == DMRD and self._config['TARGET_IP']:
             #_packet = _packet[:11] + self._config['NETWORK_ID'] + _packet[15:]
             _packet = b''.join([_packet[:11], self._CONFIG['GLOBAL']['SERVER_ID'], _packet[15:]])
