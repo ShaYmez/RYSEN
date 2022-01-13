@@ -1664,7 +1664,7 @@ class routerOBP(OPENBRIDGE):
                 #TIMEOUT
                 if self.STATUS[_stream_id]['START'] + 180 < pkt_time:
                     if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']: 
-                        logger.warning("(%s) OBP *TIMEOUT*, STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
+                        logger.warning("(%s) OBP *TIMEOUT*, STREAM ID: %s, TG: %s, IGNORE THIS SOURCE",self._system, int_id(_stream_id), int_id(_dst_id))
                         self.STATUS[_stream_id]['LOOPLOG'] = True
                     self.STATUS[_stream_id]['LAST'] = pkt_time
                     return
@@ -2427,7 +2427,7 @@ class routerHBP(HBSYSTEM):
             #Timeout
             if self.STATUS[_slot]['RX_START'] + 180 < pkt_time:
                 if 'LOOPLOG' not in self.STATUS[_slot] or not self.STATUS[_slot]['LOOPLOG']: 
-                    logger.info("(%s) HBP * SOURCE TIMEOUT* FIRST HBP: %s, STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id),_sysslot)
+                    logger.info("(%s) HBP * SOURCE TIMEOUT* STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
                     self.STATUS[_slot]['LOOPLOG'] = True
                 self.STATUS[_slot]['LAST'] = pkt_time
                 return
