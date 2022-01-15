@@ -791,7 +791,7 @@ def options_config():
                     if 'DEFAULT_UA_TIMER' not in _options:
                         _options['DEFAULT_UA_TIMER'] = CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']
                     
-                    if 'VOICE' in _options and (CONFIG['SYSTEMS'][_system]['VOICE_IDENT'] != bool(int(_options['VOICE']))):
+                    if 'VOICE' in _options and isinstance(_options['VOICE'],int) and (CONFIG['SYSTEMS'][_system]['VOICE_IDENT'] != bool(int(_options['VOICE']))):
                         CONFIG['SYSTEMS'][_system]['VOICE_IDENT'] = bool(int(_options['VOICE']))
                         logger.debug("(OPTIONS) %s - Setting voice ident to %s",_system,CONFIG['SYSTEMS'][_system]['VOICE_IDENT'])
                         
