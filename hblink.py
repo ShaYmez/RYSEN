@@ -154,7 +154,7 @@ class OPENBRIDGE(DatagramProtocol):
                 # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
                 #logger.debug('(%s) TX Packet to OpenBridge %s:%s -- %s %s', self._system, self._config['TARGET_IP'], self._config['TARGET_PORT'], _packet, _hash)
             else:                
-                _packet = b''.join([_packet[:11], self._CONFIG['GLOBAL']['SERVER_ID'], _packet[15:]])
+                _packet = b''.join([DMRD,_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'], _packet[15:]])
                 _packet = b''.join([_packet, (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
                 self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
                 
@@ -372,7 +372,10 @@ class OPENBRIDGE(DatagramProtocol):
                                 self.send_bcsq(_dst_id,_stream_id)
                                 self._laststrid.append(_stream_id)
                             return
-
+                    
+                    #Remove timestamp from data. For now dmrd_received does not expect it
+                    #Leaving it in screws up the AMBE data
+                    _data = b''.join([_data[:15],_data[23:]])
                     # Userland actions -- typically this is the function you subclass for an application
                     self.dmrd_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash)
                     #Silently treat a DMRD packet like a keepalive - this is because it's traffic and the 
