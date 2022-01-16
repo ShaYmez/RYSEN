@@ -308,7 +308,7 @@ class OPENBRIDGE(DatagramProtocol):
                     _seq = _data[4]
                     _rf_src = _data[5:8]
                     _dst_id = _data[8:11]
-                    _timestamp = _data[15:23]
+                    _timestamp = data[15:23]
                     _bits = _data[23]
                     _slot = 2 if (_bits & 0x80) else 1
                     #_call_type = 'unit' if (_bits & 0x40) else 'group'
@@ -320,7 +320,7 @@ class OPENBRIDGE(DatagramProtocol):
                         _call_type = 'group'
                     _frame_type = (_bits & 0x30) >> 4
                     _dtype_vseq = (_bits & 0xF) # data, 1=voice header, 2=voice terminator; voice, 0=burst A ... 5=burst F
-                    _stream_id = _data[20:24]
+                    _stream_id = _data[24:28]
                     #logger.debug('(%s) DMRD - Seqence: %s, RF Source: %s, Destination ID: %s', self._system, int_id(_seq), int_id(_rf_src), int_id(_dst_id))
                    # Sanity check for OpenBridge -- all calls must be on Slot 1
                     if _slot != 1:
