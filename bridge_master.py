@@ -41,7 +41,7 @@ import copy
 from setproctitle import setproctitle
 
 #from crccheck.crc import Crc32
-from hashlib import sha1
+from hashlib import blake2b
 
 # Twisted is pretty important, so I keep it separate
 from twisted.internet.protocol import Factory, Protocol
@@ -82,7 +82,7 @@ from binascii import b2a_hex as ahex
 
 
 ##from hmac import new as hmac_new, compare_digest
-##from hashlib import sha256, sha1
+##from hashlib import sha256, hash
 
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Cortney T. Buffington, N0MJS, Forked by Simon Adlem - G7RZU'
@@ -1733,9 +1733,9 @@ class routerOBP(OPENBRIDGE):
                 if _seq and self.STATUS[_stream_id]['lastSeq']  and (_seq != 1) and (_seq < self.STATUS[_stream_id]['lastSeq']):
                     logger.warning("%s) *PacketControl* Out of order packet - last SEQ: %s, this SEQ: %s,  disgarding. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_stream_id]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
                     return
-                #Duplicate DMR payload to previuos packet (by SHA1
+                #Duplicate DMR payload to previuos packet (by hash
                 if  _seq > 0 and _pkt_crc in self.STATUS[_stream_id]['crcs']:
-                    logger.warning("(%s) *PacketControl* DMR packet payload with SHA1: %s seen before in this stream, disgarding. Stream ID:, %s TGID: %s: SEQ:%s packets: %s ",self._system,_pkt_crc,int_id(_stream_id),int_id(_dst_id),_seq, self.STATUS[_stream_id]['packets'])
+                    logger.warning("(%s) *PacketControl* DMR packet payload with hash: %s seen before in this stream, disgarding. Stream ID:, %s TGID: %s: SEQ:%s packets: %s ",self._system,_pkt_crc,int_id(_stream_id),int_id(_dst_id),_seq, self.STATUS[_stream_id]['packets'])
                     return
                 #Inbound missed packets
                 if _seq and self.STATUS[_stream_id]['lastSeq'] and _seq > (self.STATUS[_stream_id]['lastSeq']+1):
@@ -2080,7 +2080,12 @@ class routerHBP(HBSYSTEM):
         _bits = _data[15]
         
         #_pkt_crc = Crc32.calc(_data[4:53])
-        _pkt_crc = sha1(_data).digest()
+        #_pkt_crc = hash(_data).digest()
+        
+        #Use blake2b hash
+        _h = blake2b()
+        _h.update(_data)
+        _pkt_crc = _h.digest()
         
         _nine = bytes_3(9)
         
@@ -2470,9 +2475,9 @@ class routerHBP(HBSYSTEM):
             if _seq and self.STATUS[_slot]['lastSeq']  and (_seq != 1) and (_seq < self.STATUS[_slot]['lastSeq']):
                 logger.warning("%s) *PacketControl* Out of order packet - last SEQ: %s, this SEQ: %s,  disgarding. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_slot]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
                 return
-            #Duplicate DMR payload to previuos packet (by SHA1)
+            #Duplicate DMR payload to previuos packet (by hash)
             if _seq > 0 and _pkt_crc in self.STATUS[_slot]['crcs']:
-                logger.warning("(%s) *PacketControl* DMR packet payload with SHA1: %s seen before in this stream, disgarding. Stream ID:, %s TGID: %s, SEQ: %s, packets %s: ",self._system,_pkt_crc,int_id(_stream_id),int_id(_dst_id),_seq,self.STATUS[_slot]['packets'])
+                logger.warning("(%s) *PacketControl* DMR packet payload with hash: %s seen before in this stream, disgarding. Stream ID:, %s TGID: %s, SEQ: %s, packets %s: ",self._system,_pkt_crc,int_id(_stream_id),int_id(_dst_id),_seq,self.STATUS[_slot]['packets'])
                 return
             #Inbound missed packets
             if _seq and self.STATUS[_slot]['lastSeq'] and _seq > (self.STATUS[_slot]['lastSeq']+1):
