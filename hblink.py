@@ -144,7 +144,7 @@ class OPENBRIDGE(DatagramProtocol):
             return
         
         if _packet[:4] == DMRD and self._config['TARGET_IP']:
-            if self._config['VER'] > 1:
+            if 'VER' in self._config and self._config['VER'] > 1:
                 _packet = b''.join([DMRE,_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'], time_ns().to_bytes(8,'big'), _packet[23:]])
                 _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
                 _h.update(_packet)
@@ -435,7 +435,7 @@ class OPENBRIDGE(DatagramProtocol):
                     _hash = _packet[5:]
                     _ckhs = hmac_new(self._config['PASSPHRASE'],_packet[4:5],sha1).digest()
                     if compare_digest(_hash, _ckhs):
-                        logger.debug('(%s) *BridgeControl*  BCVE Version received, Ver: %s',self._system,_ver)
+                        logger.warning('(%s) *BridgeControl*  BCVE Version received, Ver: %s',self._system,_ver)
                         self._config['VER'] = _ver
                     else:
                         h,p = _sockaddr
