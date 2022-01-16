@@ -31,9 +31,9 @@ sufficient logging to be used standalone as a troubleshooting application.
 from binascii import b2a_hex as ahex
 from binascii import a2b_hex as bhex
 from random import randint
-from hashlib import sha256, sha1
+from hashlib import sha256, sha1, blake2b
 from hmac import new as hmac_new, compare_digest
-from time import time
+from time import time, time_ns
 from collections import deque
 
 # Twisted is pretty important, so I keep it separate
@@ -142,10 +142,14 @@ class OPENBRIDGE(DatagramProtocol):
         if 'STUN' in self._CONFIG:
             logger.info('(%s) Bridge STUNned, discarding', self._system)
             return
+        
         if _packet[:4] == DMRD and self._config['TARGET_IP']:
-            if self.config['VER'] = > 1:
-                _packet = b''.join([_packet[:11], self._CONFIG['GLOBAL']['SERVER_ID'], _packet[15:]])
-                _packet = b''.join([_packet, (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
+            if self.config['VER'] > 1:
+                _packet = b''.join([DMRE,_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'], time_ns().to_bytes(8,'big'), _packet[23:]])
+                _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
+                _h.update(_packet)
+                _hash = _h,digest()
+                _packet = b''.join([_packet, _hash])
                 self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
                 # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
                 #logger.debug('(%s) TX Packet to OpenBridge %s:%s -- %s', self._system, self._config['TARGET_IP'], self._config['TARGET_PORT'], ahex(_packet))
@@ -199,32 +203,66 @@ class OPENBRIDGE(DatagramProtocol):
         # Keep This Line Commented Unless HEAVILY Debugging!
         #logger.debug('(%s) RX packet from %s -- %s', self._system, _sockaddr, ahex(_packet))
 
-        if _packet[:4] == DMRD:    # DMRData -- encapsulated DMR data frame
-            _data = _packet[:53]
-            _hash = _packet[53:]
-            _ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
+        if _packet[:3] == DMR:    # DMRData -- encapsulated DMR data frame
+            
+            if _packet[:4] == DMRD:
+                _data = _packet[:53]
+                _hash = _packet[53:]
+                _ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
 
-            if compare_digest(_hash, _ckhs) and (_sockaddr == self._config['TARGET_SOCK'] or self._config['RELAX_CHECKS']):
-                _peer_id = _data[11:15]
-                if self._config['NETWORK_ID'] != _peer_id:
-                    logger.error('(%s) OpenBridge packet discarded because NETWORK_ID: %s Does not match sent Peer ID: %s', self._system, int_id(self._config['NETWORK_ID']), int_id(_peer_id))
-                    return
-                _seq = _data[4]
-                _rf_src = _data[5:8]
-                _dst_id = _data[8:11]
-                _bits = _data[15]
-                _slot = 2 if (_bits & 0x80) else 1
-                #_call_type = 'unit' if (_bits & 0x40) else 'group'
-                if _bits & 0x40:
-                    _call_type = 'unit'
-                elif (_bits & 0x23) == 0x23:
-                    _call_type = 'vcsbk'
-                else:
-                    _call_type = 'group'
-                _frame_type = (_bits & 0x30) >> 4
-                _dtype_vseq = (_bits & 0xF) # data, 1=voice header, 2=voice terminator; voice, 0=burst A ... 5=burst F
-                _stream_id = _data[16:20]
-                #logger.debug('(%s) DMRD - Seqence: %s, RF Source: %s, Destination ID: %s', self._system, int_id(_seq), int_id(_rf_src), int_id(_dst_id))
+                if compare_digest(_hash, _ckhs) and (_sockaddr == self._config['TARGET_SOCK'] or self._config['RELAX_CHECKS']):
+                    _peer_id = _data[11:15]
+                    if self._config['NETWORK_ID'] != _peer_id:
+                        logger.error('(%s) OpenBridge packet discarded because NETWORK_ID: %s Does not match sent Peer ID: %s', self._system, int_id(self._config['NETWORK_ID']), int_id(_peer_id))
+                        return
+                    _seq = _data[4]
+                    _rf_src = _data[5:8]
+                    _dst_id = _data[8:11]
+                    _bits = _data[15]
+                    _slot = 2 if (_bits & 0x80) else 1
+                    #_call_type = 'unit' if (_bits & 0x40) else 'group'
+                    if _bits & 0x40:
+                        _call_type = 'unit'
+                    elif (_bits & 0x23) == 0x23:
+                        _call_type = 'vcsbk'
+                    else:
+                        _call_type = 'group'
+                    _frame_type = (_bits & 0x30) >> 4
+                    _dtype_vseq = (_bits & 0xF) # data, 1=voice header, 2=voice terminator; voice, 0=burst A ... 5=burst F
+                    _stream_id = _data[16:20]
+                    #logger.debug('(%s) DMRD - Seqence: %s, RF Source: %s, Destination ID: %s', self._system, int_id(_seq), int_id(_rf_src), int_id(_dst_id))
+            
+            elif _packet[:4] == DMRE:
+                _data = _packet[:61]
+                _hash = _packet[61:]
+                #_ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
+                _h = blake2b(key=join(self._config['PASSPHRASE'], digest_size=16))
+                _h.update(_data)
+                _ckhs = _h.digest()
+
+                if compare_digest(_hash, _ckhs) and (_sockaddr == self._config['TARGET_SOCK'] or self._config['RELAX_CHECKS']):
+                    _peer_id = _data[11:15]
+                    if self._config['NETWORK_ID'] != _peer_id:
+                        logger.error('(%s) OpenBridge packet discarded because NETWORK_ID: %s Does not match sent Peer ID: %s', self._system, int_id(self._config['NETWORK_ID']), int_id(_peer_id))
+                        return
+                    _seq = _data[4]
+                    _rf_src = _data[5:8]
+                    _dst_id = _data[8:11]
+                    _timestamp = data_[15:23]
+                    _bits = _data[23]
+                    _slot = 2 if (_bits & 0x80) else 1
+                    #_call_type = 'unit' if (_bits & 0x40) else 'group'
+                    if _bits & 0x40:
+                        _call_type = 'unit'
+                    elif (_bits & 0x23) == 0x23:
+                        _call_type = 'vcsbk'
+                    else:
+                        _call_type = 'group'
+                    _frame_type = (_bits & 0x30) >> 4
+                    _dtype_vseq = (_bits & 0xF) # data, 1=voice header, 2=voice terminator; voice, 0=burst A ... 5=burst F
+                    _stream_id = _data[20:24]
+                    #logger.debug('(%s) DMRD - Seqence: %s, RF Source: %s, Destination ID: %s', self._system, int_id(_seq), int_id(_rf_src), int_id(_dst_id))
+                
 
                 # Sanity check for OpenBridge -- all calls must be on Slot 1
                 if _slot != 1:
