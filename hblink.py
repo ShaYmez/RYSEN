@@ -145,7 +145,7 @@ class OPENBRIDGE(DatagramProtocol):
         
         if _packet[:4] == DMRD and self._config['TARGET_IP']:
             if 'VER' in self._config and self._config['VER'] > 1:
-                _packet = b''.join([DMRE,_packet[5:11], self._CONFIG['GLOBAL']['SERVER_ID'], time_ns().to_bytes(8,'big'), _packet[15:]])
+                _packet = b''.join([DMRE,_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'], time_ns().to_bytes(8,'big'), _packet[15:]])
                 _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
                 _h.update(_packet)
                 _hash = _h.digest()
@@ -293,8 +293,8 @@ class OPENBRIDGE(DatagramProtocol):
                     logger.info('(%s) OpenBridge HMAC failed, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:53]), len(_packet[53:]), repr(_packet[53:]),h,p) 
 
             elif _packet[:4] == DMRE:
-                _data = _packet[:60]
-                _hash = _packet[60:]
+                _data = _packet[:61]
+                _hash = _packet[61:]
                 #_ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
                 _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
                 _h.update(_data)
@@ -380,7 +380,7 @@ class OPENBRIDGE(DatagramProtocol):
                     self._config['_bcka'] = time()
                 else:
                     h,p = _sockaddr
-                    logger.info('(%s) FreeBridge HMAC failed, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:60]), len(_packet[60:]), repr(_packet[61:]),h,p) 
+                    logger.info('(%s) FreeBridge HMAC failed, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:61]), len(_packet[61:]), repr(_packet[61:]),h,p) 
 
         if self._config['ENHANCED_OBP']:
             if _packet[:2] == BC:    # Bridge Control packet (Extended OBP)
