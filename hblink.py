@@ -204,7 +204,6 @@ class OPENBRIDGE(DatagramProtocol):
         #logger.debug('(%s) RX packet from %s -- %s', self._system, _sockaddr, ahex(_packet))
 
         if _packet[:3] == DMR:    # DMRData -- encapsulated DMR data frame
-            
             if _packet[:4] == DMRD:
                 _data = _packet[:53]
                 _hash = _packet[53:]
@@ -231,7 +230,68 @@ class OPENBRIDGE(DatagramProtocol):
                     _dtype_vseq = (_bits & 0xF) # data, 1=voice header, 2=voice terminator; voice, 0=burst A ... 5=burst F
                     _stream_id = _data[16:20]
                     #logger.debug('(%s) DMRD - Seqence: %s, RF Source: %s, Destination ID: %s', self._system, int_id(_seq), int_id(_rf_src), int_id(_dst_id))
-            
+                        
+
+                    # Sanity check for OpenBridge -- all calls must be on Slot 1
+                    if _slot != 1:
+                        logger.error('(%s) OpenBridge packet discarded because it was not received on slot 1. SID: %s, TGID %s', self._system, int_id(_rf_src), int_id(_dst_id))
+                        return
+                    
+                    #Don't do anything if we are STUNned
+                    if 'STUN' in self._CONFIG:
+                            if _stream_id not in self._laststrid:
+                                logger.info('(%s) Bridge STUNned, discarding', self._system)
+                                self._laststrid.append(_stream_id)
+                            return
+                    
+                    
+                    #Low-level TG filtering 
+                    if _call_type != 'unit':
+                        _int_dst_id = int_id(_dst_id)
+                        if _int_dst_id <= 79 or (_int_dst_id >= 9990 and _int_dst_id <= 9999) or _int_dst_id == 900999:
+                            if _stream_id not in self._laststrid:
+                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY GLOBAL TG FILTER', self._system, int_id(_stream_id), _int_dst_id)
+                                self.send_bcsq(_dst_id,_stream_id)
+                                self._laststrid.append(_stream_id)
+                            return
+                    
+                    # ACL Processing
+                    if self._CONFIG['GLOBAL']['USE_ACL']:
+                        if not acl_check(_rf_src, self._CONFIG['GLOBAL']['SUB_ACL']):
+                            if _stream_id not in self._laststrid:
+                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY GLOBAL TS1 ACL', self._system, int_id(_stream_id), int_id(_rf_src))
+                                self.send_bcsq(_dst_id,_stream_id)
+                                self._laststrid.append(_stream_id)
+                            return
+                        if _slot == 1 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG1_ACL']):
+                            if _stream_id not in self._laststrid:
+                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY GLOBAL TS1 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
+                                self.send_bcsq(_dst_id,_stream_id)
+                                self._laststrid.append(_stream_id)
+                            return
+                    if self._config['USE_ACL']:
+                        if not acl_check(_rf_src, self._config['SUB_ACL']):
+                            if _stream_id not in self._laststrid:
+                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY SYSTEM ACL', self._system, int_id(_stream_id), int_id(_rf_src))
+                                self.send_bcsq(_dst_id,_stream_id)
+                                self._laststrid.append(_stream_id)
+                            return
+                        if not acl_check(_dst_id, self._config['TG1_ACL']):
+                            if _stream_id not in self._laststrid:
+                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY SYSTEM ACL', self._system, int_id(_stream_id), int_id(_dst_id))
+                                self.send_bcsq(_dst_id,_stream_id)
+                                self._laststrid.append(_stream_id)
+                            return
+
+                    # Userland actions -- typically this is the function you subclass for an application
+                    self.dmrd_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash)
+                    #Silently treat a DMRD packet like a keepalive - this is because it's traffic and the 
+                    #Other end may not have enabled ENAHNCED_OBP
+                    self._config['_bcka'] = time()
+                else:
+                    h,p = _sockaddr
+                    logger.info('(%s) OpenBridge HMAC failed, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:53]), len(_packet[53:]), repr(_packet[53:]),h,p) 
+
             elif _packet[:4] == DMRE:
                 _data = _packet[:61]
                 _hash = _packet[61:]
@@ -262,67 +322,65 @@ class OPENBRIDGE(DatagramProtocol):
                     _dtype_vseq = (_bits & 0xF) # data, 1=voice header, 2=voice terminator; voice, 0=burst A ... 5=burst F
                     _stream_id = _data[20:24]
                     #logger.debug('(%s) DMRD - Seqence: %s, RF Source: %s, Destination ID: %s', self._system, int_id(_seq), int_id(_rf_src), int_id(_dst_id))
-                
+                   # Sanity check for OpenBridge -- all calls must be on Slot 1
+                    if _slot != 1:
+                        logger.error('(%s) OpenBridge packet discarded because it was not received on slot 1. SID: %s, TGID %s', self._system, int_id(_rf_src), int_id(_dst_id))
+                        return
+                    
+                    #Don't do anything if we are STUNned
+                    if 'STUN' in self._CONFIG:
+                            if _stream_id not in self._laststrid:
+                                logger.info('(%s) Bridge STUNned, discarding', self._system)
+                                self._laststrid.append(_stream_id)
+                            return
+                    
+                    
+                    #Low-level TG filtering 
+                    if _call_type != 'unit':
+                        _int_dst_id = int_id(_dst_id)
+                        if _int_dst_id <= 79 or (_int_dst_id >= 9990 and _int_dst_id <= 9999) or _int_dst_id == 900999:
+                            if _stream_id not in self._laststrid:
+                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY GLOBAL TG FILTER', self._system, int_id(_stream_id), _int_dst_id)
+                                self.send_bcsq(_dst_id,_stream_id)
+                                self._laststrid.append(_stream_id)
+                            return
+                    
+                    # ACL Processing
+                    if self._CONFIG['GLOBAL']['USE_ACL']:
+                        if not acl_check(_rf_src, self._CONFIG['GLOBAL']['SUB_ACL']):
+                            if _stream_id not in self._laststrid:
+                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY GLOBAL TS1 ACL', self._system, int_id(_stream_id), int_id(_rf_src))
+                                self.send_bcsq(_dst_id,_stream_id)
+                                self._laststrid.append(_stream_id)
+                            return
+                        if _slot == 1 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG1_ACL']):
+                            if _stream_id not in self._laststrid:
+                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY GLOBAL TS1 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
+                                self.send_bcsq(_dst_id,_stream_id)
+                                self._laststrid.append(_stream_id)
+                            return
+                    if self._config['USE_ACL']:
+                        if not acl_check(_rf_src, self._config['SUB_ACL']):
+                            if _stream_id not in self._laststrid:
+                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY SYSTEM ACL', self._system, int_id(_stream_id), int_id(_rf_src))
+                                self.send_bcsq(_dst_id,_stream_id)
+                                self._laststrid.append(_stream_id)
+                            return
+                        if not acl_check(_dst_id, self._config['TG1_ACL']):
+                            if _stream_id not in self._laststrid:
+                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY SYSTEM ACL', self._system, int_id(_stream_id), int_id(_dst_id))
+                                self.send_bcsq(_dst_id,_stream_id)
+                                self._laststrid.append(_stream_id)
+                            return
 
-                # Sanity check for OpenBridge -- all calls must be on Slot 1
-                if _slot != 1:
-                    logger.error('(%s) OpenBridge packet discarded because it was not received on slot 1. SID: %s, TGID %s', self._system, int_id(_rf_src), int_id(_dst_id))
-                    return
-                
-                #Don't do anything if we are STUNned
-                if 'STUN' in self._CONFIG:
-                        if _stream_id not in self._laststrid:
-                            logger.info('(%s) Bridge STUNned, discarding', self._system)
-                            self._laststrid.append(_stream_id)
-                        return
-                
-                
-                #Low-level TG filtering 
-                if _call_type != 'unit':
-                    _int_dst_id = int_id(_dst_id)
-                    if _int_dst_id <= 79 or (_int_dst_id >= 9990 and _int_dst_id <= 9999) or _int_dst_id == 900999:
-                        if _stream_id not in self._laststrid:
-                            logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY GLOBAL TG FILTER', self._system, int_id(_stream_id), _int_dst_id)
-                            self.send_bcsq(_dst_id,_stream_id)
-                            self._laststrid.append(_stream_id)
-                        return
-                
-                # ACL Processing
-                if self._CONFIG['GLOBAL']['USE_ACL']:
-                    if not acl_check(_rf_src, self._CONFIG['GLOBAL']['SUB_ACL']):
-                        if _stream_id not in self._laststrid:
-                            logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY GLOBAL TS1 ACL', self._system, int_id(_stream_id), int_id(_rf_src))
-                            self.send_bcsq(_dst_id,_stream_id)
-                            self._laststrid.append(_stream_id)
-                        return
-                    if _slot == 1 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG1_ACL']):
-                        if _stream_id not in self._laststrid:
-                            logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY GLOBAL TS1 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
-                            self.send_bcsq(_dst_id,_stream_id)
-                            self._laststrid.append(_stream_id)
-                        return
-                if self._config['USE_ACL']:
-                    if not acl_check(_rf_src, self._config['SUB_ACL']):
-                        if _stream_id not in self._laststrid:
-                            logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY SYSTEM ACL', self._system, int_id(_stream_id), int_id(_rf_src))
-                            self.send_bcsq(_dst_id,_stream_id)
-                            self._laststrid.append(_stream_id)
-                        return
-                    if not acl_check(_dst_id, self._config['TG1_ACL']):
-                        if _stream_id not in self._laststrid:
-                            logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY SYSTEM ACL', self._system, int_id(_stream_id), int_id(_dst_id))
-                            self.send_bcsq(_dst_id,_stream_id)
-                            self._laststrid.append(_stream_id)
-                        return
-
-                # Userland actions -- typically this is the function you subclass for an application
-                self.dmrd_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash)
-                #Silently treat a DMRD packet like a keepalive - this is because it's traffic and the 
-                #Other end may not have enabled ENAHNCED_OBP
-                self._config['_bcka'] = time()
-            else:
-                h,p = _sockaddr
-                logger.info('(%s) OpenBridge HMAC failed, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:53]), len(_packet[53:]), repr(_packet[53:]),h,p) 
+                    # Userland actions -- typically this is the function you subclass for an application
+                    self.dmrd_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash)
+                    #Silently treat a DMRD packet like a keepalive - this is because it's traffic and the 
+                    #Other end may not have enabled ENAHNCED_OBP
+                    self._config['_bcka'] = time()
+                else:
+                    h,p = _sockaddr
+                    logger.info('(%s) FreeBridge HMAC failed, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:53]), len(_packet[53:]), repr(_packet[53:]),h,p) 
 
         if self._config['ENHANCED_OBP']:
             if _packet[:2] == BC:    # Bridge Control packet (Extended OBP)
