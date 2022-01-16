@@ -308,7 +308,7 @@ class OPENBRIDGE(DatagramProtocol):
                     _seq = _data[4]
                     _rf_src = _data[5:8]
                     _dst_id = _data[8:11]
-                    _timestamp = data_[15:23]
+                    _timestamp = _data[15:23]
                     _bits = _data[23]
                     _slot = 2 if (_bits & 0x80) else 1
                     #_call_type = 'unit' if (_bits & 0x40) else 'group'
