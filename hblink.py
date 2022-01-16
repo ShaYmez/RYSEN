@@ -145,7 +145,7 @@ class OPENBRIDGE(DatagramProtocol):
         
         if _packet[:4] == DMRD and self._config['TARGET_IP']:
             if 'VER' in self._config and self._config['VER'] > 1:
-                _packet = b''.join([DMRE,_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'], time_ns().to_bytes(8,'big'), _packet[23:]])
+                _packet = b''.join([DMRE,_packet[5:11], self._CONFIG['GLOBAL']['SERVER_ID'], time_ns().to_bytes(8,'big'), _packet[23:]])
                 _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
                 _h.update(_packet)
                 _hash = _h.digest()
@@ -296,7 +296,7 @@ class OPENBRIDGE(DatagramProtocol):
                 _data = _packet[:61]
                 _hash = _packet[61:]
                 #_ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
-                _h = blake2b(key=join(self._config['PASSPHRASE'], digest_size=16))
+                _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
                 _h.update(_data)
                 _ckhs = _h.digest()
 
