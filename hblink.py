@@ -126,6 +126,13 @@ class OPENBRIDGE(DatagramProtocol):
             self._bcka_task = task.LoopingCall(self.send_bcka)
             self._bcka = self._bcka_task.start(10)
             self._bcka.addErrback(self.loopingErrHandle)
+            
+            logger.debug('(%s) *BridgeControl* starting Version timer',self._system)
+            self._bcve_task = task.LoopingCall(self.send_bcve)
+            self._bcve = self._bcve_task.start(60)
+            self._bcve.addErrback(self.loopingErrHandle)
+            
+            
 
     def dereg(self):
         logger.info('(%s) is mode OPENBRIDGE. No De-Registration required, continuing shutdown', self._system)
@@ -136,13 +143,17 @@ class OPENBRIDGE(DatagramProtocol):
             logger.info('(%s) Bridge STUNned, discarding', self._system)
             return
         if _packet[:4] == DMRD and self._config['TARGET_IP']:
-            #_packet = _packet[:11] + self._config['NETWORK_ID'] + _packet[15:]
-            _packet = b''.join([_packet[:11], self._CONFIG['GLOBAL']['SERVER_ID'], _packet[15:]])
-            #_packet += hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest()
-            _packet = b''.join([_packet, (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
-            self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
-            # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
-            #logger.debug('(%s) TX Packet to OpenBridge %s:%s -- %s', self._system, self._config['TARGET_IP'], self._config['TARGET_PORT'], ahex(_packet))                
+            if self.config['VER'] = > 1:
+                _packet = b''.join([_packet[:11], self._CONFIG['GLOBAL']['SERVER_ID'], _packet[15:]])
+                _packet = b''.join([_packet, (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
+                self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
+                # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
+                #logger.debug('(%s) TX Packet to OpenBridge %s:%s -- %s', self._system, self._config['TARGET_IP'], self._config['TARGET_PORT'], ahex(_packet))
+            else:                
+                _packet = b''.join([_packet[:11], self._CONFIG['GLOBAL']['SERVER_ID'], _packet[15:]])
+                _packet = b''.join([_packet, (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
+                self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
+                
         else:
             
             if not self._config['TARGET_IP']:
@@ -168,6 +179,16 @@ class OPENBRIDGE(DatagramProtocol):
             logger.debug('(%s) *BridgeControl* sent BCSQ Source Quench, TG: %s, Stream ID: %s',self._system,int_id(_tgid), int_id(_stream_id))
         else:
             logger.debug('(%s) *BridgeControl* Not sent BCSQ Source Quench TARGET_IP not known , TG: %s, Stream ID: %s',self._system,int_id(_tgid))
+            
+    def send_bcve(self):
+        if self._config['ENHANCED_OBP'] and self._config['TARGET_IP']:
+            _packet = BCVE + VER.to_bytes(1,'big')
+            _packet = b''.join([_packet, (hmac_new(self._config['PASSPHRASE'],_packet[4:5],sha1).digest())])
+            self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
+            logger.debug('(%s) *BridgeControl* sent BCVE. Ver: %s',self._system,VER)
+        else:
+            logger.debug('(%s) *BridgeControl* not sending BCVE, TARGET_IP currently not known',self._system) 
+            
     
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash):
@@ -311,6 +332,20 @@ class OPENBRIDGE(DatagramProtocol):
                     else:
                         h,p = _sockaddr
                         logger.warning('(%s) *BridgeControl* BCST invalid STUN, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:53]), len(_packet[53:]), repr(_packet[53:]),h,p) 
+                #Version
+                if _packet[:4] == BCVE:
+                    #_data = _packet[:11]
+                    _ver = int.from_bytes(_packet[4:5],'big')
+                    _hash = _packet[5:]
+                    _ckhs = hmac_new(self._config['PASSPHRASE'],_packet[4:5],sha1).digest()
+                    if compare_digest(_hash, _ckhs):
+                        logger.debug('(%s) *BridgeControl*  BCVE Version received, Ver: %s',self._system,_ver)
+                        self._config['VER'] = _ver
+                    else:
+                        h,p = _sockaddr
+                        logger.warning('(%s) *BridgeControl* BCVE invalid, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:53]), len(_packet[53:]), repr(_packet[53:]),h,p) 
+                
+                
                 
                     
       
