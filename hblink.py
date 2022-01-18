@@ -308,8 +308,8 @@ class OPENBRIDGE(DatagramProtocol):
                     _seq = _data[4]
                     _rf_src = _data[5:8]
                     _dst_id = _data[8:11]
-                    _timestamp = _data[12:20]
-                    _bits = _data[24]
+                    _timestamp = _data[12:19]
+                    _bits = _data[23]
                     _slot = 2 if (_bits & 0x80) else 1
                     #_call_type = 'unit' if (_bits & 0x40) else 'group'
                     if _bits & 0x40:
@@ -375,7 +375,7 @@ class OPENBRIDGE(DatagramProtocol):
                     
                     #Remove timestamp from data. For now dmrd_received does not expect it
                     #Leaving it in screws up the AMBE data
-                    _data = b''.join([_data[:12],_data[20:]])
+                    _data = b''.join([_data[:12],_data[19:]])
                     # Userland actions -- typically this is the function you subclass for an application
                     self.dmrd_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash)
                     #Silently treat a DMRD packet like a keepalive - this is because it's traffic and the 
