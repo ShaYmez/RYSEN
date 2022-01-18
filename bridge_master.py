@@ -2083,7 +2083,7 @@ class routerHBP(HBSYSTEM):
         #_pkt_crc = hash(_data).digest()
         
         #Use blake2b hash
-        _h = blake2b()
+        _h = blake2b(digest_size=16)
         _h.update(_data)
         _pkt_crc = _h.digest()
         

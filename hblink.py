@@ -163,7 +163,7 @@ class OPENBRIDGE(DatagramProtocol):
             if not self._config['TARGET_IP']:
                 logger.debug('(%s) Not sent packet as TARGET_IP not currently known')
             else:
-                logger.error('(%s) OpenBridge system was asked to send non DMRD packet with send_system(): %s', self._system, _packet)
+                logger.error('(%s) OpenBridge system was asked to send non DMR packet with send_system(): %s', self._system, _packet)
             
     def send_bcka(self):
         if self._config['TARGET_IP']:
@@ -375,7 +375,7 @@ class OPENBRIDGE(DatagramProtocol):
                     
                     #Remove timestamp from data. For now dmrd_received does not expect it
                     #Leaving it in screws up the AMBE data
-                    _data = b''.join([_data[:15],_data[23:]])
+                    _data = b''.join([_data[:15],_data[24:]])
                     # Userland actions -- typically this is the function you subclass for an application
                     self.dmrd_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash)
                     #Silently treat a DMRD packet like a keepalive - this is because it's traffic and the 
