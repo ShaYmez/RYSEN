@@ -145,7 +145,7 @@ class OPENBRIDGE(DatagramProtocol):
         
         if _packet[:3] == DMR and self._config['TARGET_IP']:
             if 'VER' in self._config and self._config['VER'] > 1:
-                _packet = b''.join([DMRE,_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'],_packet[15:]])
+                _packet = b''.join([DMRE,_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'],_packet[15:], time_ns().to_bytes(8,'big')])
                 _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
                 _h.update(_packet)
                 _hash = _h.digest()
@@ -294,7 +294,8 @@ class OPENBRIDGE(DatagramProtocol):
 
             elif _packet[:4] == DMRE:
                 _data = _packet[:53]
-                _hash = _packet[53:]
+                _timestamp = _packet[53:61]
+                _hash = _packet[61:]
                 #_ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
                 _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
                 _h.update(_data)
@@ -371,7 +372,7 @@ class OPENBRIDGE(DatagramProtocol):
                     #Remove timestamp from data. For now dmrd_received does not expect it
                     #Leaving it in screws up the AMBE data
                     #_data = b''.join([_data[:5],_data[12:]])
-                    _data = b''.join([DMRD,_data[4:]])
+                    _data = b''.join([DMRD,_data[12:]])
                     # Userland actions -- typically this is the function you subclass for an application
                     self.dmrd_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash)
                     #Silently treat a DMRD packet like a keepalive - this is because it's traffic and the 
