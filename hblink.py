@@ -146,6 +146,7 @@ class OPENBRIDGE(DatagramProtocol):
         if not _hops:
             _hops = 0
             _hops = _hops.to_bytes(1,'big')
+            
         
         if _packet[:3] == DMR and self._config['TARGET_IP']:
             if 'VER' in self._config and self._config['VER'] > 1:
@@ -394,8 +395,11 @@ class OPENBRIDGE(DatagramProtocol):
                     #Leaving it in screws up the AMBE data
                     #_data = b''.join([_data[:5],_data[12:]])
                     _data = b''.join([DMRD,_data[4:]])
+                    
+                    _inthops = _hops.from_bytes('big') + 1
+                    _hops = _inthops.to_bytes(1,'big')
+                    print(_inthops)
                     # Userland actions -- typically this is the function you subclass for an application
-                    _hops = bytes(int(_hops) + 1)
                     self.dmrd_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash,_hops)
                     #Silently treat a DMRD packet like a keepalive - this is because it's traffic and the 
                     #Other end may not have enabled ENAHNCED_OBP
