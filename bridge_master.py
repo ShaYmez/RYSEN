@@ -1287,6 +1287,7 @@ class routerOBP(OPENBRIDGE):
                             dst_lc = b''.join([self.STATUS[_stream_id]['LC'][0:3], _target['TGID'], _rf_src])
                         except Exception:
                             logger.exception('(to_target) caught exception')
+                            _target_status[_stream_id]['LAST'] = pkt_time
                             return
                         _target_status[_stream_id]['H_LC'] = bptc.encode_header_lc(dst_lc)
                         _target_status[_stream_id]['T_LC'] = bptc.encode_terminator_lc(dst_lc)
