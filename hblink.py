@@ -447,8 +447,8 @@ class OPENBRIDGE(DatagramProtocol):
                         
                         if _ver > self._config['VER']:
                             logger.info('(%s) *ProtoControl*  BCVE Version upgrade, Ver: %s',self._system,_ver)
-                            self._config['VER'] == _ver
-                        elif _ver = self._config['VER']:
+                            self._config['VER'] = _ver
+                        elif _ver == self._config['VER']:
                             pass
                         else:
                             logger.warning('(%s) *ProtoControl*  BCVE Version downgrade not allowed, Ver: %s',self._system,_ver)
