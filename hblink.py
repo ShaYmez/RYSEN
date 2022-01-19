@@ -582,7 +582,7 @@ class HBSYSTEM(DatagramProtocol):
     def updateSockaddr_errback(self,failure):
         logger.debug('(%s) hostname resolution error: %s',self._system,failure)
 
-    def send_peers(self, _packet):
+    def send_peers(self, _packet, _hops = False):
         for _peer in self._peers:
             self.send_peer(_peer, _packet)
             #logger.debug('(%s) Packet sent to peer %s', self._system, self._peers[_peer]['RADIO_ID'])
@@ -594,7 +594,7 @@ class HBSYSTEM(DatagramProtocol):
         # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
         #logger.debug('(%s) TX Packet to %s on port %s: %s', self._peers[_peer]['RADIO_ID'], self._peers[_peer]['IP'], self._peers[_peer]['PORT'], ahex(_packet))
 
-    def send_master(self, _packet):
+    def send_master(self, _packet, _hops = False):
         if _packet[:4] == DMRD:
             _packet = b''.join([_packet[:11], self._config['RADIO_ID'], _packet[15:]])
         self.transport.write(_packet, self._config['MASTER_SOCKADDR'])
