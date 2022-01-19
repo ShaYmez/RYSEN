@@ -145,7 +145,7 @@ class OPENBRIDGE(DatagramProtocol):
         
         if _packet[:3] == DMR and self._config['TARGET_IP']:
             if 'VER' in self._config and self._config['VER'] > 1:
-                _packet = b''.join([DMRE,_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'],_packet[15:], time_ns().to_bytes(8,'big')])
+                _packet = b''.join([DMRF,_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'],_packet[15:], time_ns().to_bytes(8,'big')])
                 _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
                 _h.update(_packet)
                 _hash = _h.digest()
@@ -290,9 +290,13 @@ class OPENBRIDGE(DatagramProtocol):
                     self._config['_bcka'] = time()
                 else:
                     h,p = _sockaddr
-                    logger.info('(%s) OpenBridge HMAC failed, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:53]), len(_packet[53:]), repr(_packet[53:]),h,p) 
-
+                    logger.info('(%s) OpenBridge HMAC failed, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:53]), len(_packet[53:]), repr(_packet[53:]),h,p)
+                    
             elif _packet[:4] == DMRE:
+               logger.warning('(%s) *ProtoControl* KF7EEL DMRE protocol not supported',self._system)
+               return
+
+            elif _packet[:4] == DMRF:
                 _data = _packet[:53]
                 _timestamp = _packet[53:60]
                 _hash = _packet[61:]
@@ -435,11 +439,17 @@ class OPENBRIDGE(DatagramProtocol):
                     _hash = _packet[5:]
                     _ckhs = hmac_new(self._config['PASSPHRASE'],_packet[4:5],sha1).digest()
                     if compare_digest(_hash, _ckhs):
-                        logger.warning('(%s) *BridgeControl*  BCVE Version received, Ver: %s',self._system,_ver)
-                        self._config['VER'] = _ver
+                        logger.debug('(%s) *ProtoControl*  BCVE Version received, Ver: %s',self._system,_ver)
+                        
+                        if _ver > self._config['VER']:
+                            logger.info('(%s) *ProtoControl*  BCVE Version upgrade, Ver: %s',self._system,_ver)
+                            self._config['VER'] = _ver
+                        else:
+                            logger.warning('(%s) *ProtoControl*  BCVE Version downgrade not allowed, Ver: %s',self._system,_ver)
+                        
                     else:
                         h,p = _sockaddr
-                        logger.warning('(%s) *BridgeControl* BCVE invalid, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:53]), len(_packet[53:]), repr(_packet[53:]),h,p) 
+                        logger.warning('(%s) *ProtoControl* BCVE invalid, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:53]), len(_packet[53:]), repr(_packet[53:]),h,p) 
                 
                 
                 

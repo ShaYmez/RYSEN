@@ -53,6 +53,7 @@ HBPF_SLT_VTERM  = 0x2
 DMR     = b'DMR'
 DMRD    = b'DMRD'
 DMRE    = b'DMRE'
+DMRF    = b'DMRF'
 MSTCL   = b'MSTCL'
 MSTNAK  = b'MSTNAK'
 MSTPONG = b'MSTPONG'
