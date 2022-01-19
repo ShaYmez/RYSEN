@@ -205,6 +205,10 @@ class OPENBRIDGE(DatagramProtocol):
 
         if _packet[:3] == DMR:    # DMRData -- encapsulated DMR data frame
             if _packet[:4] == DMRD:
+                if self._config['VER'] > 1:
+                    logger.warning('(%s) *ProtoControl*  Version 1 protocol prohibited by PROTO_VER, Ver: %s',self._system,_ver)
+                    self.send_bcve()
+                    return
                 _data = _packet[:53]
                 _hash = _packet[53:]
                 _ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
