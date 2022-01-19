@@ -1645,7 +1645,8 @@ class routerOBP(OPENBRIDGE):
                 else:
                     self.STATUS[_stream_id]['LC'] = LC_OPT + _dst_id + _rf_src
 
-                _inthops = int.from_bytes(_hops,'big')
+                if _hops:
+                    _inthops = int.from_bytes(_hops,'big')
                 logger.info('(%s) *CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, HOPS %s', \
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot,_inthops)
                 if CONFIG['REPORTS']['REPORT']:
