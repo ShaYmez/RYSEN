@@ -145,7 +145,7 @@ class OPENBRIDGE(DatagramProtocol):
         
         if _packet[:3] == DMR and self._config['TARGET_IP']:
             if 'VER' in self._config and self._config['VER'] > 1:
-                _packet = b''.join([DMRE,time_ns().to_bytes(8,'big'),_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'],_packet[15:]])
+                _packet = b''.join([DMRE,_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'],_packet[15:]])
                 _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
                 _h.update(_packet)
                 _hash = _h.digest()
@@ -293,23 +293,22 @@ class OPENBRIDGE(DatagramProtocol):
                     logger.info('(%s) OpenBridge HMAC failed, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:53]), len(_packet[53:]), repr(_packet[53:]),h,p) 
 
             elif _packet[:4] == DMRE:
-                _data = _packet[:61]
-                _hash = _packet[61:]
+                _data = _packet[:53]
+                _hash = _packet[53:]
                 #_ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
                 _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
                 _h.update(_data)
                 _ckhs = _h.digest()
 
                 if compare_digest(_hash, _ckhs) and (_sockaddr == self._config['TARGET_SOCK'] or self._config['RELAX_CHECKS']):
-                    _peer_id = _data[19:23]
+                    _peer_id = _data[11:15]
                     if self._config['NETWORK_ID'] != _peer_id:
                         logger.error('(%s) OpenBridge packet discarded because NETWORK_ID: %s Does not match sent Peer ID: %s', self._system, int_id(self._config['NETWORK_ID']), int_id(_peer_id))
                         return
-                    _timestamp = _data[5:12]
-                    _seq = _data[12]
-                    _rf_src = _data[13:16]
-                    _dst_id = _data[16:19]
-                    _bits = _data[23]
+                    _seq = _data[4]
+                    _rf_src = _data[5:8]
+                    _dst_id = _data[8:11]
+                    _bits = _data[15]
                     _slot = 2 if (_bits & 0x80) else 1
                     #_call_type = 'unit' if (_bits & 0x40) else 'group'
                     if _bits & 0x40:
@@ -320,12 +319,8 @@ class OPENBRIDGE(DatagramProtocol):
                         _call_type = 'group'
                     _frame_type = (_bits & 0x30) >> 4
                     _dtype_vseq = (_bits & 0xF) # data, 1=voice header, 2=voice terminator; voice, 0=burst A ... 5=burst F
-                    _stream_id = _data[24:28]
+                    _stream_id = _data[16:20]
                     #logger.debug('(%s) DMRD - Seqence: %s, RF Source: %s, Destination ID: %s', self._system, int_id(_seq), int_id(_rf_src), int_id(_dst_id))
-                   # Sanity check for OpenBridge -- all calls must be on Slot 1
-                    if _slot != 1:
-                        logger.error('(%s) OpenBridge packet discarded because it was not received on slot 1. SID: %s, TGID %s', self._system, int_id(_rf_src), int_id(_dst_id))
-                        return
                     
                     #Don't do anything if we are STUNned
                     if 'STUN' in self._CONFIG:
@@ -375,7 +370,7 @@ class OPENBRIDGE(DatagramProtocol):
                     
                     #Remove timestamp from data. For now dmrd_received does not expect it
                     #Leaving it in screws up the AMBE data
-                    _data = b''.join([_data[:5],_data[12:]])
+                    #_data = b''.join([_data[:5],_data[12:]])
                     # Userland actions -- typically this is the function you subclass for an application
                     self.dmrd_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash)
                     #Silently treat a DMRD packet like a keepalive - this is because it's traffic and the 
