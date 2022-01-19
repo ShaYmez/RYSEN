@@ -137,11 +137,14 @@ class OPENBRIDGE(DatagramProtocol):
     def dereg(self):
         logger.info('(%s) is mode OPENBRIDGE. No De-Registration required, continuing shutdown', self._system)
 
-    def send_system(self, _packet):                        
+    def send_system(self, _packet,_hops):                        
         #Don't do anything if we are STUNned
         if 'STUN' in self._CONFIG:
             logger.info('(%s) Bridge STUNned, discarding', self._system)
             return
+        
+        if not _hops:
+            _hops = bytes(0)
         
         if _packet[:3] == DMR and self._config['TARGET_IP']:
             if 'VER' in self._config and self._config['VER'] > 1:
@@ -149,7 +152,7 @@ class OPENBRIDGE(DatagramProtocol):
                 _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
                 _h.update(_packet)
                 _hash = _h.digest()
-                _packet = b''.join([_packet, _hash])
+                _packet = b''.join([_packet,_hops, _hash])
                 self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
                 # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
                 #logger.debug('(%s) TX Packet to OpenBridge %s:%s -- %s %s', self._system, self._config['TARGET_IP'], self._config['TARGET_PORT'], _packet, _hash)
@@ -173,7 +176,15 @@ class OPENBRIDGE(DatagramProtocol):
             logger.debug('(%s) *BridgeControl* sent KeepAlive',self._system)
         else:
             logger.debug('(%s) *BridgeControl* not sending KeepAlive, TARGET_IP currently not known',self._system)
-        
+
+    def send_bcst(self):
+        if self._config['TARGET_IP']:
+            _packet = BCST
+            _packet = b''.join([_packet[:4], (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
+            self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
+            logger.debug('(%s) *BridgeControl* sent BCST STUN',self._system)
+        else:
+            logger.debug('(%s) *BridgeControl* not sending BCST STUN, TARGET_IP currently not known',self._system)        
         
     def send_bcsq(self,_tgid,_stream_id):
         if self._config['TARGET_IP']:
@@ -303,7 +314,8 @@ class OPENBRIDGE(DatagramProtocol):
             elif _packet[:4] == DMRF:
                 _data = _packet[:53]
                 _timestamp = _packet[53:60]
-                _hash = _packet[61:]
+                _hops = _packet[61]
+                _hash = _packet[62:]
                 #_ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
                 _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
                 _h.update(_packet[:61])
