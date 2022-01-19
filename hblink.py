@@ -396,7 +396,7 @@ class OPENBRIDGE(DatagramProtocol):
                     #_data = b''.join([_data[:5],_data[12:]])
                     _data = b''.join([DMRD,_data[4:]])
                     
-                    _inthops = _hops.from_bytes('big') + 1
+                    _inthops = int.from_bytes(_hops,'big') + 1
                     _hops = _inthops.to_bytes(1,'big')
                     print(_inthops)
                     # Userland actions -- typically this is the function you subclass for an application
