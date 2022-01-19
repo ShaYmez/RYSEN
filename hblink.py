@@ -355,7 +355,7 @@ class OPENBRIDGE(DatagramProtocol):
                     #Increment max hops
                     _inthops = _hops +1 
                     
-                    if _inthops > 10:
+                    if _inthops > 30:
                         logger.warning('(%s) MAX HOPS exceed, dropping', self._system)
                         return
                     
