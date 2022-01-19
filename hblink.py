@@ -351,6 +351,13 @@ class OPENBRIDGE(DatagramProtocol):
                                 logger.info('(%s) Bridge STUNned, discarding', self._system)
                                 self._laststrid.append(_stream_id)
                             return
+                        
+                    #Increment max hops
+                    _inthops = _hops +1 
+                    
+                    if _inthops > 10:
+                        logger.warning('(%s) MAX HOPS exceed, dropping', self._system)
+                        return
                     
                     
                     #Low-level TG filtering 
@@ -390,16 +397,15 @@ class OPENBRIDGE(DatagramProtocol):
                                 self.send_bcsq(_dst_id,_stream_id)
                                 self._laststrid.append(_stream_id)
                             return
+                
+
                     
                     #Remove timestamp from data. For now dmrd_received does not expect it
                     #Leaving it in screws up the AMBE data
                     #_data = b''.join([_data[:5],_data[12:]])
                     _data = b''.join([DMRD,_data[4:]])
                     
-                    #_inthops = int.from_bytes(_hops,'big')
-                    _inthops = _hops +1 
                     _hops = _inthops.to_bytes(1,'big')
-                    print(_hops)
                     # Userland actions -- typically this is the function you subclass for an application
                     self.dmrd_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash,_hops)
                     #Silently treat a DMRD packet like a keepalive - this is because it's traffic and the 
