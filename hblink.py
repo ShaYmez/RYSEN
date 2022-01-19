@@ -396,9 +396,10 @@ class OPENBRIDGE(DatagramProtocol):
                     #_data = b''.join([_data[:5],_data[12:]])
                     _data = b''.join([DMRD,_data[4:]])
                     
-                    _inthops = int.from_bytes(_hops,'big') + 1
+                    #_inthops = int.from_bytes(_hops,'big')
+                    _inthops = _hops +1 
                     _hops = _inthops.to_bytes(1,'big')
-                    print(_inthops)
+                    #print(_hops)
                     # Userland actions -- typically this is the function you subclass for an application
                     self.dmrd_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash,_hops)
                     #Silently treat a DMRD packet like a keepalive - this is because it's traffic and the 
