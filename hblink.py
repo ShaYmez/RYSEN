@@ -137,7 +137,7 @@ class OPENBRIDGE(DatagramProtocol):
     def dereg(self):
         logger.info('(%s) is mode OPENBRIDGE. No De-Registration required, continuing shutdown', self._system)
 
-    def send_system(self, _packet,_hops = False):                      
+    def send_system(self, _packet,_hops = b''):                      
         #Don't do anything if we are STUNned
         if 'STUN' in self._CONFIG:
             logger.info('(%s) Bridge STUNned, discarding', self._system)
@@ -208,7 +208,7 @@ class OPENBRIDGE(DatagramProtocol):
             
     
 
-    def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash,_hops = False):
+    def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash,_hops = b''):
         pass
         #print(int_id(_peer_id), int_id(_rf_src), int_id(_dst_id), int_id(_seq), _slot, _call_type, _frame_type, repr(_dtype_vseq), int_id(_stream_id))
 
@@ -589,7 +589,7 @@ class HBSYSTEM(DatagramProtocol):
     def updateSockaddr_errback(self,failure):
         logger.debug('(%s) hostname resolution error: %s',self._system,failure)
 
-    def send_peers(self, _packet, _hops = False):
+    def send_peers(self, _packet, _hops = b''):
         for _peer in self._peers:
             self.send_peer(_peer, _packet)
             #logger.debug('(%s) Packet sent to peer %s', self._system, self._peers[_peer]['RADIO_ID'])
@@ -601,7 +601,7 @@ class HBSYSTEM(DatagramProtocol):
         # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
         #logger.debug('(%s) TX Packet to %s on port %s: %s', self._peers[_peer]['RADIO_ID'], self._peers[_peer]['IP'], self._peers[_peer]['PORT'], ahex(_packet))
 
-    def send_master(self, _packet, _hops = False):
+    def send_master(self, _packet, _hops = b''):
         if _packet[:4] == DMRD:
             _packet = b''.join([_packet[:11], self._config['RADIO_ID'], _packet[15:]])
         self.transport.write(_packet, self._config['MASTER_SOCKADDR'])
