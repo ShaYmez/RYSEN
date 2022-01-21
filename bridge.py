@@ -249,7 +249,7 @@ class routerOBP(OPENBRIDGE):
         self._lastSeq = False
         
 
-    def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash):
+    def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash,_hops = b''):
         pkt_time = time()
         dmrpkt = _data[20:53]
         _bits = _data[15]
@@ -572,7 +572,7 @@ class routerHBP(HBSYSTEM):
                 }
             }
 
-    def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
+    def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hops = b''):
         pkt_time = time()
         dmrpkt = _data[20:53]
         _bits = _data[15]
