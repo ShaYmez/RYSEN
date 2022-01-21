@@ -483,7 +483,7 @@ class routerOBP(OPENBRIDGE):
                                     _tmp_data = b''.join([_tmp_data, dmrpkt, b'\x00\x00']) # Add two bytes of nothing since OBP doesn't include BER & RSSI bytes #_data[53:55]
 
                                 # Transmit the packet to the destination system
-                                systems[_target['SYSTEM']].send_system(_tmp_data)
+                                systems[_target['SYSTEM']].send_system(_tmp_data,_hops)
                                 #logger.debug('(%s) Packet routed by bridge: %s to system: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
 
 
@@ -790,7 +790,7 @@ class routerHBP(HBSYSTEM):
                                         _tmp_data = b''.join([_tmp_data, dmrpkt, _data[53:55]])
 
                                     # Transmit the packet to the destination system
-                                    systems[_target['SYSTEM']].send_system(_tmp_data)
+                                    systems[_target['SYSTEM']].send_system(_tmp_data,_hops)
                                     #logger.debug('(%s) Packet routed by bridge: %s to system: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
 
 
