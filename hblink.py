@@ -355,7 +355,7 @@ class OPENBRIDGE(DatagramProtocol):
                     #Increment max hops
                     _inthops = _hops +1 
                     
-                    if _inthops > 30:
+                    if _inthops > 10:
                         logger.warning('(%s) MAX HOPS exceed, dropping', self._system)
                         return
                     
@@ -413,7 +413,7 @@ class OPENBRIDGE(DatagramProtocol):
                     self._config['_bcka'] = time()
                 else:
                     h,p = _sockaddr
-                    logger.info('(%s) FreeBridge HMAC failed, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:61]), len(_packet[61:]), repr(_packet[61:]),h,p) 
+                    logger.warning('(%s) FreeBridge HMAC failed, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:61]), len(_packet[61:]), repr(_packet[61:]),h,p) 
 
         if self._config['ENHANCED_OBP']:
             if _packet[:2] == BC:    # Bridge Control packet (Extended OBP)
@@ -427,7 +427,7 @@ class OPENBRIDGE(DatagramProtocol):
                         self._config['_bcka'] = time()
                         if _sockaddr != self._config['TARGET_SOCK']:
                             h,p =  _sockaddr
-                            logger.warning('(%s) *BridgeControl* Source IP and Port has changed for OBP from %s:%s to %s:%s,  updating',self._system,self._config['TARGET_IP'],self._config['TARGET_PORT'],h,p)
+                            logger.info('(%s) *BridgeControl* Source IP and Port has changed for OBP from %s:%s to %s:%s,  updating',self._system,self._config['TARGET_IP'],self._config['TARGET_PORT'],h,p)
                             self._config['TARGET_IP'] = h
                             self._config['TARGET_PORT'] = p
                             self._config['TARGET_SOCK'] = (h,p)
@@ -794,7 +794,7 @@ class HBSYSTEM(DatagramProtocol):
                         del self._peers[_peer_id]
             else:
                 self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
-                logger.warning('(%s) Login challenge from Radio ID that has not logged in: %s', self._system, int_id(_peer_id))
+                logger.info('(%s) Login challenge from Radio ID that has not logged in: %s', self._system, int_id(_peer_id))
 
         elif _command == RPTC:    # Repeater is sending it's configuraiton OR disconnecting
             if _data[:5] == RPTCL:    # Disconnect command
@@ -841,7 +841,7 @@ class HBSYSTEM(DatagramProtocol):
                     logger.info('(%s) Peer %s (%s) has sent repeater configuration, Package ID: %s, Software ID: %s, Desc: %s', self._system, _this_peer['CALLSIGN'], _this_peer['RADIO_ID'],self._peers[_peer_id]['PACKAGE_ID'].decode().rstrip(),self._peers[_peer_id]['SOFTWARE_ID'].decode().rstrip(),self._peers[_peer_id]['DESCRIPTION'].decode().rstrip())
                 else:
                     self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
-                    logger.warning('(%s) Peer info from Radio ID that has not logged in: %s', self._system, int_id(_peer_id))
+                    logger.info('(%s) Peer info from Radio ID that has not logged in: %s', self._system, int_id(_peer_id))
 
         elif _command == RPTO:
             _peer_id = _data[4:8]
@@ -853,7 +853,7 @@ class HBSYSTEM(DatagramProtocol):
                 self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = _this_peer['OPTIONS'].decode()
             else:
                 self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
-                logger.warning('(%s) Options from Radio ID that is not logged: %s', self._system, int_id(_peer_id))
+                logger.info('(%s) Options from Radio ID that is not logged: %s', self._system, int_id(_peer_id))
         
         
         elif _command == RPTP:    # RPTPing -- peer is pinging us
@@ -867,7 +867,7 @@ class HBSYSTEM(DatagramProtocol):
                     #logger.debug('(%s) Received and answered RPTPING from peer %s (%s)', self._system, self._peers[_peer_id]['CALLSIGN'], int_id(_peer_id))
                 else:
                     self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
-                    logger.warning('(%s) Ping from Radio ID that is not logged in: %s', self._system, int_id(_peer_id))
+                    logger.info('(%s) Ping from Radio ID that is not logged in: %s', self._system, int_id(_peer_id))
         
         elif _command == DMRA:
                 _peer_id = _data[4:8]
