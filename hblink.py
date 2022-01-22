@@ -257,7 +257,7 @@ class OPENBRIDGE(DatagramProtocol):
                     #Don't do anything if we are STUNned
                     if 'STUN' in self._CONFIG:
                             if _stream_id not in self._laststrid:
-                                logger.info('(%s) Bridge STUNned, discarding', self._system)
+                                logger.warning('(%s) Bridge STUNned, discarding', self._system)
                                 self._laststrid.append(_stream_id)
                             return
                     
@@ -348,7 +348,7 @@ class OPENBRIDGE(DatagramProtocol):
                     #Don't do anything if we are STUNned
                     if 'STUN' in self._CONFIG:
                             if _stream_id not in self._laststrid:
-                                logger.info('(%s) Bridge STUNned, discarding', self._system)
+                                logger.warning('(%s) Bridge STUNned, discarding', self._system)
                                 self._laststrid.append(_stream_id)
                             return
                         
