@@ -1760,7 +1760,7 @@ class routerOBP(OPENBRIDGE):
             #Create STAT bridge for unknown TG
             if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:
                 if int_id(_dst_id) >= 5 and int_id(_dst_id) != 9 and (str(int_id(_dst_id)) not in BRIDGES):
-                    logger.info('(%s) Bridge for STAT TG %s does not exist. Creating',self._system, int_id(_dst_id))
+                    logger.debug('(%s) Bridge for STAT TG %s does not exist. Creating',self._system, int_id(_dst_id))
                     make_stat_bridge(_dst_id)
             
             _sysIgnore = []
