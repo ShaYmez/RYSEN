@@ -55,6 +55,13 @@ from reporting_const import *
 import logging
 logger = logging.getLogger(__name__)
 
+from functools import partial, partialmethod
+
+logging.TRACE = 5
+logging.addLevelName(logging.TRACE, 'TRACE')
+logging.Logger.trace = partialmethod(logging.Logger.log, logging.TRACE)
+logging.trace = partial(logging.log, logging.TRACE)
+
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Cortney T. Buffington, N0MJS, Forked by Simon Adlem - G7RZU'
 __copyright__  = 'Copyright (c) 2016-2019 Cortney T. Buffington, N0MJS and the K0USY Group, Simon Adlem, G7RZU 2020,2021'
@@ -175,36 +182,36 @@ class OPENBRIDGE(DatagramProtocol):
             _packet = BCKA
             _packet = b''.join([_packet[:4], (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
             self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
-            logger.debug('(%s) *BridgeControl* sent KeepAlive',self._system)
+            logger.trace('(%s) *BridgeControl* sent KeepAlive',self._system)
         else:
-            logger.debug('(%s) *BridgeControl* not sending KeepAlive, TARGET_IP currently not known',self._system)
+            logger.trace('(%s) *BridgeControl* not sending KeepAlive, TARGET_IP currently not known',self._system)
 
     def send_bcst(self):
         if self._config['TARGET_IP']:
             _packet = BCST
             _packet = b''.join([_packet[:4], (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
             self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
-            logger.debug('(%s) *BridgeControl* sent BCST STUN',self._system)
+            logger.trace('(%s) *BridgeControl* sent BCST STUN',self._system)
         else:
-            logger.debug('(%s) *BridgeControl* not sending BCST STUN, TARGET_IP currently not known',self._system)        
+            logger.trace('(%s) *BridgeControl* not sending BCST STUN, TARGET_IP currently not known',self._system)        
         
     def send_bcsq(self,_tgid,_stream_id):
         if self._config['TARGET_IP']:
             _packet = b''.join([BCSQ, _tgid, _stream_id])
             _packet = b''.join([_packet, (hmac_new(self._config['PASSPHRASE'],_packet,sha1).digest())])
             self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
-            logger.debug('(%s) *BridgeControl* sent BCSQ Source Quench, TG: %s, Stream ID: %s',self._system,int_id(_tgid), int_id(_stream_id))
+            logger.trace('(%s) *BridgeControl* sent BCSQ Source Quench, TG: %s, Stream ID: %s',self._system,int_id(_tgid), int_id(_stream_id))
         else:
-            logger.debug('(%s) *BridgeControl* Not sent BCSQ Source Quench TARGET_IP not known , TG: %s, Stream ID: %s',self._system,int_id(_tgid))
+            logger.trace('(%s) *BridgeControl* Not sent BCSQ Source Quench TARGET_IP not known , TG: %s, Stream ID: %s',self._system,int_id(_tgid))
             
     def send_bcve(self):
         if self._config['ENHANCED_OBP'] and self._config['TARGET_IP']:
             _packet = BCVE + VER.to_bytes(1,'big')
             _packet = b''.join([_packet, (hmac_new(self._config['PASSPHRASE'],_packet[4:5],sha1).digest())])
             self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
-            logger.debug('(%s) *BridgeControl* sent BCVE. Ver: %s',self._system,VER)
+            logger.trace('(%s) *BridgeControl* sent BCVE. Ver: %s',self._system,VER)
         else:
-            logger.debug('(%s) *BridgeControl* not sending BCVE, TARGET_IP currently not known',self._system) 
+            logger.trace('(%s) *BridgeControl* not sending BCVE, TARGET_IP currently not known',self._system) 
             
     
 
@@ -307,7 +314,7 @@ class OPENBRIDGE(DatagramProtocol):
                     self._config['_bcka'] = time()
                 else:
                     h,p = _sockaddr
-                    logger.info('(%s) OpenBridge HMAC failed, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:53]), len(_packet[53:]), repr(_packet[53:]),h,p)
+                    logger.warning('(%s) OpenBridge HMAC failed, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:53]), len(_packet[53:]), repr(_packet[53:]),h,p)
                     
             elif _packet[:4] == DMRE:
                logger.warning('(%s) *ProtoControl* KF7EEL DMRE protocol not supported',self._system)
@@ -423,7 +430,7 @@ class OPENBRIDGE(DatagramProtocol):
                     _hash = _packet[4:]
                     _ckhs = hmac_new(self._config['PASSPHRASE'],_packet[:4],sha1).digest()
                     if compare_digest(_hash, _ckhs):
-                        logger.debug('(%s) *BridgeControl* Keep Alive received',self._system)
+                        logger.trace('(%s) *BridgeControl* Keep Alive received',self._system)
                         self._config['_bcka'] = time()
                         if _sockaddr != self._config['TARGET_SOCK']:
                             h,p =  _sockaddr
@@ -443,7 +450,7 @@ class OPENBRIDGE(DatagramProtocol):
                     _stream_id = _packet[7:11]
                     _ckhs = hmac_new(self._config['PASSPHRASE'],_packet[:11],sha1).digest()
                     if compare_digest(_hash, _ckhs):
-                        logger.debug('(%s) *BridgeControl*  BCSQ Source Quench request received for TGID: %s, Stream ID: %s',self._system,int_id(_tgid), int_id(_stream_id))
+                        logger.trace('(%s) *BridgeControl*  BCSQ Source Quench request received for TGID: %s, Stream ID: %s',self._system,int_id(_tgid), int_id(_stream_id))
                         if '_bcsq' not in self._config:
                             self._config['_bcsq'] = {}
                         self._config['_bcsq'][_tgid] = _stream_id
@@ -456,7 +463,7 @@ class OPENBRIDGE(DatagramProtocol):
                     _hash = _packet[4:]
                     _ckhs = hmac_new(self._config['PASSPHRASE'],_packet[4:],sha1).digest()
                     if compare_digest(_hash, _ckhs):
-                        logger.debug('(%s) *BridgeControl*  BCST STUN request received for TGID: %s, Stream ID: %s',self._system,int_id(_tgid), int_id(_stream_id))
+                        logger.trace('(%s) *BridgeControl*  BCST STUN request received for TGID: %s, Stream ID: %s',self._system,int_id(_tgid), int_id(_stream_id))
                         self._config['_STUN'] = True
                     else:
                         h,p = _sockaddr
@@ -468,7 +475,7 @@ class OPENBRIDGE(DatagramProtocol):
                     _hash = _packet[5:]
                     _ckhs = hmac_new(self._config['PASSPHRASE'],_packet[4:5],sha1).digest()
                     if compare_digest(_hash, _ckhs):
-                        logger.debug('(%s) *ProtoControl*  BCVE Version received, Ver: %s',self._system,_ver)
+                        logger.trace('(%s) *ProtoControl*  BCVE Version received, Ver: %s',self._system,_ver)
                         
                         if _ver > self._config['VER']:
                             logger.info('(%s) *ProtoControl*  BCVE Version upgrade, Ver: %s',self._system,_ver)
@@ -577,17 +584,17 @@ class HBSYSTEM(DatagramProtocol):
         # If we are connected, sent a ping to the master and increment the counter
         if self._stats['CONNECTION'] == 'YES':
             self.send_master(b''.join([RPTPING, self._config['RADIO_ID']]))
-            logger.debug('(%s) RPTPING Sent to Master. Total Sent: %s, Total Missed: %s, Currently Outstanding: %s', self._system, self._stats['PINGS_SENT'], self._stats['PINGS_SENT'] - self._stats['PINGS_ACKD'], self._stats['NUM_OUTSTANDING'])
+            logger.trace('(%s) RPTPING Sent to Master. Total Sent: %s, Total Missed: %s, Currently Outstanding: %s', self._system, self._stats['PINGS_SENT'], self._stats['PINGS_SENT'] - self._stats['PINGS_ACKD'], self._stats['NUM_OUTSTANDING'])
             self._stats['PINGS_SENT'] += 1
             self._stats['PING_OUTSTANDING'] = True
             
     def updateSockaddr(self,ip):
         self._config['MASTER_IP'] = ip
         self._config['MASTER_SOCKADDR'] = (ip, self._config['MASTER_PORT'])
-        logger.debug('(%s) hostname resolution performed: %s',self._system,ip)
+        logger.info('(%s) hostname resolution performed: %s',self._system,ip)
         
     def updateSockaddr_errback(self,failure):
-        logger.debug('(%s) hostname resolution error: %s',self._system,failure)
+        logger.info('(%s) hostname resolution error: %s',self._system,failure)
 
     def send_peers(self, _packet, _hops = b''):
         for _peer in self._peers:
@@ -864,14 +871,14 @@ class HBSYSTEM(DatagramProtocol):
                     self._peers[_peer_id]['PINGS_RECEIVED'] += 1
                     self._peers[_peer_id]['LAST_PING'] = time()
                     self.send_peer(_peer_id, b''.join([MSTPONG, _peer_id]))
-                    #logger.debug('(%s) Received and answered RPTPING from peer %s (%s)', self._system, self._peers[_peer_id]['CALLSIGN'], int_id(_peer_id))
+                    logger.trace('(%s) Received and answered RPTPING from peer %s (%s)', self._system, self._peers[_peer_id]['CALLSIGN'], int_id(_peer_id))
                 else:
                     self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                     logger.info('(%s) Ping from Radio ID that is not logged in: %s', self._system, int_id(_peer_id))
         
         elif _command == DMRA:
                 _peer_id = _data[4:8]
-                logger.info('(%s) Peer has sent Talker Alias packet %s', self._system, _data)
+                logger.debug('(%s) Peer has sent Talker Alias packet %s', self._system, _data)
 
         else:
             logger.error('(%s) Unrecognized command. Raw HBP PDU: %s', self._system, _data)
@@ -1032,7 +1039,7 @@ class HBSYSTEM(DatagramProtocol):
                     self._stats['PING_OUTSTANDING'] = False
                     self._stats['NUM_OUTSTANDING'] = 0
                     self._stats['PINGS_ACKD'] += 1
-                    #logger.debug('(%s) MSTPONG Received. Pongs Since Connected: %s', self._system, self._stats['PINGS_ACKD'])
+                    logger.trace('(%s) MSTPONG Received. Pongs Since Connected: %s', self._system, self._stats['PINGS_ACKD'])
 
             elif _command == MSTC:    # Actually MSTCL -- notify us the master is closing down
                 _peer_id = _data[5:9]
