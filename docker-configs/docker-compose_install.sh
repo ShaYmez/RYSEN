@@ -43,6 +43,7 @@ cd /etc/freedmr/json &&
 curl http://downloads.freedmr.uk/downloads/local_subscriber_ids.json -o subscriber_ids.json &&
 curl http://downloads.freedmr.uk/downloads/talkgroup_ids.json -o talkgroup_ids.json &&
 curl https://www.radioid.net/static/rptrs.json -o peer_ids.json &&
+touch /etc/freedmr/json/sub_map.pkl &&
 chmod -R 777 /etc/freedmr/json &&
 
 echo Install /etc/freedmr/freedmr.cfg ... 
@@ -85,7 +86,7 @@ PEER_URL: https://www.radioid.net/static/rptrs.json
 SUBSCRIBER_URL: http://downloads.freedmr.uk/downloads/local_subscriber_ids.json
 TGID_URL: TGID_URL: http://downloads.freedmr.uk/downloads/talkgroup_ids.json
 STALE_DAYS: 7
-SUB_MAP_FILE:
+SUB_MAP_FILE: sub_map.pkl
 
 [MYSQL]
 USE_MYSQL: False
@@ -110,6 +111,7 @@ SUB_ACL: DENY:1
 TGID_ACL: PERMIT:ALL
 RELAX_CHECKS: True
 ENHANCED_OBP: True
+PROTO_VER: 2
 
 
 [SYSTEM]
