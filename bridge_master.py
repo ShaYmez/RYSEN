@@ -720,7 +720,7 @@ def options_config():
                         try:
                             k,v = x.split('=')
                         except ValueError:
-                            logger.debug('(OPTIONS) Value error %s ignoring %s %s',_system,k,v)
+                            #logger.debug('(OPTIONS) Value error %s ignoring %s %s',_system,k,v)
                             continue
                         _options[k] = v
                     logger.debug('(OPTIONS) Options found for %s',_system)
