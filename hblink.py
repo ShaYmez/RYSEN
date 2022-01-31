@@ -362,7 +362,7 @@ class OPENBRIDGE(DatagramProtocol):
                     #Increment max hops
                     _inthops = _hops +1 
                     
-                    if _inthops > 15:
+                    if _inthops > 10:
                         logger.warning('(%s) MAX HOPS exceed, dropping. Hops: %s, DST: %s', self._system, _inthops, _int_dst_id)
                         self.send_bcsq(_dst_id,_stream_id)
                         return
