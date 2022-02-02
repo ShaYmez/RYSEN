@@ -316,8 +316,8 @@ class OPENBRIDGE(DatagramProtocol):
                     h,p = _sockaddr
                     logger.warning('(%s) OpenBridge HMAC failed, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:53]), len(_packet[53:]), repr(_packet[53:]),h,p)
                     
-            elif _packet[:4] == DMRE:
-               logger.warning('(%s) *ProtoControl* KF7EEL DMRE protocol not supported',self._system)
+            elif _packet[:4] == EOBP:
+               logger.warning('(%s) *ProtoControl* KF7EEL EOBP protocol not supported',self._system)
                return
 
             elif _packet[:4] == DMRF:
