@@ -329,6 +329,8 @@ class OPENBRIDGE(DatagramProtocol):
                 _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
                 _h.update(_packet[:61])
                 _ckhs = _h.digest()
+                
+                _int_dst_id = int_id(_dst_id)
 
                 if compare_digest(_hash, _ckhs) and (_sockaddr == self._config['TARGET_SOCK'] or self._config['RELAX_CHECKS']):
                     _peer_id = _data[11:15]
