@@ -329,8 +329,6 @@ class OPENBRIDGE(DatagramProtocol):
                 _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
                 _h.update(_packet[:61])
                 _ckhs = _h.digest()
-                
-                _int_dst_id = int_id(_dst_id)
 
                 if compare_digest(_hash, _ckhs) and (_sockaddr == self._config['TARGET_SOCK'] or self._config['RELAX_CHECKS']):
                     _peer_id = _data[11:15]
@@ -340,6 +338,7 @@ class OPENBRIDGE(DatagramProtocol):
                     _seq = _data[4]
                     _rf_src = _data[5:8]
                     _dst_id = _data[8:11]
+                    _int_dst_id = int_id(_dst_id)
                     _bits = _data[15]
                     _slot = 2 if (_bits & 0x80) else 1
                     #_call_type = 'unit' if (_bits & 0x40) else 'group'
