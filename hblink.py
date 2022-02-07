@@ -338,7 +338,7 @@ class OPENBRIDGE(DatagramProtocol):
                 if 'VER' in self._config and self._config['VER'] == 2:
                     _h.update(_packet[:61])
                 elif 'VER' in self._config and self._config['VER'] >= 3:
-                    _h.update(_packet[:53])
+                    _h.update(_packet[:54])
                 _ckhs = _h.digest()
 
                 if compare_digest(_hash, _ckhs) and (_sockaddr == self._config['TARGET_SOCK'] or self._config['RELAX_CHECKS']):
