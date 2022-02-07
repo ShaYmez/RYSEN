@@ -335,7 +335,7 @@ class OPENBRIDGE(DatagramProtocol):
                 _hash = _packet[62:]
                 #_ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
                 _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
-                if 'VER' in self._config and self._config['VER'] == 3:
+                if 'VER' in self._config and self._config['VER'] > 2:
                     _h.update(_packet[:53])
                 elif 'VER' in self._config and self._config['VER'] == 2:
                     _h.update(_packet[:61])
