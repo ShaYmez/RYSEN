@@ -81,7 +81,7 @@ BCST    = b'BCST'
 BCVE    = b'BCVE'
 
 #Protocol version
-VER     = 2
+VER     = 3
 
 # Higheset peer ID permitted by HBP
 PEER_MAX = 4294967295
