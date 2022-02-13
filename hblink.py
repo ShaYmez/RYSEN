@@ -144,7 +144,7 @@ class OPENBRIDGE(DatagramProtocol):
     def dereg(self):
         logger.info('(%s) is mode OPENBRIDGE. No De-Registration required, continuing shutdown', self._system)
 
-    def send_system(self, _packet,_hops = b''):                      
+    def send_system(self, _packet,_hops = b'', _source_server = b'\x00\x00\x00\x00'):                      
         #Don't do anything if we are STUNned
         if 'STUN' in self._CONFIG:
             logger.info('(%s) Bridge STUNned, discarding', self._system)
@@ -156,16 +156,17 @@ class OPENBRIDGE(DatagramProtocol):
             
         
         if _packet[:3] == DMR and self._config['TARGET_IP']:
-            
+
             if 'VER' in self._config and self._config['VER'] > 3:
-                _packet = b''.join([DMRF,_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'],_packet[15:]])
+                _ver = VER.to_bytes(1,'big')
+                _packet = b''.join([DMRE,_ver,_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'],_packet[15:],time_ns().to_bytes(8,'big'), _source_server, _hops])
                 _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
                 _h.update(_packet)
                 _hash = _h.digest()
-                _packet = b''.join([_packet,time_ns().to_bytes(8,'big'), _hops, _hash])
+                _packet = b''.join([_packet, _hash])
                 self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
             
-            if 'VER' in self._config and self._config['VER'] == 3:
+            elif 'VER' in self._config and self._config['VER'] == 3:
                 _packet = b''.join([DMRF,_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'],_packet[15:]])
                 _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
                 _h.update(_packet)
@@ -242,11 +243,14 @@ class OPENBRIDGE(DatagramProtocol):
         
         if _packet[:3] == DMR:    # DMRData -- encapsulated DMR data frame
             if _packet[:4] == DMRD:
+                _data = _packet[:53]
+                _stream_id = _data[16:20]
                 if self._config['VER'] > 1:
-                    logger.warning('(%s) *ProtoControl*  Version 1 protocol prohibited by PROTO_VER, Ver: %s',self._system,self._config['VER'])
+                    if _stream_id not in self._laststrid:
+                        logger.warning('(%s) *ProtoControl*  Version 1 protocol prohibited by PROTO_VER, Ver: %s',self._system,self._config['VER'])
+                        self._laststrid.append(_stream_id)
                     self.send_bcve()
                     return
-                _data = _packet[:53]
                 _hash = _packet[53:]
                 _ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
 
@@ -269,7 +273,6 @@ class OPENBRIDGE(DatagramProtocol):
                         _call_type = 'group'
                     _frame_type = (_bits & 0x30) >> 4
                     _dtype_vseq = (_bits & 0xF) # data, 1=voice header, 2=voice terminator; voice, 0=burst A ... 5=burst F
-                    _stream_id = _data[16:20]
                     #logger.debug('(%s) DMRD - Seqence: %s, RF Source: %s, Destination ID: %s', self._system, int_id(_seq), int_id(_rf_src), int_id(_dst_id))
                         
 
