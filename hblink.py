@@ -156,7 +156,7 @@ class OPENBRIDGE(DatagramProtocol):
             
         
         if _packet[:3] == DMR and self._config['TARGET_IP']:
-            if 'VER' in self._config and self._config['VER'] == 3:
+            if 'VER' in self._config and self._config['VER'] > 2:
                 _packet = b''.join([DMRF,_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'],_packet[15:]])
                 _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
                 _h.update(_packet)
