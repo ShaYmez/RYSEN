@@ -233,6 +233,7 @@ class OPENBRIDGE(DatagramProtocol):
         
         if _packet[:3] == DMR:    # DMRData -- encapsulated DMR data frame
             if _packet[:4] == DMRD:
+                _stream_id = _data[16:20]
                 if self._config['VER'] > 1:
                     if _stream_id not in self._laststrid:
                         logger.warning('(%s) *ProtoControl*  Version 1 protocol prohibited by PROTO_VER, Ver: %s',self._system,self._config['VER'])
@@ -262,7 +263,6 @@ class OPENBRIDGE(DatagramProtocol):
                         _call_type = 'group'
                     _frame_type = (_bits & 0x30) >> 4
                     _dtype_vseq = (_bits & 0xF) # data, 1=voice header, 2=voice terminator; voice, 0=burst A ... 5=burst F
-                    _stream_id = _data[16:20]
                     #logger.debug('(%s) DMRD - Seqence: %s, RF Source: %s, Destination ID: %s', self._system, int_id(_seq), int_id(_rf_src), int_id(_dst_id))
                         
 
