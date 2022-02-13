@@ -1236,7 +1236,7 @@ class routerOBP(OPENBRIDGE):
         OPENBRIDGE.__init__(self, _name, _config, _report)
         self.STATUS = {}
                 
-    def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,sysIgnore, _hops = b''):
+    def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,sysIgnore, _hops = b'', _source_server = b'\x00\x00\x00\x00', _ber = b'\x00', _rssi = b'\x00'):
         _sysIgnore = sysIgnore
         for _target in BRIDGES[_bridge]:
             if (_target['SYSTEM'] != self._system) and (_target['ACTIVE']):
@@ -1405,10 +1405,11 @@ class routerOBP(OPENBRIDGE):
                     elif _dtype_vseq in [1,2,3,4]:
                         dmrbits = dmrbits[0:116] + _target_status[_target['TS']]['TX_EMB_LC'][_dtype_vseq] + dmrbits[148:264]
                     dmrpkt = dmrbits.tobytes()
-                    _tmp_data = b''.join([_tmp_data, dmrpkt, b'\x00\x00']) # Add two bytes of nothing since OBP doesn't include BER & RSSI bytes #_data[53:55]
+                    #_tmp_data = b''.join([_tmp_data, dmrpkt, b'\x00\x00']) # Add two bytes of nothing since OBP doesn't include BER & RSSI bytes #_data[53:55]
+                    _tmp_data = b''.join([_tmp_data, dmrpkt])
 
                 # Transmit the packet to the destination system
-                systems[_target['SYSTEM']].send_system(_tmp_data,_hops)
+                systems[_target['SYSTEM']].send_system(_tmp_data,_hops,_source_server, _ber, _rssi)
                     #logger.debug('(%s) Packet routed by bridge: %s to system: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                 #Ignore this system and TS pair if it's called again on this packet
         return(_sysIgnore)
@@ -1423,7 +1424,7 @@ class routerOBP(OPENBRIDGE):
         if CONFIG['REPORTS']['REPORT']:
             systems[_d_system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
         
-    def sendDataToOBP(self,_target,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,_hops = b''):
+    def sendDataToOBP(self,_target,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,_hops = b'',_source_server = b'\x00\x00\x00\x00', _ber = b'\x00', _rssi = b'\x00'):
 
         _int_dst_id = int_id(_dst_id)
         _target_status = systems[_target].STATUS
@@ -1457,13 +1458,13 @@ class routerOBP(OPENBRIDGE):
         #Assemble transmit HBP packet header
         _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
         _tmp_data = b''.join([_tmp_data, dmrpkt])
-        systems[_target].send_system(_tmp_data,_hops)
+        systems[_target].send_system(_tmp_data,_hops, _source_server, _ber, _rssi)
         logger.info('(%s) UNIT Data Bridged to OBP System: %s DST_ID: %s', self._system, _target,_int_dst_id)
         if CONFIG['REPORTS']['REPORT']:
             systems[_target]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
 
 
-    def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash, _hops = b''):
+    def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash, _hops = b'', _source_server = b'\x00\x00\x00\x00', _ber = b'\x00', _rssi = b'\x00'):
         pkt_time = time()
         dmrpkt = _data[20:53]
         _bits = _data[15]
@@ -1576,7 +1577,7 @@ class routerOBP(OPENBRIDGE):
                 #We only want to send data calls to individual IDs via OpenBridge
                 #Only send if proto ver for bridge is > 1
                 if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE' and CONFIG['SYSTEMS'][system]['VER'] > 1 and (_int_dst_id >= 1000000):
-                    self.sendDataToOBP(system,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,_hops)
+                    self.sendDataToOBP(system,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,_hops,_source_server,_ber,_rssi)
             
             #If destination ID is in the Subscriber Map
             if _dst_id in SUB_MAP:
@@ -1655,8 +1656,8 @@ class routerOBP(OPENBRIDGE):
                 _inthops = 0 
                 if _hops:
                     _inthops = int.from_bytes(_hops,'big')
-                logger.info('(%s) *CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, HOPS %s', \
-                        self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot,_inthops)
+                logger.info('(%s) *CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, SRC: %s, BER: %s, RSSI %s, HOPS %s', \
+                        self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot,int_id(_source_server),_ber,_rssi,_inthops)
                 if CONFIG['REPORTS']['REPORT']:
                     self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
 
@@ -1775,7 +1776,7 @@ class routerOBP(OPENBRIDGE):
                     for _system in BRIDGES[_bridge]:
                         
                         if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
-                            _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore,_hops)
+                            _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore,_hops, _source_server, _ber, _rssi)
 
 
             # Final actions - Is this a voice terminator?
@@ -1862,7 +1863,7 @@ class routerHBP(HBSYSTEM):
                 }
             }
 
-    def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,sysIgnore):
+    def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,sysIgnore,_source_server, _ber, _rssi):
         _sysIgnore = sysIgnore
         for _target in BRIDGES[_bridge]:
             #if _target['SYSTEM'] != self._system or (_target['SYSTEM'] == self._system and _target['TS'] != _slot):
@@ -2029,7 +2030,7 @@ class routerHBP(HBSYSTEM):
                         _tmp_data = b''.join([_tmp_data, dmrpkt, _data[53:55]])
 
                     # Transmit the packet to the destination system
-                    systems[_target['SYSTEM']].send_system(_tmp_data,None)
+                    systems[_target['SYSTEM']].send_system(_tmp_data,b'',_source_server,_ber,_rssi)
        
         return _sysIgnore
     
@@ -2078,7 +2079,7 @@ class routerHBP(HBSYSTEM):
         #Assemble transmit HBP packet header
         _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
         _tmp_data = b''.join([_tmp_data, dmrpkt])
-        systems[_target].send_system(_tmp_data,None)
+        systems[_target].send_system(_tmp_data,b'',_source_server,_ber,_rssi)
         logger.info('(%s) UNIT Data Bridged to OBP System: %s DST_ID: %s', self._system, _target,_int_dst_id)
         if CONFIG['REPORTS']['REPORT']:
             systems[system]._report.send_bridgeEvent('UNIT DATA,START,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
@@ -2087,7 +2088,13 @@ class routerHBP(HBSYSTEM):
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pkt_time = time()
         dmrpkt = _data[20:53]
+        
+        _ber = _data[53]
+        _rssi = _data[54]
+        
         _bits = _data[15]
+        
+        _source_server = self._CONFIG['GLOBAL']['SERVER_ID']
         
         #_pkt_crc = Crc32.calc(_data[4:53])
         #_pkt_crc = hash(_data).digest()
@@ -2504,7 +2511,7 @@ class routerHBP(HBSYSTEM):
                 if True:
                     for _system in BRIDGES[_bridge]:
                         if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
-                            _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore)
+                            _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi)
                         
                             #Send to reflector or TG too, if it exists
                             if _bridge[0:1] == '#':
@@ -2512,7 +2519,7 @@ class routerHBP(HBSYSTEM):
                             else:
                                 _bridge = '#'+_bridge
                             if _bridge in BRIDGES:
-                                _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore)
+                                _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi)
 
             # Final actions - Is this a voice terminator?
             if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):

@@ -144,7 +144,7 @@ class OPENBRIDGE(DatagramProtocol):
     def dereg(self):
         logger.info('(%s) is mode OPENBRIDGE. No De-Registration required, continuing shutdown', self._system)
 
-    def send_system(self, _packet,_hops = b'', _source_server = b'\x00\x00\x00\x00'):                      
+    def send_system(self, _packet, _hops = b'', _ber = b'\x00', _rssi = b'\x00', _source_server = b'\x00\x00\x00\x00'):                      
         #Don't do anything if we are STUNned
         if 'STUN' in self._CONFIG:
             logger.info('(%s) Bridge STUNned, discarding', self._system)
@@ -159,7 +159,7 @@ class OPENBRIDGE(DatagramProtocol):
 
             if 'VER' in self._config and self._config['VER'] > 3:
                 _ver = VER.to_bytes(1,'big')
-                _packet = b''.join([DMRE,_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'],_packet[15:],_ver,time_ns().to_bytes(8,'big'), _source_server, _hops])
+                _packet = b''.join([DMRE,_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'],_packet[15:],_ber,_rssi,_ver,time_ns().to_bytes(8,'big'), _source_server, _hops])
                 _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
                 _h.update(_packet)
                 _hash = _h.digest()
@@ -233,7 +233,7 @@ class OPENBRIDGE(DatagramProtocol):
             
     
 
-    def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash,_hops = b''):
+    def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash,_hops = b'', _source_server = b'\x00\x00\x00\x00', _ber = b'\x00', _rssi = b'\x00'):
         pass
         #print(int_id(_peer_id), int_id(_rf_src), int_id(_dst_id), int_id(_seq), _slot, _call_type, _frame_type, repr(_dtype_vseq), int_id(_stream_id))
 
@@ -342,14 +342,16 @@ class OPENBRIDGE(DatagramProtocol):
            
             elif _packet[:4] == DMRE:
                 _data = _packet[:53]
-                _embedded_version  = _packet[53]
-                _timestamp = _packet[54:62]
-                _source_server = _packet[62:66]
-                _hops = _packet[66]
-                _hash = _packet[67:83]
+                _ber = _packet[53]
+                _rssi = _packet[54]
+                _embedded_version  = _packet[55]
+                _timestamp = _packet[56:64]
+                _source_server = _packet[64:68]
+                _hops = _packet[68]
+                _hash = _packet[69:85]
                 #_ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
                 _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
-                _h.update(_packet[:67])
+                _h.update(_packet[:69])
                     
                 _ckhs = _h.digest()
 
@@ -439,13 +441,13 @@ class OPENBRIDGE(DatagramProtocol):
                     
                     _hops = _inthops.to_bytes(1,'big')
                     # Userland actions -- typically this is the function you subclass for an application
-                    self.dmrd_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash,_hops)
+                    self.dmrd_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash,_hops,_source_server,_ber,_rssi)
                     #Silently treat a DMRD packet like a keepalive - this is because it's traffic and the 
                     #Other end may not have enabled ENAHNCED_OBP
                     self._config['_bcka'] = time()
                 else:
                     h,p = _sockaddr
-                    logger.warning('(%s) FreeBridge HMAC failed, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:67]), len(_packet[67:]), repr(_packet[61:]),h,p) 
+                    logger.warning('(%s) FreeBridge HMAC failed, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:69]), len(_packet[69:]), repr(_packet[61:]),h,p) 
 
 
             elif _packet[:4] == DMRF:
@@ -730,8 +732,9 @@ class HBSYSTEM(DatagramProtocol):
     def updateSockaddr_errback(self,failure):
         logger.info('(%s) hostname resolution error: %s',self._system,failure)
 
-    def send_peers(self, _packet, _hops = b''):
+    def send_peers(self, _packet, _hops = b'',_source_server = b'\x00\x00\x00\x00', _ber = b'\x00', _rssi = b'\x00'):
         for _peer in self._peers:
+            _packet =b''.join([_packet,_ber,_rssi])
             self.send_peer(_peer, _packet)
             #logger.debug('(%s) Packet sent to peer %s', self._system, self._peers[_peer]['RADIO_ID'])
 
@@ -742,9 +745,9 @@ class HBSYSTEM(DatagramProtocol):
         # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
         #logger.debug('(%s) TX Packet to %s on port %s: %s', self._peers[_peer]['RADIO_ID'], self._peers[_peer]['IP'], self._peers[_peer]['PORT'], ahex(_packet))
 
-    def send_master(self, _packet, _hops = b''):
+    def send_master(self, _packet, _hops = b'',_source_server = b'\x00\x00\x00\x00', _ber = b'\x00', _rssi = b'\x00'):
         if _packet[:4] == DMRD:
-            _packet = b''.join([_packet[:11], self._config['RADIO_ID'], _packet[15:]])
+            _packet = b''.join([_packet[:11], self._config['RADIO_ID'], _packet[15:],_ber,_rssi])
         self.transport.write(_packet, self._config['MASTER_SOCKADDR'])
         # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
         #logger.debug('(%s) TX Packet to %s:%s -- %s', self._system, self._config['MASTER_IP'], self._config['MASTER_PORT'], ahex(_packet))
