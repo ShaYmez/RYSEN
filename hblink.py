@@ -233,6 +233,7 @@ class OPENBRIDGE(DatagramProtocol):
         
         if _packet[:3] == DMR:    # DMRData -- encapsulated DMR data frame
             if _packet[:4] == DMRD:
+                _data = _packet[:53]
                 _stream_id = _data[16:20]
                 if self._config['VER'] > 1:
                     if _stream_id not in self._laststrid:
@@ -240,7 +241,6 @@ class OPENBRIDGE(DatagramProtocol):
                         self._laststrid.append(_stream_id)
                     self.send_bcve()
                     return
-                _data = _packet[:53]
                 _hash = _packet[53:]
                 _ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
 
