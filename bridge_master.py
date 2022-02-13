@@ -1470,7 +1470,13 @@ class routerOBP(OPENBRIDGE):
 
         #pkt_crc = Crc32.calc(_data[4:53])
         #_pkt_crc = Crc32.calc(dmrpkt)
-        _pkt_crc = _hash
+        
+        #Use blake2b hash
+        _h = blake2b(digest_size=16)
+        _h.update(_data)
+        _pkt_crc = _h.digest()
+        
+        #_pkt_crc = _hash
 
         # Match UNIT data, SMS/GPS, and send it to the dst_id if it is in SUB_MAP
         if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or _dtype_vseq == 8 or ((_stream_id not in self.STATUS) and _dtype_vseq == 3)):
