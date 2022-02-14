@@ -732,7 +732,7 @@ class HBSYSTEM(DatagramProtocol):
     def updateSockaddr_errback(self,failure):
         logger.info('(%s) hostname resolution error: %s',self._system,failure)
 
-    def send_peers(self, _packet, _hops = b'', _ber = b'\x00', _rssi = b'\x00',_source_server = b'\x00\x00\x00\x00', _ber = b'\x00', _rssi = b'\x00'):
+    def send_peers(self, _packet, _hops = b'', _ber = b'\x00', _rssi = b'\x00',_source_server = b'\x00\x00\x00\x00'):
         for _peer in self._peers:
             _packet =b''.join([_packet,_ber.to_bytes(1,'big'),_rssi.to_bytes(1,'big')])
             self.send_peer(_peer, _packet)
