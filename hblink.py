@@ -342,8 +342,8 @@ class OPENBRIDGE(DatagramProtocol):
            
             elif _packet[:4] == DMRE:
                 _data = _packet[:53]
-                _ber = _packet[53]
-                _rssi = _packet[54]
+                _ber = _packet[53:54]
+                _rssi = _packet[54:55]
                 _embedded_version  = _packet[55]
                 _timestamp = _packet[56:64]
                 _source_server = _packet[64:68]
@@ -734,7 +734,7 @@ class HBSYSTEM(DatagramProtocol):
 
     def send_peers(self, _packet, _hops = b'', _ber = b'\x00', _rssi = b'\x00',_source_server = b'\x00\x00\x00\x00'):
         for _peer in self._peers:
-            _packet =b''.join([_packet,_ber.to_bytes(1,'big'),_rssi.to_bytes(1,'big')])
+            _packet =b''.join([_packet,_ber,_rssi])
             self.send_peer(_peer, _packet)
             #logger.debug('(%s) Packet sent to peer %s', self._system, self._peers[_peer]['RADIO_ID'])
 
@@ -747,7 +747,7 @@ class HBSYSTEM(DatagramProtocol):
 
     def send_master(self, _packet, _hops = b'', _ber = b'\x00', _rssi = b'\x00',_source_server = b'\x00\x00\x00\x00'):
         if _packet[:4] == DMRD:
-            _packet = b''.join([_packet[:11], self._config['RADIO_ID'], _packet[15:],_ber.to_bytes(1,'big'),_rssi.to_bytes(1,'big')])
+            _packet = b''.join([_packet[:11], self._config['RADIO_ID'], _packet[15:],_ber,_rssi])
         self.transport.write(_packet, self._config['MASTER_SOCKADDR'])
         # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
         #logger.debug('(%s) TX Packet to %s:%s -- %s', self._system, self._config['MASTER_IP'], self._config['MASTER_PORT'], ahex(_packet))
