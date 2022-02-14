@@ -2030,7 +2030,7 @@ class routerHBP(HBSYSTEM):
                         _tmp_data = b''.join([_tmp_data, dmrpkt, _data[53:55]])
 
                     # Transmit the packet to the destination system
-                    systems[_target['SYSTEM']].send_system(_tmp_data,b'',ber,_rssi,_source_server)
+                    systems[_target['SYSTEM']].send_system(_tmp_data,b'',_ber,_rssi,_source_server)
        
         return _sysIgnore
     
