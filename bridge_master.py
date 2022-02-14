@@ -1468,7 +1468,11 @@ class routerOBP(OPENBRIDGE):
         pkt_time = time()
         dmrpkt = _data[20:53]
         _bits = _data[15]
-
+        
+        #If this is a v1 bridge, this server takes responsibility for traffic. 
+        if CONFIG['SYSTEMS'][system]['VER'] == 1:
+            _source_server = self._CONFIG['GLOBAL']['SERVER_ID']
+        
         #pkt_crc = Crc32.calc(_data[4:53])
         #_pkt_crc = Crc32.calc(dmrpkt)
         
