@@ -386,7 +386,7 @@ class OPENBRIDGE(DatagramProtocol):
                             return
                         
                     #Discard old packets
-                    if (_timestamp/1000000000) < (time() - 30):
+                    if (int.from_bytes(_timestamp,'big')/1000000000) < (time() - 30):
                         logger.warning('(%s) Packet more than 30s old!, discarding', self._system)
                         return
                         
