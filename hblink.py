@@ -342,8 +342,8 @@ class OPENBRIDGE(DatagramProtocol):
            
             elif _packet[:4] == DMRE:
                 _data = _packet[:53]
-                _ber = _packet[53]
-                _rssi = _packet[54]
+                _ber = _packet[53:54]
+                _rssi = _packet[54:55]
                 _embedded_version  = _packet[55]
                 _timestamp = _packet[56:64]
                 _source_server = _packet[64:68]
