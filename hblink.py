@@ -385,6 +385,11 @@ class OPENBRIDGE(DatagramProtocol):
                                 self._laststrid.append(_stream_id)
                             return
                         
+                    #Discard old packets
+                    if (_timestamp/1000000000) < (time() - 30):
+                        logger.warning('(%s) Packet more than 30s old!, discarding', self._system)
+                        return
+                        
                     #Increment max hops
                     _inthops = _hops +1 
                     
