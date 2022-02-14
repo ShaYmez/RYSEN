@@ -2089,8 +2089,8 @@ class routerHBP(HBSYSTEM):
         pkt_time = time()
         dmrpkt = _data[20:53]
         
-        _ber = _data[53]
-        _rssi = _data[54]
+        _ber = _data[53:54]
+        _rssi = _data[54:55]
         
         _bits = _data[15]
         
