@@ -2168,7 +2168,7 @@ class routerHBP(HBSYSTEM):
                     continue
                 #We only want to send data calls to individual IDs via OpenBridge
                 if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE' and CONFIG['SYSTEMS'][system]['VER'] > 1 and (_int_dst_id >= 1000000):
-                    self.sendDataToOBP(system,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,_ber,_rssi,_source_server)
+                    self.sendDataToOBP(system,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot)
 
             
             #If destination ID is in the Subscriber Map
