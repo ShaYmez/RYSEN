@@ -2079,7 +2079,7 @@ class routerHBP(HBSYSTEM):
             _tmp_bits = _bits 
         #Assemble transmit HBP packet header
         _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
-        _tmp_data = b''.join([_tmp_data, dmrpkt[:53]])
+        _tmp_data = b''.join([_tmp_data, dmrpkt])
         systems[_target].send_system(_tmp_data,b'',_ber,_rssi,_source_server)
         logger.info('(%s) UNIT Data Bridged to OBP System: %s DST_ID: %s', self._system, _target,_int_dst_id)
         if CONFIG['REPORTS']['REPORT']:
