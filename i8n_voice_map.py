@@ -200,7 +200,7 @@ voiceMap = {
                 'to': 'silence',
                 'notlinked': 'not-linked',
                 'linkedto': 'linked-to',
-                'allstar-link-mode': 'alpha'
+                'allstar-link-mode': 'alfa'
     },
     
     'fr_FR': {
