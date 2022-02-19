@@ -740,7 +740,8 @@ class HBSYSTEM(DatagramProtocol):
 
     def send_peers(self, _packet, _hops = b'', _ber = b'\x00', _rssi = b'\x00',_source_server = b'\x00\x00\x00\x00'):
         for _peer in self._peers:
-            _packet =b''.join([_packet,_ber,_rssi])
+            if len(_packet) < 54:
+                _packet =b''.join([_packet,_ber,_rssi])
             self.send_peer(_peer, _packet)
             #logger.debug('(%s) Packet sent to peer %s', self._system, self._peers[_peer]['RADIO_ID'])
 
