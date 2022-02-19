@@ -80,6 +80,7 @@ import re
 
 from binascii import b2a_hex as ahex
 
+from AMI import AMI
 
 ##from hmac import new as hmac_new, compare_digest
 ##from hashlib import sha256, hash
@@ -1828,7 +1829,8 @@ class routerHBP(HBSYSTEM):
                 'lastSeq': False,
                 'lastData': False,
                 'packets': 0,
-                'crcs': set()
+                'crcs': set(),
+                '_allStarMode': False
                 },
             2: {
                 'RX_START':     time(),
@@ -1858,7 +1860,8 @@ class routerHBP(HBSYSTEM):
                 'lastSeq': False,
                 'lastData': False,
                 'packets': 0,
-                'crcs': set()
+                'crcs': set(),
+                '_allStarMode': False
                 }
             }
 
@@ -2116,6 +2119,10 @@ class routerHBP(HBSYSTEM):
         #Add system to SUB_MAP
         SUB_MAP[_rf_src] = (self._system,_slot,pkt_time)
         
+        def resetallStarMode():
+            self.STATUS[_slot]['_allStarMode'] = False
+            logger.info('(%s) Reset all star mode -> dial mode',self._system)
+        
         #Rewrite GPS Data comming in as a group call to a unit call
         #if (_call_type == 'group' or _call_type == 'vcsbk') and _int_dst_id == 900999:
             #_bits = header(_slot,'unit',_bits)
@@ -2164,7 +2171,7 @@ class routerHBP(HBSYSTEM):
             for system in systems:
                 if system  == self._system:
                     continue
-                #We only want to send data calls to individual IDs via OpenBridge
+                #We only want to send data calls to individual IDs via FreeBridge (not OpenBridge)
                 if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE' and CONFIG['SYSTEMS'][system]['VER'] > 1 and (_int_dst_id >= 1000000):
                     self.sendDataToOBP(system,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot)
 
@@ -2226,10 +2233,41 @@ class routerHBP(HBSYSTEM):
                                 else:
                                     logger.info('(%s) UNIT Data not bridged to HBP on slot %s - target busy: %s DST_ID: %s',self._system,_d_slot,_d_system,_int_dst_id)
                                 
-
+        #Handle AMI private calls
+        if _call_type == 'unit' and not _data_call and self.STATUS[_slot]['_allStarMode'] and CONFIG['ALLSTAR']['ENABLED']:
+            if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
+                 logger.info('(%s) AMI: Private call from %s to %s',self._system, int_id(_rf_src), _int_dst_id)
+                
+                    
+            if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
+                
+                if _int_dst_id == 4000:
+                    logger.info('(%s) AMI: Private call from %s to %s (Disconnect)',self._system, int_id(_rf_src), _int_dst_id)
+                    AMIOBJ.send_command('ilink 6 0')                    
+                elif _int_dst_id == 5000:
+                    logger.info('(%s) AMI: Private call from %s to %s (Status)',self._system, int_id(_rf_src), _int_dst_id)
+                    AMIOBJ.send_command('ilink 5 0')                    
+                else:
+                    logger.info('(%s) AMI: Private call from %s to %s (Link)',self._system, int_id(_rf_src), _int_dst_id)
+                    AMIOBJ.send_command('ilink 6 0')
+                    AMIOBJ.send_command('ilink 3 ' + str(_int_dst_id))
+                
+            # Mark status variables for use later
+            self.STATUS[_slot]['RX_PEER']      = _peer_id
+            self.STATUS[_slot]['RX_SEQ']       = _seq
+            self.STATUS[_slot]['RX_RFS']       = _rf_src
+            self.STATUS[_slot]['RX_TYPE']      = _dtype_vseq
+            self.STATUS[_slot]['RX_TGID']      = _dst_id
+            self.STATUS[_slot]['RX_TIME']      = pkt_time
+            self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
+            self.STATUS[_slot]['VOICE_STREAM'] = _voice_call
+            
+            self.STATUS[_slot]['packets'] = self.STATUS[_slot]['packets'] +1 
+            
+                
         
         #Handle  private voice calls (for reflectors)
-        if _call_type == 'unit' and not _data_call:
+        elif _call_type == 'unit' and not _data_call and not self.STATUS[_slot]['_allStarMode']:
             if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
                 
                 self.STATUS[_slot]['packets'] = 0
@@ -2238,7 +2276,7 @@ class routerHBP(HBSYSTEM):
                 self.STATUS[_slot]['_stopTgAnnounce'] = False
                 
                 logger.info('(%s) Reflector: Private call from %s to %s',self._system, int_id(_rf_src), _int_dst_id)
-                if _int_dst_id >= 5 and _int_dst_id != 9 and _int_dst_id <= 999999:
+                if _int_dst_id >= 5 and _int_dst_id != 8  and _int_dst_id != 9 and _int_dst_id <= 999999:
                     _bridgename = '#'+ str(_int_dst_id)
                     if _bridgename not in BRIDGES and not (_int_dst_id >= 4000 and _int_dst_id <= 5000) and not (_int_dst_id >=9991 and _int_dst_id <= 9999):
                             logger.info('(%s) [A] Reflector for TG %s does not exist. Creating as User Activated. Timeout: %s',self._system, _int_dst_id,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
@@ -2304,6 +2342,15 @@ class routerHBP(HBSYSTEM):
                     _say.append(words[_lang]['busy'])
                     _say.append(words[_lang]['silence'])
                     self.STATUS[_slot]['_stopTgAnnounce'] = True
+                    
+                #Allstar mode switch
+                if CONFIG['ALLSTAR']['ENABLED'] and _int_dst_id == 8:
+                    logger.info('(%s) Reflector: voice called - TG 8 AllStar"', self._system)
+                    _say.append(words[_lang]['all-star-link-mode'])
+                    _say.append(words[_lang]['silence'])
+                    self.STATUS[_slot]['_stopTgAnnounce'] = True
+                    self.STATUS[_slot]['_allStarMode'] = True
+                    reactor.callLater(30,resetallStarMode)
                 
                 #If disconnection called
                 if _int_dst_id == 4000:
@@ -2375,7 +2422,7 @@ class routerHBP(HBSYSTEM):
             self.STATUS[_slot]['VOICE_STREAM'] = _voice_call
             
             self.STATUS[_slot]['packets'] = self.STATUS[_slot]['packets'] +1                
-
+        
         #Handle group calls
         if _call_type == 'group' or _call_type == 'vcsbk':
 
@@ -2695,17 +2742,17 @@ if __name__ == '__main__':
     
     #If MySQL is enabled, read master config from MySQL too
     if CONFIG['MYSQL']['USE_MYSQL'] == True:
-        logger.debug('(MYSQL) MySQL config enabled')
+        logger.info('(MYSQL) MySQL config enabled')
         SQLCONFIG = {}
         sql = useMYSQL(CONFIG['MYSQL']['SERVER'], CONFIG['MYSQL']['USER'], CONFIG['MYSQL']['PASS'], CONFIG['MYSQL']['DB'],CONFIG['MYSQL']['TABLE'],logger)
         #Run it once immediately
         if sql.con():
-            logger.debug('(MYSQL) reading config from database')
+            logger.info('(MYSQL) reading config from database')
             try:
                 SQLCONFIG = sql.getConfig()
                 #Add MySQL config data to config dict
             except:
-                logger.debug('(MYSQL) problem with SQL query, aborting')
+                logger.warning('(MYSQL) problem with SQL query, aborting')
             sql.close()
             logger.debug('(MYSQL) building ACLs')
             # Build ACLs
@@ -2716,8 +2763,13 @@ if __name__ == '__main__':
             
             CONFIG['SYSTEMS'].update(SQLCONFIG)
         else:
-            logger.debug('(MYSQL) problem connecting to SQL server, aborting')
+            logger.warning('(MYSQL) problem connecting to SQL server, aborting')
         
+        if CONFIG['ALLSTAR']['ENABLED']:
+            logger.info('(AMI) Setting up AMI: Server: %s, Port: %s, User: %s, Pass: %s, Node: %s',CONFIG['ALLSTAR']['SERVER'],CONFIG['ALLSTAR']['PORT'],CONFIG['ALLSTAR']['USER'],CONFIG['ALLSTAR']['PASS'],CONFIG['ALLSTAR']['NODE'])
+            
+            AMIOBJ = AMI(CONFIG['ALLSTAR']['SERVER'],CONFIG['ALLSTAR']['PORT'],CONFIG['ALLSTAR']['USER'],CONFIG['ALLSTAR']['PASS'],CONFIG['ALLSTAR']['NODE'])
+            
 
     # Set up the signal handler
     def sig_handler(_signal, _frame):

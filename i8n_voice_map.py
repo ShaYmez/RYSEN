@@ -109,13 +109,15 @@ voiceMap = {
                 'Z': 'zulu',
                 'to': 'silence',
                 'notlinked': 'not-linked',
-                'linkedto': 'linked-to'
+                'linkedto': 'linked-to',
+                'allstar-link-mode': 'alpha'
     },
 
     'en_US': {
                 'to': '2',
                 'freedmr': 'silence',
-                'this-is': 'silence'
+                'this-is': 'silence',
+                'allstar-link-mode': 'alpha'
     },
     
     'es_ES': {
@@ -156,7 +158,8 @@ voiceMap = {
                 'Z': 'zulu',
                 'to': 'silence',
                 'notlinked': 'not-linked',
-                'linkedto': 'linked-to'
+                'linkedto': 'linked-to',
+                'allstar-link-mode': 'alfa'
     },
     'es_ES_2': {
                 '1': 'one',
@@ -196,7 +199,8 @@ voiceMap = {
                 'Z': 'zulu',
                 'to': 'silence',
                 'notlinked': 'not-linked',
-                'linkedto': 'linked-to'
+                'linkedto': 'linked-to',
+                'allstar-link-mode': 'alpha'
     },
     
     'fr_FR': {
@@ -228,7 +232,8 @@ voiceMap = {
                 'Z': 'zulu',
                 'to': 'silence',
                 'notlinked': 'not-linked',
-                'linkedto': 'linked-to'
+                'linkedto': 'linked-to',
+                'allstar-link-mode': 'alpha'
     },
 
    'pt_PT': {
@@ -260,7 +265,8 @@ voiceMap = {
                 'Z': 'zulu',
                 'to': 'silence',
                 'notlinked': 'not-linked',
-                'linkedto': 'linked-to'
+                'linkedto': 'linked-to',
+                'allstar-link-mode': 'alpha'
     },
 
    'el_GR': {
@@ -292,55 +298,63 @@ voiceMap = {
                 'Z': 'zulu',
                 'to': 'silence',
                 'notlinked': 'not-linked',
-                'linkedto': 'linked-to'
+                'allstar-link-mode': 'alpha'
     },
 
     'de_DE': {
 
                 'to': 'silence',
+                'allstar-link-mode': 'A'
     },
     
     'dk_DK': {
                 'to': 'silence',
                 'freedmr': 'silence',
-                'this-is': 'silence'
+                'this-is': 'silence',
+                'allstar-link-mode': 'A'
                     
     },
     
     'it_IT': {
                 'to': 'silence',
                 'freedmr': 'silence',
-                'this-is': 'silence'
+                'this-is': 'silence',
+                'allstar-link-mode': 'A'
     },
     
     'no_NO': {
                 'to': 'silence',
                 'freedmr': 'silence',
-                'this-is': 'silence'
+                'this-is': 'silence',
+                'allstar-link-mode': 'A'
     },
     
     'pl_PL': {
                 'to': 'silence',
                 'freedmr': 'silence',
-                'this-is': 'silence'
+                'this-is': 'silence',
+                'allstar-link-mode': 'A'
     },
     
     'se_SE': {
                 'to': 'silence',
                 'freedmr': 'silence',
-                'this-is': 'silence'
+                'this-is': 'silence',
+                'allstar-link-mode': 'A'
     },
     
     'CW': {
                 'to': 'silence',
                 'freedmr': 'silence',
                 'this-is': 'silence',
-                'linkedto': 'silence'
+                'linkedto': 'silence',
+                'allstar-link-mode': 'T'
     },
 
     'th_TH': {
 
                 'to': 'silence',
+                'allstar-link-mode': 'A'
     },
     
 

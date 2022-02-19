@@ -129,6 +129,7 @@ def build_config(_config_file):
     CONFIG['ALIASES'] = {}
     CONFIG['SYSTEMS'] = {}
     CONFIG['MYSQL'] = {}
+    CONFIG['ALLSTAR'] = {}
 
     try:
         for section in config.sections():
@@ -193,6 +194,17 @@ def build_config(_config_file):
                     'PORT': config.getint(section,'PORT'),
                     'TABLE': config.get(section, 'TABLE')
             })
+                
+            elif section == 'ALLSTAR':
+                CONFIG['ALLSTAR'].update({
+                    'ENABLED': config.getboolean(section, 'ENABLED'),
+                    'USER': config.get(section, 'USER'),
+                    'PASS': config.get(section, 'PASS'),
+                    'SERVER': gethostbyname(config.get(section, 'SERVER')),
+                    'PORT': config.getint(section,'PORT'),
+                    'NODE' : config.getint(section,'NODE')
+            })
+            
                 
 
             elif config.getboolean(section, 'ENABLED'):
