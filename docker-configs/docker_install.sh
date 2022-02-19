@@ -59,6 +59,16 @@ SUBSCRIBER_URL: https://www.radioid.net/static/users.json
 TGID_URL: TGID_URL: http://downloads.freedmr.uk/downloads/talkgroup_ids.json
 STALE_DAYS: 7
 
+#Control server shared allstar instance via dial / AMI
+[ALLSTAR]
+ENABLED: False
+USER:llcgi
+PASS: mypass
+SERVER: my.asl.server
+PORT: 5038
+NODE: 0000
+
+
 [MYSQL]
 USE_MYSQL: False
 USER: hblink
@@ -82,6 +92,7 @@ SUB_ACL: DENY:1
 TGID_ACL: PERMIT:ALL
 RELAX_CHECKS: True
 ENHANCED_OBP: True
+PROTO_VER: 4
 
 
 [SYSTEM]
