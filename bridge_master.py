@@ -2351,6 +2351,13 @@ class routerHBP(HBSYSTEM):
                     self.STATUS[_slot]['_stopTgAnnounce'] = True
                     self.STATUS[_slot]['_allStarMode'] = True
                     reactor.callLater(30,resetallStarMode)
+                elif not CONFIG['ALLSTAR']['ENABLED'] and _int_dst_id == 8:
+                    logger.info('(%s) Reflector: TG 8 AllStar not enabled"', self._system)
+                    _say.append(words[_lang]['busy'])
+                    _say.append(words[_lang]['silence'])
+                    self.STATUS[_slot]['_stopTgAnnounce'] = True
+                    
+                    
                 
                 #If disconnection called
                 if _int_dst_id == 4000:
