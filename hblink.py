@@ -812,7 +812,11 @@ class HBSYSTEM(DatagramProtocol):
         _int_peer_id = int(_int_peer_id)
         _subscriber_ids = self._CONFIG['_SUB_IDS']
         _peer_ids = self._CONFIG['_PEER_IDS']
-        if _int_peer_id in _subscriber_ids:
+        _local_subscriber_ids = self._CONFIG['_LOCAL_SUBSCRIBER_IDS']
+        
+        if _int_peer_id in _local_subscriber_ids:
+            return _local_subscriber_ids[_int_peer_id]
+        elif _int_peer_id in _subscriber_ids:
             return _subscriber_ids[_int_peer_id]
         elif _int_peer_id in _peer_ids:
             return _peer_ids[_int_peer_id]
@@ -1332,7 +1336,13 @@ def mk_aliases(_config):
     if talkgroup_ids:
         logger.info('(ALIAS) ID ALIAS MAPPER: talkgroup_ids dictionary is available')
         
-    return peer_ids, subscriber_ids, talkgroup_ids
+    local_subscriber_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['LOCAL_SUBSCRIBER_FILE'])
+    if subscriber_ids:
+        logger.info('(ALIAS) ID ALIAS MAPPER: local_subscriber_ids dictionary is available')
+    
+        
+        
+    return peer_ids, subscriber_ids, talkgroup_ids, local_subscriber_ids
 
 
 #************************************************
