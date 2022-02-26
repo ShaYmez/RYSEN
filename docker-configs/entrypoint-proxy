@@ -20,4 +20,12 @@
 cd /opt/freedmr
 python /opt/freedmr/hotspot_proxy_v2.py &
 python /opt/freedmr/playback.py -c loro.cfg &
-python /opt/freedmr/bridge_master.py -c freedmr.cfg -r rules.py
+
+if [ "$BRIDGE_SERVER" == 1 ]
+then
+        echo 'Starting in Bridge mode...'
+        python /opt/freedmr/bridge.py -c freedmr.cfg -r rules.py
+else
+	echo 'Starting in FreeDMR mode...'
+	python /opt/freedmr/bridge_master.py -c freedmr.cfg -r rules.py
+fi
