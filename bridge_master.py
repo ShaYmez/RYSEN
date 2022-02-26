@@ -82,6 +82,7 @@ from binascii import b2a_hex as ahex
 
 from AMI import AMI
 
+
 ##from hmac import new as hmac_new, compare_digest
 ##from hashlib import sha256, hash
 
@@ -635,6 +636,17 @@ def threadIdent():
 def threadedMysql():
     logger.debug('(MYSQL) Starting MySQL thread')
     reactor.callInThread(mysqlGetConfig)
+    
+def threadAlias():
+    logger.debug('(ALIAS) starting alias thread')
+    reactor.callInThread(aliasb)
+
+def setAlias(_peer_ids,_subscriber_ids, _talkgroup_ids):
+    peer_ids, subscriber_ids, talkgroup_ids = _peer_ids, _subscriber_ids, _talkgroup_ids
+    
+def aliasb():
+    _peer_ids, _subscriber_ids, _talkgroup_ids = mk_aliases(CONFIG)
+    reactor.callFromThread(setAlias,_peer_ids, _subscriber_ids, _talkgroup_ids)
 
 def ident():
     for system in systems:
@@ -2795,6 +2807,15 @@ if __name__ == '__main__':
     # Create the name-number mapping dictionaries
     peer_ids, subscriber_ids, talkgroup_ids = mk_aliases(CONFIG)
     
+    #Add special IDs to DB
+    subscriber_ids[900999] = 'D-APRS'
+    subscriber_ids[4294967295] = 'SC'
+    
+    CONFIG['_SUB_IDS'] = subscriber_ids
+    CONFIG['_PEER_IDS'] = peer_ids
+    
+    
+    
     # Import the ruiles file as a module, and create BRIDGES from it
     spec = importlib.util.spec_from_file_location("module.name", cli_args.RULES_FILE)
     rules_module = importlib.util.module_from_spec(spec)
@@ -2941,6 +2962,12 @@ if __name__ == '__main__':
     ident_task = task.LoopingCall(threadIdent)
     identa = ident_task.start(914)
     identa.addErrback(loopingErrHandle)
+    
+    #Alias reloader
+    alias_time = CONFIG['ALIASES']['STALE_TIME'] * 86400
+    aliasa_task = task.LoopingCall(threadAlias)
+    aliasa = aliasa_task.start(alias_time)
+    aliasa.addErrback(loopingErrHandle)
     
     #Options parsing
     options_task = task.LoopingCall(options_config)

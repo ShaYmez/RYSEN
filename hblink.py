@@ -45,7 +45,7 @@ from twisted.internet import reactor, task
 import log
 import config
 from const import *
-from dmr_utils3.utils import int_id, bytes_4, try_download, mk_id_dict
+from dmr_utils3.utils import int_id, bytes_4, mk_id_dict
 
 # Imports for the reporting server
 import pickle
@@ -56,6 +56,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 from functools import partial, partialmethod
+
+import ssl
+
+from os.path import isfile, getmtime
+from urllib.request import urlopen
+
 
 logging.TRACE = 5
 logging.addLevelName(logging.TRACE, 'TRACE')
@@ -138,7 +144,6 @@ class OPENBRIDGE(DatagramProtocol):
             self._bcve_task = task.LoopingCall(self.send_bcve)
             self._bcve = self._bcve_task.start(60)
             self._bcve.addErrback(self.loopingErrHandle)
-            
             
 
     def dereg(self):
@@ -797,6 +802,23 @@ class HBSYSTEM(DatagramProtocol):
     def peer_dereg(self):
         self.send_master(RPTCL + self._config['RADIO_ID'])
         logger.info('(%s) De-Registration sent to Master: %s:%s', self._system, self._config['MASTER_SOCKADDR'][0], self._config['MASTER_SOCKADDR'][1])
+        
+    def validate_id(self,_peer_id):
+        if self._config['ALLOW_UNREG_ID']:
+            return True
+        
+        _int_peer_id = int_id(_peer_id)
+        _int_peer_id = str(_int_peer_id)[:7]
+        _int_peer_id = int(_int_peer_id)
+        _subscriber_ids = self._CONFIG['_SUB_IDS']
+        _peer_ids = self._CONFIG['_PEER_IDS']
+        if _int_peer_id in _subscriber_ids:
+            return _subscriber_ids[_int_peer_id]
+        elif _int_peer_id in _peer_ids:
+            return _peer_ids[_int_peer_id]
+        else:
+            return False
+        
 
     # Aliased in __init__ to datagramReceived if system is a master
     def master_datagramReceived(self, _data, _sockaddr):
@@ -882,7 +904,7 @@ class HBSYSTEM(DatagramProtocol):
             # Check to see if we've reached the maximum number of allowed peers
             if len(self._peers) < self._config['MAX_PEERS'] or _peer_id in self._peers:
                 # Check for valid Radio ID
-                if acl_check(_peer_id, self._CONFIG['GLOBAL']['REG_ACL']) and acl_check(_peer_id, self._config['REG_ACL']):
+                if acl_check(_peer_id, self._CONFIG['GLOBAL']['REG_ACL']) and acl_check(_peer_id, self._config['REG_ACL']) and self.validate_id(_peer_id):
                     # Build the configuration data strcuture for the peer
                     self._peers.update({_peer_id: {
                         'CONNECTION': 'RPTL-RECEIVED',
@@ -919,7 +941,7 @@ class HBSYSTEM(DatagramProtocol):
                     logger.info('(%s) Sent Challenge Response to %s for login: %s', self._system, int_id(_peer_id), self._peers[_peer_id]['SALT'])
                 else:
                     self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
-                    logger.warning('(%s) Invalid Login from %s Radio ID: %s Denied by Registation ACL', self._system, _sockaddr[0], int_id(_peer_id))
+                    logger.warning('(%s) Invalid Login from %s Radio ID: %s Denied by Registation ACL or not registered ID', self._system, _sockaddr[0], int_id(_peer_id))
             else:
                 self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                 logger.warning('(%s) Registration denied from Radio ID: %s Maximum number of peers exceeded', self._system, int_id(_peer_id))
@@ -991,9 +1013,14 @@ class HBSYSTEM(DatagramProtocol):
                     _this_peer['URL'] = _data[98:222]
                     _this_peer['SOFTWARE_ID'] = _data[222:262]
                     _this_peer['PACKAGE_ID'] = _data[262:302]
-
-                    self.send_peer(_peer_id, b''.join([RPTACK, _peer_id]))
-                    logger.info('(%s) Peer %s (%s) has sent repeater configuration, Package ID: %s, Software ID: %s, Desc: %s', self._system, _this_peer['CALLSIGN'], _this_peer['RADIO_ID'],self._peers[_peer_id]['PACKAGE_ID'].decode().rstrip(),self._peers[_peer_id]['SOFTWARE_ID'].decode().rstrip(),self._peers[_peer_id]['DESCRIPTION'].decode().rstrip())
+                    
+                    if not self._config['ALLOW_UNREG_ID'] and _this_peer['CALLSIGN'].decode('utf8').rstrip() != self.validate_id(_peer_id):
+                        del self._peers[_peer_id]
+                        self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
+                        logger.info('(%s) Callsign does not match subscriber database: ID: %s, Sent Call: %s, DB call %s', self._system, int_id(_peer_id),_this_peer['CALLSIGN'].decode('utf8').rstrip(),self.validate_id(_peer_id))
+                    else:
+                        self.send_peer(_peer_id, b''.join([RPTACK, _peer_id]))
+                        logger.info('(%s) Peer %s (%s) has sent repeater configuration, Package ID: %s, Software ID: %s, Desc: %s', self._system, _this_peer['CALLSIGN'], _this_peer['RADIO_ID'],self._peers[_peer_id]['PACKAGE_ID'].decode().rstrip(),self._peers[_peer_id]['SOFTWARE_ID'].decode().rstrip(),self._peers[_peer_id]['DESCRIPTION'].decode().rstrip())
                 else:
                     self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                     logger.info('(%s) Peer info from Radio ID that has not logged in: %s', self._system, int_id(_peer_id))
@@ -1245,6 +1272,33 @@ class reportFactory(Factory):
         logger.debug('(REPORT) Send config')
         self.send_clients(b''.join([REPORT_OPCODES['CONFIG_SND'], serialized]))
 
+#Use this try_download instead of that from dmr_utils3
+def try_download(_path, _file, _url, _stale,):
+    no_verify = ssl._create_unverified_context()
+    now = time()
+    file_exists = isfile(_path+_file) == True
+    if file_exists:
+        file_old = (getmtime(_path+_file) + _stale) < now
+    if not file_exists or (file_exists and file_old):
+        try:
+            with urlopen(_url, context=no_verify) as response:
+                data = response.read()
+                #outfile.write(data)
+                response.close()
+            result = 'ID ALIAS MAPPER: \'{}\' successfully downloaded'.format(_file)
+        except IOError:
+            result = 'ID ALIAS MAPPER: \'{}\' could not be downloaded due to an IOError'.format(_file)
+        try:
+            with open(_path+_file, 'wb') as outfile:
+                outfile.write(data)
+                outfile.close()
+        except IOError:
+            result = 'ID ALIAS mapper \'{}\' file could not be written due to an IOError'.format(_file)
+    else:
+        result = 'ID ALIAS MAPPER: \'{}\' is current, not downloaded'.format(_file)
+    
+    return result
+
 
 # ID ALIAS CREATION
 # Download
@@ -1252,28 +1306,34 @@ def mk_aliases(_config):
     if _config['ALIASES']['TRY_DOWNLOAD'] == True:
         # Try updating peer aliases file
         result = try_download(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'], _config['ALIASES']['PEER_URL'], _config['ALIASES']['STALE_TIME'])
-        logger.info('(GLOBAL) %s', result)
+        logger.info('(ALIAS) %s', result)
         # Try updating subscriber aliases file
         result = try_download(_config['ALIASES']['PATH'], _config['ALIASES']['SUBSCRIBER_FILE'], _config['ALIASES']['SUBSCRIBER_URL'], _config['ALIASES']['STALE_TIME'])
-        logger.info('(GLOBAL) %s', result)
+        logger.info('(ALIAS) %s', result)
         #Try updating tgid aliases file
         result = try_download(_config['ALIASES']['PATH'], _config['ALIASES']['TGID_FILE'], _config['ALIASES']['TGID_URL'], _config['ALIASES']['STALE_TIME'])
-        logger.info('(GLOBAL) %s', result)
+        logger.info('(ALIAS) %s', result)
+        
 
     # Make Dictionaries
     peer_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'])
     if peer_ids:
-        logger.info('(GLOBAL) ID ALIAS MAPPER: peer_ids dictionary is available')
+        logger.info('(ALIAS) ID ALIAS MAPPER: peer_ids dictionary is available')
 
     subscriber_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['SUBSCRIBER_FILE'])
+    #Add special IDs to DB
+    subscriber_ids[900999] = 'D-APRS'
+    subscriber_ids[4294967295] = 'SC'
+
     if subscriber_ids:
-        logger.info('(GLOBAL) ID ALIAS MAPPER: subscriber_ids dictionary is available')
+        logger.info('(ALIAS) ID ALIAS MAPPER: subscriber_ids dictionary is available')
 
     talkgroup_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['TGID_FILE'])
     if talkgroup_ids:
-        logger.info('(GLOBAL) ID ALIAS MAPPER: talkgroup_ids dictionary is available')
-
+        logger.info('(ALIAS) ID ALIAS MAPPER: talkgroup_ids dictionary is available')
+        
     return peer_ids, subscriber_ids, talkgroup_ids
+
 
 #************************************************
 #      MAIN PROGRAM LOOP STARTS HERE
