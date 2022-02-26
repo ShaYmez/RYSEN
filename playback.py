@@ -210,18 +210,22 @@ if __name__ == '__main__':
     for sig in [signal.SIGTERM, signal.SIGINT]:
         signal.signal(sig, sig_handler)
     
-    # ID ALIAS CREATION
-    # Download
-    if CONFIG['ALIASES']['TRY_DOWNLOAD'] == True:
-        # Try updating peer aliases file
-        result = try_download(CONFIG['ALIASES']['PATH'], CONFIG['ALIASES']['PEER_FILE'], CONFIG['ALIASES']['PEER_URL'], CONFIG['ALIASES']['STALE_TIME'])
-        logger.info(result)
-        # Try updating subscriber aliases file
-        result = try_download(CONFIG['ALIASES']['PATH'], CONFIG['ALIASES']['SUBSCRIBER_FILE'], CONFIG['ALIASES']['SUBSCRIBER_URL'], CONFIG['ALIASES']['STALE_TIME'])
-        logger.info(result)
+    #ID ALIAS CREATION
+    #Download
+    #if CONFIG['ALIASES']['TRY_DOWNLOAD'] == True:
+    #    Try updating peer aliases file
+    #    result = try_download(CONFIG['ALIASES']['PATH'], CONFIG['ALIASES']['PEER_FILE'], CONFIG['ALIASES']['PEER_URL'], #CONFIG['ALIASES']['STALE_TIME'])
+    #    logger.info(result)
+    #    Try updating subscriber aliases file
+    #    result = try_download(CONFIG['ALIASES']['PATH'], CONFIG['ALIASES']['SUBSCRIBER_FILE'], CONFIG['ALIASES']['SUBSCRIBER_URL'], CONFIG['ALIASES']['STALE_TIME'])
+    #    logger.info(result)
         
     # Create the name-number mapping dictionaries
-    peer_ids, subscriber_ids, talkgroup_ids = mk_aliases(CONFIG)
+    #peer_ids, subscriber_ids, talkgroup_ids = mk_aliases(CONFIG)
+    
+    peer_ids = {}
+    subscriber_ids = {}
+    tallgroup_ids = {}
         
     # INITIALIZE THE REPORTING LOOP
     report_server = config_reports(CONFIG, reportFactory)    
