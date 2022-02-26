@@ -225,7 +225,7 @@ if __name__ == '__main__':
     
     peer_ids = {}
     subscriber_ids = {}
-    tallgroup_ids = {}
+    talkgroup_ids = {}
         
     # INITIALIZE THE REPORTING LOOP
     report_server = config_reports(CONFIG, reportFactory)    
