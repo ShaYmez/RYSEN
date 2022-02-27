@@ -395,6 +395,12 @@ class OPENBRIDGE(DatagramProtocol):
                     if (int.from_bytes(_timestamp,'big')/1000000000) < (time() - 5):
                         logger.warning('(%s) Packet more than 5s old!, discarding', self._system)
                         return
+                    
+                    #Discard bad source server 
+                    if (len(str(int.from_bytes(_source_server,'big')) > 5) or (len(str(int.from_bytes(_source_server,'big')) < 4) ): 
+                        logger.warning('(%s) Source Server should be 4 or 5 digits, discarding', self._system)
+                        self.send_bcsq(_dst_id,_stream_id)
+                        return
                         
                     #Increment max hops
                     _inthops = _hops +1 
