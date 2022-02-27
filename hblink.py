@@ -1078,7 +1078,6 @@ class HBSYSTEM(DatagramProtocol):
                 _peer_id = _data[11:15]
                 if self._config['LOOSE'] or _peer_id == self._config['RADIO_ID']: # Validate the Radio_ID unless using loose validation
                     #_seq = _data[4:5]
-                    logger.info((bitarray(_data[20])))
                     _seq = _data[4]
                     _rf_src = _data[5:8]
                     _dst_id = _data[8:11]
