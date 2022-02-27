@@ -806,7 +806,7 @@ class HBSYSTEM(DatagramProtocol):
         logger.info('(%s) De-Registration sent to Master: %s:%s', self._system, self._config['MASTER_SOCKADDR'][0], self._config['MASTER_SOCKADDR'][1])
         
     def validate_id(self,_peer_id):
-        if self._CONFIG['SYSTEMS'][self._system]['ALLOW_UNREG_ID']:
+        if 'ALLOW_UNREG_ID' in self._config and self._config['ALLOW_UNREG_ID']:
             return True
         
         _int_peer_id = int_id(_peer_id)
@@ -1020,7 +1020,7 @@ class HBSYSTEM(DatagramProtocol):
                     _this_peer['SOFTWARE_ID'] = _data[222:262]
                     _this_peer['PACKAGE_ID'] = _data[262:302]
                     
-                    if not self._CONFIG['SYSTEMS'][self._system]['ALLOW_UNREG_ID'] and _this_peer['CALLSIGN'].decode('utf8').rstrip() != self.validate_id(_peer_id):
+                    if ('ALLOW_UNREG_ID' in self._config and not self._config['ALLOW_UNREG_ID']) and _this_peer['CALLSIGN'].decode('utf8').rstrip() != self.validate_id(_peer_id):
                         del self._peers[_peer_id]
                         self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                         logger.info('(%s) Callsign does not match subscriber database: ID: %s, Sent Call: %s, DB call %s', self._system, int_id(_peer_id),_this_peer['CALLSIGN'].decode('utf8').rstrip(),self.validate_id(_peer_id))
