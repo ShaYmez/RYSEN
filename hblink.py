@@ -804,8 +804,8 @@ class HBSYSTEM(DatagramProtocol):
         logger.info('(%s) De-Registration sent to Master: %s:%s', self._system, self._config['MASTER_SOCKADDR'][0], self._config['MASTER_SOCKADDR'][1])
         
     def validate_id(self,_peer_id):
-        if self._config['ALLOW_UNREG_ID']:
-            return True
+#        if self._config['ALLOW_UNREG_ID']:
+ #           return True
         
         _int_peer_id = int_id(_peer_id)
         _int_peer_id = str(_int_peer_id)[:7]
@@ -1076,6 +1076,7 @@ class HBSYSTEM(DatagramProtocol):
                 _peer_id = _data[11:15]
                 if self._config['LOOSE'] or _peer_id == self._config['RADIO_ID']: # Validate the Radio_ID unless using loose validation
                     #_seq = _data[4:5]
+                    logger.info((bitarray(_data[20])))
                     _seq = _data[4]
                     _rf_src = _data[5:8]
                     _dst_id = _data[8:11]
