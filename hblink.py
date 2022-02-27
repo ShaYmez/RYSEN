@@ -806,6 +806,10 @@ class HBSYSTEM(DatagramProtocol):
         logger.info('(%s) De-Registration sent to Master: %s:%s', self._system, self._config['MASTER_SOCKADDR'][0], self._config['MASTER_SOCKADDR'][1])
         
     def validate_id(self,_peer_id):
+        
+        if 'ALLOW_UNREG_ID' not in self._config:
+            return True
+        
         if 'ALLOW_UNREG_ID' in self._config and self._config['ALLOW_UNREG_ID']:
             return True
         
