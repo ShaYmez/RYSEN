@@ -910,7 +910,7 @@ class HBSYSTEM(DatagramProtocol):
             # Check to see if we've reached the maximum number of allowed peers
             if len(self._peers) < self._config['MAX_PEERS'] or _peer_id in self._peers:
                 # Check for valid Radio ID
-                if acl_check(_peer_id, self._CONFIG['GLOBAL']['REG_ACL']) and acl_check(_peer_id, self._config['REG_ACL']) and self.validate_id(_peer_id):
+                if _peer_id == b'\xff\xff\xff\xff' or (acl_check(_peer_id, self._CONFIG['GLOBAL']['REG_ACL']) and acl_check(_peer_id, self._config['REG_ACL']) and self.validate_id(_peer_id)):
                     # Build the configuration data strcuture for the peer
                     self._peers.update({_peer_id: {
                         'CONNECTION': 'RPTL-RECEIVED',
