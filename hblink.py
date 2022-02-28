@@ -395,7 +395,15 @@ class OPENBRIDGE(DatagramProtocol):
                     if (int.from_bytes(_timestamp,'big')/1000000000) < (time() - 5):
                         logger.warning('(%s) Packet more than 5s old!, discarding', self._system)
                         return
-                        
+                    
+                    #Discard bad source server 
+                    if (len(str(int.from_bytes(_source_server,'big'))) > 5) or (len(str(int.from_bytes(_source_server,'big'))) < 4) and int.from_bytes(_source_server,'big') > 0:
+                        if _stream_id not in self._laststrid:
+                            logger.warning('(%s) Source Server should be 4 or 5 digits, discarding Src: %s', self._system, int.from_bytes(_source_server,'big'))
+                            self.send_bcsq(_dst_id,_stream_id)
+                            self._laststrid.append(_stream_id)
+                        return
+
                     #Increment max hops
                     _inthops = _hops +1 
                     
@@ -442,12 +450,7 @@ class OPENBRIDGE(DatagramProtocol):
                                 self.send_bcsq(_dst_id,_stream_id)
                                 self._laststrid.append(_stream_id)
                             return
-                
 
-                    
-                    #Remove timestamp from data. For now dmrd_received does not expect it
-                    #Leaving it in screws up the AMBE data
-                    #_data = b''.join([_data[:5],_data[12:]])
                     _data = b''.join([DMRD,_data[4:]])
                     
                     _hops = _inthops.to_bytes(1,'big')
