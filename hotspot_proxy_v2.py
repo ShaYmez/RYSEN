@@ -183,6 +183,9 @@ class Proxy(DatagramProtocol):
                 self.peerTrack[_peer_id]['shost'] = host
                 self.peerTrack[_peer_id]['timer'] = reactor.callLater(self.timeout,self.reaper,_peer_id)
                 self.transport.write(data, (self.master,_dport))
+                pripacket = b''.join([b'PRIN',host.encode('UTF-8'),b':',port.encode('UTF-8')])
+                #Send IP and Port info to server
+                self.transport.write(pripacket, (self.master,_dport))
 
                 if self.clientinfo and _peer_id != b'\xff\xff\xff\xff':
                     print(f'{datetime.now().replace(microsecond=0)} New client: ID:{str(int_id(_peer_id)).rjust(9)} IP:{host.rjust(15)} Port:{port}, assigned to port:{_dport}.')
