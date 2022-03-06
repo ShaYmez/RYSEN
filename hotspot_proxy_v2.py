@@ -28,7 +28,7 @@ from datetime import datetime
 
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Simon Adlem - G7RZU'
-__copyright__  = 'Copyright (c) Simon Adlem, G7RZU 2020,2021'
+__copyright__  = 'Copyright (c) Simon Adlem, G7RZU 2020,2021,2022'
 __credits__    = 'Jon Lee, G4TSN; Norman Williams, M6NBP; Christian, OA4DOA'
 __license__    = 'GNU GPLv3'
 __maintainer__ = 'Simon Adlem G7RZU'
@@ -51,7 +51,7 @@ def IsIPv6Address(ip):
 
 class Proxy(DatagramProtocol):
 
-    def __init__(self,Master,ListenPort,connTrack,blackList,Timeout,Debug,ClientInfo,DestportStart,DestPortEnd):
+    def __init__(self,Master,ListenPort,connTrack,blackList,IPBlackList,Timeout,Debug,ClientInfo,DestportStart,DestPortEnd):
         self.master = Master
         self.connTrack = connTrack
         self.peerTrack = {}
@@ -59,6 +59,7 @@ class Proxy(DatagramProtocol):
         self.debug = Debug
         self.clientinfo = ClientInfo
         self.blackList = blackList
+        self.IPBlackList = IPBlackList
         self.destPortStart = DestportStart
         self.destPortEnd = DestPortEnd
         self.numPorts = DestPortEnd - DestportStart
@@ -72,7 +73,6 @@ class Proxy(DatagramProtocol):
         self.transport.write(b'RPTCL'+_peer_id, (self.master,self.peerTrack[_peer_id]['dport']))
         self.connTrack[self.peerTrack[_peer_id]['dport']] = False
         del self.peerTrack[_peer_id]
-        
 
     def datagramReceived(self, data, addr):
         
@@ -96,6 +96,9 @@ class Proxy(DatagramProtocol):
         RPTA    = b'RPTA'
         RPTO    = b'RPTO'
         
+        #Proxy control commands
+        PRBL    = b'PRBL'
+        
         _peer_id = False
         
         host,port = addr
@@ -104,9 +107,21 @@ class Proxy(DatagramProtocol):
         
         Debug = self.debug
         
+        if host in self.IPBlackList:
+            return
+        
         #If the packet comes from the master
         if host == self.master:
             _command = data[:4]
+            
+            if _command == PRBL:
+                _bltime = data[4:].decode('UTF-8')
+                _bltime = float(_bltime)
+                try: 
+                    self.IPBlackList[self.peerTrack[_peer_id]['shost']] = _bltime
+                except KeyError:
+                    pass
+                return
             
             if _command == DMRD:
                 _peer_id = data[11:15]
@@ -209,6 +224,8 @@ if __name__ == '__main__':
     Debug = False
     ClientInfo = False
     BlackList = [1234567]
+    #e.g. {10.0.0.1: 0, 10.0.0.2: 0}
+    IPBlackList = {}
     
 #*******************
     
@@ -241,7 +258,7 @@ if __name__ == '__main__':
     if ListenIP == '::' and IsIPv4Address(Master):
         Master = '::ffff:' + Master
 
-    reactor.listenUDP(ListenPort,Proxy(Master,ListenPort,CONNTRACK,BlackList,Timeout,Debug,ClientInfo,DestportStart,DestPortEnd),interface=ListenIP)
+    reactor.listenUDP(ListenPort,Proxy(Master,ListenPort,CONNTRACK,BlackList,IPBlackList,Timeout,Debug,ClientInfo,DestportStart,DestPortEnd),interface=ListenIP)
 
     def loopingErrHandle(failure):
         print('(GLOBAL) STOPPING REACTOR TO AVOID MEMORY LEAK: Unhandled error innowtimed loop.\n {}'.format(failure))
@@ -258,13 +275,27 @@ if __name__ == '__main__':
         freePorts = totalPorts - count
         
         print("{} ports out of {} in use ({} free)".format(count,totalPorts,freePorts))
-
+        
+    def blackListTrimmer():
+        _timenow = time()
+        _dellist = []
+        for entry in IPBlackList:
+            deletetime = IPBlackList[entry]
+            if deletetime and deletetime < _timenow:
+                _dellist.append(entry)
+        
+        for delete in _dellist:
+            IPBlackList.pop(delete)
 
         
     if Stats == True:
         stats_task = task.LoopingCall(stats)
         statsa = stats_task.start(30)
         statsa.addErrback(loopingErrHandle)
-
+        
+    blacklist_task = task.LoopingCall(blackListTrimmer)
+    blacklista = blacklist_task.start(15)
+    blacklista.addErrback(loopingErrHandle)
+    
     reactor.run()
     

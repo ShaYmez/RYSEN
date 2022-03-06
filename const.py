@@ -73,8 +73,9 @@ RPTA    = b'RPTA'
 RPTO    = b'RPTO'
 DMRA    = b'DMRA'
 
-#Prox commands
+#Proxy commands
 PRIN    = b'PRIN'
+PRBL    = b'PRBL'
 
 #Bridge Control commands
 BC      = b'BC'
