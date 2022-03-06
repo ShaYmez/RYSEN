@@ -808,7 +808,7 @@ class HBSYSTEM(DatagramProtocol):
         self.send_master(RPTCL + self._config['RADIO_ID'])
         logger.info('(%s) De-Registration sent to Master: %s:%s', self._system, self._config['MASTER_SOCKADDR'][0], self._config['MASTER_SOCKADDR'][1])
         
-    def proxy_IPBlackList(self,sockddr):
+    def proxy_IPBlackList(self,sockaddr):
         _timenow = time()
         _bltime = _timenow + 60
         _bltime = str(_bltime)
