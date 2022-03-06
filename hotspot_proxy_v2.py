@@ -183,7 +183,7 @@ class Proxy(DatagramProtocol):
                 self.peerTrack[_peer_id]['shost'] = host
                 self.peerTrack[_peer_id]['timer'] = reactor.callLater(self.timeout,self.reaper,_peer_id)
                 self.transport.write(data, (self.master,_dport))
-                pripacket = b''.join([b'PRIN',host.encode('UTF-8'),b':',port.encode('UTF-8')])
+                pripacket = b''.join([b'PRIN',host.encode('UTF-8'),b':',port.to_bytes('big')])
                 #Send IP and Port info to server
                 self.transport.write(pripacket, (self.master,_dport))
 
