@@ -811,7 +811,7 @@ class HBSYSTEM(DatagramProtocol):
     def proxy_IPBlackList(self,sockddr):
         _timenow = time()
         _bltime = _timenow + 60
-        _bltime = str(bltime)
+        _bltime = str(_bltime)
         _prpacket = b''.join([PRBL,_bltime.encode('UTF-8')])
         self.transport.write(_prpacket,sockaddr)
         
