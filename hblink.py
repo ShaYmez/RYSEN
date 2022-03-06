@@ -808,11 +808,11 @@ class HBSYSTEM(DatagramProtocol):
         self.send_master(RPTCL + self._config['RADIO_ID'])
         logger.info('(%s) De-Registration sent to Master: %s:%s', self._system, self._config['MASTER_SOCKADDR'][0], self._config['MASTER_SOCKADDR'][1])
         
-    def proxy_IPBlackList(self,sockaddr):
+    def proxy_IPBlackList(self,peer_id,sockaddr):
         _timenow = time()
         _bltime = _timenow + 60
         _bltime = str(_bltime)
-        _prpacket = b''.join([PRBL,_bltime.encode('UTF-8')])
+        _prpacket = b''.join([PRBL,peer_id,_bltime.encode('UTF-8')])
         self.transport.write(_prpacket,sockaddr)
         
         
@@ -1038,7 +1038,7 @@ class HBSYSTEM(DatagramProtocol):
                     
                     if ('ALLOW_UNREG_ID' in self._config and not self._config['ALLOW_UNREG_ID']) and _this_peer['CALLSIGN'].decode('utf8').rstrip() != self.validate_id(_peer_id):
                         del self._peers[_peer_id]
-                        self.proxy_IPBlackList(_sockaddr)
+                        self.proxy_IPBlackList(_peer_id,_sockaddr)
                         self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                         logger.info('(%s) Callsign does not match subscriber database: ID: %s, Sent Call: %s, DB call %s', self._system, int_id(_peer_id),_this_peer['CALLSIGN'].decode('utf8').rstrip(),self.validate_id(_peer_id))
                     else:
