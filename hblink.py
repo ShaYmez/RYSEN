@@ -1038,8 +1038,8 @@ class HBSYSTEM(DatagramProtocol):
                     
                     if ('ALLOW_UNREG_ID' in self._config and not self._config['ALLOW_UNREG_ID']) and _this_peer['CALLSIGN'].decode('utf8').rstrip() != self.validate_id(_peer_id):
                         del self._peers[_peer_id]
-                        self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                         self.proxy_IPBlackList(_sockaddr)
+                        self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                         logger.info('(%s) Callsign does not match subscriber database: ID: %s, Sent Call: %s, DB call %s', self._system, int_id(_peer_id),_this_peer['CALLSIGN'].decode('utf8').rstrip(),self.validate_id(_peer_id))
                     else:
                         self.send_peer(_peer_id, b''.join([RPTACK, _peer_id]))
