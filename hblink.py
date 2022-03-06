@@ -1069,7 +1069,7 @@ class HBSYSTEM(DatagramProtocol):
                 logger.debug('(%s) Peer has sent Talker Alias packet %s', self._system, _data)
                 
         elif _command == PRIN:
-                logger.info('(%s) *ProxyInfo* Source IP/Port: %s', self._system, _data.decode('utf8'))
+                logger.info('(%s) *ProxyInfo* Connection from IP:Port: %s', self._system, _data.decode('utf8')[4:])
 
         else:
             logger.error('(%s) Unrecognized command. Raw HBP PDU: %s', self._system, _data)
