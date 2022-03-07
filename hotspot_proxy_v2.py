@@ -115,8 +115,8 @@ class Proxy(DatagramProtocol):
             _command = data[:4]
             
             if _command == PRBL:
-                _peer_id = data[4:7]
-                _bltime = data[7:].decode('UTF-8')
+                _peer_id = data[4:8]
+                _bltime = data[8:].decode('UTF-8')
                 _bltime = float(_bltime)
                 try: 
                     self.IPBlackList[self.peerTrack[_peer_id]['shost']] = _bltime
