@@ -327,7 +327,8 @@ def build_config(_config_file):
                         'DEFAULT_REFLECTOR': config.getint(section, 'DEFAULT_REFLECTOR'),
                         'GENERATOR': config.getint(section, 'GENERATOR'),
                         'ANNOUNCEMENT_LANGUAGE': config.get(section, 'ANNOUNCEMENT_LANGUAGE'),
-                        'ALLOW_UNREG_ID': config.getboolean(section,'ALLOW_UNREG_ID')
+                        'ALLOW_UNREG_ID': config.getboolean(section,'ALLOW_UNREG_ID'),
+                        'PROXY_CONTROL' : config.getboolean(section,'PROXY_CONTROL')
                     }})
                     CONFIG['SYSTEMS'][section].update({'PEERS': {}})
                     

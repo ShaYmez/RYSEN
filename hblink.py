@@ -810,11 +810,10 @@ class HBSYSTEM(DatagramProtocol):
         
     def proxy_IPBlackList(self,peer_id,sockaddr):
         _timenow = time()
-        _bltime = _timenow + 60
+        _bltime = _timenow + 300
         _bltime = str(_bltime)
         _prpacket = b''.join([PRBL,peer_id,_bltime.encode('UTF-8')])
         self.transport.write(_prpacket,sockaddr)
-        
         
     def validate_id(self,_peer_id):
         
@@ -962,7 +961,8 @@ class HBSYSTEM(DatagramProtocol):
                     logger.info('(%s) Sent Challenge Response to %s for login: %s', self._system, int_id(_peer_id), self._peers[_peer_id]['SALT'])
                 else:
                     self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
-                    self.proxy_IPBlackList(_sockaddr)
+                    if self._config['PROXY_CONTROL']:
+                        self.proxy_IPBlackList(_peer_id,_sockaddr)
                     logger.warning('(%s) Invalid Login from %s Radio ID: %s Denied by Registation ACL or not registered ID', self._system, _sockaddr[0], int_id(_peer_id))
             else:
                 self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
@@ -1038,7 +1038,8 @@ class HBSYSTEM(DatagramProtocol):
                     
                     if ('ALLOW_UNREG_ID' in self._config and not self._config['ALLOW_UNREG_ID']) and _this_peer['CALLSIGN'].decode('utf8').rstrip() != self.validate_id(_peer_id):
                         del self._peers[_peer_id]
-                        self.proxy_IPBlackList(_peer_id,_sockaddr)
+                        if self._config['PROXY_CONTROL']:
+                            self.proxy_IPBlackList(_peer_id,_sockaddr)
                         self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                         logger.info('(%s) Callsign does not match subscriber database: ID: %s, Sent Call: %s, DB call %s', self._system, int_id(_peer_id),_this_peer['CALLSIGN'].decode('utf8').rstrip(),self.validate_id(_peer_id))
                     else:
