@@ -51,10 +51,10 @@ def IsIPv6Address(ip):
 
 class Proxy(DatagramProtocol):
 
-    def __init__(self,Master,ListenPort,connTrack,blackList,IPBlackList,Timeout,Debug,ClientInfo,DestportStart,DestPortEnd):
+    def __init__(self,Master,ListenPort,connTrack,peerTrack,blackList,IPBlackList,Timeout,Debug,ClientInfo,DestportStart,DestPortEnd):
         self.master = Master
         self.connTrack = connTrack
-        self.peerTrack = {}
+        self.peerTrack = peerTrack
         self.timeout = Timeout
         self.debug = Debug
         self.clientinfo = ClientInfo
@@ -121,7 +121,9 @@ class Proxy(DatagramProtocol):
                 try: 
                     self.IPBlackList[self.peerTrack[_peer_id]['shost']] = _bltime
                 except KeyError:
-                    pass
+                    return
+                if self.clientinfo:
+                    print('Add to blacklist: host {}. Expire time {}').format(self.peerTrack[_peer_id]['shost'],_bltime)
                 return
             
             if _command == DMRD:
@@ -211,28 +213,85 @@ class Proxy(DatagramProtocol):
 
 
 if __name__ == '__main__':
+    
+    import signal
+    import configparser
+    import argparse
+    import sys
+    import json
 
-#*** CONFIG HERE ***
-    
-    Master = "127.0.0.1"
-    ListenPort = 62031
-    # '' = all IPv4, '::' = all IPv4 and IPv6 (Dual Stack)
-    ListenIP = ''
-    DestportStart = 54000
-    DestPortEnd = 54100
-    Timeout = 30
-    Stats = False
-    Debug = False
-    ClientInfo = False
-    BlackList = [1234567]
-    #e.g. {10.0.0.1: 0, 10.0.0.2: 0}
-    IPBlackList = {}
-    
-#*******************
-    
-    
     #Set process title early
     setproctitle(__file__)
+        
+    # Change the current directory to the location of the application
+    os.chdir(os.path.dirname(os.path.realpath(sys.argv[0])))
+
+    # CLI argument parser - handles picking up the config file from the command line, and sending a "help" message
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-c', '--config', action='store', dest='CONFIG_FILE', help='/full/path/to/config.file (usually freedmr.cfg)')
+    cli_args = parser.parse_args()
+
+
+    # Ensure we have a path for the config file, if one wasn't specified, then use the execution directory
+    if not cli_args.CONFIG_FILE:
+        cli_args.CONFIG_FILE = os.path.dirname(os.path.abspath(__file__))+'/freedmr.cfg'
+    
+    _config_file = cli_args.CONFIG_FILE
+    
+    config = configparser.ConfigParser()
+    
+    if not config.read(_config_file):
+        print('Configuration file \''+_config_file+'\' is not a valid configuration file!')
+        
+    try:
+
+        Master = config.get('PROXY','Master')
+        ListenPort = config.getint('PROXY','ListenPort')
+        ListenIP = config.get('PROXY','ListenIP')
+        DestportStart = config.getint('PROXY','DestportStart')
+        DestPortEnd = config.getint('PROXY','DestPortEnd')
+        Timeout = config.getint('PROXY','Timeout')
+        Stats = config.getboolean('PROXY','Stats')
+        Debug = config.getboolean('PROXY','Debug')
+        ClientInfo = config.getboolean('PROXY','ClientInfo')
+        BlackList = json.loads(config.get('PROXY','BlackList'))
+        IPBlackList = json.loads(config.get('PROXY','IPBlackList'))
+        
+    except configparser.Error as err:
+        print('Error processing configuration file -- {}'.format(err))
+        
+        print('Using default config')
+#*** CONFIG HERE ***
+    
+        Master = "127.0.0.1"
+        ListenPort = 62031
+        #'' = all IPv4, '::' = all IPv4 and IPv6 (Dual Stack)
+        ListenIP = ''
+        DestportStart = 54000
+        DestPortEnd = 54100
+        Timeout = 30
+        Stats = False
+        Debug = False
+        ClientInfo = False
+        BlackList = [1234567]
+        #e.g. {10.0.0.1: 0, 10.0.0.2: 0}
+        IPBlackList = {}
+        
+#*******************        
+    
+    CONNTRACK = {}
+    PEERTRACK = {}
+    
+    # Set up the signal handler
+    def sig_handler(_signal, _frame):
+        print('(GLOBAL) SHUTDOWN: PROXY IS TERMINATING WITH SIGNAL {}'.format(str(_signal)))
+        reactor.stop()
+
+    # Set signal handers so that we can gracefully exit if need be
+    for sig in [signal.SIGINT, signal.SIGTERM]:
+        signal.signal(sig, sig_handler)
+        
+    #readState()
     
     #If IPv6 is enabled by enivornment variable...
     if ListenIP == '' and 'FDPROXY_IPV6' in os.environ and bool(os.environ['FDPROXY_IPV6']):
@@ -248,9 +307,6 @@ if __name__ == '__main__':
     if 'FDPROXY_LISTENPORT' in os.environ:
         ListenPort = os.environ['FDPROXY_LISTENPORT']
         
-    
-    CONNTRACK = {}
-
     for port in range(DestportStart,DestPortEnd+1,1):
         CONNTRACK[port] = False
     
@@ -259,7 +315,7 @@ if __name__ == '__main__':
     if ListenIP == '::' and IsIPv4Address(Master):
         Master = '::ffff:' + Master
 
-    reactor.listenUDP(ListenPort,Proxy(Master,ListenPort,CONNTRACK,BlackList,IPBlackList,Timeout,Debug,ClientInfo,DestportStart,DestPortEnd),interface=ListenIP)
+    reactor.listenUDP(ListenPort,Proxy(Master,ListenPort,CONNTRACK,PEERTRACK,BlackList,IPBlackList,Timeout,Debug,ClientInfo,DestportStart,DestPortEnd),interface=ListenIP)
 
     def loopingErrHandle(failure):
         print('(GLOBAL) STOPPING REACTOR TO AVOID MEMORY LEAK: Unhandled error innowtimed loop.\n {}'.format(failure))
@@ -287,6 +343,8 @@ if __name__ == '__main__':
         
         for delete in _dellist:
             IPBlackList.pop(delete)
+            if ClientInfo:
+                print('Remove dynamic blacklist entry for {}').format(delete)
 
         
     if Stats == True:
