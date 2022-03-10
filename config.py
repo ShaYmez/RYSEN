@@ -205,6 +205,9 @@ def build_config(_config_file):
                     'PORT': config.getint(section,'PORT'),
                     'NODE' : config.getint(section,'NODE')
             })
+                
+            elif section == 'PROXY':
+                pass
             
                 
 
