@@ -344,7 +344,7 @@ if __name__ == '__main__':
         for delete in _dellist:
             IPBlackList.pop(delete)
             if ClientInfo:
-                print('Remove dynamic blacklist entry for {}').format(delete)
+                print('Remove dynamic blacklist entry for {}'.format(delete))
 
         
     if Stats == True:
