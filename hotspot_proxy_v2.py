@@ -123,7 +123,7 @@ class Proxy(DatagramProtocol):
                 except KeyError:
                     return
                 if self.clientinfo:
-                    print('Add to blacklist: host {}. Expire time {}').format(self.peerTrack[_peer_id]['shost'],_bltime)
+                    print('Add to blacklist: host {}. Expire time {}'.format(self.peerTrack[_peer_id]['shost'],_bltime))
                 return
             
             if _command == DMRD:
