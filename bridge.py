@@ -249,7 +249,7 @@ class routerOBP(OPENBRIDGE):
         self._lastSeq = False
         
 
-    def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash,_hops = b'', _source_server = b'\x00\x00\x00\x00', _ber = b'\x00', _rssi = b'\x00'):
+    def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash,_hops = b'', _source_server = b'\x00\x00\x00\x00', _ber = b'\x00', _rssi = b'\x00', _source_rptr = b'\x00\x00\x00\x00'):
         pkt_time = time()
         dmrpkt = _data[20:53]
         _bits = _data[15]
@@ -483,7 +483,7 @@ class routerOBP(OPENBRIDGE):
                                     _tmp_data = b''.join([_tmp_data, dmrpkt, b'\x00\x00']) # Add two bytes of nothing since OBP doesn't include BER & RSSI bytes #_data[53:55]
 
                                 # Transmit the packet to the destination system
-                                systems[_target['SYSTEM']].send_system(_tmp_data,_hops,_ber,_rssi,_source_server)
+                                systems[_target['SYSTEM']].send_system(_tmp_data,_hops,_ber,_rssi,_source_server,_source_rptr)
                                 #logger.debug('(%s) Packet routed by bridge: %s to system: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
 
 
@@ -581,6 +581,7 @@ class routerHBP(HBSYSTEM):
         _rssi = _data[54:55]
         
         _source_server = self._CONFIG['GLOBAL']['SERVER_ID']
+        _source_rptr = _peer_id
 
         if _call_type == 'group':
 
@@ -795,7 +796,7 @@ class routerHBP(HBSYSTEM):
                                         _tmp_data = b''.join([_tmp_data, dmrpkt, _data[53:55]])
 
                                     # Transmit the packet to the destination system
-                                    systems[_target['SYSTEM']].send_system(_tmp_data,_hops,_ber,_rssi,_source_server)
+                                    systems[_target['SYSTEM']].send_system(_tmp_data,_hops,_ber,_rssi,_source_server,_source_rptr)
                                     #logger.debug('(%s) Packet routed by bridge: %s to system: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
 
 
