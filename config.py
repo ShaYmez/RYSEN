@@ -146,7 +146,8 @@ def build_config(_config_file):
                     'GEN_STAT_BRIDGES': config.getboolean(section, 'GEN_STAT_BRIDGES'),
                     'ALLOW_NULL_PASSPHRASE': config.getboolean(section, 'ALLOW_NULL_PASSPHRASE'),
                     'ANNOUNCEMENT_LANGUAGES': config.get(section, 'ANNOUNCEMENT_LANGUAGES'),
-                    'SERVER_ID': config.getint(section, 'SERVER_ID').to_bytes(4, 'big')
+                    'SERVER_ID': config.getint(section, 'SERVER_ID').to_bytes(4, 'big'),
+                    'DATA_GATEWAY': config.getboolean(section, 'DATA_GATEWAY')
                     
                 })
                 if not CONFIG['GLOBAL']['ANNOUNCEMENT_LANGUAGES']:
