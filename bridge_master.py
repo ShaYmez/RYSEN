@@ -1598,8 +1598,9 @@ class routerOBP(OPENBRIDGE):
             
             #Send all data to DATA-GATEWAY if enabled and valid
             if CONFIG['GLOBAL']['DATA_GATEWAY'] and 'DATA-GATEWAY' in CONFIG['SYSTEMS'] and CONFIG['SYSTEMS']['DATA-GATEWAY']['MODE'] == 'OPENBRIDGE' and CONFIG['SYSTEMS']['DATA-GATEWAY']['ENABLED']:
+                logger.info('(%s) DATA packet sent to DATA-GATEWAY, System: %s',self._system, _d_system)
                 self.sendDataToOBP('DATA-GATEWAY',_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,_source_rptr)
-                 logger.info('(%s) DATA packet sent to DATA-GATEWAY, System: %s',self._system, _d_system)
+                 
             
             #Send other openbridges
             for system in systems:
@@ -2203,9 +2204,9 @@ class routerHBP(HBSYSTEM):
             
             #Send all data to DATA-GATEWAY if enabled and valid
             if CONFIG['GLOBAL']['DATA_GATEWAY'] and 'DATA-GATEWAY' in CONFIG['SYSTEMS'] and CONFIG['SYSTEMS']['DATA-GATEWAY']['MODE'] == 'OPENBRIDGE' and CONFIG['SYSTEMS']['DATA-GATEWAY']['ENABLED']:
-                self.sendDataToOBP('DATA-GATEWAY',_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,_source_rptr)
                 logger.info('(%s) DATA packet sent to DATA-GATEWAY, System: %s',self._system, _d_system)
-            
+                self.sendDataToOBP('DATA-GATEWAY',_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,_source_rptr)
+                
             #Send to all openbridges 
             # sysIgnore = []
             for system in systems:
