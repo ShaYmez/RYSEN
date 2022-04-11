@@ -99,6 +99,9 @@ class Proxy(DatagramProtocol):
         #Proxy control commands
         PRBL    = b'PRBL'
         
+        #Proxy info commands 
+        PRIN    = b'PRIN'
+        
         _peer_id = False
         
         host,port = addr
