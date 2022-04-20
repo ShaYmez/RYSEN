@@ -127,6 +127,22 @@ class OPENBRIDGE(DatagramProtocol):
         self._config = self._CONFIG['SYSTEMS'][self._system]
         self._laststrid = deque([], 20)
 
+    def validate_id(self,_peer_id):
+                
+        _int_peer_id = int_id(_peer_id)
+        _int_peer_id = int(_int_peer_id)
+        _subscriber_ids = self._CONFIG['_SUB_IDS']
+        _peer_ids = self._CONFIG['_PEER_IDS']
+        _local_subscriber_ids = self._CONFIG['_LOCAL_SUBSCRIBER_IDS']
+        
+        if _int_peer_id in _local_subscriber_ids:
+            return _local_subscriber_ids[_int_peer_id]
+        elif _int_peer_id in _subscriber_ids:
+            return _subscriber_ids[_int_peer_id]
+        elif _int_peer_id in _peer_ids:
+            return _peer_ids[_int_peer_id]
+        else:
+            return False
             
     def loopingErrHandle(self,failure):
         logger.error('(GLOBAL - hblink.py) Unhandled error in timed loop.\n %s', failure)
@@ -423,9 +439,15 @@ class OPENBRIDGE(DatagramProtocol):
                         return
                     
                     #Discard bad source server 
-                    if (len(str(int.from_bytes(_source_server,'big'))) > 5) or (len(str(int.from_bytes(_source_server,'big'))) < 4) and int.from_bytes(_source_server,'big') > 0:
+                    if (len(str(int.from_bytes(_source_server,'big'))) < 4) or (len(str(int.from_bytes(_source_server,'big'))) > 7)  and int.from_bytes(_source_server,'big') > 0:
                         if _stream_id not in self._laststrid:
-                            logger.warning('(%s) Source Server should be 4 or 5 digits, discarding Src: %s', self._system, int.from_bytes(_source_server,'big'))
+                            logger.warning('(%s) Source Server should be  between 4 and 7 digits, discarding Src: %s', self._system, int.from_bytes(_source_server,'big'))
+                            self.send_bcsq(_dst_id,_stream_id)
+                            self._laststrid.append(_stream_id)
+                        return
+                    elif len(str(int.from_bytes(_source_server,'big'))) > 5 and not self.validate_id(_source_server):
+                        if _stream_id not in self._laststrid:
+                            logger.warning('(%s) Source Server 6 or 7 digits but not a valid DMR ID, discarding Src: %s', self._system, int.from_bytes(_source_server,'big'))
                             self.send_bcsq(_dst_id,_stream_id)
                             self._laststrid.append(_stream_id)
                         return
