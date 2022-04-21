@@ -67,7 +67,7 @@ class reportClient(NetstringReceiver):
             'subid'     : datalist[6],
             'slot'      : datalist[7],
             'dstid'     : datalist[8],
-            'duration'  : False
+            'duration'  : 0
              }
         
         if len(datalist) > 9:
