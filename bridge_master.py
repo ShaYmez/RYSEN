@@ -1823,7 +1823,7 @@ class routerOBP(OPENBRIDGE):
                     logger.debug('(%s) Bridge for STAT TG %s does not exist. Creating',self._system, int_id(_dst_id))
                     make_stat_bridge(_dst_id)
             
-            _sysIgnore = []
+            _sysIgnore = set()
             for _bridge in BRIDGES:
                     for _system in BRIDGES[_bridge]:
                         
@@ -2627,7 +2627,7 @@ class routerHBP(HBSYSTEM):
             #Save this packet
             self.STATUS[_slot]['lastData'] = _data
                           
-            _sysIgnore = []
+            _sysIgnore = set()
             for _bridge in BRIDGES:
                 #if _bridge[0:1] != '#':
                 if True:
@@ -2887,9 +2887,11 @@ if __name__ == '__main__':
     # Build the routing rules file
     BRIDGES = make_bridges(rules_module.BRIDGES)
     
-    #Subscriber map for unit calls - complete with test entry
-    #SUB_MAP = {bytes_3(73578):('REP-1',1,time())}
+    #Subscriber map for unit calls
     SUB_MAP = {}
+    #Also store a reference to SUB_MAP in the config structure
+    #Among other things, this means it's available on the reporting port
+    CONFIG['_SUB_MAP'] = SUB_MAP
     
     
     if CONFIG['ALIASES']['SUB_MAP_FILE']:
@@ -2898,12 +2900,7 @@ if __name__ == '__main__':
                 SUB_MAP = pickle.load(_fh)
         except:
             logger.warning('(SUBSCRIBER) Cannot load SUB_MAP file')
-            #sys.exit('(SUBSCRIBER) TERMINATING: SUB_MAP file not found or invalid')
-        
-        #Test value
-        #SUB_MAP[bytes_3(73578)] = ('REP-1',1,time())
-    
-    
+
     #Generator
     generator = {}
     systemdelete = []
