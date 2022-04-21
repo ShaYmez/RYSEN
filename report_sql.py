@@ -39,8 +39,9 @@ from mysql.connector import errorcode
 from reporting_const import *
 
 class reportClient(NetstringReceiver):
-    def __init__(self,db):
+    def __init__(self,db,reactor):
         self.db = db
+        self.reactor = reactor
             
     def stringReceived(self, data):
         
@@ -69,10 +70,15 @@ class reportClient(NetstringReceiver):
             'dstid'     : datalist[8],
             'duration'  : 0
              }
-        
+
         if len(datalist) > 9:
             event['duration'] = datalist[9]
         
+        
+        self.reactor.callInThread(self.send_mysql,event)
+        
+    def send_mysql(self,event):
+
         while not self.db.is_connected():
             self.db.reconnect()
         print("{} {} {} {} {} {} {} {} {}".format(event['type'],event['event'], event['trx'],event['system'],event['streamid'],event['peerid'],event['subid'],event['slot'],event['dstid'],event['duration']))
@@ -93,9 +99,10 @@ class reportClient(NetstringReceiver):
         
 
 class reportClientFactory(ReconnectingClientFactory):
-    def __init__(self,proto,db):
+    def __init__(self,proto,db,reactor):
         self.proto = proto
         self.db = db
+        self.reactor = reactor
         
     def startedConnecting(self, connector):
         print('Started to connect.')
@@ -104,7 +111,7 @@ class reportClientFactory(ReconnectingClientFactory):
         print('Connected.')
         print('Resetting reconnection delay')
         self.resetDelay()
-        return self.proto(db)
+        return self.proto(db,reactor)
 
     def clientConnectionLost(self, connector, reason):
         print('Lost connection.  Reason:', reason)
@@ -152,5 +159,5 @@ if __name__ == '__main__':
             sys.exit('(MYSQL) error: %s',err)
             
         
-    reactor.connectTCP(sys.argv[1],int(sys.argv[2]), reportClientFactory(reportClient,db))
+    reactor.connectTCP(sys.argv[1],int(sys.argv[2]), reportClientFactory(reportClient,db,reactor))
     reactor.run()
