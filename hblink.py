@@ -293,10 +293,10 @@ class OPENBRIDGE(DatagramProtocol):
                     #This is a v1 packet, so all the extended stuff we can set to default
                     #We are the source server if traffic came over a v1 bridge - sysops are responsible
                     #for bridged in traffic from their system
-                    _source_server == self.CONFIG['SERVER_ID']
-                    _source_rptr == b'\x00\x00\x00\x00'
-                    _ber == b'\x00'
-                    _rssi == b'\x00'
+                    _source_server = self.CONFIG['SERVER_ID']
+                    _source_rptr = b'\x00\x00\x00\x00'
+                    _ber = b'\x00'
+                    _rssi = b'\x00'
                     _hops = b''
                     
                     _seq = _data[4]
