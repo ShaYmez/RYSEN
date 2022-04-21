@@ -73,7 +73,7 @@ class reportClient(NetstringReceiver):
         if len(datalist) > 9:
             event['duration'] = datalist[9]
         
-        if event['event'] == 'END' and event['trx'] == RX:
+        if event['event'] == 'END' and event['trx'] == 'RX':
             
             while not self.db.is_connected():
                 self.db.reconnect()
