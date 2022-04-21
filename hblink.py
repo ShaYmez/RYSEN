@@ -289,6 +289,16 @@ class OPENBRIDGE(DatagramProtocol):
                     if self._config['NETWORK_ID'] != _peer_id:
                         logger.error('(%s) OpenBridge packet discarded because NETWORK_ID: %s Does not match sent Peer ID: %s', self._system, int_id(self._config['NETWORK_ID']), int_id(_peer_id))
                         return
+                    
+                    #This is a v1 packet, so all the extended stuff we can set to default
+                    #We are the source server if traffic came over a v1 bridge - sysops are responsible
+                    #for bridged in traffic from their system
+                    _source_server == self.CONFIG['SERVER_ID']
+                    _source_rptr == b'\x00\x00\x00\x00'
+                    _ber == b'\x00'
+                    _rssi == b'\x00'
+                    _hops = b''
+                    
                     _seq = _data[4]
                     _rf_src = _data[5:8]
                     _dst_id = _data[8:11]
@@ -358,7 +368,7 @@ class OPENBRIDGE(DatagramProtocol):
                             return
 
                     # Userland actions -- typically this is the function you subclass for an application
-                    self.dmrd_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash)
+                    self.dmrd_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash,_hops,_source_server,_ber,_rssi,_source_rptr)
                     #Silently treat a DMRD packet like a keepalive - this is because it's traffic and the 
                     #Other end may not have enabled ENAHNCED_OBP
                     self._config['_bcka'] = time()
