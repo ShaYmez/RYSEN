@@ -77,12 +77,11 @@ class reportClient(NetstringReceiver):
             
             while not self.db.is_connected():
                 self.db.reconnect()
-            
+            print("{} {} {} {} {} {} {} {} {}".format(event['type'],event['event'], event['trx'],event['system'],event['streamid'],event['peerid'],event['subid'],event['slot'],event['dstid'],event['duration']))
             _cursor = self.db.cursor()
             try:
                 _cursor.execute("insert into feed values (NULL,'{}','{}','{}','{}','{}','{}','{}','{}','{}','{}')".format(event['type'],event['event'], event['trx'],event['system'],event['streamid'],event['peerid'],event['subid'],event['slot'],event['dstid'],event['duration']))
                 self.db.commit()
-                #print("{} {} {} {} {} {} {} {} {}".format(event['type'],event['event'], event['trx'],event['system'],event['streamid'],event['peerid'],event['subid'],event['slot'],event['dstid'],event['duration']))
             except mysql.connector.Error as err:
                 _cursor.close()
                 print('(MYSQL) error, problem with cursor execute: {}'.format(err))
