@@ -85,7 +85,6 @@ def playFileOnRequest(system,fileName,dstTG,subid):
         #Packet every 60ms
         sleep(0.058)
         _stream_id = pkt[16:20]
-        _pkt_time = time()
         reactor.callFromThread(sendVoicePacket,systems[system],pkt,_source_id,_dst_id,_slot)
     logger.debug('(%s) Sending AMBE file %s end',system,fileName)
     
@@ -217,7 +216,7 @@ if __name__ == '__main__':
     SUBID = int(cli_args.SUBID)
     if 'ONESHOT' in cli_args:
         ONESHOT = bool(cli_args.ONESHOT)
-    if 'INTERVAL' in cli_args and cli_args.INTERVAL > 30:
+    if 'INTERVAL' in cli_args and int(cli_args.INTERVAL) > 30:
         INTERVAL = int(cli_args.INTERVAL)
     if 'TALKGROUP' in cli_args:
         TALKGROUP = int(cli_args.TALKGROUP)
