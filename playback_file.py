@@ -49,17 +49,16 @@ logger = logging.getLogger(__name__)
 
 
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
-__author__     = 'Cortney T. Buffington, N0MJS and Mike Zingman, N4IRR'
-__copyright__  = 'Copyright (c) 2016-2019 Cortney T. Buffington, N0MJS and the K0USY Group'
+__author__     = 'Simon Adlem, based on work by Cortney T. Buffington, N0MJS and Mike Zingman, N4IRR'
+__copyright__  = 'Copyright (c) 2022, Simon Adlem G7RZU, 2016-2019 Cortney T. Buffington, N0MJS and the K0USY Group'
 __license__    = 'GNU GPLv3'
 __maintainer__ = 'Cort Buffington, N0MJS'
-__email__      = 'n0mjs@me.com'
+__email__      = 'simon@gb7fr.org.uk'
 __status__     = 'pre-alpha'
 
 # Module gobal varaibles
 
 def playFile(fileName,dstTG,subid):
-    pkt_time = time()
     for system in systems:
         reactor.callInThread(playFileOnRequest,system,fileName,dstTG,subid)
 
@@ -70,6 +69,7 @@ def playFileOnRequest(system,fileName,dstTG,subid):
     sleep(1)
     _say = []
     try:
+
         _say.append(AMBEobj.readSingleFile(fileName))
     except IOError:
         logger.warning('(%s) cannot read file %s',system,fileName)
@@ -277,6 +277,7 @@ if __name__ == '__main__':
             
     #Read AMBE
     AMBEobj = readAMBE(CONFIG['GLOBAL']['ANNOUNCEMENT_LANGUAGES'],'./Audio/')
+    AMBEobj.path = ('/')
     if ONESHOT: 
         reactor.callLater(10,playFile,FILE,TALKGROUP,SUBID)
     else:
