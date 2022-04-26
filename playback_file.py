@@ -211,12 +211,13 @@ if __name__ == '__main__':
     
     FILE = cli_args.FILE
     ONESHOT = False
-    INTERVAL = 30
+    INTERVAL = 120
     TALKGROUP = 9
     SUBID = int(cli_args.SUBID)
     if 'ONESHOT' in cli_args:
         ONESHOT = bool(cli_args.ONESHOT)
-    if 'INTERVAL' in cli_args and cli_args.INTERVAL and int(cli_args.INTERVAL) > 30:
+    #Minimum interval is every 120s Anything else is antisocial! 
+    if 'INTERVAL' in cli_args and cli_args.INTERVAL and int(cli_args.INTERVAL) > 120:
         INTERVAL = int(cli_args.INTERVAL)
     if 'TALKGROUP' in cli_args:
         TALKGROUP = int(cli_args.TALKGROUP)
