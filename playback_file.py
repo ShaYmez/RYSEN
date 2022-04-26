@@ -217,7 +217,7 @@ if __name__ == '__main__':
     SUBID = int(cli_args.SUBID)
     if 'ONESHOT' in cli_args:
         ONESHOT = bool(cli_args.ONESHOT)
-    if 'INTERVAL' in cli_args and INTERVAL > 30:
+    if 'INTERVAL' in cli_args and cli_args.INTERVAL > 30:
         INTERVAL = int(cli_args.INTERVAL)
     if 'TALKGROUP' in cli_args:
         TALKGROUP = int(cli_args.TALKGROUP)
