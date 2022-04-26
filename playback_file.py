@@ -195,7 +195,7 @@ if __name__ == '__main__':
     parser.add_argument('-c', '--config', action='store', dest='CONFIG_FILE', help='/full/path/to/config.file (usually hblink.cfg)')
     parser.add_argument('-l', '--logging', action='store', dest='LOG_LEVEL', help='Override config file logging level.')
     parser.add_argument('-f', '--file', action='store', dest='FILE', help='Filename to play')
-    parser.add_argument('-o', '--oneshot', action='store', dest='FILE', help='play once then exit [0|1]')
+    parser.add_argument('-o', '--oneshot', action='store', dest='ONESHOT', help='play once then exit [0|1]')
     parser.add_argument('-i', '--interval', action='store', dest='INTERVAL', help='play every N seconds')
     parser.add_argument('-t', '--talkgroup', action='store', dest='TALKGROUP', help='target talkgroup')
     parser.add_argument('-s', '--source', action='store', dest='SUBID', help='subscriber (source) ID')
@@ -216,7 +216,7 @@ if __name__ == '__main__':
     TALKGROUP = 9
     SUBID = int(cli_args.SUBID)
     if 'ONESHOT' in cli_args:
-        ONESHOT = cli_args.ONESHOT
+        ONESHOT = bool(cli_args.ONESHOT)
     if 'INTERVAL' in cli_args and INTERVAL > 30:
         INTERVAL = int(cli_args.INTERVAL)
     if 'TALKGROUP' in cli_args:
@@ -279,7 +279,7 @@ if __name__ == '__main__':
     #Read AMBE
     AMBEobj = readAMBE(CONFIG['GLOBAL']['ANNOUNCEMENT_LANGUAGES'],'./Audio/')
     if ONESHOT: 
-        reactor.callLater(10,playFile,FILE,TALKGROUP)
+        reactor.callLater(10,playFile,FILE,TALKGROUP,SUBID)
     else:
         logger.info('(PLAYBACK) Setting interval to %s seconds',INTERVAL)
         ambe_task = task.LoopingCall(playFile,FILE,TALKGROUP,SUBID)
