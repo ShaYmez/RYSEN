@@ -191,7 +191,7 @@ if __name__ == '__main__':
 
     # CLI argument parser - handles picking up the config file from the command line, and sending a "help" message
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', action='store', dest='CONFIG_FILE', help='/full/path/to/config.file (usually hblink.cfg)')
+    parser.add_argument('-c', '--config', action='store', dest='CONFIG_FILE', help='/full/path/to/config.file (usually playback_file.cfg)')
     parser.add_argument('-l', '--logging', action='store', dest='LOG_LEVEL', help='Override config file logging level.')
     parser.add_argument('-f', '--file', action='store', dest='FILE', help='Filename to play')
     parser.add_argument('-o', '--oneshot', action='store', dest='ONESHOT', help='play once then exit [0|1]')
@@ -204,7 +204,7 @@ if __name__ == '__main__':
 
     # Ensure we have a path for the config file, if one wasn't specified, then use the default (top of file)
     if not cli_args.CONFIG_FILE:
-        cli_args.CONFIG_FILE = os.path.dirname(os.path.abspath(__file__))+'/hblink.cfg'
+        cli_args.CONFIG_FILE = os.path.dirname(os.path.abspath(__file__))+'/playback_file.cfg'
 
     # Call the external routine to build the configuration dictionary
     CONFIG = config.build_config(cli_args.CONFIG_FILE)
@@ -225,7 +225,7 @@ if __name__ == '__main__':
     if cli_args.LOG_LEVEL:
         CONFIG['LOGGER']['LOG_LEVEL'] = cli_args.LOG_LEVEL
     logger = log.config_logging(CONFIG['LOGGER'])
-    logger.info('\n\nCopyright (c) 2013, 2014, 2015, 2016, 2018, 2019\n\tThe Founding Members of the K0USY Group. All rights reserved.\n')
+    logger.info('\n\nCopyright (c) 2022, Simon G7RZU based on work fromn - 2013, 2014, 2015, 2016, 2018, 2019\n\tThe Founding Members of the K0USY Group. All rights reserved.\n')
     logger.debug('Logging system started, anything from here on gets logged')
     
     # Set up the signal handler
@@ -264,7 +264,7 @@ if __name__ == '__main__':
     report_server = config_reports(CONFIG, reportFactory)    
     
     # HBlink instance creation
-    logger.info('HBlink \'playback.py\' (c) 2017-2019 Cort Buffington, N0MJS & Mike Zingman, N4IRR -- SYSTEM STARTING...')
+    logger.info('FreeDMR \'playback_file.py\' (c) 2022 Simon Adlem based on work from 2017-2019 Cort Buffington, N0MJS & Mike Zingman, N4IRR -- SYSTEM STARTING...')
     for system in CONFIG['SYSTEMS']:
         if CONFIG['SYSTEMS'][system]['ENABLED']:
             if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
