@@ -75,7 +75,8 @@ class reportClient(NetstringReceiver):
             event['duration'] = datalist[9]
         
         
-        self.reactor.callInThread(self.send_mysql,event)
+        #self.reactor.callInThread(self.send_mysql,event)
+        self.send_mysql(event)
         
     def send_mysql(self,event):
 
