@@ -70,7 +70,12 @@ def playFileOnRequest(system,fileName,dstTG,subid):
     _say = []
     try:
 
+        _say.append(SILENCE)
+        _say.append(SILENCE)
+        _say.append(SILENCE)
         _say.append(AMBEobj.readSingleFile(fileName))
+        _say.append(SILENCE)
+        _say.append(SILENCE)
     except IOError:
         logger.warning('(%s) cannot read file %s',system,fileName)
         return
@@ -279,6 +284,11 @@ if __name__ == '__main__':
     #Read AMBE
     AMBEobj = readAMBE(CONFIG['GLOBAL']['ANNOUNCEMENT_LANGUAGES'],'./Audio/')
     AMBEobj.path = ('/')
+    
+    SILENCE = ([
+                    [bitarray('101011000000101010100000010000000000001000000000000000000000010001000000010000000000100000000000100000000000'),
+                    bitarray('001010110000001010101000000100000000000010000000000000000000000100010000000100000000001000000000001000000000')]
+                ])
     if ONESHOT: 
         reactor.callLater(10,playFile,FILE,TALKGROUP,SUBID)
     else:
