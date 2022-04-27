@@ -153,6 +153,8 @@ if __name__ == '__main__':
             user=sys.argv[4],
             password=sys.argv[5],
             database=sys.argv[6],
+            pool_name = "master",
+            pool_size = 5
         )
     except mysql.connector.Error as err:
         if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
