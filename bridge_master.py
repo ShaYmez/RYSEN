@@ -2567,7 +2567,7 @@ class routerHBP(HBSYSTEM):
             #Timeout
             if self.STATUS[_slot]['RX_START'] + 180 < pkt_time:
                 if 'LOOPLOG' not in self.STATUS[_slot] or not self.STATUS[_slot]['LOOPLOG']: 
-                    logger.info("(%s) HBP *SOURCE TIMEOUT* STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
+                    logger.info("(%s) HBP *SOURCE TIMEOUT* STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, int_id(_stream_id), int_id(_dst_id),_slot)
                     self.STATUS[_slot]['LOOPLOG'] = True
                 self.STATUS[_slot]['LAST'] = pkt_time
                 return
