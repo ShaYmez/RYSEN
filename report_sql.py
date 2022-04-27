@@ -79,11 +79,11 @@ class reportClient(NetstringReceiver):
         
     def send_mysql(self,event):
 
-            while not self.db.is_connected():
-                try:
-                    self.db.reconnect()
-                except mysql.connector.Error as err:
-                    print('(MYSQL) error on reconnect: {}'.format(err))    
+        while not self.db.is_connected():
+            try:
+                self.db.reconnect()
+            except mysql.connector.Error as err:
+                print('(MYSQL) error on reconnect: {}'.format(err))    
                 
         print("{} {} {} {} {} {} {} {} {}".format(event['type'],event['event'], event['trx'],event['system'],event['streamid'],event['peerid'],event['subid'],event['slot'],event['dstid'],event['duration']))
         _cursor = self.db.cursor()
