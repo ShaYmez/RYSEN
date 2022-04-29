@@ -1,5 +1,7 @@
-### FreeDMR Peer Server is a (now very diverged) fork of the hblink3 project ###
+### RYSEN Project ###
+## A fork of the FreeDMR Poject ##
 
-FreeDMR Peer Server - software to assist in building a peer mesh network
+FreeDMR Peer Server Software - Software to assist in building a peer mesh network. Thanks to all credited in this project including G7RZU.
 
-Please see the wiki for documentation.
+More to come as development continues as a fork. FreeDMR Peer Server Fork  - codename: RYSEN
+https://rysen.uk
