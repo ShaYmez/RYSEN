@@ -21,4 +21,4 @@ jobs:
         run: |
           docker buildx build --push \
             --tag shaymez/rysen:latest \
-            --platform linux/i386,linux/amd64,linux/arm64,linux/arm/v7 docker-configs/Dockerfile-proxy
+            --platform linux/i386,linux/amd64,linux/arm64,linux/arm/v7 ./docker-configs/Dockerfile-proxy
