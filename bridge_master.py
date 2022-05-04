@@ -783,7 +783,7 @@ def options_config():
                             _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_8')
                         if 'TS1_9' in _options:
                             _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_9')
-                    if 'TS2_2' in _options:
+                    if 'TS2_1' in _options:
                         _options['TS2_STATIC'] = _options.pop('TS2_1')
                         if 'TS2_2' in _options:
                             _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_2')
