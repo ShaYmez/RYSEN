@@ -34,7 +34,7 @@ services:
             #Change the below to inlude ports used for your OBP(s)
             - '62041:62041/udp'
             - '4321:4321/tcp'
-        image: 'hacknix/rysen:development-latest'
+        image: 'shaymez/rysen:latest'
         restart: "unless-stopped"
         networks:
            app_net:
@@ -82,7 +82,7 @@ services:
         #    - '/etc/rysen/config.py:/opt/RYSENmonitor/config.py'
         ports:
             - '9000:9000/tcp'
-        image: 'hacknix/rysenmonitor:latest'
+        image: 'shaymez/rysenmonitor:latest'
         restart: "unless-stopped"
         networks:
            app_net:
@@ -100,7 +100,7 @@ services:
         #    - '/var/www/html/images/:/var/www/html/images/'
         ports:
             - '80:80/tcp'
-        image: hacknix/rysenmonitor-apache:latest
+        image: shaymez/rysenmonitor-apache:latest
         restart: "unless-stopped"
         networks:
            app_net:
