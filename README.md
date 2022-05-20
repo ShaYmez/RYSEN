@@ -1,9 +1,9 @@
 ## RYSEN Project ##
-### A fork of the RYSEN Poject ###
+### A fork of the FreeDMR Peer Server Poject ###
 
-RYSEN Peer Server Software - Software to assist in building a peer mesh network. Thanks to all credited in this project including Simon G7RZU.
+RYSEN DMRMaster+ - Software to build and scale DMR Master server software. Thanks to all credited in the FreeDMR project including Simon G7RZU.
 
 Project under development!
 
-More to come as development continues as a fork. RYSEN Peer Server Fork  - codename: RYSEN
+More to come as development continues as a fork. SYSTEM-X- codename: RYSEN
 https://rysen.uk
