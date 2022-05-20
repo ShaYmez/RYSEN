@@ -17,15 +17,15 @@
 #   Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 ###############################################################################
 
-cd /opt/freedmr
+cd /opt/rysen
 
 if [ "$BRIDGE_SERVER" == 1 ]
 then
         echo 'Starting in Bridge mode...'
-        python /opt/freedmr/bridge.py -c freedmr.cfg -r rules.py
+        python /opt/rysen/bridge.py -c rysen.cfg -r rules.py
 else
-	echo 'Starting in FreeDMR mode...'
-	python /opt/freedmr/hotspot_proxy_v2.py &
-	python /opt/freedmr/playback.py -c loro.cfg &
-	python /opt/freedmr/bridge_master.py -c freedmr.cfg -r rules.py
+	echo 'Starting in RYSEN mode...'
+	python /opt/rysen/hotspot_proxy_v2.py &
+	python /opt/rysen/playback.py -c loro.cfg &
+	python /opt/rysen/bridge_master.py -c rysen.cfg -r rules.py
 fi

@@ -1,7 +1,7 @@
 '''
 THIS EXAMPLE WILL NOT WORK AS IT IS - YOU MUST SPECIFY YOUR OWN VALUES!!!
 
-In FreeDMR, the rules file should be *empty* unless you have static routing required. Please see the 
+In RYSEN, the rules file should be *empty* unless you have static routing required. Please see the 
 documentation for more details.
 
 This file is organized around the "Conference Bridges" that you wish to use. If you're a c-Bridge

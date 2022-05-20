@@ -18,24 +18,24 @@
 
 version: '2.4'
 services:
-    freedmr:
-        container_name: freedmr
+    rysen:
+        container_name: rysen
         cpu_shares: 1024
         mem_reservation: 600m
         volumes:
-            - '/etc/freedmr/freedmr.cfg:/opt/freedmr/freedmr.cfg'
-            - '/var/log/freedmr/freedmr.log:/opt/freedmr/freedmr.log'
-            - '/etc/freedmr/rules.py:/opt/freedmr/rules.py'
+            - '/etc/rysen/rysen.cfg:/opt/rysen/rysen.cfg'
+            - '/var/log/rysen/rysen.log:/opt/rysen/rysen.log'
+            - '/etc/rysen/rules.py:/opt/rysen/rules.py'
             #Write JSON files outside of container
-            - '/etc/freedmr/json/talkgroup_ids.json:/opt/freedmr/talkgroup_ids.json'
-            - '/etc/freedmr/json/subscriber_ids.json:/opt/freedmr/subscriber_ids.json'
-            - '/etc/freedmr/json/peer_ids.json:/opt/freedmr/peer_ids.json'
-            - '/etc/freedmr/json/sub_map.pkl:/opt/freedmr/sub_map.pkl'
+            - '/etc/rysen/json/talkgroup_ids.json:/opt/rysen/talkgroup_ids.json'
+            - '/etc/rysen/json/subscriber_ids.json:/opt/rysen/subscriber_ids.json'
+            - '/etc/rysen/json/peer_ids.json:/opt/rysen/peer_ids.json'
+            - '/etc/rysen/json/sub_map.pkl:/opt/rysen/sub_map.pkl'
         ports:
             - '62031:62031/udp'
             #Change the below to inlude ports used for your OBP(s)
             - '62041:62041/udp'
-        image: 'hacknix/freedmr:latest'
+        image: 'hacknix/rysen:latest'
         restart: "unless-stopped"
         networks:
            app_net:
@@ -54,36 +54,36 @@ services:
             #- FDPROXY_LISTENPORT=62031
         read_only: "true"
 
-    freedmrmon:
-        container_name: freedmrmon
+    rysenmon:
+        container_name: rysenmon
         cpu_shares: 512
         depends_on:
-            - freedmr
+            - rysen
         volumes:
             #This should be kept to a manageable size from
             #cron or logrotate outisde of the container.
-            - '/var/log/FreeDMRmonitor/lastheard.log:/opt/FreeDMRmonitor/log/lastheard.log'
-            - '/var/log/FreeDMRmonitor/hbmon.log:/opt/FreeDMRmonitor/log/hbmon.log'
+            - '/var/log/RYSENmonitor/lastheard.log:/opt/RYSENmonitor/log/lastheard.log'
+            - '/var/log/RYSENmonitor/hbmon.log:/opt/RYSENmonitor/log/hbmon.log'
             #Write JSON files outside of container
-            - '/etc/freedmr/json/talkgroup_ids.json:/opt/FreeDMRmonitor/talkgroup_ids.json'
-            - '/etc/freedmr/json/subscriber_ids.json:/opt/FreeDMRmonitor/subscriber_ids.json'
-            - '/etc/freedmr/json/peer_ids.json:/opt/FreeDMRmonitor/peer_ids.json'
+            - '/etc/rysen/json/talkgroup_ids.json:/opt/RYSENmonitor/talkgroup_ids.json'
+            - '/etc/rysen/json/subscriber_ids.json:/opt/RYSENmonitor/subscriber_ids.json'
+            - '/etc/rysen/json/peer_ids.json:/opt/RYSENmonitor/peer_ids.json'
 
         #Override config file
-        #    - '/etc/freedmr/config.py:/opt/FreeDMRmonitor/config.py'
+        #    - '/etc/rysen/config.py:/opt/RYSENmonitor/config.py'
         ports:
             - '9000:9000/tcp'
-        image: 'hacknix/freedmrmonitor:latest'
+        image: 'hacknix/rysenmonitor:latest'
         restart: "unless-stopped"
         networks:
            app_net:
              ipv4_address: 172.16.238.20
      
-    freedmrmonpache:
-        container_name: freedmrmonapache
+    rysenmonpache:
+        container_name: rysenmonapache
         cpu_shares: 512
         depends_on:
-             - freedmrmon
+             - rysenmon
         #Use to override html files
         #And images
         #volumes:
@@ -91,7 +91,7 @@ services:
         #    - '/var/www/html/images/:/var/www/html/images/'
         ports:
             - '80:80/tcp'
-        image: hacknix/freedmrmonitor-apache:latest
+        image: hacknix/rysenmonitor-apache:latest
         restart: "unless-stopped"
         networks:
            app_net:

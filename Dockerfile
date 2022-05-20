@@ -8,11 +8,11 @@ RUN adduser -D -u 54000 radio && \
         apk update && \
         apk add git gcc musl-dev && \
         cd /opt && \
-        git clone https://github.com/ShaYmez/RYSEN.git freedmr && \
-        cd /opt/freedmr && \
+        git clone https://github.com/ShaYmez/RYSEN.git rysen && \
+        cd /opt/rysen && \
         pip install --no-cache-dir -r requirements.txt && \
         apk del git gcc musl-dev && \
-        chown -R radio: /opt/freedmr
+        chown -R radio: /opt/rysen
 
 USER radio
 

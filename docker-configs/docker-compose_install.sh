@@ -18,7 +18,7 @@
 #   Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 ###############################################################################
 
-echo FreeDMR Docker installer...
+echo RYSEN Docker installer...
 
 echo Installing required packages...
 apt-get -y install docker.io && 
@@ -32,22 +32,22 @@ echo Restart docker...
 systemctl restart docker &&
 
 echo Make config directory...
-mkdir /etc/freedmr &&
-chmod 755 /etc/freedmr &&
+mkdir /etc/rysen &&
+chmod 755 /etc/rysen &&
 
 echo make json directory...
-mkdir -p /etc/freedmr/json &&
+mkdir -p /etc/rysen/json &&
 
 echo get json files...
-cd /etc/freedmr/json &&
-curl http://downloads.freedmr.uk/downloads/local_subscriber_ids.json -o subscriber_ids.json &&
-curl http://downloads.freedmr.uk/downloads/talkgroup_ids.json -o talkgroup_ids.json &&
+cd /etc/rysen/json &&
+curl http://downloads.rysen.uk/downloads/local_subscriber_ids.json -o subscriber_ids.json &&
+curl http://downloads.rysen.uk/downloads/talkgroup_ids.json -o talkgroup_ids.json &&
 curl https://www.radioid.net/static/rptrs.json -o peer_ids.json &&
-touch /etc/freedmr/json/sub_map.pkl &&
-chmod -R 777 /etc/freedmr/json &&
+touch /etc/rysen/json/sub_map.pkl &&
+chmod -R 777 /etc/rysen/json &&
 
-echo Install /etc/freedmr/freedmr.cfg ... 
-cat << EOF > /etc/freedmr/freedmr.cfg
+echo Install /etc/rysen/rysen.cfg ... 
+cat << EOF > /etc/rysen/rysen.cfg
 [GLOBAL]
 PATH: ./
 PING_TIME: 10
@@ -70,10 +70,10 @@ REPORT_PORT: 4321
 REPORT_CLIENTS: *
 
 [LOGGER]
-LOG_FILE: freedmr.log
+LOG_FILE: rysen.log
 LOG_HANDLERS: file-timed
 LOG_LEVEL: INFO
-LOG_NAME: FreeDMR
+LOG_NAME: RYSEN
 
 [ALIASES]
 TRY_DOWNLOAD: False
@@ -82,8 +82,8 @@ PEER_FILE: peer_ids.json
 SUBSCRIBER_FILE: subscriber_ids.json
 TGID_FILE: talkgroup_ids.json
 PEER_URL: https://www.radioid.net/static/rptrs.json
-SUBSCRIBER_URL: http://downloads.freedmr.uk/downloads/local_subscriber_ids.json
-TGID_URL: TGID_URL: http://downloads.freedmr.uk/downloads/talkgroup_ids.json
+SUBSCRIBER_URL: http://downloads.rysen.uk/downloads/local_subscriber_ids.json
+TGID_URL: TGID_URL: http://downloads.rysen.uk/downloads/talkgroup_ids.json
 STALE_DAYS: 7
 LOCAL_SUBSCRIBER_FILE: local_subcriber_ids.json
 SUB_MAP_FILE: sub_map.pkl
@@ -162,9 +162,9 @@ LONGITUDE: 000.0000
 HEIGHT: 0
 LOCATION: Earth
 DESCRIPTION: ECHO
-URL: www.freedmr.uk
+URL: www.rysen.uk
 SOFTWARE_ID: 20170620
-PACKAGE_ID: MMDVM_FreeDMR
+PACKAGE_ID: MMDVM_RYSEN
 GROUP_HANGTIME: 5
 OPTIONS:
 USE_ACL: True
@@ -175,36 +175,36 @@ ANNOUNCEMENT_LANGUAGE: en_GB
 EOF
 
 echo Install rules.py ...
-echo "BRIDGES = {'9990': [{'SYSTEM': 'ECHO', 'TS': 2, 'TGID': 9990, 'ACTIVE': True, 'TIMEOUT': 2, 'TO_TYPE': 'NONE', 'ON': [], 'OFF': [], 'RESET': []},]}" > /etc/freedmr/rules.py &&
+echo "BRIDGES = {'9990': [{'SYSTEM': 'ECHO', 'TS': 2, 'TGID': 9990, 'ACTIVE': True, 'TIMEOUT': 2, 'TO_TYPE': 'NONE', 'ON': [], 'OFF': [], 'RESET': []},]}" > /etc/rysen/rules.py &&
 
 echo Set perms on config directory...
-chown -R 54000 /etc/freedmr &&
+chown -R 54000 /etc/rysen &&
 
 echo Setup logging...
-mkdir -p /var/log/freedmr &&
-touch /var/log/freedmr/freedmr.log &&
-chown -R 54000 /var/log/freedmr &&
-mkdir -p /var/log/FreeDMRmonitor &&
-touch /var/log/FreeDMRmonitor/lastheard.log &&
-touch /var/log/FreeDMRmonitor/hbmon.log &&
-chown -R 54001 /var/log/FreeDMRmonitor &&
+mkdir -p /var/log/rysen &&
+touch /var/log/rysen/rysen.log &&
+chown -R 54000 /var/log/rysen &&
+mkdir -p /var/log/RYSENmonitor &&
+touch /var/log/RYSENmonitor/lastheard.log &&
+touch /var/log/RYSENmonitor/hbmon.log &&
+chown -R 54001 /var/log/RYSENmonitor &&
 
 echo Get docker-compose.yml...
-cd /etc/freedmr &&
-curl https://gitlab.hacknix.net/hacknix/FreeDMR/-/raw/master/docker-configs/docker-compose.yml -o docker-compose.yml &&
+cd /etc/rysen &&
+curl https://gitlab.hacknix.net/hacknix/RYSEN/-/raw/master/docker-configs/docker-compose.yml -o docker-compose.yml &&
 echo Install crontab...
 cat << EOF > /etc/cron.daily/lastheard
 #!/bin/bash
-mv /var/log/FreeDMRmonitor/lastheard.log /var/log/FreeDMRmonitor/lastheard.log.save
-/usr/bin/tail -150 /var/log/FreeDMRmonitor/lastheard.log.save > /var/log/FreeDMRmonitor/lastheard.log
-mv /var/log/FreeDMRmonitor/lastheard.log /var/log/FreeDMRmonitor/lastheard.log.save
-/usr/bin/tail -150 /var/log/FreeDMRmonitor/lastheard.log.save > /var/log/FreeDMRmonitor/lastheard.log
+mv /var/log/RYSENmonitor/lastheard.log /var/log/RYSENmonitor/lastheard.log.save
+/usr/bin/tail -150 /var/log/RYSENmonitor/lastheard.log.save > /var/log/RYSENmonitor/lastheard.log
+mv /var/log/RYSENmonitor/lastheard.log /var/log/RYSENmonitor/lastheard.log.save
+/usr/bin/tail -150 /var/log/RYSENmonitor/lastheard.log.save > /var/log/RYSENmonitor/lastheard.log
 EOF
 chmod 755 /etc/cron.daily/lastheard
 
 
-echo Run FreeDMR container...
+echo Run RYSEN container...
 docker-compose up -d
 
 
-echo FreeDMR setup complete!
+echo RYSEN setup complete!

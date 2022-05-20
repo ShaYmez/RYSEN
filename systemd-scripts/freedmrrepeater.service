@@ -1,6 +1,6 @@
 [Unit]
 
-Description= FreeDMR Repeaters Service 
+Description= RYSEN Repeaters Service 
 
 
 
@@ -11,7 +11,7 @@ After=syslog.target network.target
 [Service]
 User=root
 
-WorkingDirectory=/opt/FreeDMR
+WorkingDirectory=/opt/RYSEN
 
 ExecStart=/usr/bin/python3 bridge_master.py -c ./config/hblink.cfg -r ./config/rules.py
 
