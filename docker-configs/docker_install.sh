@@ -168,7 +168,7 @@ echo Run RYSEN container...
 docker run --name=rysen -d --read-only -v /etc/rysen/rysen.cfg:/opt/rysen/rysen.cfg \
 -v /var/log/rysen/rysen.log:/opt/rysen/rysen.log \
 -v /etc/rysen/rules.py:/opt/rysen/rules.py -p 62031:62031/udp -p 62036-62046:62036-62046/udp \
--p 4321:4321/tcp hacknix/rysen:latest &&
+-p 4321:4321/tcp shaymez/rysen:latest &&
 
 echo Set to restart on boot and when it dies...
 docker update --restart unless-stopped rysen &&
