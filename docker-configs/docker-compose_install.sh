@@ -82,8 +82,8 @@ PEER_FILE: peer_ids.json
 SUBSCRIBER_FILE: subscriber_ids.json
 TGID_FILE: talkgroup_ids.json
 PEER_URL: https://www.radioid.net/static/rptrs.json
-SUBSCRIBER_URL: http://downloads.rysen.uk/downloads/local_subscriber_ids.json
-TGID_URL: TGID_URL: http://downloads.rysen.uk/downloads/talkgroup_ids.json
+SUBSCRIBER_URL: https://freestar.network/downloads/local_subscriber_ids.json
+TGID_URL: TGID_URL: https://freestar.network/downloads/talkgroup_ids.json
 STALE_DAYS: 7
 LOCAL_SUBSCRIBER_FILE: local_subcriber_ids.json
 SUB_MAP_FILE: sub_map.pkl
