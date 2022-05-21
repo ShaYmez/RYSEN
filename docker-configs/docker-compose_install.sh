@@ -40,8 +40,8 @@ mkdir -p /etc/rysen/json &&
 
 echo get json files...
 cd /etc/rysen/json &&
-curl http://downloads.rysen.uk/downloads/local_subscriber_ids.json -o subscriber_ids.json &&
-curl http://downloads.rysen.uk/downloads/talkgroup_ids.json -o talkgroup_ids.json &&
+curl https://freestar.network/downloads/local_subscriber_ids.json -o subscriber_ids.json &&
+curl https://freestar.network/downloads/talkgroup_ids.json -o talkgroup_ids.json &&
 curl https://www.radioid.net/static/rptrs.json -o peer_ids.json &&
 touch /etc/rysen/json/sub_map.pkl &&
 chmod -R 777 /etc/rysen/json &&
