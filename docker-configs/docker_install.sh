@@ -174,7 +174,7 @@ echo Set to restart on boot and when it dies...
 docker update --restart unless-stopped rysen &&
 
 echo Download update script for future use...
-curl https://raw.githubusercontent.com/hacknix/RYSEN/master/docker-configs/update_rysen.sh -o update_rysen.sh &&
+curl https://raw.githubusercontent.com/ShaYmez/RYSEN/master/docker-configs/update_rysen.sh -o update_rysen.sh &&
 chmod 700 ./update_rysen.sh
 
 echo RYSEN setup complete!
