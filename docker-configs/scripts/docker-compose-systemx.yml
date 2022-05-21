@@ -1,7 +1,7 @@
 version: '2.4'
 services:
     rysen:
-        container_name: rysen
+        container_name: systemx
         cpu_shares: 1024
         mem_reservation: 1024m
         volumes:
