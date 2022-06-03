@@ -63,6 +63,8 @@ import ssl
 from os.path import isfile, getmtime
 from urllib.request import urlopen
 
+import csv
+
 
 logging.TRACE = 5
 logging.addLevelName(logging.TRACE, 'TRACE')
@@ -72,7 +74,7 @@ logging.trace = partial(logging.log, logging.TRACE)
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Cortney T. Buffington, N0MJS, Forked by Simon Adlem - G7RZU'
 __copyright__  = 'Copyright (c) 2016-2019 Cortney T. Buffington, N0MJS and the K0USY Group, Simon Adlem, G7RZU 2020,2021'
-__credits__    = 'Colin Durbridge, G4EML, Steve Zingman, N4IRS; Mike Zingman, N4IRR; Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT; Jon Lee, G4TSN; Norman Williams, M6NBP'
+__credits__    = 'Colin Durbridge, G4EML, Steve Zingman, N4IRS; Mike Zingman, N4IRR; Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT;'
 __license__    = 'GNU GPLv3'
 __maintainer__ = 'Simon Adlem G7RZU'
 __email__      = 'simon@gb7fr.org.uk'
@@ -454,6 +456,12 @@ class OPENBRIDGE(DatagramProtocol):
                         if _stream_id not in self._laststrid:
 
                             logger.warning('(%s) Source Server should be  between 4 and 7 digits, discarding Src: %s', self._system, int.from_bytes(_source_server,'big'))
+                            self.send_bcsq(_dst_id,_stream_id)
+                            self._laststrid.append(_stream_id)
+                        return
+                    elif (len(str(int.from_bytes(_source_server,'big'))) == 4 or (len(str(int.from_bytes(_source_server,'big'))) == 5))  and ((str(int.from_bytes(_source_server,'big'))[:4]) not in self._CONFIG['_SERVER_IDS'] ):
+                        if _stream_id not in self._laststrid:
+                            logger.warning('(%s) Source Server ID is 4 or 5 digits but not in list: %s', self._system, int.from_bytes(_source_server,'big'))
                             self.send_bcsq(_dst_id,_stream_id)
                             self._laststrid.append(_stream_id)
                         return
@@ -1386,7 +1394,20 @@ def try_download(_path, _file, _url, _stale,):
     
     return result
 
+#Read list of listed servers from CSV (actually TSV) file 
+def mk_server_dict(path,filename):
+    server_ids = {}
+    try:
+        with open(path+filename,newline='') as csvfile:
+            reader = csv.DictReader(csvfile,dialect='excel-tab')
+            for _row in reader:
+                server_ids[_row['OPB Net ID']] = _row['Country']
+        return(server_ids)
+    except IOError as err:
+        logger.warning('ID ALIAS MAPPER: %s could not be read due to IOError: %s',file,err)
+        return(False)
 
+    
 # ID ALIAS CREATION
 # Download
 def mk_aliases(_config):
@@ -1400,7 +1421,10 @@ def mk_aliases(_config):
         #Try updating tgid aliases file
         result = try_download(_config['ALIASES']['PATH'], _config['ALIASES']['TGID_FILE'], _config['ALIASES']['TGID_URL'], _config['ALIASES']['STALE_TIME'])
         logger.info('(ALIAS) %s', result)
-        
+        #Try updating server ids file
+        result = try_download(_config['ALIASES']['PATH'], _config['ALIASES']['SERVER_ID_FILE'], _config['ALIASES']['SERVER_ID_URL'], _config['ALIASES']['STALE_TIME'])
+        logger.info('(ALIAS) %s', result)
+
 
     # Make Dictionaries
     peer_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'])
@@ -1423,9 +1447,13 @@ def mk_aliases(_config):
     if subscriber_ids:
         logger.info('(ALIAS) ID ALIAS MAPPER: local_subscriber_ids dictionary is available')
     
+    server_ids = mk_server_dict(_config['ALIASES']['PATH'], _config['ALIASES']['SERVER_ID_FILE'])
+    if server_ids:
+        logger.info('(ALIAS) ID ALIAS MAPPER: server_ids dictionary is available')
+     
         
-        
-    return peer_ids, subscriber_ids, talkgroup_ids, local_subscriber_ids
+    return peer_ids, subscriber_ids, talkgroup_ids, local_subscriber_ids, server_ids
+
 
 
 #************************************************
