@@ -184,7 +184,10 @@ def build_config(_config_file):
                     'TGID_URL': config.get(section, 'TGID_URL'),
                     'STALE_TIME': config.getint(section, 'STALE_DAYS') * 86400,
                     'SUB_MAP_FILE': config.get(section, 'SUB_MAP_FILE'),
-                    'LOCAL_SUBSCRIBER_FILE': config.get(section, 'LOCAL_SUBSCRIBER_FILE')
+                    'LOCAL_SUBSCRIBER_FILE': config.get(section, 'LOCAL_SUBSCRIBER_FILE'),
+                    'SERVER_ID_URL': config.get(section, 'SERVER_ID_URL'),
+                    'SERVER_ID_FILE': config.get(section, 'SERVER_ID_FILE')
+
                 })
                 
             elif section == 'MYSQL':
