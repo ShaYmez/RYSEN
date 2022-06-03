@@ -1404,7 +1404,7 @@ def mk_server_dict(path,filename):
                 server_ids[_row['OPB Net ID']] = _row['Country']
         return(server_ids)
     except IOError as err:
-        logger.warning('ID ALIAS MAPPER: %s could not be read due to IOError: %s',file,err)
+        logger.warning('ID ALIAS MAPPER: %s could not be read due to IOError: %s',filename,err)
         return(False)
 
     
