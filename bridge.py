@@ -944,7 +944,16 @@ if __name__ == '__main__':
     # Create the name-number mapping dictionaries
     peer_ids, subscriber_ids, talkgroup_ids, local_subscriber_ids,server_ids = mk_aliases(CONFIG)
     
-    # Import the ruiles file as a module, and create BRIDGES from it
+    #Add special IDs to DB
+    subscriber_ids[900999] = 'D-APRS'
+    subscriber_ids[4294967295] = 'SC'
+    
+    CONFIG['_SUB_IDS'] = subscriber_ids
+    CONFIG['_PEER_IDS'] = peer_ids
+    CONFIG['_LOCAL_SUBSCRIBER_IDS'] = local_subscriber_ids
+    CONFIG['_SERVER_IDS'] = server_ids
+    
+    # Import the rules file as a module, and create BRIDGES from it
     spec = importlib.util.spec_from_file_location("module.name", cli_args.RULES_FILE)
     rules_module = importlib.util.module_from_spec(spec)
     try:
