@@ -1400,7 +1400,7 @@ def mk_server_dict(path,filename):
         with open(path+filename,newline='') as csvfile:
             reader = csv.DictReader(csvfile,dialect='excel-tab')
             for _row in reader:
-                server_ids[_row['OPB Net ID']] = _row['Country']
+                server_ids[_row['Net ID']] = _row['COUNTRY']
         return(server_ids)
     except IOError as err:
         logger.warning('ID ALIAS MAPPER: %s could not be read due to IOError: %s',filename,err)
