@@ -148,6 +148,7 @@ def build_config(_config_file):
                     'ALLOW_NULL_PASSPHRASE': config.getboolean(section, 'ALLOW_NULL_PASSPHRASE'),
                     'ANNOUNCEMENT_LANGUAGES': config.get(section, 'ANNOUNCEMENT_LANGUAGES'),
                     'SERVER_ID': config.getint(section, 'SERVER_ID').to_bytes(4, 'big'),
+                    'VALIDATE_SERVER_IDS': config.getboolean(section, 'VALIDATE_SERVER_IDS')
                     'DATA_GATEWAY': config.getboolean(section, 'DATA_GATEWAY')
                     
                 })
