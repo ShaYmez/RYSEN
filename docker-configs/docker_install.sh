@@ -33,8 +33,9 @@ TGID_TS1_ACL: PERMIT:ALL
 TGID_TS2_ACL: PERMIT:ALL
 GEN_STAT_BRIDGES: True
 ALLOW_NULL_PASSPHRASE: True
-ANNOUNCEMENT_LANGUAGES: en_GB,en_GB_2,en_US,es_ES,es_ES_2,fr_FR,de_DE,dk_DK,it_IT,no_NO,pl_PL,se_SE
+ANNOUNCEMENT_LANGUAGES:
 SERVER_ID: 0
+DATA_GATEWAY: False
 
 [REPORTS]
 REPORT: True
@@ -56,8 +57,11 @@ SUBSCRIBER_FILE: subscriber_ids.json
 TGID_FILE: talkgroup_ids.json
 PEER_URL: https://www.radioid.net/static/rptrs.json
 SUBSCRIBER_URL: https://www.radioid.net/static/users.json
-TGID_URL: TGID_URL: https://freestar.network/downloads/talkgroup_ids.json
-STALE_DAYS: 7
+TGID_URL: TGID_URL: http://downloads.freedmr.uk/downloads/talkgroup_ids.json
+STALE_DAYS: 1
+SERVER_ID_URL: http://downloads.freedmr.uk/downloads/FreeDMR_Hosts.csv
+SERVER_ID_FILE: server_ids.tsv
+
 
 #Control server shared allstar instance via dial / AMI
 [ALLSTAR]
@@ -94,7 +98,6 @@ RELAX_CHECKS: True
 ENHANCED_OBP: True
 PROTO_VER: 4
 
-
 [SYSTEM]
 MODE: MASTER
 ENABLED: True
@@ -119,7 +122,7 @@ DEFAULT_REFLECTOR: 0
 ANNOUNCEMENT_LANGUAGE: en_GB_2
 GENERATOR: 100
 
-[ECHO]
+[PARROT]
 MODE: PEER
 ENABLED: True
 LOOSE: False
@@ -139,11 +142,11 @@ SLOTS: 1
 LATITUDE: 00.0000
 LONGITUDE: 000.0000
 HEIGHT: 0
-LOCATION: Earth
-DESCRIPTION: ECHO
-URL: www.rysen.uk
+LOCATION: 9990
+DESCRIPTION: PARROT
+URL: www.freestar.network
 SOFTWARE_ID: 20170620
-PACKAGE_ID: MMDVM_RYSEN
+PACKAGE_ID: MMDVM_SYSTEM-X
 GROUP_HANGTIME: 5
 OPTIONS:
 USE_ACL: True
@@ -154,7 +157,7 @@ ANNOUNCEMENT_LANGUAGE: en_GB_2
 EOF
 
 echo Install rules.py ...
-echo "BRIDGES = {'9990': [{'SYSTEM': 'ECHO', 'TS': 2, 'TGID': 9990, 'ACTIVE': True, 'TIMEOUT': 2, 'TO_TYPE': 'NONE', 'ON': [], 'OFF': [], 'RESET': []},]}" > /etc/rysen/rules.py &&
+echo "BRIDGES = {'9990': [{'SYSTEM': 'PARROT', 'TS': 2, 'TGID': 9990, 'ACTIVE': True, 'TIMEOUT': 2, 'TO_TYPE': 'NONE', 'ON': [], 'OFF': [], 'RESET': []},]}" > /etc/rysen/rules.py &&
 
 echo Set perms on config directory...
 chown -R 54000 /etc/rysen &&
