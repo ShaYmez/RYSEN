@@ -90,3 +90,4 @@ VER     = 5
 
 # Higheset peer ID permitted by HBP
 PEER_MAX = 4294967295
+
