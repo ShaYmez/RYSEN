@@ -708,7 +708,7 @@ def ident():
                 _say.append(words[_lang]['silence'])
                 _say.append(words[_lang]['silence'])
                 
-                _say.append(words[_lang]['freedmr'])
+                #_say.append(words[_lang]['systemx'])
                 
                 #test 
                 #_say.append(AMBEobj.readSingleFile('alpha.ambe'))
