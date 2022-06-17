@@ -3,7 +3,7 @@ services:
     rysen:
         container_name: rysen
         cpu_shares: 1024
-        mem_reservation: 1024m
+        mem_reservation: 600m
         volumes:
             - '/etc/rysen/rysen.cfg:/opt/rysen/rysen.cfg'
             - '/var/log/rysen/rysen.log:/opt/rysen/rysen.log'
