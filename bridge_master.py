@@ -92,8 +92,8 @@ __author__     = 'Cortney T. Buffington, N0MJS, Forked by Simon Adlem - G7RZU'
 __copyright__  = 'Copyright (c) 2016-2019 Cortney T. Buffington, N0MJS and the K0USY Group, Simon Adlem, G7RZU 2020,2021'
 __credits__    = 'Colin Durbridge, G4EML, Steve Zingman, N4IRS; Mike Zingman, N4IRR; Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT; Eric Craw KF7EEL'
 __license__    = 'GNU GPLv3'
-__maintainer__ = 'Simon Adlem G7RZU'
-__email__      = 'simon@gb7fr.org.uk'
+__maintainer__ = 'Shane Daley, M0VUB'
+__email__      = 'support@gb7nr.co.uk'
 
 #Set header bits
 #used for slot rewrite and type rewrite
@@ -662,7 +662,6 @@ def aliasb():
     _peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids = mk_aliases(CONFIG)
     reactor.callFromThread(setAlias,_peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids)
 
-
 def ident():
     for system in systems:
         if CONFIG['SYSTEMS'][system]['MODE'] != 'MASTER':
@@ -682,7 +681,7 @@ def ident():
             _slot  = systems[system].STATUS[2]
             #If slot is idle for RX and TX
             #print("RX:"+str(_slot['RX_TYPE'])+" TX:"+str(_slot['TX_TYPE'])+" TIME:"+str(time() - _slot['TX_TIME']))
-            if (_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _slot['TX_TIME'] > CONFIG['SYSTEMS'][system]['GROUP_HANGTIME']):
+            if (_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _slot['TX_TIME'] > 30 and time() - _slot['RX_TIME'] > 30):
                 #_stream_id = hex_str_4(1234567)
                 logger.info('(%s) System idle. Sending voice ident',system)
                 _say = [words[_lang]['silence']]
@@ -709,13 +708,14 @@ def ident():
                 _say.append(words[_lang]['silence'])
                 _say.append(words[_lang]['silence'])
                 
-               # _say.append(words[_lang]['systemx'])
+                _say.append(words[_lang]['freedmr'])
                 
                 #test 
                 #_say.append(AMBEobj.readSingleFile('alpha.ambe'))
                 _all_call = bytes_3(16777215)
                 _source_id= bytes_3(5000)
-                speech = pkt_gen(_source_id, _all_call, bytes_4(16777215), 1, _say)
+                _peer_id = bytes_4(CONFIG['GLOBAL']['SERVER_ID'])
+                speech = pkt_gen(_source_id, _all_call, _peer_id, 1, _say)
 
                 sleep(1)
                 _slot  = systems[system].STATUS[2]
@@ -2987,7 +2987,7 @@ if __name__ == '__main__':
                 words[lang][_mapword] = words[lang][_map[_mapword]]
 
     # HBlink instance creation
-    logger.info('(GLOBAL) RYSEN \'bridge_master.py\' -- SYSTEM STARTING...')
+    logger.info('(GLOBAL) FreeDMR \'bridge_master.py\' -- SYSTEM STARTING...')
 
     
     listeningPorts = {}
@@ -3063,3 +3063,4 @@ if __name__ == '__main__':
     reactor.suggestThreadPoolSize(100)
     
     reactor.run()
+
