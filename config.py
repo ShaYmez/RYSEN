@@ -42,8 +42,8 @@ __author__     = 'Cortney T. Buffington, N0MJS'
 __copyright__  = '(c) Simon Adlem, G7RZU 2020-2021, Copyright (c) 2016-2018 Cortney T. Buffington, N0MJS and the K0USY Group'
 __credits__    = 'Colin Durbridge, G4EML, Steve Zingman, N4IRS; Mike Zingman, N4IRR; Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT'
 __license__    = 'GNU GPLv3'
-__maintainer__ = 'Simon Adlem, G7RZU'
-__email__      = 'simon@gb7fr.org.uk'
+__maintainer__ = 'Shane Daley, M0VUB'
+__email__      = 'support@gb7nr.co.uk'
 
 # Processing of ALS goes here. It's separated from the acl_build function because this
 # code is hblink config-file format specific, and acl_build is abstracted
@@ -148,8 +148,8 @@ def build_config(_config_file):
                     'ALLOW_NULL_PASSPHRASE': config.getboolean(section, 'ALLOW_NULL_PASSPHRASE'),
                     'ANNOUNCEMENT_LANGUAGES': config.get(section, 'ANNOUNCEMENT_LANGUAGES'),
                     'SERVER_ID': config.getint(section, 'SERVER_ID').to_bytes(4, 'big'),
-                    'VALIDATE_SERVER_IDS': config.getboolean(section, 'VALIDATE_SERVER_IDS'),
-                    'DATA_GATEWAY': config.getboolean(section, 'DATA_GATEWAY')
+                    'DATA_GATEWAY': config.getboolean(section, 'DATA_GATEWAY'),
+                    'VALIDATE_SERVER_IDS': config.getboolean(section, 'VALIDATE_SERVER_IDS')
                     
                 })
                 if not CONFIG['GLOBAL']['ANNOUNCEMENT_LANGUAGES']:
@@ -188,7 +188,7 @@ def build_config(_config_file):
                     'LOCAL_SUBSCRIBER_FILE': config.get(section, 'LOCAL_SUBSCRIBER_FILE'),
                     'SERVER_ID_URL': config.get(section, 'SERVER_ID_URL'),
                     'SERVER_ID_FILE': config.get(section, 'SERVER_ID_FILE')
-
+                    
                 })
                 
             elif section == 'MYSQL':
@@ -431,3 +431,4 @@ if __name__ == '__main__':
         return not _acl[0]
         
     print(acl_check(b'\x00\x01\x37', CONFIG['GLOBAL']['TG1_ACL']))
+
