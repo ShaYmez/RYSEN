@@ -74,10 +74,10 @@ logging.trace = partial(logging.log, logging.TRACE)
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Cortney T. Buffington, N0MJS, Forked by Simon Adlem - G7RZU'
 __copyright__  = 'Copyright (c) 2016-2019 Cortney T. Buffington, N0MJS and the K0USY Group, Simon Adlem, G7RZU 2020,2021'
-__credits__    = 'Colin Durbridge, G4EML, Steve Zingman, N4IRS; Mike Zingman, N4IRR; Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT;'
+__credits__    = 'Colin Durbridge, G4EML, Steve Zingman, N4IRS; Mike Zingman, N4IRR; Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT'
 __license__    = 'GNU GPLv3'
-__maintainer__ = 'Simon Adlem G7RZU'
-__email__      = 'simon@gb7fr.org.uk'
+__maintainer__ = 'Shane Daley, M0VUB'
+__email__      = 'support@gb7nr.co.uk'
 
 
 # Global variables used whether we are a module or __main__
@@ -451,7 +451,7 @@ class OPENBRIDGE(DatagramProtocol):
                         logger.warning('(%s) Packet more than 5s old!, discarding', self._system)
                         return
                     
-                     #Discard bad source server 
+                    #Discard bad source server 
                     if ((len(str(int.from_bytes(_source_server,'big'))) < 4) or (len(str(int.from_bytes(_source_server,'big'))) > 7)):
                         if _stream_id not in self._laststrid:
                             logger.warning('(%s) Source Server should be  between 4 and 7 digits, discarding Src: %s', self._system, int.from_bytes(_source_server,'big'))
@@ -1407,7 +1407,6 @@ def mk_server_dict(path,filename):
         return(False)
 
 
-    
 # ID ALIAS CREATION
 # Download
 def mk_aliases(_config):
@@ -1424,7 +1423,8 @@ def mk_aliases(_config):
         #Try updating server ids file
         result = try_download(_config['ALIASES']['PATH'], _config['ALIASES']['SERVER_ID_FILE'], _config['ALIASES']['SERVER_ID_URL'], _config['ALIASES']['STALE_TIME'])
         logger.info('(ALIAS) %s', result)
-
+        
+        
 
     # Make Dictionaries
     peer_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'])
@@ -1446,14 +1446,13 @@ def mk_aliases(_config):
     local_subscriber_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['LOCAL_SUBSCRIBER_FILE'])
     if subscriber_ids:
         logger.info('(ALIAS) ID ALIAS MAPPER: local_subscriber_ids dictionary is available')
-    
+        
     server_ids = mk_server_dict(_config['ALIASES']['PATH'], _config['ALIASES']['SERVER_ID_FILE'])
     if server_ids:
         logger.info('(ALIAS) ID ALIAS MAPPER: server_ids dictionary is available')
-     
+        
         
     return peer_ids, subscriber_ids, talkgroup_ids, local_subscriber_ids, server_ids
-
 
 
 #************************************************
@@ -1522,3 +1521,4 @@ if __name__ == '__main__':
             logger.debug('(GLOBAL) %s instance created: %s, %s', CONFIG['SYSTEMS'][system]['MODE'], system, systems[system])
 
     reactor.run()
+
