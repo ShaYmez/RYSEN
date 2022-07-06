@@ -43,7 +43,7 @@ cd /etc/rysen/json &&
 curl https://freestar.network/downloads/local_subscriber_ids.json -o subscriber_ids.json &&
 curl https://freestar.network/downloads/talkgroup_ids.json -o talkgroup_ids.json &&
 curl https://www.radioid.net/static/rptrs.json -o peer_ids.json &&
-curl http://downloads.freedmr.uk/downloads/FreeDMR_Hosts.csv -o server_ids.tsv &&
+curl https://freestar.network/downloads/SystemX_Hosts.csv -o server_ids.tsv &&
 touch /etc/rysen/json/sub_map.pkl &&
 chmod -R 777 /etc/rysen/json &&
 
