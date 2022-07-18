@@ -26,7 +26,7 @@ __license__    = 'GNU GPLv3'
 __maintainer__ = 'Simon Adlem G7RZU'
 __email__      = 'simon@gb7fr.org.uk'
 
-#This is example code to connect to the report service in RYSEN / HBLink3
+#This is example code to connect to the report service in FreeDMR / HBLink3
 #It can be used as a skeleton to build logging and monitoring tools. 
 
 import pickle
@@ -156,8 +156,8 @@ if __name__ == '__main__':
             user=sys.argv[4],
             password=sys.argv[5],
             database=sys.argv[6],
-            pool_name = "master",
-            pool_size = 5
+            #pool_name = "master",
+            #pool_size = 5
         )
     except mysql.connector.Error as err:
         if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
