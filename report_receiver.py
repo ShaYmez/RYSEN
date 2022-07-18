@@ -18,7 +18,7 @@
 #   Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 ###############################################################################
 
-#This is example code to connect to the report service in RYSEN / HBLink3
+#This is example code to connect to the report service in FreeDMR / HBLink3
 #It can be used as a skeleton to build logging and monitoring tools. 
 
 import pickle
@@ -29,6 +29,8 @@ from twisted.protocols.basic import NetstringReceiver
 
 from reporting_const import *
 
+from pprint import pprint
+
 class reportClient(NetstringReceiver):
             
     def stringReceived(self, data):
@@ -36,9 +38,11 @@ class reportClient(NetstringReceiver):
         if data[:1] == REPORT_OPCODES['BRDG_EVENT']:
             self.bridgeEvent(data[1:].decode('UTF-8'))
         elif data[:1] == REPORT_OPCODES['CONFIG_SND']:
-            self.configSend(data[1:])
+            if cli_args.CONFIG:
+                self.configSend(data[1:])
         elif data[:1] == REPORT_OPCODES['BRIDGE_SND']:
-            self.bridgeSend(data[1:])
+            if cli_args.BRIDGES:
+                self.bridgeSend(data[1:])
         elif data == b'bridge updated':
             pass
         else:
@@ -62,15 +66,19 @@ class reportClient(NetstringReceiver):
         if len(datalist) > 9:
             event['duration'] = datalist[9]
             
-        print(event)
+        if cli_args.EVENTS:
+            pprint(event, compact=True)
         
     def bridgeSend(self,data):
         self.BRIDGES = pickle.loads(data)
-        print(self.BRIDGES)
+        if cli_args.WATCH and cli_args.WATCH in self.BRIDGES:
+            pprint(self.BRIDGES[cli_args.WATCH], compact=True)
+        else:
+            pprint(self.BRIDGES, compact=True, indent=4)
         
     def configSend(self,data):
         self.CONFIG = pickle.loads(data)
-        print(self.CONFIG)
+        pprint(self.CONFIG, compact=True)
         
     
 
@@ -102,6 +110,7 @@ if __name__ == '__main__':
     import signal
     import sys
     import os
+    import argparse
     
     #Set process title early
     setproctitle(__file__)
@@ -112,10 +121,22 @@ if __name__ == '__main__':
     def sig_handler(_signal, _frame):
         print('SHUTDOWN: TERMINATING WITH SIGNAL {}'.format(str(_signal)))
         reactor.stop()
+        
+    # CLI argument parser - handles picking up the config file from the command line, and sending a "help" message
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-e', '--events', action='store', dest='EVENTS', help='print events [0|1]')
+    parser.add_argument('-c', '--config', action='store', dest='CONFIG', help='print config [0|1]')
+    parser.add_argument('-b', '--bridges', action='store', dest='BRIDGES', help='print bridges [0|1]')
+    parser.add_argument('-w', '--watch', action='store', dest='WATCH', help='watch bridge <name>')
+    parser.add_argument('-o', '--host', action='store', dest='HOST', help='host to connect to <ip address>')
+    parser.add_argument('-p', '--port', action='store', dest='PORT', help='port to connect to <port>')
+    
+    
+    cli_args = parser.parse_args()
 
     # Set signal handers so that we can gracefully exit if need be
     for sig in [signal.SIGINT, signal.SIGTERM]:
         signal.signal(sig, sig_handler)
     
-    reactor.connectTCP(sys.argv[1],int(sys.argv[2]), reportClientFactory(reportClient))
+    reactor.connectTCP(cli_args.HOST,int(cli_args.PORT), reportClientFactory(reportClient))
     reactor.run()
