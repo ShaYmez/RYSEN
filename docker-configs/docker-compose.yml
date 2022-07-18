@@ -9,11 +9,7 @@ services:
             - '/var/log/rysen/rysen.log:/opt/rysen/rysen.log'
             - '/etc/rysen/rules.py:/opt/rysen/rules.py'
             #Write JSON files outside of container
-            - '/etc/rysen/json/talkgroup_ids.json:/opt/rysen/talkgroup_ids.json'
-            - '/etc/rysen/json/subscriber_ids.json:/opt/rysen/subscriber_ids.json'
-            - '/etc/rysen/json/peer_ids.json:/opt/rysen/peer_ids.json'
-            - '/etc/rysen/json/sub_map.pkl:/opt/rysen/sub_map.pkl'
-            - '/etc/rysen/json/server_ids.tsv:/opt/rysen/server_ids.tsv'
+            - '/etc/rysen/json/:/opt/rysen/json/'
         ports:
             - '62031:62031/udp'
             #Change the below to inlude ports used for your OBP(s)
