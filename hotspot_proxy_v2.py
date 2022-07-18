@@ -31,7 +31,7 @@ from datetime import datetime
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Simon Adlem - G7RZU'
 __copyright__  = 'Copyright (c) Simon Adlem, G7RZU 2020,2021,2022'
-__credits__    = 'Christian, OA4DOA'
+__credits__    = 'Jon Lee, G4TSN; Norman Williams, M6NBP; Christian, OA4DOA'
 __license__    = 'GNU GPLv3'
 __maintainer__ = 'Simon Adlem G7RZU'
 __email__      = 'simon@gb7fr.org.uk'
@@ -73,6 +73,10 @@ class Proxy(DatagramProtocol):
         if self.clientinfo and _peer_id != b'\xff\xff\xff\xff':
             print(f"{datetime.now().replace(microsecond=0)} Client: ID:{str(int_id(_peer_id)).rjust(9)} IP:{self.peerTrack[_peer_id]['shost'].rjust(15)} Port:{self.peerTrack[_peer_id]['sport']} Removed.")
         self.transport.write(b'RPTCL'+_peer_id, (self.master,self.peerTrack[_peer_id]['dport']))
+        #Tell client we have closed the session - 3 times, in case they are on a lossy network
+        self.transport.write(b'MSTCL',(self.peerTrack[_peer_id]['shost'],self.peerTrack[_peer_id]['sport']))
+        self.transport.write(b'MSTCL',(self.peerTrack[_peer_id]['shost'],self.peerTrack[_peer_id]['sport']))
+        self.transport.write(b'MSTCL',(self.peerTrack[_peer_id]['shost'],self.peerTrack[_peer_id]['sport']))
         self.connTrack[self.peerTrack[_peer_id]['dport']] = False
         del self.peerTrack[_peer_id]
 
@@ -233,13 +237,13 @@ if __name__ == '__main__':
 
     # CLI argument parser - handles picking up the config file from the command line, and sending a "help" message
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', action='store', dest='CONFIG_FILE', help='/full/path/to/config.file (usually rysen.cfg)')
+    parser.add_argument('-c', '--config', action='store', dest='CONFIG_FILE', help='/full/path/to/config.file (usually freedmr.cfg)')
     cli_args = parser.parse_args()
 
 
     # Ensure we have a path for the config file, if one wasn't specified, then use the execution directory
     if not cli_args.CONFIG_FILE:
-        cli_args.CONFIG_FILE = os.path.dirname(os.path.abspath(__file__))+'/rysen.cfg'
+        cli_args.CONFIG_FILE = os.path.dirname(os.path.abspath(__file__))+'/freedmr.cfg'
     
     _config_file = cli_args.CONFIG_FILE
     
@@ -362,4 +366,3 @@ if __name__ == '__main__':
     blacklista.addErrback(loopingErrHandle)
     
     reactor.run()
-    
