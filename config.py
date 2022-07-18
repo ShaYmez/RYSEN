@@ -42,8 +42,8 @@ __author__     = 'Cortney T. Buffington, N0MJS'
 __copyright__  = '(c) Simon Adlem, G7RZU 2020-2021, Copyright (c) 2016-2018 Cortney T. Buffington, N0MJS and the K0USY Group'
 __credits__    = 'Colin Durbridge, G4EML, Steve Zingman, N4IRS; Mike Zingman, N4IRR; Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT'
 __license__    = 'GNU GPLv3'
-__maintainer__ = 'Shane Daley, M0VUB'
-__email__      = 'support@gb7nr.co.uk'
+__maintainer__ = 'Simon Adlem, G7RZU'
+__email__      = 'simon@gb7fr.org.uk'
 
 # Processing of ALS goes here. It's separated from the acl_build function because this
 # code is hblink config-file format specific, and acl_build is abstracted
@@ -337,7 +337,8 @@ def build_config(_config_file):
                         'GENERATOR': config.getint(section, 'GENERATOR'),
                         'ANNOUNCEMENT_LANGUAGE': config.get(section, 'ANNOUNCEMENT_LANGUAGE'),
                         'ALLOW_UNREG_ID': config.getboolean(section,'ALLOW_UNREG_ID'),
-                        'PROXY_CONTROL' : config.getboolean(section,'PROXY_CONTROL')
+                        'PROXY_CONTROL' : config.getboolean(section,'PROXY_CONTROL'),
+                        'OVERRIDE_IDENT_TG': config.get(section, 'OVERRIDE_IDENT_TG')
                     }})
                     CONFIG['SYSTEMS'][section].update({'PEERS': {}})
                     
@@ -431,4 +432,3 @@ if __name__ == '__main__':
         return not _acl[0]
         
     print(acl_check(b'\x00\x01\x37', CONFIG['GLOBAL']['TG1_ACL']))
-
