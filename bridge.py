@@ -953,7 +953,7 @@ if __name__ == '__main__':
     CONFIG['_LOCAL_SUBSCRIBER_IDS'] = local_subscriber_ids
     CONFIG['_SERVER_IDS'] = server_ids
     
-    # Import the rules file as a module, and create BRIDGES from it
+    # Import the ruiles file as a module, and create BRIDGES from it
     spec = importlib.util.spec_from_file_location("module.name", cli_args.RULES_FILE)
     rules_module = importlib.util.module_from_spec(spec)
     try:
@@ -998,4 +998,5 @@ if __name__ == '__main__':
     stream_trimmer.addErrback(loopingErrHandle)
 
     reactor.run()
+
 
