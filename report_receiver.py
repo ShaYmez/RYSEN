@@ -18,7 +18,7 @@
 #   Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 ###############################################################################
 
-#This is example code to connect to the report service in FreeDMR / HBLink3
+#This is example code to connect to the report service in RYSEN / HBLink3
 #It can be used as a skeleton to build logging and monitoring tools. 
 
 import pickle

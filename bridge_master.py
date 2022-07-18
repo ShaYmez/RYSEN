@@ -715,7 +715,7 @@ def ident():
                 _say.append(words[_lang]['silence'])
                 _say.append(words[_lang]['silence'])
                 
-                _say.append(words[_lang]['freedmr'])
+                _say.append(words[_lang]['rysen'])
                 
                 #test 
                 #_say.append(AMBEobj.readSingleFile('alpha.ambe'))
@@ -3045,7 +3045,7 @@ if __name__ == '__main__':
                 words[lang][_mapword] = words[lang][_map[_mapword]]
 
     # HBlink instance creation
-    logger.info('(GLOBAL) FreeDMR \'bridge_master.py\' -- SYSTEM STARTING...')
+    logger.info('(GLOBAL) RYSEN \'bridge_master.py\' -- SYSTEM STARTING...')
 
     
     listeningPorts = {}

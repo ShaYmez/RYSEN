@@ -57,9 +57,9 @@ SUBSCRIBER_FILE: subscriber_ids.json
 TGID_FILE: talkgroup_ids.json
 PEER_URL: https://www.radioid.net/static/rptrs.json
 SUBSCRIBER_URL: https://www.radioid.net/static/users.json
-TGID_URL: TGID_URL: http://downloads.freedmr.uk/downloads/talkgroup_ids.json
+TGID_URL: TGID_URL: http://downloads.rysen.uk/downloads/talkgroup_ids.json
 STALE_DAYS: 1
-SERVER_ID_URL: http://downloads.freedmr.uk/downloads/FreeDMR_Hosts.csv
+SERVER_ID_URL: http://downloads.rysen.uk/downloads/RYSEN_Hosts.csv
 SERVER_ID_FILE: server_ids.tsv
 
 
