@@ -77,8 +77,8 @@ def playFileOnRequest(system,fileName,dstTG,subid):
         _say.append(AMBEobj.readSingleFile(fileName))
         _say.append(SILENCE)
         _say.append(SILENCE)
-    except IOError:
-        logger.warning('(%s) cannot read file %s',system,fileName)
+    except IOError as err:
+        logger.warning('(%s) cannot read file %s: %s',system,fileName,err)
         return
     speech = pkt_gen(_source_id, _dst_id, bytes_4(5000), 0, _say)
     sleep(1)
@@ -271,7 +271,7 @@ if __name__ == '__main__':
     report_server = config_reports(CONFIG, reportFactory)    
     
     # HBlink instance creation
-    logger.info('RYSEN \'playback_file.py\' (c) 2022 Simon Adlem based on work from 2017-2019 Cort Buffington, N0MJS & Mike Zingman, N4IRR -- SYSTEM STARTING...')
+    logger.info('FreeDMR \'playback_file.py\' (c) 2022 Simon Adlem based on work from 2017-2019 Cort Buffington, N0MJS & Mike Zingman, N4IRR -- SYSTEM STARTING...')
     for system in CONFIG['SYSTEMS']:
         if CONFIG['SYSTEMS'][system]['ENABLED']:
             if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
