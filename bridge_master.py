@@ -90,10 +90,10 @@ from AMI import AMI
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Cortney T. Buffington, N0MJS, Forked by Simon Adlem - G7RZU'
 __copyright__  = 'Copyright (c) 2016-2019 Cortney T. Buffington, N0MJS and the K0USY Group, Simon Adlem, G7RZU 2020,2021'
-__credits__    = 'Colin Durbridge, G4EML, Steve Zingman, N4IRS; Mike Zingman, N4IRR; Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT; Eric Craw KF7EEL'
+__credits__    = 'Colin Durbridge, G4EML, Steve Zingman, N4IRS; Mike Zingman, N4IRR; Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT; Jon Lee, G4TSN; Norman Williams, M6NBP, Eric Craw KF7EEL'
 __license__    = 'GNU GPLv3'
-__maintainer__ = 'Shane Daley, M0VUB'
-__email__      = 'support@gb7nr.co.uk'
+__maintainer__ = 'Simon Adlem G7RZU'
+__email__      = 'simon@gb7fr.org.uk'
 
 #Set header bits
 #used for slot rewrite and type rewrite
@@ -403,7 +403,7 @@ def kaReporting():
 #Write SUB_MAP to disk 
 def subMapWrite():
     try:
-        _fh = open(CONFIG['ALIASES']['SUB_MAP_FILE'],'wb')
+        _fh = open(CONFIG['ALIASES']['PATH'] + CONFIG['ALIASES']['SUB_MAP_FILE'],'wb')
         pickle.dump(SUB_MAP,_fh)
         _fh.close()
         logger.info('(SUBSCRIBER) Writing SUB_MAP to disk')
@@ -679,11 +679,18 @@ def ident():
                 logger.debug("(IDENT) %s System has no peers or no recorded callsign (%s), skipping",system,_callsign)
                 continue
             _slot  = systems[system].STATUS[2]
-            #If slot is idle for RX and TX
-            #print("RX:"+str(_slot['RX_TYPE'])+" TX:"+str(_slot['TX_TYPE'])+" TIME:"+str(time() - _slot['TX_TIME']))
+            #If slot is idle for RX and TX for over 30 seconds
             if (_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _slot['TX_TIME'] > 30 and time() - _slot['RX_TIME'] > 30):
-                #_stream_id = hex_str_4(1234567)
-                logger.info('(%s) System idle. Sending voice ident',system)
+                _all_call = bytes_3(16777215)
+                _source_id= bytes_3(5000)
+
+                _dst_id = b''
+                
+                if 'OVERRIDE_IDENT_TG' in CONFIG['SYSTEMS'][system] and CONFIG['SYSTEMS'][system]['OVERRIDE_IDENT_TG'] and int(CONFIG['SYSTEMS'][system]['OVERRIDE_IDENT_TG']) > 0 and int(CONFIG['SYSTEMS'][system]['OVERRIDE_IDENT_TG'] < 16777215):
+                    _dst_id = bytes_3(CONFIG['SYSTEMS'][system]['OVERRIDE_IDENT_TG'])
+                else:
+                    _dst_id = _all_call
+                logger.info('(%s) %s System idle. Sending voice ident to TG %s',system,_callsign,get_alias(_dst_id,talkgroup_ids))
                 _say = [words[_lang]['silence']]
                 _say.append(words[_lang]['silence'])
                 _say.append(words[_lang]['silence'])
@@ -708,14 +715,13 @@ def ident():
                 _say.append(words[_lang]['silence'])
                 _say.append(words[_lang]['silence'])
                 
-                #_say.append(words[_lang]['systemx'])
+                _say.append(words[_lang]['freedmr'])
                 
                 #test 
                 #_say.append(AMBEobj.readSingleFile('alpha.ambe'))
-                _all_call = bytes_3(16777215)
-                _source_id= bytes_3(5000)
-                _peer_id = bytes_4(CONFIG['GLOBAL']['SERVER_ID'])
-                speech = pkt_gen(_source_id, _all_call, _peer_id, 1, _say)
+
+                _peer_id = CONFIG['GLOBAL']['SERVER_ID']
+                speech = pkt_gen(_source_id, _dst_id, _peer_id, 1, _say)
 
                 sleep(1)
                 _slot  = systems[system].STATUS[2]
@@ -729,11 +735,15 @@ def ident():
                     
                     _stream_id = pkt[16:20]
                     _pkt_time = time()
-                    reactor.callFromThread(sendVoicePacket,systems[system],pkt,_source_id,_all_call,_slot)
+                    reactor.callFromThread(sendVoicePacket,systems[system],pkt,_source_id,_dst_id,_slot)
 
 def options_config():
     logger.debug('(OPTIONS) Running options parser')
     for _system in CONFIG['SYSTEMS']:
+        if '_reset' in  CONFIG['SYSTEMS'][_system] and CONFIG['SYSTEMS'][_system]['_reset']:
+            logger.debug('(OPTIONS) Bridge reset for %s - no peers',_system)
+            remove_bridge_system(_system)
+            CONFIG['SYSTEMS'][_system]['_reset'] = False
         try:
             if CONFIG['SYSTEMS'][_system]['MODE'] != 'MASTER':
                 continue
@@ -761,7 +771,13 @@ def options_config():
                         _options['TS1_STATIC'] = _options.pop('TS1')
                     if 'TS2' in _options:
                         _options['TS2_STATIC'] = _options.pop('TS2')
-                        
+                    if 'IDENTTG' in _options:
+                        _options['OVERRIDE_IDENT_TG'] = _options.pop('IDENTTG')
+                    elif 'VOICETG' in _options:
+                        _options['OVERRIDE_IDENT_TG'] = _options.pop('VOICETG')                         
+                    if 'IDENT' in _options:
+                        _options['VOICE'] = _options.pop('IDENT')
+                     
                     #DMR+ style options
                     if 'StartRef' in _options:
                         _options['DEFAULT_REFLECTOR'] = _options.pop('StartRef')
@@ -815,6 +831,9 @@ def options_config():
                         
                     if 'DEFAULT_REFLECTOR' not in _options:
                         _options['DEFAULT_REFLECTOR'] = 0
+                    
+                    if 'OVERRIDE_IDENT_TG' not in _options:
+                        _options['OVERRIDE_IDENT_TG'] = False
                         
                     if 'DEFAULT_UA_TIMER' not in _options:
                         _options['DEFAULT_UA_TIMER'] = CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']
@@ -823,9 +842,14 @@ def options_config():
                         CONFIG['SYSTEMS'][_system]['VOICE_IDENT'] = bool(int(_options['VOICE']))
                         logger.debug("(OPTIONS) %s - Setting voice ident to %s",_system,CONFIG['SYSTEMS'][_system]['VOICE_IDENT'])
                         
+                    if 'OVERRIDE_IDENT_TG' in _options and _options['OVERRIDE_IDENT_TG'] and (CONFIG['SYSTEMS'][_system]['OVERRIDE_IDENT_TG'] != int(_options['OVERRIDE_IDENT_TG'])):
+                        CONFIG['SYSTEMS'][_system]['OVERRIDE_IDENT_TG'] = int(_options['OVERRIDE_IDENT_TG'])
+                        logger.debug("(OPTIONS) %s - Setting OVERRIDE_IDENT_TG to %s",_system,CONFIG['SYSTEMS'][_system]['OVERRIDE_IDENT_TG'])
+                        
                     if 'LANG' in _options and _options['LANG'] in words and _options['LANG'] != CONFIG['SYSTEMS'][_system]['ANNOUNCEMENT_LANGUAGE'] :
                         CONFIG['SYSTEMS'][_system]['ANNOUNCEMENT_LANGUAGE'] = _options['LANG']
                         logger.debug("(OPTIONS) %s - Setting voice language to  %s",_system,CONFIG['SYSTEMS'][_system]['ANNOUNCEMENT_LANGUAGE'])
+                        
                         
                     if 'SINGLE' in _options and (CONFIG['SYSTEMS'][_system]['SINGLE_MODE'] != bool(int(_options['SINGLE']))):
                         CONFIG['SYSTEMS'][_system]['SINGLE_MODE'] = bool(int(_options['SINGLE']))
@@ -853,8 +877,13 @@ def options_config():
                             continue
                     
                     if isinstance(_options['DEFAULT_REFLECTOR'], str) and not _options['DEFAULT_REFLECTOR'].isdigit():
-                        logger.debug('(OPTIONS) %s - DEFAULT_UA_TIMER is not an integer, ignoring',_system)
+                        logger.debug('(OPTIONS) %s - DEFAULT_REFLECTOR is not an integer, ignoring',_system)
                         continue
+                    
+                    if isinstance(_options['OVERRIDE_IDENT_TG'], str) and not _options['OVERRIDE_IDENT_TG'].isdigit():
+                        logger.debug('(OPTIONS) %s - OVERRIDE_IDENT_TG is not an integer, ignoring',_system)
+                        continue
+                    
                     
                     if isinstance(_options['DEFAULT_UA_TIMER'], str) and not _options['DEFAULT_UA_TIMER'].isdigit():
                         logger.debug('(OPTIONS) %s - DEFAULT_REFLECTOR is not an integer, ignoring',_system)
@@ -918,7 +947,7 @@ def options_config():
                         if CONFIG['SYSTEMS'][_system]['TS2_STATIC']:
                             ts2 = CONFIG['SYSTEMS'][_system]['TS2_STATIC'].split(',')
                             for tg in ts2:
-                                if not tg:
+                                if not tg or int(tg) == 0 or int(tg) >= 16777215:
                                     continue
                                 tg = int(tg)
                                 reset_static_tg(tg,2,_tmout,_system)
@@ -926,7 +955,7 @@ def options_config():
                         if _options['TS2_STATIC']:
                             ts2 = _options['TS2_STATIC'].split(',')
                             for tg in ts2:
-                                if not tg:
+                                if not tg or int(tg) == 0 or int(tg) >= 16777215:
                                     continue
                                 tg = int(tg)
                                 make_static_tg(tg,2,_tmout,_system)
@@ -935,8 +964,8 @@ def options_config():
                     CONFIG['SYSTEMS'][_system]['TS2_STATIC'] = _options['TS2_STATIC']
                     CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR'] = int(_options['DEFAULT_REFLECTOR'])
                     CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER'] = int(_options['DEFAULT_UA_TIMER'])
-        except Exception:
-            logger.exception('(OPTIONS) caught exception:')
+        except Exception as e:
+            logger.exception('(OPTIONS) caught exception: %s',e)
             continue
 
 def mysqlGetConfig():
@@ -2593,7 +2622,7 @@ class routerHBP(HBSYSTEM):
                             self.STATUS[_slot]['LOOPLOG'] = True
                         self.STATUS[_slot]['LAST'] = pkt_time
                         
-                        if CONFIG['SYSTEMS'][self._system]['ENHANCED_OBP'] and '_bcsq' not in self.STATUS[_slot]:
+                        if 'ENHANCED_OBP' in CONFIG['SYSTEMS'][self._system] and CONFIG['SYSTEMS'][self._system]['ENHANCED_OBP'] and '_bcsq' not in self.STATUS[_slot]:
                             systems[self._system].send_bcsq(_dst_id,_stream_id)
                             self.STATUS[_slot]['_bcsq'] = True
                         return
@@ -2804,7 +2833,22 @@ if __name__ == '__main__':
     if not cli_args.CONFIG_FILE:
         cli_args.CONFIG_FILE = os.path.dirname(os.path.abspath(__file__))+'/hblink.cfg'
 
-    # Call the external routine to build the configuration dictionary
+
+    #configP = False
+    #if os.path.isfile('config.pkl'):
+        #if os.path.getmtime('config.pkl') > (time() - 25):
+            #try:
+                #with open('config.pkl','rb') as _fh:
+                    #CONFIG = pickle.load(_fh)
+                    #print('(CONFIG) loaded config .pkl from previous shutdown')
+                    #configP = True
+            #except:
+                #print('(CONFIG) Cannot load config.pkl file')
+                #CONFIG = config.build_config(cli_args.CONFIG_FILE)
+        #else:
+            #os.unlink("config.pkl")
+    #else:
+    
     CONFIG = config.build_config(cli_args.CONFIG_FILE)
 
     # Ensure we have a path for the rules file, if one wasn't specified, then use the default (top of file)
@@ -2815,7 +2859,7 @@ if __name__ == '__main__':
     if cli_args.LOG_LEVEL:
         CONFIG['LOGGER']['LOG_LEVEL'] = cli_args.LOG_LEVEL
     logger = log.config_logging(CONFIG['LOGGER'])
-    logger.info('\n\nCopyright (c) 2020, 2021 Simon G7RZU simon@gb7fr.org.uk')
+    logger.info('\n\nCopyright (c) 2020, 2021, 2022 Simon G7RZU simon@gb7fr.org.uk')
     logger.info('Copyright (c) 2013, 2014, 2015, 2016, 2018, 2019\n\tThe Regents of the K0USY Group. All rights reserved.\n')
     logger.debug('(GLOBAL) Logging system started, anything from here on gets logged')
 
@@ -2887,8 +2931,22 @@ if __name__ == '__main__':
     except (ImportError, FileNotFoundError):
         sys.exit('(ROUTER) TERMINATING: Routing bridges file not found or invalid: {}'.format(cli_args.RULES_FILE))
 
-    # Build the routing rules file
-    BRIDGES = make_bridges(rules_module.BRIDGES)
+    #Load pickle of bridges if it's less than 25 seconds old 
+    #if os.path.isfile('bridge.pkl'):
+        #if os.path.getmtime('config.pkl') > (time() - 25):
+            #try:
+                #with open('bridge.pkl','rb') as _fh:
+                    #BRIDGES = pickle.load(_fh)
+                    #logger.info('(BRIDGE) loaded bridge.pkl from previous shutdown')
+            #except:
+                #logger.warning('(BRIDGE) Cannot load bridge.pkl file')
+                #BRIDGES = make_bridges(rules_module.BRIDGES)
+        #else:
+            #BRIDGES = make_bridges(rules_module.BRIDGES)
+        #os.unlink("bridge.pkl")
+    #else:
+    
+    BRIDGES = make_bridges(rules_module.BRIDGES) 
     
     #Subscriber map for unit calls - complete with test entry
     #SUB_MAP = {bytes_3(73578):('REP-1',1,time())}
@@ -2897,7 +2955,7 @@ if __name__ == '__main__':
     
     if CONFIG['ALIASES']['SUB_MAP_FILE']:
         try:
-            with open(CONFIG['ALIASES']['SUB_MAP_FILE'],'rb') as _fh:
+            with open(CONFIG['ALIASES']['PATH'] + CONFIG['ALIASES']['SUB_MAP_FILE'],'rb') as _fh:
                 SUB_MAP = pickle.load(_fh)
         except:
             logger.warning('(SUBSCRIBER) Cannot load SUB_MAP file')
@@ -2987,7 +3045,7 @@ if __name__ == '__main__':
                 words[lang][_mapword] = words[lang][_map[_mapword]]
 
     # HBlink instance creation
-    logger.info('(GLOBAL) RYSEN \'bridge_master.py\' -- SYSTEM STARTING...')
+    logger.info('(GLOBAL) FreeDMR \'bridge_master.py\' -- SYSTEM STARTING...')
 
     
     listeningPorts = {}
@@ -3063,4 +3121,3 @@ if __name__ == '__main__':
     reactor.suggestThreadPoolSize(100)
     
     reactor.run()
-
