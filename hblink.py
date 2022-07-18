@@ -74,10 +74,10 @@ logging.trace = partial(logging.log, logging.TRACE)
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Cortney T. Buffington, N0MJS, Forked by Simon Adlem - G7RZU'
 __copyright__  = 'Copyright (c) 2016-2019 Cortney T. Buffington, N0MJS and the K0USY Group, Simon Adlem, G7RZU 2020,2021'
-__credits__    = 'Colin Durbridge, G4EML, Steve Zingman, N4IRS; Mike Zingman, N4IRR; Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT'
+__credits__    = 'Colin Durbridge, G4EML, Steve Zingman, N4IRS; Mike Zingman, N4IRR; Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT; Jon Lee, G4TSN; Norman Williams, M6NBP'
 __license__    = 'GNU GPLv3'
-__maintainer__ = 'Shane Daley, M0VUB'
-__email__      = 'support@gb7nr.co.uk'
+__maintainer__ = 'Simon Adlem G7RZU'
+__email__      = 'simon@gb7fr.org.uk'
 
 
 # Global variables used whether we are a module or __main__
@@ -770,6 +770,8 @@ class HBSYSTEM(DatagramProtocol):
                 remove_list.append(peer)
         for peer in remove_list:
             logger.info('(%s) Peer %s (%s) has timed out and is being removed', self._system, self._peers[peer]['CALLSIGN'], self._peers[peer]['RADIO_ID'])
+            #First, MSTCL the peer
+            self.transport.write(b''.join([MSTCL, peer]),self._CONFIG['SYSTEMS'][self._system]['PEERS'][peer]['SOCKADDR'])
             # Remove any timed out peers from the configuration
             del self._CONFIG['SYSTEMS'][self._system]['PEERS'][peer]
         if 'PEERS' not in self._CONFIG['SYSTEMS'][self._system] and 'OPTIONS' in self._CONFIG['SYSTEMS'][self._system]:
@@ -777,8 +779,10 @@ class HBSYSTEM(DatagramProtocol):
             if '_default_options' in self._CONFIG['SYSTEMS'][self._system]:
                 logger.info('(%s) Setting default Options: %s',self._system, self._CONFIG['SYSTEMS'][self._system]['_default_options'])
                 self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = self._CONFIG['SYSTEMS'][self._system]['_default_options']
+                self._CONFIG['SYSTEMS'][self._system]['_reset'] = True
             else:
                 del self._CONFIG['SYSTEMS'][self._system]['OPTIONS']
+                w
                 logger.info('(%s) Deleting HBP Options',self._system)
 
     # Aliased in __init__ to maintenance_loop if system is a peer
@@ -1075,9 +1079,11 @@ class HBSYSTEM(DatagramProtocol):
                         if '_default_options' in self._CONFIG['SYSTEMS'][self._system]:
                             self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = self._CONFIG['SYSTEMS'][self._system]['_default_options']
                             logger.info('(%s) Setting default Options: %s',self._system, self._CONFIG['SYSTEMS'][self._system]['_default_options'])
+                            self._CONFIG['SYSTEMS'][self._system]['_reset'] = True
                         else:
                             logger.info('(%s) Deleting HBP Options',self._system)
                             del self._CONFIG['SYSTEMS'][self._system]['OPTIONS']
+                            self._CONFIG['SYSTEMS'][self._system]['_reset'] = True
                     
             else:
                 _peer_id = _data[4:8]      # Configure Command
@@ -1382,12 +1388,13 @@ def try_download(_path, _file, _url, _stale,):
             result = 'ID ALIAS MAPPER: \'{}\' successfully downloaded'.format(_file)
         except IOError:
             result = 'ID ALIAS MAPPER: \'{}\' could not be downloaded due to an IOError'.format(_file)
-        try:
-            with open(_path+_file, 'wb') as outfile:
-                outfile.write(data)
-                outfile.close()
-        except IOError:
-            result = 'ID ALIAS mapper \'{}\' file could not be written due to an IOError'.format(_file)
+        else:
+            try:
+                with open(_path+_file, 'wb') as outfile:
+                    outfile.write(data)
+                    outfile.close()
+            except IOError:
+                result = 'ID ALIAS mapper \'{}\' file could not be written due to an IOError'.format(_file)
     else:
         result = 'ID ALIAS MAPPER: \'{}\' is current, not downloaded'.format(_file)
     
@@ -1521,4 +1528,3 @@ if __name__ == '__main__':
             logger.debug('(GLOBAL) %s instance created: %s, %s', CONFIG['SYSTEMS'][system]['MODE'], system, systems[system])
 
     reactor.run()
-
