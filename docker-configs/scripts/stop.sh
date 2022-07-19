@@ -31,9 +31,9 @@ echo ...
 docker-compose down
 figlet "SYSTEM-X."
 sleep 2
-echo "Stopping HBMonv2....."
-systemctl stop hbmon
-figlet "HBMonv2."
+echo "Stopping RYMonv3....."
+systemctl stop rymon
+figlet "RYMonv2."
 echo "Done."
 sleep 1
 
