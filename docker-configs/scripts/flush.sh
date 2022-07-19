@@ -27,8 +27,8 @@ docker-compose down
 echo "Done."
 sleep 1
 
-echo "Stopping HBMonv2....."
-systemctl stop hbmon 
+echo "Stopping RYMonv3....."
+systemctl stop rymon
 echo "Done."
 sleep 1
 
@@ -42,7 +42,18 @@ echo "Starting truncate OBP entire log /var/log/rysen....."
 truncate -s 0 /var/log/rysen/*log &&
 
 echo "Starting truncate Lastheard....."
-truncate -s 0 /opt/HBMonv2/log/*log
+truncate -s 0 /opt/RYMonv3/log/*log
+
+echo "Flushing JSON files....."
+sleep 1
+echo "/etc/rysen/json....."
+rm /etc/rysen/json/*
+echo "/opt/RYMonv3/data....."
+rm /opt/RYMonv3/data/talkgroup_ids.json
+rm /opt/RYMonv3/data/subscriber_ids.csv
+rm /opt/RYMonv3/data/peer_ids.json
+echo "JSON files will be downloaded from freestar.network....."
+figlet "freestar.network"
 
 #Restart all services gracefully
 echo "Restart all services....."
@@ -68,7 +79,7 @@ echo ...
 docker-compose up -d
 
 sleep 1
-figlet "SYSTEM-X." 
+figlet "SYSTEM-X."
 sleep 1
 echo "System-X is composed....."
 
@@ -85,9 +96,9 @@ echo "Flushing network tracking table....."
 conntrack -F
 sleep 1
 
-echo "Starting HBMonv2....."
-systemctl restart hbmon
-figlet "HBMonV2."
+echo "Starting RYMonv3....."
+systemctl restart rymon
+figlet "RYMonv2."
 echo "Done."
 sleep 1
 
