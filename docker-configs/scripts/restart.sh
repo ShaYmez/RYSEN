@@ -48,9 +48,9 @@ echo "Flushing network tracking table....."
 conntrack -F
 sleep 1
 
-echo "Restarting HBMonv2....."
-systemctl restart hbmon
-figlet "HBMonv2."
+echo "Restarting RYMonv3....."
+systemctl restart rymon
+figlet "RYMonv3."
 echo "Done."
 
 echo "Now Exiting....."
@@ -62,4 +62,4 @@ sleep 1
 echo ...
 sleep 1
 echo ....
-echo "OBP MasterServer has been restarted. Proccess is now complete and you may now exit. AKA ShaYmez."
+echo "SYSTEM X has been restarted. Process is now complete and you may now exit. AKA ShaYmez."
