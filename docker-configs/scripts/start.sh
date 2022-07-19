@@ -48,9 +48,9 @@ echo "Flushing network tracking table....."
 conntrack -F
 sleep 1
 
-echo "Starting HBMonv2....."
-systemctl restart hbmon
-figlet "HBMonv2."
+echo "Starting RYMonv3....."
+systemctl restart rymon
+figlet "RYMonv3."
 echo "Done."
 sleep 1
 
