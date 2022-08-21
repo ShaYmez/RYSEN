@@ -1,8 +1,7 @@
 '''
-THIS EXAMPLE WILL NOT WORK AS IT IS - YOU MUST SPECIFY YOUR OWN VALUES!!!
+RYSEN DMRMaster+ Version 1.3.8
 
-In RYSEN, the rules file should be *empty* unless you have static routing required. Please see the 
-documentation for more details.
+THIS EXAMPLE WILL NOT WORK AS IT IS - YOU MUST SPECIFY YOUR OWN VALUES!!!
 
 This file is organized around the "Conference Bridges" that you wish to use. If you're a c-Bridge
 person, think of these as "bridge groups". You might also liken them to a "reflector". If a particular
@@ -10,7 +9,7 @@ system is "ACTIVE" on a particular conference bridge, any traffid from that syst
 to any other system that is active on the bridge as well. This is not an "end to end" method, because
 each system must independently be activated on the bridge.
 
-The first level (e.g. "WORLDWIDE" or "STATEWIDE" in the examples) is the name of the conference
+The first level (e.g. "FREESTAR" or "FREESTAR UK" in the examples) is the name of the conference
 bridge. This is any arbitrary ASCII text string you want to use. Under each conference bridge
 definition are the following items -- one line for each HBSystem as defined in the main HBlink
 configuration file.
@@ -35,10 +34,18 @@ configuration file.
         triggering. If you are not, there is NO NEED to use this feature.
 '''
 
+#start of rules
 BRIDGES = {
 
-}
+##########################################################################################################################################################
+#                                                                                                                                                        #
+#                                                                  PARROT                                                                                #
+#                                                                                                                                                        #
+##########################################################################################################################################################
+    '9990': [
+            {'SYSTEM': 'PARROT',  'TS': 2, 'TGID': 9990,   'ACTIVE': True, 'TIMEOUT': 15, 'TO_TYPE': 'NONE',  'ON': [], 'OFF': [], 'RESET': []},
 
-if __name__ == '__main__':
-    from pprint import pprint
-    pprint(BRIDGES)
+        ]
+
+#end of rules
+}
