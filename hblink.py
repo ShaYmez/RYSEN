@@ -73,7 +73,7 @@ logging.trace = partial(logging.log, logging.TRACE)
 
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Cortney T. Buffington, N0MJS, Forked by Simon Adlem - G7RZU'
-__copyright__  = 'Copyright (c) 2016-2019 Cortney T. Buffington, N0MJS and the K0USY Group, Simon Adlem, G7RZU 2020,2021'
+__copyright__  = 'Copyright (c) 2016-2019 Cortney T. Buffington, N0MJS and the K0USY Group, Simon Adlem, G7RZU 2020,2021,2022'
 __credits__    = 'Colin Durbridge, G4EML, Steve Zingman, N4IRS; Mike Zingman, N4IRR; Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT; Jon Lee, G4TSN; Norman Williams, M6NBP'
 __license__    = 'GNU GPLv3'
 __maintainer__ = 'Simon Adlem G7RZU'
@@ -263,8 +263,6 @@ class OPENBRIDGE(DatagramProtocol):
             logger.trace('(%s) *BridgeControl* sent BCVE. Ver: %s',self._system,VER)
         else:
             logger.trace('(%s) *BridgeControl* not sending BCVE, TARGET_IP currently not known',self._system) 
-            
-    
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash,_hops = b'', _source_server = b'\x00\x00\x00\x00', _ber = b'\x00', _rssi = b'\x00', _source_rptr = b'\x00\x00\x00\x00'):
         pass
@@ -448,7 +446,10 @@ class OPENBRIDGE(DatagramProtocol):
                         
                     #Discard old packets
                     if (int.from_bytes(_timestamp,'big')/1000000000) < (time() - 5):
-                        logger.warning('(%s) Packet more than 5s old!, discarding', self._system)
+                        if _stream_id not in self._laststrid:
+                            logger.warning('(%s) Packet from server %s more than 5s old!, discarding',  self._system,int.from_bytes(_source_server,'big'))
+                            self.send_bcsq(_dst_id,_stream_id)
+                            self._laststrid.append(_stream_id)
                         return
                     
                     #Discard bad source server 
@@ -475,7 +476,7 @@ class OPENBRIDGE(DatagramProtocol):
                     _inthops = _hops +1 
                     
                     if _inthops > 10:
-                        logger.warning('(%s) MAX HOPS exceed, dropping. Hops: %s, DST: %s', self._system, _inthops, _int_dst_id)
+                        logger.warning('(%s) MAX HOPS exceed, dropping. Hops: %s, DST: %s, SRC: %s', self._system, _inthops, _int_dst_id, int.from_bytes(_source_server,'big'))
                         self.send_bcsq(_dst_id,_stream_id)
                         return
                     
@@ -1389,12 +1390,16 @@ def try_download(_path, _file, _url, _stale,):
         except IOError:
             result = 'ID ALIAS MAPPER: \'{}\' could not be downloaded due to an IOError'.format(_file)
         else:
-            try:
-                with open(_path+_file, 'wb') as outfile:
-                    outfile.write(data)
-                    outfile.close()
-            except IOError:
-                result = 'ID ALIAS mapper \'{}\' file could not be written due to an IOError'.format(_file)
+            if data and (data != b'{}'):
+                try:
+                    with open(_path+_file, 'wb') as outfile:
+                        outfile.write(data)
+                        outfile.close()
+                except IOError:
+                    result = 'ID ALIAS mapper \'{}\' file could not be written due to an IOError'.format(_file)
+            else:
+                result = 'ID ALIAS mapper \'{}\' file not written because downloaded data is empty for some reason'.format(_file)
+                
     else:
         result = 'ID ALIAS MAPPER: \'{}\' is current, not downloaded'.format(_file)
     
@@ -1417,6 +1422,11 @@ def mk_server_dict(path,filename):
 # ID ALIAS CREATION
 # Download
 def mk_aliases(_config):
+    peer_ids = {}
+    subscriber_ids = {}
+    local_subscriber_ids = {}
+    talkgroup_ids = {}
+    server_ids = {}
     if _config['ALIASES']['TRY_DOWNLOAD'] == True:
         # Try updating peer aliases file
         result = try_download(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'], _config['ALIASES']['PEER_URL'], _config['ALIASES']['STALE_TIME'])
@@ -1431,30 +1441,50 @@ def mk_aliases(_config):
         result = try_download(_config['ALIASES']['PATH'], _config['ALIASES']['SERVER_ID_FILE'], _config['ALIASES']['SERVER_ID_URL'], _config['ALIASES']['STALE_TIME'])
         logger.info('(ALIAS) %s', result)
         
-        
-
     # Make Dictionaries
-    peer_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'])
-    if peer_ids:
-        logger.info('(ALIAS) ID ALIAS MAPPER: peer_ids dictionary is available')
+    try:
+        _peer_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'])
+    except Exception as e:
+        logger.error('(ALIAS) ID ALIAS MAPPER: problem with data in peer_ids dictionary, not updating: %s',e)
+    else:
+        peer_ids = _peer_ids
+        if peer_ids:
+            logger.info('(ALIAS) ID ALIAS MAPPER: peer_ids dictionary is available')
 
-    subscriber_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['SUBSCRIBER_FILE'])
-    #Add special IDs to DB
-    subscriber_ids[900999] = 'D-APRS'
-    subscriber_ids[4294967295] = 'SC'
+    try:
+        _subscriber_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['SUBSCRIBER_FILE'])
+    except Exception as e:
+        logger.info('(ALIAS) ID ALIAS MAPPER: problem with data in subscriber_ids dictionary, not updating: %s',e)
+    else:
+        subscriber_ids = _subscriber_ids
+        #Add special IDs to DB
+        subscriber_ids[900999] = 'D-APRS'
+        subscriber_ids[4294967295] = 'SC'
 
-    if subscriber_ids:
-        logger.info('(ALIAS) ID ALIAS MAPPER: subscriber_ids dictionary is available')
-
-    talkgroup_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['TGID_FILE'])
-    if talkgroup_ids:
-        logger.info('(ALIAS) ID ALIAS MAPPER: talkgroup_ids dictionary is available')
-        
-    local_subscriber_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['LOCAL_SUBSCRIBER_FILE'])
-    if subscriber_ids:
-        logger.info('(ALIAS) ID ALIAS MAPPER: local_subscriber_ids dictionary is available')
-        
-    server_ids = mk_server_dict(_config['ALIASES']['PATH'], _config['ALIASES']['SERVER_ID_FILE'])
+        if subscriber_ids:
+            logger.info('(ALIAS) ID ALIAS MAPPER: subscriber_ids dictionary is available')
+    try:
+        _talkgroup_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['TGID_FILE'])
+    except Exception as e:
+        logger.info('(ALIAS) ID ALIAS MAPPER: problem with data in talkgroup_ids dictionary, not updating: %s',e)
+    else:
+        talkgroup_ids = _talkgroup_ids
+        if talkgroup_ids:
+            logger.info('(ALIAS) ID ALIAS MAPPER: talkgroup_ids dictionary is available')
+    try:   
+        _local_subscriber_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['LOCAL_SUBSCRIBER_FILE'])
+    except Exception as e:
+        logger.info('(ALIAS) ID ALIAS MAPPER: problem with data in local_subscriber_ids dictionary, not updating: %s',e)
+    else:
+        local_subscriber_ids = _local_subscriber_ids
+        if subscriber_ids:
+            logger.info('(ALIAS) ID ALIAS MAPPER: local_subscriber_ids dictionary is available')
+    try:        
+        _server_ids = mk_server_dict(_config['ALIASES']['PATH'], _config['ALIASES']['SERVER_ID_FILE'])
+    except Exception as e:
+        logger.info('(ALIAS) ID ALIAS MAPPER: problem with data in server_ids dictionary, not updating: %s',e)
+    else:
+        server_ids = _server_ids
     if server_ids:
         logger.info('(ALIAS) ID ALIAS MAPPER: server_ids dictionary is available')
         
