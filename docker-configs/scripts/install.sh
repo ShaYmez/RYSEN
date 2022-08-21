@@ -681,6 +681,15 @@ then
         exit 0
 fi
 echo "Done"
+
+echo ""
+echo ""
+echo "------------------------------------------------------------------------------"
+echo "Download Local Subscribers....."
+echo "------------------------------------------------------------------------------"
+        cd /etc/rysen/json
+        curl https://freestar.network/downloads/local_subscriber_ids.json -o local_subscriber_ids.json
+echo "Done"        
 echo ""
 echo ""
 echo "------------------------------------------------------------------------------"
