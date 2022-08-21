@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# RYSEN DMRMaster+ Version 1.3.4
+# RYSEN DMRMaster+ Version 1.3.8
 #
 ###############################################################################
 #   Copyright (C) 2016-2018  Cortney T. Buffington, N0MJS <n0mjs@me.com>
@@ -90,4 +90,3 @@ VER     = 5
 
 # Higheset peer ID permitted by HBP
 PEER_MAX = 4294967295
-
