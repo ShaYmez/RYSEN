@@ -689,6 +689,7 @@ echo "--------------------------------------------------------------------------
         chmod -R 755 /etc/rysen
         chmod -R 777 /etc/rysen/json
         chown -R 54000 /etc/rysen
+        chown -R 54000:54000 /etc/rysen/json
         chown -R 54000 /var/log/rysen
 echo ""
 echo ""
