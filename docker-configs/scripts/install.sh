@@ -170,7 +170,7 @@ TGID_FILE       = 'talkgroup_ids.json'           # User provided
 LOCAL_SUB_FILE  = 'local_subscriber_ids.json'    # User provided (optional, leave '' if you don't use it)
 LOCAL_PEER_FILE = 'local_peer_ids.json'          # User provided (optional, leave '' if you don't use it)
 LOCAL_TGID_FILE = 'local_talkgroup_ids.json'     # User provided (optional, leave '' if you don't use it)
-FILE_RELOAD     = 2                              # Number of days before we reload DMR-MARC database files
+FILE_RELOAD     = 14                             # Number of days before we reload DMR-MARC database files
 PEER_URL        = 'https://database.radioid.net/static/rptrs.json'
 SUBSCRIBER_URL  = 'https://database.radioid.net/static/users.json'
 
@@ -226,18 +226,10 @@ sleep 2
 
          echo Make config directory...
          mkdir -p /etc/rysen
-         chmod 0755 /etc/rysen
 
          echo make json directory...
          mkdir -p /etc/rysen/json/
-
-         echo get json files...
-         cd /etc/rysen/json
-         curl https://freestar.network/downloads/local_subscriber_ids.json -o subscriber_ids.json
-         curl https://freestar.network/downloads/talkgroup_ids.json -o talkgroup_ids.json
-         curl https://www.radioid.net/static/rptrs.json -o peer_ids.json
-         touch /etc/rysen/json/sub_map.pkl
-         chmod -R 0755 /etc/rysen/json/
+         
 echo "Done"
 echo ""
 echo ""
@@ -247,7 +239,7 @@ echo "--------------------------------------------------------------------------
 sleep 2
         echo Install /etc/rysen/rysen.cfg ... 
 cat << EOF > /etc/rysen/rysen.cfg
-# PROGRAM-WIDE PARAMETERS GO HERE
+# RYSEN DMRMaster+ Version 1.3.8 
 # PATH - working path for files, leave it alone unless you NEED to change it
 # PING_TIME - the interval that peers will ping the master, and re-try registraion
 #           - how often the Master maintenance loop runs
@@ -290,17 +282,18 @@ PATH: ./
 PING_TIME: 10
 MAX_MISSED: 3
 USE_ACL: True
-REG_ACL: PERMIT:ALL
+REG_ACL: DENY:1
 SUB_ACL: DENY:1
-TGID_TS1_ACL: PERMIT:ALL
-TGID_TS2_ACL: PERMIT:ALL
-GEN_STAT_BRIDGES: False
+TGID_TS1_ACL: DENY:0-79
+TGID_TS2_ACL: DENY:0-8,10-79
+GEN_STAT_BRIDGES: True
 ALLOW_NULL_PASSPHRASE: True
-ANNOUNCEMENT_LANGUAGES: en_GB_2
+ANNOUNCEMENT_LANGUAGES: en_GB,en_GB_2,en_US,es_ES,fr_FR,de_DE,dk_DK,it_IT,no_NO,pl_PL,se_SE,pt_PT,cy_GB,el_GR,CW
+VALIDATE_SERVER_IDS: False
+SERVER_ID: 0
 DATA_GATEWAY: False
-SERVER_ID: 00000
 
-# NETWORK REPORTING CONFIGURATION RYSEN DMRMaster+
+# NETWORK REPORTING CONFIGURATION DASHBOARD SOCKET
 #   Enabling "REPORT" will configure a socket-based reporting
 #   system that will send the configuration and other items
 #   to a another process (local or remote) that may process
@@ -319,7 +312,7 @@ REPORT_INTERVAL: 60
 REPORT_PORT: 4321
 REPORT_CLIENTS: *
 
-# SYSTEM LOGGER CONFIGURAITON RYSEN DMRMaster+
+# SYSTEM LOGGER CONFIGURAITON
 #   This allows the logger to be configured without chaning the individual
 #   python logger stuff. LOG_FILE should be a complete path/filename for *your*
 #   system -- use /dev/null for non-file handlers.
@@ -345,26 +338,29 @@ LOG_HANDLERS: file-timed
 LOG_LEVEL: INFO
 LOG_NAME: RYSEN
 
-# DOWNLOAD AND IMPORT SUBSCRIBER, PEER and TGID ALIASES RYSEN DMRMaster+
-#   Ok, not the TGID, there's no master list I know of to download
-#   This is intended as a facility for other applcations built on top of
-#   RYSEN to use, and will NOT be used in RYSEN directly.
-#   STALE_DAYS is the number of days since the last download before we
-#   download again. Don't be an ass and change this to less than a few days.
+# DOWNLOAD AND IMPORT SUBSCRIBER, PEER and TGID ALIASES
+# Ok, not the TGID, there's no master list I know of to download
+# This is intended as a facility for other applcations built on top of
+# HBlink to use, and will NOT be used in HBlink directly.
+# STALE_DAYS is the number of days since the last download before we
+# download again. Don't be an ass and change this to less than a few days.
 [ALIASES]
-TRY_DOWNLOAD: False
-PATH: ./
+TRY_DOWNLOAD: True
+PATH: ./json/
 PEER_FILE: peer_ids.json
 SUBSCRIBER_FILE: subscriber_ids.json
 TGID_FILE: talkgroup_ids.json
 PEER_URL: https://www.radioid.net/static/rptrs.json
 SUBSCRIBER_URL: https://www.radioid.net/static/users.json
+LOCAL_SUBSCRIBER_URL: https://freestar.network/downloads/local_subscriber_ids.json
 TGID_URL: https://freestar.network/downloads/talkgroup_ids.json
 LOCAL_SUBSCRIBER_FILE: local_subcriber_ids.json
-SUB_MAP_FILE:
-STALE_DAYS: 1
+SERVER_ID_URL: https://freestar.network/downloads/SystemX_Hosts.csv
+SERVER_ID_FILE: server_ids.tsv
+STALE_DAYS: 14
+SUB_MAP_FILE: sub_map.pkl
 
-# SHARED ALLSTAR INSTANCE AMI
+#Control server shared allstar instance via dial / AMI
 [ALLSTAR]
 ENABLED: False
 USER:llcgi
@@ -373,7 +369,7 @@ SERVER: my.asl.server
 PORT: 5038
 NODE: 0000
 
-# MSQL CONFIGURATION DATABASE FOR SELFCARE
+#Read further repeater configs from MySQL
 [MYSQL]
 USE_MYSQL: False
 USER: hblink
@@ -384,58 +380,64 @@ PORT: 3306
 TABLE: repeaters
 
 # OPENBRIDGE INSTANCES - DUPLICATE SECTION FOR MULTIPLE CONNECTIONS
-#   OpenBridge is a protocol originall created by DMR+ for connection between an
-#   IPSC2 server and Brandmeister. It has been implemented here at the suggestion
-#   of the Brandmeister team as a way to legitimately connect HBlink to the
-#   Brandemiester network.
-#   It is recommended to name the system the ID of the Brandmeister server that
-#   it connects to, but is not necessary. TARGET_IP and TARGET_PORT are of the
-#   Brandmeister or IPSC2 server you are connecting to. PASSPHRASE is the password
-#   that must be agreed upon between you and the operator of the server you are
-#   connecting to. NETWORK_ID is a number in the format of a DMR Radio ID that
-#   will be sent to the other server to identify this connection.
-#   other parameters follow the other system types.
+# OpenBridge is a protocol originall created by DMR+ for connection between an
+# IPSC2 server and Brandmeister. It has been implemented here at the suggestion
+# of the Brandmeister team as a way to legitimately connect HBlink to the
+# Brandemiester network.
+# It is recommended to name the system the ID of the Brandmeister server that
+# it connects to, but is not necessary. TARGET_IP and TARGET_PORT are of the
+# Brandmeister or IPSC2 server you are connecting to. PASSPHRASE is the password
+# that must be agreed upon between you and the operator of the server you are
+# connecting to. NETWORK_ID is a number in the format of a DMR Radio ID that
+# will be sent to the other server to identify this connection.
+# other parameters follow the other system types.
 #
 # ACLs:
-#   OpenBridge does not 'register', so registration ACL is meaningless.
-#   OpenBridge passes all traffic on TS1, so there is only 1 TGID ACL.
-#   Otherwise ACLs work as described in the global stanza
+# OpenBridge does not 'register', so registration ACL is meaningless.
+# OpenBridge passes all traffic on TS1, so there is only 1 TGID ACL.
+# Otherwise ACLs work as described in the global stanza
 [OBP-TEST]
 MODE: OPENBRIDGE
 ENABLED: False
 IP:
-PORT: 62044
-NETWORK_ID: 1
-PASSPHRASE: mypass
-TARGET_IP: 
-TARGET_PORT: 62044
+PORT: 62035
+NETWORK_ID: 0
+PASSPHRASE: password
+TARGET_IP: 1.2.3.4
+TARGET_PORT: 62035
 USE_ACL: True
 SUB_ACL: DENY:1
 TGID_ACL: PERMIT:ALL
-RELAX_CHECKS: False
-ENHANCED_OBP: False
-PROTO_VER: 1 
+RELAX_CHECKS: True
+ENHANCED_OBP: True
+PROTO_VER: 5
 
 # MASTER INSTANCES - DUPLICATE SECTION FOR MULTIPLE MASTERS
-#   HomeBrew Protocol Master instances go here.
-#   IP may be left blank if there's one interface on your system.
-#   Port should be the port you want this master to listen on. It must be unique
-#   and unused by anything else.
-#   Repeat - if True, the master repeats traffic to peers, False, it does nothing.
+# HomeBrew Protocol Master instances go here.
+# IP may be left blank if there's one interface on your system.
+# Port should be the port you want this master to listen on. It must be unique
+# and unused by anything else.
+# Repeat - if True, the master repeats traffic to peers, False, it does nothing.
 #
-#   MAX_PEERS -- maximun number of peers that may be connect to this master
-#   at any given time. This is very handy if you're allowing hotspots to
-#   connect, or using a limited computer like a Raspberry Pi.
+# MAX_PEERS -- maximun number of peers that may be connect to this master
+# at any given time. This is very handy if you're allowing hotspots to
+# connect, or using a limited computer like a Raspberry Pi.
 #
 # ACLs:
-#   See comments in the GLOBAL stanza
+# See comments in the GLOBAL stanza
+
+######################################################################################
+#                                                                                    #
+#                                      MASTERS                                       #
+#                                                                                    #
+######################################################################################
 [SYSTEM]
 MODE: MASTER
 ENABLED: True
 REPEAT: True
 MAX_PEERS: 1
 EXPORT_AMBE: False
-IP:
+IP: 
 PORT: 54000
 PASSPHRASE: passw0rd
 GROUP_HANGTIME: 5
@@ -444,7 +446,7 @@ REG_ACL: DENY:1
 SUB_ACL: DENY:1
 TGID_TS1_ACL: PERMIT:ALL
 TGID_TS2_ACL: PERMIT:ALL
-DEFAULT_UA_TIMER: 10
+DEFAULT_UA_TIMER: 60
 SINGLE_MODE: True
 VOICE_IDENT: False
 TS1_STATIC:
@@ -454,28 +456,30 @@ ANNOUNCEMENT_LANGUAGE: en_GB
 GENERATOR: 100
 ALLOW_UNREG_ID: True
 PROXY_CONTROL: False
+OVERRIDE_IDENT_TG:
 
-# PARROT SYSTEM / INSTALLED AS A PEER 
-#   See documentation on how to install the parrot seperatley - if using
-#   the parrot via docker installer, the parrot comes complete. Use the
-#   PARROT TG9990 Group call or via Dial-A-TG 9990 via TG9
+######################################################################################
+#                                                                                    #
+#                                       PARROT                                       #
+#                                                                                    #
+######################################################################################
 [PARROT]
 MODE: PEER
 ENABLED: True
 LOOSE: False
 EXPORT_AMBE: False
-IP: 
+IP:  
 PORT: 54916
 MASTER_IP: 127.0.0.1
 MASTER_PORT: 54915
 PASSPHRASE: passw0rd
 CALLSIGN: PARROT
-RADIO_ID: 9990
+RADIO_ID: 234018999
 RX_FREQ: 449000000
 TX_FREQ: 444000000
 TX_POWER: 25
 COLORCODE: 1
-SLOTS: 1
+SLOTS: 2
 LATITUDE: 00.0000
 LONGITUDE: 000.0000
 HEIGHT: 75
@@ -483,21 +487,100 @@ LOCATION: TG9990
 DESCRIPTION: PARROT
 URL: www.freestar.network
 SOFTWARE_ID: 20170620
-PACKAGE_ID: System-X
+PACKAGE_ID: SYSTEM-X
 GROUP_HANGTIME: 5
 OPTIONS:
 USE_ACL: True
 SUB_ACL: DENY:1
 TGID_TS1_ACL: PERMIT:ALL
 TGID_TS2_ACL: PERMIT:ALL
-ANNOUNCEMENT_LANGUAGE: en_GB_2
+ANNOUNCEMENT_LANGUAGE: en_GB
 
-# This configuration file is for RYSEN DMRMaster+ only!
+######################################################################################
+#                                                                                    #
+#                           DMR-PEERS  (Ports 54100 - 54199)                         #
+#                                                                                    #
+######################################################################################
+[DMR+/TG1]
+MODE: PEER
+ENABLED: False
+LOOSE: True
+EXPORT_AMBE: False
+IP:
+PORT: 54100
+MASTER_IP: 111.222.333.444
+MASTER_PORT: 12345
+PASSPHRASE: passw0rd
+CALLSIGN: M0VUB-L
+RADIO_ID: 234587501
+RX_FREQ: 449000000
+TX_FREQ: 444000000
+TX_POWER: 25
+COLORCODE: 1
+SLOTS: 2
+LATITUDE: 00.0000
+LONGITUDE: 000.0000
+HEIGHT: 75
+LOCATION: Nottingham, UK
+DESCRIPTION: SYSTEM-X Link GB
+URL: freestar.network
+SOFTWARE_ID: 20170620
+PACKAGE_ID: MMDVM_SYSTEM-X
+GROUP_HANGTIME: 5
+OPTIONS: TS2_1=1;
+USE_ACL: True
+SUB_ACL: DENY:1
+TGID_TS1_ACL: PERMIT:ALL
+TGID_TS2_ACL: PERMIT:ALL
+ANNOUNCEMENT_LANGUAGE: en_GB
+
+######################################################################################
+#                                                                                    #
+#                           XLX-PEERS  (Ports 54200 - 54299)                         #
+#                                                                                    #
+######################################################################################
+[XLX-248-A]
+MODE: XLXPEER
+ENABLED: False
+LOOSE: True
+EXPORT_AMBE: False
+IP:
+PORT: 54213
+MASTER_IP: xlx248.freestar.network
+MASTER_PORT: 62030
+PASSPHRASE: passw0rd
+CALLSIGN: M0VUB
+RADIO_ID: 2340189
+RX_FREQ: 449000000
+TX_FREQ: 444000000
+TX_POWER: 25
+COLORCODE: 1
+SLOTS: 2
+LATITUDE: 38.0000
+LONGITUDE: -095.0000
+HEIGHT: 75
+LOCATION: System-X
+DESCRIPTION: Module A
+URL: www.freestar.network
+SOFTWARE_ID: 20170620
+PACKAGE_ID: MMDVM_SYSTEM-X
+GROUP_HANGTIME: 5
+# 4000 + the numerical position of the module in the alphabet - e.g A = 4001
+XLXMODULE: 4001
+USE_ACL: True
+SUB_ACL: DENY:1
+TGID_TS1_ACL: PERMIT:ALL
+TGID_TS2_ACL: PERMIT:ALL
+ANNOUNCEMENT_LANGUAGE: en_GB
+
+# End of RYSEN MASTER+ Configuration file
 EOF
 
         echo Install /etc/rysen/rules.py ...
 cat << EOF > /etc/rysen/rules.py
 '''
+RYSEN DMRMaster+ Version 1.3.8
+
 THIS EXAMPLE WILL NOT WORK AS IT IS - YOU MUST SPECIFY YOUR OWN VALUES!!!
 
 This file is organized around the "Conference Bridges" that you wish to use. If you're a c-Bridge
@@ -540,7 +623,7 @@ BRIDGES = {
 #                                                                                                                                                        #
 ##########################################################################################################################################################
     '9990': [
-            {'SYSTEM': 'PARROT',  'TS': 2, 'TGID': 9990,   'ACTIVE': True, 'TIMEOUT': 15, 'TO_TYPE': 'NONE',  'ON': [], 'OFF': [], 'RESET': []}
+            {'SYSTEM': 'PARROT',  'TS': 2, 'TGID': 9990,   'ACTIVE': True, 'TIMEOUT': 15, 'TO_TYPE': 'NONE',  'ON': [], 'OFF': [], 'RESET': []},
 
         ]
 
@@ -603,6 +686,8 @@ echo ""
 echo "------------------------------------------------------------------------------"
 echo "Set up permissions....."
 echo "------------------------------------------------------------------------------"
+        chmod -R 755 /etc/rysen
+        chmod -R 777 /etc/rysen/json
         chown -R 54000 /etc/rysen
         chown -R 54000 /var/log/rysen
 echo ""

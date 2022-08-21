@@ -47,13 +47,17 @@ truncate -s 0 /opt/RYMonv3/log/*log
 echo "Flushing JSON files....."
 sleep 1
 echo "/etc/rysen/json....."
-rm /etc/rysen/json/*
+rm /etc/rysen/json/talkgroup_ids.json
+rm /etc/rysen/json/subscriber_ids.json
+rm /etc/rysen/json/peer_ids.json
+rm /etc/rysen/json/server_ids.tsv
+rm /etc/rysen/json/sub_map.pkl
 echo "/opt/RYMonv3/data....."
 rm /opt/RYMonv3/data/talkgroup_ids.json
 rm /opt/RYMonv3/data/subscriber_ids.csv
 rm /opt/RYMonv3/data/peer_ids.json
 echo "JSON files will be downloaded from freestar.network....."
-figlet "freestar.network"
+figlet "FreeSTAR CL V1.1"
 
 #Restart all services gracefully
 echo "Restart all services....."
