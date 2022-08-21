@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# RYSEN DMRMaster+ Version 1.3.4 
+# RYSEN DMRMaster+ Version 1.3.8 
 #
 ###############################################################################
 #   Copyright (C) 2016-2018 Cortney T. Buffington, N0MJS <n0mjs@me.com>
@@ -432,3 +432,4 @@ if __name__ == '__main__':
         return not _acl[0]
         
     print(acl_check(b'\x00\x01\x37', CONFIG['GLOBAL']['TG1_ACL']))
+    
