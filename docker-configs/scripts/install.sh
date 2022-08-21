@@ -1,5 +1,5 @@
 #!/bin/bash
-# RYSEN DMRMaster+ ver 1.3.4 Installer ver 1.2.1. systemx-docker-installer
+# RYSEN DMRMaster+ ver 1.3.8 Installer ver 1.2.2. systemx-docker-installer
 #
 ##################################################################################
 #   Copyright (C) 2021-2022 Shane Daley, M0VUB aka ShaYmez. <support@gb7nr.co.uk>
