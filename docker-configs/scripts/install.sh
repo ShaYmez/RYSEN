@@ -688,7 +688,7 @@ echo "--------------------------------------------------------------------------
 echo "Download Local Subscribers....."
 echo "------------------------------------------------------------------------------"
         cd /etc/rysen/json
-        curl https://freestar.network/downloads/local_subscriber_ids.json -o local_subscriber_ids.json
+        curl https://www.radioid.net/static/users.json -o local_subscriber_ids.json
 echo "Done"        
 echo ""
 echo ""
