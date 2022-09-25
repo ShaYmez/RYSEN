@@ -42,10 +42,10 @@ figlet "ShaYmez."
 # echo Removing old containers.....
 # docker container rm systemx --force 
 # echo Installing new containers.....
-# docker run --name=systemx -d --read-only -v /etc/freedmr/freedmr.cfg:/opt/freedmr/freedmr.cfg \
-# -v /var/log/freedmr/freedmr.log:/opt/freedmr/freedmr.log \
-# -v /etc/freedmr/rules.py:/opt/freedmr/rules.py -p 62031:62031/udp -p 62034-62046:62034-62046/udp \
-# -p 4321:4321/tcp hacknix/freedmr:latest
+# docker run --name=systemx -d --read-only -v /etc/rysen/rysen.cfg:/opt/rysen/rysen.cfg \
+# -v /var/log/rysen/rysen.log:/opt/rysen/rysen.log \
+# -v /etc/rysen/rules.py:/opt/rysen/rules.py -p 62031:62031/udp -p 62034-62046:62034-62046/udp \
+# -p 4321:4321/tcp hacknix/rysen:latest
 sleep 1
 echo Flushing services and restarting.....
 ./flush.sh
@@ -60,7 +60,7 @@ echo ""
 echo "               ******* To Upgrade run ./upgrade.sh *******               "
 echo ""
 echo "        Use 'docker container logs systemx' to check the status.         "
-echo "                   logs are part in /var/log/freedmr.                    "
+echo "                   logs are part in /var/log/rysen.                    "
 echo "  Just make sure this computer can be accessed over UDP specified port   "
 echo "  You will need to edit your config and then run the following command   "
 echo ""

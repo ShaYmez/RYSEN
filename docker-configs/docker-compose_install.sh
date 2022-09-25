@@ -18,7 +18,7 @@
 #   Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 ###############################################################################
 
-echo FreeDMR Docker installer...
+echo RYSEN Docker installer...
 
 echo Installing required packages...
 echo Install Docker Community Edition...
@@ -59,17 +59,17 @@ echo Restart docker...
 systemctl restart docker &&
 
 echo Make config directory...
-mkdir /etc/freedmr &&
-mkdir -p /etc/freedmr/acme.sh && 
-mkdir -p /etc/freedmr/certs &&
-chmod -R 755 /etc/freedmr &&
+mkdir /etc/rysen &&
+mkdir -p /etc/rysen/acme.sh && 
+mkdir -p /etc/rysen/certs &&
+chmod -R 755 /etc/rysen &&
 
 echo make json directory...
-mkdir -p /etc/freedmr/json &&
-chown 54000:54000 /etc/freedmr/json &&
+mkdir -p /etc/rysen/json &&
+chown 54000:54000 /etc/rysen/json &&
 
-echo Install /etc/freedmr/freedmr.cfg ... 
-cat << EOF > /etc/freedmr/freedmr.cfg
+echo Install /etc/rysen/rysen.cfg ... 
+cat << EOF > /etc/rysen/rysen.cfg
 [GLOBAL]
 PATH: ./
 PING_TIME: 10
@@ -97,7 +97,7 @@ REPORT_CLIENTS: *
 LOG_FILE: /dev/null
 LOG_HANDLERS: console-timed
 LOG_LEVEL: INFO
-LOG_NAME: FreeDMR
+LOG_NAME: RYSEN
 
 [ALIASES]
 TRY_DOWNLOAD: True
@@ -105,13 +105,13 @@ PATH: ./json/
 PEER_FILE: peer_ids.json
 SUBSCRIBER_FILE: subscriber_ids.json
 TGID_FILE: talkgroup_ids.json
-PEER_URL: http://freedmr-lh.gb7fr.org.uk/json/peer_ids.json
-SUBSCRIBER_URL: http://freedmr-lh.gb7fr.org.uk/json/subscriber_ids.json
-TGID_URL: http://freedmr-lh.gb7fr.org.uk/json/talkgroup_ids.json
+PEER_URL: http://rysen-lh.gb7fr.org.uk/json/peer_ids.json
+SUBSCRIBER_URL: http://rysen-lh.gb7fr.org.uk/json/subscriber_ids.json
+TGID_URL: http://rysen-lh.gb7fr.org.uk/json/talkgroup_ids.json
 LOCAL_SUBSCRIBER_FILE: local_subscriber_ids.json
 STALE_DAYS: 1
 SUB_MAP_FILE: sub_map.pkl
-SERVER_ID_URL: http://freedmr-lh.gb7fr.org.uk/json/server_ids.tsv
+SERVER_ID_URL: http://rysen-lh.gb7fr.org.uk/json/server_ids.tsv
 SERVER_ID_FILE: server_ids.tsv
 TOPO_FILE: topography.json
 
@@ -191,9 +191,9 @@ LONGITUDE: 000.0000
 HEIGHT: 0
 LOCATION: Earth
 DESCRIPTION: ECHO
-URL: www.freedmr.uk
+URL: www.rysen.uk
 SOFTWARE_ID: 20170620
-PACKAGE_ID: MMDVM_FreeDMR
+PACKAGE_ID: MMDVM_RYSEN
 GROUP_HANGTIME: 5
 OPTIONS:
 USE_ACL: True
@@ -204,14 +204,14 @@ ANNOUNCEMENT_LANGUAGE: en_GB
 EOF
 
 echo Install rules.py ...
-echo "BRIDGES = {'9990': [{'SYSTEM': 'ECHO', 'TS': 2, 'TGID': 9990, 'ACTIVE': True, 'TIMEOUT': 2, 'TO_TYPE': 'NONE', 'ON': [], 'OFF': [], 'RESET': []},]}" > /etc/freedmr/rules.py &&
+echo "BRIDGES = {'9990': [{'SYSTEM': 'ECHO', 'TS': 2, 'TGID': 9990, 'ACTIVE': True, 'TIMEOUT': 2, 'TO_TYPE': 'NONE', 'ON': [], 'OFF': [], 'RESET': []},]}" > /etc/rysen/rules.py &&
 
 echo Set perms on config directory...
-chown -R 54000 /etc/freedmr &&
+chown -R 54000 /etc/rysen &&
 
 echo Get docker-compose.yml...
-cd /etc/freedmr &&
-curl https://gitlab.hacknix.net/hacknix/FreeDMR/-/raw/master/docker-configs/docker-compose.yml -o docker-compose.yml &&
+cd /etc/rysen &&
+curl https://gitlab.hacknix.net/hacknix/RYSEN/-/raw/master/docker-configs/docker-compose.yml -o docker-compose.yml &&
 
 chmod 755 /etc/cron.daily/lastheard
 
@@ -228,8 +228,8 @@ EOF
 
 /usr/sbin/sysctl -p &&
 
-echo Run FreeDMR container...
+echo Run RYSEN container...
 docker-compose up -d
 
-echo Read notes in /etc/freedmr/docker-compose.yml to understand how to implement extra functionality.
-echo FreeDMR setup complete!
+echo Read notes in /etc/rysen/docker-compose.yml to understand how to implement extra functionality.
+echo RYSEN setup complete!

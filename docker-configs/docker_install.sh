@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo FreeDMR Docker installer...
+echo RYSEN Docker installer...
 
 echo Installing required packages...
 apt-get -y install docker.io && 
@@ -13,15 +13,15 @@ echo '{ "userland-proxy": false}' > /etc/docker/daemon.json &&
 echo Restart docker...
 systemctl restart docker &&
 
-echo Pull FreeDMR latest image...
-docker pull hacknix/freedmr:latest &&
+echo Pull RYSEN latest image...
+docker pull hacknix/rysen:latest &&
 
 echo Make config directory...
-mkdir /etc/freedmr &&
-chmod 755 /etc/freedmr &&
+mkdir /etc/rysen &&
+chmod 755 /etc/rysen &&
 
-echo Install /etc/freedmr/freedmr.cfg ... 
-cat << EOF > /etc/freedmr/freedmr.cfg
+echo Install /etc/rysen/rysen.cfg ... 
+cat << EOF > /etc/rysen/rysen.cfg
 [GLOBAL]
 PATH: ./
 PING_TIME: 10
@@ -44,10 +44,10 @@ REPORT_PORT: 4321
 REPORT_CLIENTS: *
 
 [LOGGER]
-LOG_FILE: freedmr.log
+LOG_FILE: rysen.log
 LOG_HANDLERS: file-timed
 LOG_LEVEL: INFO
-LOG_NAME: FreeDMR
+LOG_NAME: RYSEN
 
 [ALIASES]
 TRY_DOWNLOAD: False
@@ -57,9 +57,9 @@ SUBSCRIBER_FILE: subscriber_ids.json
 TGID_FILE: talkgroup_ids.json
 PEER_URL: https://www.radioid.net/static/rptrs.json
 SUBSCRIBER_URL: https://www.radioid.net/static/users.json
-TGID_URL: TGID_URL: http://downloads.freedmr.uk/downloads/talkgroup_ids.json
+TGID_URL: TGID_URL: http://downloads.rysen.uk/downloads/talkgroup_ids.json
 STALE_DAYS: 1
-SERVER_ID_URL: http://downloads.freedmr.uk/downloads/FreeDMR_Hosts.csv
+SERVER_ID_URL: http://downloads.rysen.uk/downloads/RYSEN_Hosts.csv
 SERVER_ID_FILE: server_ids.tsv
 
 
@@ -145,9 +145,9 @@ LONGITUDE: 000.0000
 HEIGHT: 0
 LOCATION: Earth
 DESCRIPTION: ECHO
-URL: www.freedmr.uk
+URL: www.rysen.uk
 SOFTWARE_ID: 20170620
-PACKAGE_ID: MMDVM_FreeDMR
+PACKAGE_ID: MMDVM_RYSEN
 GROUP_HANGTIME: 5
 OPTIONS:
 USE_ACL: True
@@ -158,29 +158,29 @@ ANNOUNCEMENT_LANGUAGE: en_GB_2
 EOF
 
 echo Install rules.py ...
-echo "BRIDGES = {'9990': [{'SYSTEM': 'ECHO', 'TS': 2, 'TGID': 9990, 'ACTIVE': True, 'TIMEOUT': 2, 'TO_TYPE': 'NONE', 'ON': [], 'OFF': [], 'RESET': []},]}" > /etc/freedmr/rules.py &&
+echo "BRIDGES = {'9990': [{'SYSTEM': 'ECHO', 'TS': 2, 'TGID': 9990, 'ACTIVE': True, 'TIMEOUT': 2, 'TO_TYPE': 'NONE', 'ON': [], 'OFF': [], 'RESET': []},]}" > /etc/rysen/rules.py &&
 
 echo Set perms on config directory...
-chown -R 54000 /etc/freedmr &&
+chown -R 54000 /etc/rysen &&
 
 echo Setup logging...
-mkdir -p /var/log/freedmr &&
-touch /var/log/freedmr/freedmr.log &&
-chown -R 54000 /var/log/freedmr &&
+mkdir -p /var/log/rysen &&
+touch /var/log/rysen/rysen.log &&
+chown -R 54000 /var/log/rysen &&
 
-echo Run FreeDMR container...
-docker run --name=freedmr -d --read-only -v /etc/freedmr/freedmr.cfg:/opt/freedmr/freedmr.cfg \
--v /var/log/freedmr/freedmr.log:/opt/freedmr/freedmr.log \
--v /etc/freedmr/rules.py:/opt/freedmr/rules.py -p 62031:62031/udp -p 62036-62046:62036-62046/udp \
--p 4321:4321/tcp hacknix/freedmr:latest &&
+echo Run RYSEN container...
+docker run --name=rysen -d --read-only -v /etc/rysen/rysen.cfg:/opt/rysen/rysen.cfg \
+-v /var/log/rysen/rysen.log:/opt/rysen/rysen.log \
+-v /etc/rysen/rules.py:/opt/rysen/rules.py -p 62031:62031/udp -p 62036-62046:62036-62046/udp \
+-p 4321:4321/tcp hacknix/rysen:latest &&
 
 echo Set to restart on boot and when it dies...
-docker update --restart unless-stopped freedmr &&
+docker update --restart unless-stopped rysen &&
 
 echo Download update script for future use...
-curl https://raw.githubusercontent.com/hacknix/FreeDMR/master/docker-configs/update_freedmr.sh -o update_freedmr.sh &&
-chmod 700 ./update_freedmr.sh
+curl https://raw.githubusercontent.com/hacknix/RYSEN/master/docker-configs/update_rysen.sh -o update_rysen.sh &&
+chmod 700 ./update_rysen.sh
 
-echo FreeDMR setup complete!
+echo RYSEN setup complete!
 
 

@@ -24,7 +24,7 @@ __license__    = 'GNU GPLv3'
 __maintainer__ = 'Simon Adlem G7RZU'
 __email__      = 'simon@gb7fr.org.uk'
 
-#This is example code to connect to the report service in FreeDMR / HBLink3
+#This is example code to connect to the report service in RYSEN / HBLink3
 #It can be used as a skeleton to build logging and monitoring tools. 
 
 import pickle
