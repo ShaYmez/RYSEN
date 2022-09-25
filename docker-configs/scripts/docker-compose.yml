@@ -34,6 +34,8 @@ services:
             - '62031:62031/udp'
             #Change the below to include ports used for your OBP(s)
             - '62035-62041:62035-62041/udp'
+              #HBMon Port (Report)
+            - '4321:4321/tcp'          
         image: 'shaymez/rysen:latest'
         restart: "unless-stopped"
         networks:
