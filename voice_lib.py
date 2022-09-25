@@ -1,5 +1,3 @@
-# RYSEN DMRMaster+ Version 1.3.4 
-#
 ###############################################################################
 # Copyright (C) 2020 Simon Adlem, G7RZU <g7rzu@gb7fr.org.uk>  
 #

@@ -28,8 +28,8 @@ from datetime import datetime
 
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Simon Adlem - G7RZU'
-__copyright__  = 'Copyright (c) Simon Adlem, G7RZU 2020,2021,2022'
-__credits__    = 'Jon Lee, G4TSN; Norman Williams, M6NBP; Christian, OA4DOA'
+__copyright__  = 'Copyright (c) Simon Adlem, G7RZU 2022'
+__credits__    = 'Jon Lee, G4TSN; Norman Williams, M6NBP'
 __license__    = 'GNU GPLv3'
 __maintainer__ = 'Simon Adlem G7RZU'
 __email__      = 'simon@gb7fr.org.uk'
@@ -70,41 +70,10 @@ class Proxy(DatagramProtocol):
             print("dead",_peer_id)
         if self.clientinfo and _peer_id != b'\xff\xff\xff\xff':
             print(f"{datetime.now().replace(microsecond=0)} Client: ID:{str(int_id(_peer_id)).rjust(9)} IP:{self.peerTrack[_peer_id]['shost'].rjust(15)} Port:{self.peerTrack[_peer_id]['sport']} Removed.")
-        self.transport.write(b'RPTCL'+_peer_id, (self.master,self.peerTrack[_peer_id]['dport']))
-        #Tell client we have closed the session - 3 times, in case they are on a lossy network
-        self.transport.write(b'MSTCL',(self.peerTrack[_peer_id]['shost'],self.peerTrack[_peer_id]['sport']))
-        self.transport.write(b'MSTCL',(self.peerTrack[_peer_id]['shost'],self.peerTrack[_peer_id]['sport']))
-        self.transport.write(b'MSTCL',(self.peerTrack[_peer_id]['shost'],self.peerTrack[_peer_id]['sport']))
         self.connTrack[self.peerTrack[_peer_id]['dport']] = False
         del self.peerTrack[_peer_id]
 
     def datagramReceived(self, data, addr):
-        
-        # HomeBrew Protocol Commands
-        DMRD    = b'DMRD'
-        DMRA    = b'DMRA'
-        MSTCL   = b'MSTCL'
-        MSTNAK  = b'MSTNAK'
-        MSTPONG = b'MSTPONG'
-        MSTN    = b'MSTN'
-        MSTP    = b'MSTP'
-        MSTC    = b'MSTC'
-        RPTL    = b'RPTL'
-        RPTPING = b'RPTPING'
-        RPTCL   = b'RPTCL'
-        RPTL    = b'RPTL'
-        RPTACK  = b'RPTACK'
-        RPTK    = b'RPTK'
-        RPTC    = b'RPTC'
-        RPTP    = b'RPTP'
-        RPTA    = b'RPTA'
-        RPTO    = b'RPTO'
-        
-        #Proxy control commands
-        PRBL    = b'PRBL'
-        
-        #Proxy info commands 
-        PRIN    = b'PRIN'
         
         _peer_id = False
         
@@ -119,34 +88,10 @@ class Proxy(DatagramProtocol):
         
         #If the packet comes from the master
         if host == self.master:
-            _command = data[:4]
+        
+            #fill this in 
+            _peer_id = data[0:0]
             
-            if _command == PRBL:
-                _peer_id = data[4:8]
-                _bltime = data[8:].decode('UTF-8')
-                _bltime = float(_bltime)
-                try: 
-                    self.IPBlackList[self.peerTrack[_peer_id]['shost']] = _bltime
-                except KeyError:
-                    return
-                if self.clientinfo:
-                    print('Add to blacklist: host {}. Expire time {}'.format(self.peerTrack[_peer_id]['shost'],_bltime))
-                return
-            
-            if _command == DMRD:
-                _peer_id = data[11:15]
-            elif  _command == RPTA:
-                    if data[6:10] in self.peerTrack:
-                        _peer_id = data[6:10]
-                    else:
-                        _peer_id = self.connTrack[port]
-            elif _command == MSTN:
-                    _peer_id = data[6:10]
-            elif _command == MSTP:
-                    _peer_id = data[7:11]
-            elif _command == MSTC:
-                    _peer_id = data[5:9]
-                
             if self.debug:
                 print(data)
             if _peer_id in self.peerTrack:
@@ -160,27 +105,8 @@ class Proxy(DatagramProtocol):
             
                    
         else:
-            _command = data[:4]
-            
-            if _command == DMRD:                # DMRData -- encapsulated DMR data frame
-                _peer_id = data[11:15]
-            elif _command == DMRA:              # DMRAlias -- Talker Alias information
-                _peer_id = data[4:8]
-            elif _command == RPTL:              # RPTLogin -- a repeater wants to login
-                _peer_id = data[4:8]
-            elif _command == RPTK:              # Repeater has answered our login challenge
-                _peer_id = data[4:8]
-            elif _command == RPTC:              # Repeater is sending it's configuraiton OR disconnecting
-                if data[:5] == RPTCL:           # Disconnect command
-                    _peer_id = data[5:9]
-                else:
-                    _peer_id = data[4:8]        # Configure Command
-            elif _command == RPTO:              # options
-                _peer_id = data[4:8]
-            elif _command == RPTP:              # RPTPing -- peer is pinging us
-                _peer_id = data[7:11]
-            else:
-                return
+            #fill this in 
+            _peer_id = data[0:0]
             
             if _peer_id in self.peerTrack:
                 _dport = self.peerTrack[_peer_id]['dport']
@@ -208,11 +134,8 @@ class Proxy(DatagramProtocol):
                 self.peerTrack[_peer_id]['shost'] = host
                 self.peerTrack[_peer_id]['timer'] = reactor.callLater(self.timeout,self.reaper,_peer_id)
                 self.transport.write(data, (self.master,_dport))
-                pripacket = b''.join([b'PRIN',host.encode('UTF-8'),b':',str(port).encode('UTF-8')])
-                #Send IP and Port info to server
-                self.transport.write(pripacket, (self.master,_dport))
-
-                if self.clientinfo and _peer_id != b'\xff\xff\xff\xff':
+                
+                if self.clientinfo:
                     print(f'{datetime.now().replace(microsecond=0)} New client: ID:{str(int_id(_peer_id)).rjust(9)} IP:{host.rjust(15)} Port:{port}, assigned to port:{_dport}.')
                 if self.debug:
                     print(data)
@@ -274,8 +197,8 @@ if __name__ == '__main__':
         ListenPort = 62031
         #'' = all IPv4, '::' = all IPv4 and IPv6 (Dual Stack)
         ListenIP = ''
-        DestportStart = 54000
-        DestPortEnd = 54100
+        DestportStart = 50000
+        DestPortEnd = 50002
         Timeout = 30
         Stats = False
         Debug = False
@@ -297,12 +220,6 @@ if __name__ == '__main__':
     # Set signal handers so that we can gracefully exit if need be
     for sig in [signal.SIGINT, signal.SIGTERM]:
         signal.signal(sig, sig_handler)
-        
-    #readState()
-    
-    #If IPv6 is enabled by enivornment variable...
-    if ListenIP == '' and 'FDPROXY_IPV6' in os.environ and bool(os.environ['FDPROXY_IPV6']):
-        ListenIP = '::'
         
     #Override static config from Environment
     if 'FDPROXY_STATS' in os.environ:
@@ -340,28 +257,11 @@ if __name__ == '__main__':
         
         print("{} ports out of {} in use ({} free)".format(count,totalPorts,freePorts))
         
-    def blackListTrimmer():
-        _timenow = time()
-        _dellist = []
-        for entry in IPBlackList:
-            deletetime = IPBlackList[entry]
-            if deletetime and deletetime < _timenow:
-                _dellist.append(entry)
-        
-        for delete in _dellist:
-            IPBlackList.pop(delete)
-            if ClientInfo:
-                print('Remove dynamic blacklist entry for {}'.format(delete))
-
         
     if Stats == True:
         stats_task = task.LoopingCall(stats)
         statsa = stats_task.start(30)
         statsa.addErrback(loopingErrHandle)
-        
-    blacklist_task = task.LoopingCall(blackListTrimmer)
-    blacklista = blacklist_task.start(15)
-    blacklista.addErrback(loopingErrHandle)
-    
+            
     reactor.run()
     

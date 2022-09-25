@@ -1,5 +1,3 @@
-# RYSEN DMRMaster+ Version 1.3.8 
-#
 ###############################################################################
 #   Copyright (C) 2018  Cortney T. Buffington, N0MJS <n0mjs@me.com>
 #

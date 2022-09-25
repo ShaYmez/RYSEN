@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# RYSEN DMRMaster+ Version 1.3.8 
 #
 ###############################################################################
 # Copyright (C) 2020 Simon Adlem, G7RZU <g7rzu@gb7fr.org.uk>  
@@ -40,6 +39,7 @@ import importlib.util
 import re
 import copy
 from setproctitle import setproctitle
+from collections import deque
 
 #from crccheck.crc import Crc32
 from hashlib import blake2b
@@ -65,10 +65,6 @@ from read_ambe import readAMBE
 #Remap some words for certain languages
 from i8n_voice_map import voiceMap
 
-
-#MySQL
-from mysql_config import useMYSQL
-
 # Stuff for socket reporting
 import pickle
 # REMOVE LATER from datetime import datetime
@@ -83,9 +79,6 @@ from binascii import b2a_hex as ahex
 
 from AMI import AMI
 
-
-##from hmac import new as hmac_new, compare_digest
-##from hashlib import sha256, hash
 
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Cortney T. Buffington, N0MJS, Forked by Simon Adlem - G7RZU'
@@ -231,12 +224,12 @@ def make_stat_bridge(_tgid):
         
 
 def make_default_reflector(reflector,_tmout,system):
-    bridge = '#'+str(reflector)
+    bridge = ''.join(['#',str(reflector)])
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
     if bridge not in BRIDGES:
         BRIDGES[bridge] = []
         make_single_reflector(bytes_3(reflector),_tmout, system)
-    bridgetemp = []
+    bridgetemp = deque()
     for bridgesystem in BRIDGES[bridge]:
         if bridgesystem['SYSTEM'] == system and bridgesystem['TS'] == 2:
             bridgetemp.append({'SYSTEM': system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': True,'TIMEOUT':  _tmout * 60,'TO_TYPE': 'OFF','OFF': [],'ON': [bytes_3(reflector),],'RESET': [], 'TIMER': time() + (_tmout * 60)})
@@ -249,7 +242,7 @@ def make_static_tg(tg,ts,_tmout,system):
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
     if str(tg) not in BRIDGES:
         make_single_bridge(bytes_3(tg),system,ts,_tmout)
-    bridgetemp = []
+    bridgetemp = deque()
     for bridgesystem in BRIDGES[str(tg)]:
         if bridgesystem['SYSTEM'] == system and bridgesystem['TS'] == ts:
             bridgetemp.append({'SYSTEM': system, 'TS': ts, 'TGID': bytes_3(tg),'ACTIVE': True,'TIMEOUT':  _tmout * 60,'TO_TYPE': 'OFF','OFF': [],'ON': [bytes_3(tg),],'RESET': [], 'TIMER': time() + (_tmout * 60)})
@@ -260,7 +253,7 @@ def make_static_tg(tg,ts,_tmout,system):
     
 def reset_static_tg(tg,ts,_tmout,system):
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
-    bridgetemp = []
+    bridgetemp = deque()
     try:
         for bridgesystem in BRIDGES[str(tg)]:
             if bridgesystem['SYSTEM'] == system and bridgesystem['TS'] == ts:
@@ -274,12 +267,12 @@ def reset_static_tg(tg,ts,_tmout,system):
         return
         
 def reset_default_reflector(reflector,_tmout,system):
-    bridge = '#'+str(reflector)
+    bridge = ''.join(['#',str(reflector)])
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
     if bridge not in BRIDGES:
         BRIDGES[bridge] = []
         make_single_reflector(bytes_3(reflector),_tmout, system)
-    bridgetemp = []
+    bridgetemp = deque()
     for bridgesystem in BRIDGES[bridge]:
         if bridgesystem['SYSTEM'] == system and bridgesystem['TS'] == 2:
             bridgetemp.append({'SYSTEM': system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': False,'TIMEOUT':  _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(reflector),],'RESET': [], 'TIMER': time() + (_tmout * 60)})
@@ -289,7 +282,7 @@ def reset_default_reflector(reflector,_tmout,system):
             
 def make_single_reflector(_tgid,_tmout,_sourcesystem):
     _tgid_s = str(int_id(_tgid))
-    _bridge = '#' + _tgid_s
+    _bridge = ''.join(['#',_tgid_s])
     #1 min timeout for echo
     if _tgid_s == '9990':
         _tmout = 1
@@ -321,7 +314,7 @@ def remove_bridge_system(system):
 def rule_timer_loop():
     logger.debug('(ROUTER) routerHBP Rule timer loop started')
     _now = time()
-    _remove_bridges = []
+    _remove_bridges = deque()
     for _bridge in BRIDGES:
         _bridge_used = False
         for _system in BRIDGES[_bridge]:
@@ -371,7 +364,7 @@ def rule_timer_loop():
 
 def statTrimmer():
     logger.debug('(ROUTER) STAT trimmer loop started')
-    _remove_bridges = []
+    _remove_bridges = deque()
     for _bridge in BRIDGES:
         _bridge_stat = False
         _in_use = False
@@ -415,7 +408,7 @@ def subMapWrite():
 def SubMapTrimmer():
     logger.debug('(SUBSCRIBER) Subscriber Map trimmer loop started')
     _sub_time = time()
-    _remove_list = []
+    _remove_list = deque()
     for _subscriber in SUB_MAP:
         if SUB_MAP[_subscriber][2] < (_sub_time - 86400):
             _remove_list.append(_subscriber)
@@ -464,8 +457,8 @@ def stream_trimmer_loop():
         # OBP systems
         # We can't delete items from a dicationry that's being iterated, so we have to make a temporarly list of entrys to remove later
         if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
-            remove_list = []
-            fin_list = []
+            remove_list = deque()
+            fin_list = deque()
             for stream_id in systems[system].STATUS:
                 
                 #if stream already marked as finished, just remove it
@@ -527,7 +520,7 @@ def stream_trimmer_loop():
                     removed = systems[system].STATUS.pop(stream_id)
                 
                     try:
-                        _bcsq_remove = []
+                        _bcsq_remove = deque()
                         for tgid in _sysconfig['_bcsq']:
                             if _sysconfig['_bcsq'][tgid] == stream_id:
                                 _bcsq_remove.append(tgid)
@@ -621,7 +614,7 @@ def playFileOnRequest(self,fileNumber):
     sleep(1)
     _say = []
     try:
-        _say.append(AMBEobj.readSingleFile('/'+_lang+'/ondemand/'+str(fileNumber)+'.ambe'))
+        _say.append(AMBEobj.readSingleFile(''.join(['/',_lang,'/ondemand/',str(fileNumber),'.ambe'])))
     except IOError:
         logger.warning('(%s) cannot read file for number %s',system,fileNumber)
         return
@@ -645,10 +638,6 @@ def playFileOnRequest(self,fileNumber):
 def threadIdent():
     logger.debug('(IDENT) starting ident thread')
     reactor.callInThread(ident)
-    
-def threadedMysql():
-    logger.debug('(MYSQL) Starting MySQL thread')
-    reactor.callInThread(mysqlGetConfig)
     
 def threadAlias():
     logger.debug('(ALIAS) starting alias thread')
@@ -714,7 +703,7 @@ def ident():
                 _say.append(words[_lang]['silence'])
                 _say.append(words[_lang]['silence'])
                 
-                #_say.append(words[_lang]['rysen'])
+                _say.append(words[_lang]['freedmr'])
                 
                 #test 
                 #_say.append(AMBEobj.readSingleFile('alpha.ambe'))
@@ -785,39 +774,39 @@ def options_config():
                     if 'TS1_1' in _options:
                         _options['TS1_STATIC'] = _options.pop('TS1_1')
                         if 'TS1_2' in _options:
-                            _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_2')
+                            _options['TS1_STATIC'] = ''.join([_options['TS1_STATIC'],',',_options.pop('TS1_2')])
                         if 'TS1_3' in _options:
-                            _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_3')
+                            _options['TS1_STATIC'] = ''.join([_options['TS1_STATIC'],',',_options.pop('TS1_3')])
                         if 'TS1_4' in _options:
-                            _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_4')
+                            _options['TS1_STATIC'] = ''.join([_options['TS1_STATIC'],',',_options.pop('TS1_4')])
                         if 'TS1_5' in _options:
-                            _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_5')
+                            _options['TS1_STATIC'] = ''.join([_options['TS1_STATIC'],',',_options.pop('TS1_5')])
                         if 'TS1_6' in _options:
-                            _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_6')
+                            _options['TS1_STATIC'] = ''.join([_options['TS1_STATIC'],',',_options.pop('TS1_6')])
                         if 'TS1_7' in _options:
-                            _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_7')
+                            _options['TS1_STATIC'] = ''.join([_options['TS1_STATIC'],',',_options.pop('TS1_7')])
                         if 'TS1_8' in _options:
-                            _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_8')
+                            _options['TS1_STATIC'] = ''.join([_options['TS1_STATIC'],',',_options.pop('TS1_8')])
                         if 'TS1_9' in _options:
-                            _options['TS1_STATIC'] = _options['TS1_STATIC'] + ',' + _options.pop('TS1_9')
+                            _options['TS1_STATIC'] = ''.join([_options['TS1_STATIC'],',',_options.pop('TS1_9')])
                     if 'TS2_1' in _options:
                         _options['TS2_STATIC'] = _options.pop('TS2_1')
                         if 'TS2_2' in _options:
-                            _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_2')
+                            _options['TS2_STATIC'] = ''.join([_options['TS2_STATIC'],',', _options.pop('TS2_2')])
                         if 'TS2_3' in _options:
-                            _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_3')
+                            _options['TS2_STATIC'] = ''.join([_options['TS2_STATIC'],',',_options.pop('TS2_3')])
                         if 'TS2_4' in _options:
-                            _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_4')
+                            _options['TS2_STATIC'] = ''.join([_options['TS2_STATIC'],',',_options.pop('TS2_4')])
                         if 'TS2_5' in _options:
-                            _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_5')
+                            _options['TS2_STATIC'] = ''.join([_options['TS2_STATIC'],',',_options.pop('TS2_5')])
                         if 'TS2_6' in _options:
-                            _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_6')
+                            _options['TS2_STATIC'] = ''.join([_options['TS2_STATIC'],',',_options.pop('TS2_6')])
                         if 'TS2_7' in _options:
-                            _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_7')
+                            _options['TS2_STATIC'] = ''.join([_options['TS2_STATIC'],',',_options.pop('TS2_7')])
                         if 'TS2_8' in _options:
-                            _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_8')
+                            _options['TS2_STATIC'] = ''.join([_options['TS2_STATIC'],',',_options.pop('TS2_8')])
                         if 'TS2_9' in _options:
-                            _options['TS2_STATIC'] = _options['TS2_STATIC'] + ',' + _options.pop('TS2_9')
+                            _options['TS2_STATIC'] = ''.join([_options['TS2_STATIC'],',',_options.pop('TS2_9')])
 
                     if 'UserLink' in _options:
                         _options.pop('UserLink')
@@ -918,7 +907,8 @@ def options_config():
                         else:
                             logger.debug('(OPTIONS) %s default reflector disabled, updating',_system) 
                             reset_default_reflector(int(_options['DEFAULT_REFLECTOR']),_tmout,_system)
-                            
+                    
+                    ts1 = []
                     if _options['TS1_STATIC'] != CONFIG['SYSTEMS'][_system]['TS1_STATIC']:
                         _tmout = int(_options['DEFAULT_UA_TIMER'])
                         logger.debug('(OPTIONS) %s TS1 static TGs changed, updating',_system)
@@ -930,7 +920,6 @@ def options_config():
                                     continue
                                 tg = int(tg)
                                 reset_static_tg(tg,1,_tmout,_system)   
-                        ts1 = []
                         if _options['TS1_STATIC']:
                             ts1 = _options['TS1_STATIC'].split(',')
                             for tg in ts1:
@@ -938,11 +927,10 @@ def options_config():
                                     continue
                                 tg = int(tg)
                                 make_static_tg(tg,1,_tmout,_system)
-                                
+                    ts2 = []
                     if _options['TS2_STATIC'] != CONFIG['SYSTEMS'][_system]['TS2_STATIC']:
                         _tmout = int(_options['DEFAULT_UA_TIMER'])
                         logger.debug('(OPTIONS) %s TS2 static TGs changed, updating',_system)
-                        ts2 = []
                         if CONFIG['SYSTEMS'][_system]['TS2_STATIC']:
                             ts2 = CONFIG['SYSTEMS'][_system]['TS2_STATIC'].split(',')
                             for tg in ts2:
@@ -967,324 +955,6 @@ def options_config():
             logger.exception('(OPTIONS) caught exception: %s',e)
             continue
 
-def mysqlGetConfig():
-    logger.debug('(MYSQL) Periodic config check')
-    SQLGETCONFIG = {}
-    if sql.con():
-        logger.debug('(MYSQL) reading config from database')
-        try:
-            SQLGETCONFIG = sql.getConfig()
-        except:
-            logger.debug('(MYSQL) problem with SQL query, aborting')
-            sql.close()
-            return
-    else:
-        logger.debug('(MYSQL) problem connecting to SQL server, aborting')
-        sql.close()
-        return
-    
-    sql.close()
-    reactor.callFromThread(mysql_config_check,SQLGETCONFIG)
-    
-
-def mysql_config_check(SQLGETCONFIG):
-
-    SQLCONFIG = SQLGETCONFIG
-    for system in SQLGETCONFIG:
-        if system not in CONFIG['SYSTEMS']:
-            if SQLCONFIG[system]['ENABLED']:
-                logger.debug('(MYSQL) new enabled system %s, starting HBP listener',system)  
-                CONFIG['SYSTEMS'][system] = SQLCONFIG[system]
-                systems[system] = routerHBP(system, CONFIG, report_server)
-                listeningPorts[system] = reactor.listenUDP(CONFIG['SYSTEMS'][system]['PORT'], systems[system], interface=CONFIG['SYSTEMS'][system]['IP'])
-            else:
-                logger.debug('(MYSQL) new disabled system %s',system) 
-            _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
-            #Do ACL processing
-        # Subscriber and TGID ACLs
-            logger.debug('(MYSQL) building ACLs')
-            # Registration ACLs
-            SQLCONFIG[system]['REG_ACL'] = acl_build(SQLCONFIG[system]['REG_ACL'], PEER_MAX)
-            for acl in ['SUB_ACL', 'TG1_ACL', 'TG2_ACL']:
-                SQLCONFIG[system][acl] = acl_build(SQLCONFIG[system][acl], ID_MAX)
-            
-            #Add system to bridges
-            if SQLCONFIG[system]['ENABLED']:
-                logger.debug('(MYSQL) adding new system to static bridges')
-                for _bridge in BRIDGES:
-                    ts1 = False 
-                    ts2 = False
-                    for i,e in enumerate(BRIDGES[_bridge]):
-                        if e['SYSTEM'] == system and e['TS'] == 1:
-                            ts1 = True
-                        if e['SYSTEM'] == system and e['TS'] == 2:
-                            ts2 = True
-                    if _bridge[0:1] != '#':
-                        if ts1 == False:
-                            BRIDGES[_bridge].append({'SYSTEM': system, 'TS': 1, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
-                        if ts2 == False:
-                            BRIDGES[_bridge].append({'SYSTEM': system, 'TS': 2, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
-                    else:
-                        if ts2 == False:
-                            BRIDGES[_bridge].append({'SYSTEM': system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [bytes_3(4000)],'ON': [],'RESET': [], 'TIMER': time()})
-                
-                if SQLCONFIG[system]['DEFAULT_REFLECTOR'] > 0:
-                        logger.debug('(MYSQL) %s setting default reflector',system) 
-                        make_default_reflector(SQLCONFIG[system]['DEFAULT_REFLECTOR'],_tmout,system)
-                
-                if SQLCONFIG[system]['TS1_STATIC']:
-                    logger.debug('(MYSQL) %s setting static TGs on TS1',system) 
-                    ts1 = SQLCONFIG[system]['TS1_STATIC'].split(',')
-                    for tg in ts1:
-                        if not tg:
-                            continue
-                        tg = int(tg)
-                        make_static_tg(tg,1,_tmout,system)
-                        
-                if SQLCONFIG[system]['TS2_STATIC']:
-                    logger.debug('(MYSQL) %s setting static TGs on TS2',system) 
-                    ts2 = SQLCONFIG[system]['TS2_STATIC'].split(',')
-                    for tg in ts2:
-                        if not tg:
-                            continue
-                        tg = int(tg)
-                        make_static_tg(tg,2,_tmout,system)
-        
-            continue
-        
-        #Preserve options line
-        if 'OPTIONS' in CONFIG['SYSTEMS'][system]:
-            SQLCONFIG[system]['OPTIONS'] = CONFIG['SYSTEMS'][system]['OPTIONS']
-            SQLCONFIG[system]['TS1_STATIC'] = CONFIG['SYSTEMS'][system]['TS1_STATIC']
-            SQLCONFIG[system]['TS2_STATIC'] = CONFIG['SYSTEMS'][system]['TS2_STATIC']
-            SQLCONFIG[system]['DEFAULT_UA_TIMER'] = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
-            SQLCONFIG[system]['DEFAULT_REFLECTOR'] = CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR']
-            
-            #logger.debug('(MYSQL) %s has HBP Options line - skipping',system)
-            #continue
-            
-        
-        if SQLCONFIG[system]['ENABLED'] == False and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
-            logger.debug('(MYSQL) %s changed from enabled to disabled, killing HBP listener and removing from bridges',system)
-            systems[system].master_dereg()
-            if systems[system]._system_maintenance is not None and systems[system]._system_maintenance.running == True:
-                systems[system]._system_maintenance.stop()
-                systems[system]._system_maintenance = None
-            remove_bridge_system(system)
-            listeningPorts[system].stopListening()
-            
-        if CONFIG['SYSTEMS'][system]['ENABLED'] == False and SQLCONFIG[system]['ENABLED'] == True:
-            logger.debug('(MYSQL) %s changed from disabled to enabled, starting HBP listener',system)
-            systems[system] = routerHBP(system, CONFIG, report_server)
-            listeningPorts[system] = reactor.listenUDP(CONFIG['SYSTEMS'][system]['PORT'], systems[system], interface=CONFIG['SYSTEMS'][system]['IP'])
-            logger.debug('(GLOBAL) %s instance created: %s, %s', CONFIG['SYSTEMS'][system]['MODE'], system, systems[system])
-            logger.debug('(MYSQL) adding new system to static bridges')
-            _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
-            for _bridge in BRIDGES:
-                ts1 = False 
-                ts2 = False
-                for i,e in enumerate(BRIDGES[_bridge]):
-                    if e['SYSTEM'] == system and e['TS'] == 1:
-                        ts1 = True
-                    if e['SYSTEM'] == system and e['TS'] == 2:
-                        ts2 = True
-                if _bridge[0:1] != '#':
-                    if ts1 == False:
-                        BRIDGES[_bridge].append({'SYSTEM': system, 'TS': 1, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
-                    if ts2 == False:
-                        BRIDGES[_bridge].append({'SYSTEM': system, 'TS': 2, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
-                else:
-                    if ts2 == False:
-                        BRIDGES[_bridge].append({'SYSTEM': system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [bytes_3(4000)],'ON': [],'RESET': [], 'TIMER': time()})
-
-            
-            if SQLCONFIG[system]['DEFAULT_REFLECTOR'] > 0:
-                if 'OPTIONS' not in SQLCONFIG[system]:
-                    logger.debug('(MYSQL) %s setting default reflector',system) 
-                    make_default_reflector(SQLCONFIG[system]['DEFAULT_REFLECTOR'],_tmout,system)
-            
-            if SQLCONFIG[system]['TS1_STATIC']:
-                if 'OPTIONS' not in SQLCONFIG[system]:
-                    logger.debug('(MYSQL) %s setting static TGs on TS1',system) 
-                    ts1 = SQLCONFIG[system]['TS1_STATIC'].split(',')
-                    for tg in ts1:
-                        if not tg:
-                            continue
-                        tg = int(tg)
-                        make_static_tg(tg,1,_tmout,system)
-                        
-                if SQLCONFIG[system]['TS2_STATIC']:
-                    logger.debug('(MYSQL) %s setting static TGs on TS2',system) 
-                    ts2 = SQLCONFIG[system]['TS2_STATIC'].split(',')
-                    for tg in ts2:
-                        if not tg:
-                            continue
-                        tg = int(tg)
-                        make_static_tg(tg,2,_tmout,system)
-                    
-        if SQLCONFIG[system]['DEFAULT_UA_TIMER'] != CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']:
-            if 'OPTIONS' not in CONFIG['SYSTEMS'][system]:
-                logger.debug('(MYSQL) %s DEFAULT_UA_TIMER changed. Updating bridges.',system)
-                remove_bridge_system(system)
-                for _bridge in BRIDGES:
-                    ts1 = False 
-                    ts2 = False
-                    _tmout = CONFIG['SYSTEMS'][system][DEFAULT_UA_TIMER]
-                    for i,e in enumerate(BRIDGES[_bridge]):
-                        if e['SYSTEM'] == system and e['TS'] == 1:
-                            ts1 = True
-                        if e['SYSTEM'] == system and e['TS'] == 2:
-                            ts2 = True
-                    if _bridge[0:1] != '#':
-                        if ts1 == False:
-                            BRIDGES[_bridge].append({'SYSTEM': system, 'TS': 1, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
-                        if ts2 == False:
-                            BRIDGES[_bridge].append({'SYSTEM': system, 'TS': 2, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
-                    else:
-                        if ts2 == False:
-                            BRIDGES[_bridge].append({'SYSTEM': system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [bytes_3(4000)],'ON': [],'RESET': [], 'TIMER': time()})
-
-                
-                if SQLCONFIG[system]['DEFAULT_REFLECTOR'] > 0:
-                  #  if 'OPTIONS' not in SQLCONFIG[system]:
-                    logger.debug('(MYSQL) %s setting default reflector',system) 
-                    make_default_reflector(SQLCONFIG[system]['DEFAULT_REFLECTOR'],_tmout,system)
-            
-                if SQLCONFIG[system]['TS1_STATIC']:
-                   # if 'OPTIONS' not in SQLCONFIG[system]:
-                    logger.debug('(MYSQL) %s setting static TGs on TS1',system) 
-                    ts1 = SQLCONFIG[system]['TS1_STATIC'].split(',')
-                    for tg in ts1:
-                        if not tg:
-                            continue
-                        tg = int(tg)
-                        make_static_tg(tg,1,_tmout,system)
-                            
-                    if SQLCONFIG[system]['TS2_STATIC']:
-                        logger.debug('(MYSQL) %s setting static TGs on TS2',system) 
-                        ts2 = SQLCONFIG[system]['TS2_STATIC'].split(',')
-                        for tg in ts2:
-                            if not tg:
-                                continue
-                            tg = int(tg)
-                            make_static_tg(tg,2,_tmout,system)
-                
-
-        
-        if SQLCONFIG[system]['IP'] != CONFIG['SYSTEMS'][system]['IP'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
-            logger.debug('(MYSQL) %s IP binding changed on enabled system, killing HBP listener. Will restart in 1 minute',system)
-            systems[system].master_dereg()
-            if systems[system]._system_maintenance is not None and systems[system]._system_maintenance.running == True:
-                systems[system]._system_maintenance.stop()
-                systems[system]._system_maintenance = None
-            listeningPorts[system].stopListening()
-            SQLCONFIG[system]['ENABLED'] = False
-            
-        if SQLCONFIG[system]['PORT'] != CONFIG['SYSTEMS'][system]['PORT'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
-            logger.debug('(MYSQL) %s Port binding changed on enabled system, killing HBP listener. Will restart in 1 minute',system)
-            systems[system].master_dereg()
-            if systems[system]._system_maintenance is not None and systems[system]._system_maintenance.running == True:
-                systems[system]._system_maintenance.stop()
-                systems[system]._system_maintenance = None
-            listeningPorts[system].stopListening()
-            SQLCONFIG[system]['ENABLED'] = False
-            
-        if SQLCONFIG[system]['MAX_PEERS'] != CONFIG['SYSTEMS'][system]['MAX_PEERS'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
-            logger.debug('(MYSQL) %s MAX_PEERS changed on enabled system, killing HBP listener. Will restart in 1 minute',system)
-            systems[system].master_dereg()
-            if systems[system]._system_maintenance is not None and systems[system]._system_maintenance.running == True:
-                systems[system]._system_maintenance.stop()
-                systems[system]._system_maintenance = None
-            listeningPorts[system].stopListening()
-            SQLCONFIG[system]['ENABLED'] = False
-            
-        if SQLCONFIG[system]['PASSPHRASE'] != CONFIG['SYSTEMS'][system]['PASSPHRASE'] and CONFIG['SYSTEMS'][system]['ENABLED'] == True:
-            logger.debug('(MYSQL) %s Passphrase changed on enabled system. Kicking peers',system)
-            systems[system].master_dereg()
-            
-        if SQLCONFIG[system]['DEFAULT_REFLECTOR'] != CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR']:
-            if 'OPTIONS' not in SQLCONFIG[system]:
-                _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
-                if SQLCONFIG[system]['DEFAULT_REFLECTOR'] > 0:
-                    logger.debug('(MYSQL) %s default reflector changed, updating',system) 
-                    reset_default_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'],_tmout,system)
-                    make_default_reflector(SQLCONFIG[system]['DEFAULT_REFLECTOR'],_tmout,system)
-                else:
-                    logger.debug('(MYSQL) %s default reflector disabled, updating',system) 
-                    reset_default_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'],_tmout,system)
-                
-        if SQLCONFIG[system]['TS1_STATIC'] != CONFIG['SYSTEMS'][system]['TS1_STATIC']:
-            if 'OPTIONS' not in CONFIG['SYSTEMS'][system]:
-                _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
-                logger.debug('(MYSQL) %s TS1 static TGs changed, updating',system)
-                ts1 = []
-                if CONFIG['SYSTEMS'][system]['TS1_STATIC']:
-                    ts1 = CONFIG['SYSTEMS'][system]['TS1_STATIC'].split(',')
-                    for tg in ts1:
-                        if not tg:
-                            continue
-                        tg = int(tg)
-                        reset_static_tg(tg,1,_tmout,system)   
-                ts1 = []
-                if SQLCONFIG[system]['TS1_STATIC']:
-                    ts1 = SQLCONFIG[system]['TS1_STATIC'].split(',')
-                    for tg in ts1:
-                        if not tg:
-                            continue
-                        tg = int(tg)
-                        make_static_tg(tg,1,_tmout,system)
-                    
-        if SQLCONFIG[system]['TS2_STATIC'] != CONFIG['SYSTEMS'][system]['TS2_STATIC']:
-            if 'OPTIONS' not in CONFIG['SYSTEMS'][system]:
-                _tmout = SQLCONFIG[system]['DEFAULT_UA_TIMER']
-                logger.debug('(MYSQL) %s TS2 static TGs changed, updating',system)
-                ts2 = []
-                if CONFIG['SYSTEMS'][system]['TS2_STATIC']:
-                    ts2 = CONFIG['SYSTEMS'][system]['TS2_STATIC'].split(',')
-                    for tg in ts2:
-                        if not tg:
-                            continue
-                        tg = int(tg)
-                        reset_static_tg(tg,2,_tmout,system)
-                ts2 = []
-                if SQLCONFIG[system]['TS2_STATIC']:
-                    ts2 = SQLCONFIG[system]['TS2_STATIC'].split(',')
-                    for tg in ts2:
-                        if not tg:
-                            continue
-                        tg = int(tg)
-                        make_static_tg(tg,2,_tmout,system)
-        
-        if SQLCONFIG[system]['ANNOUNCEMENT_LANGUAGE'] != CONFIG['SYSTEMS'][system]['ANNOUNCEMENT_LANGUAGE']:
-            logger.debug('(MYSQL) %s announcement language changed to %s',system, SQLCONFIG[system]['ANNOUNCEMENT_LANGUAGE'])
-        
-        #Rebuild ACLs
-        SQLCONFIG[system]['REG_ACL'] = acl_build(SQLCONFIG[system]['REG_ACL'], PEER_MAX)
-        SQLCONFIG[system]['SUB_ACL'] = acl_build(SQLCONFIG[system]['SUB_ACL'], ID_MAX)
-        SQLCONFIG[system]['TG1_ACL'] = acl_build(SQLCONFIG[system]['TG1_ACL'], ID_MAX)
-        SQLCONFIG[system]['TG2_ACL'] = acl_build(SQLCONFIG[system]['TG2_ACL'], ID_MAX)
-        
-        if SQLCONFIG[system]['REG_ACL'] != CONFIG['SYSTEMS'][system]['REG_ACL']:
-            logger.debug('(MYSQL) registration ACL changed')
-        if SQLCONFIG[system]['SUB_ACL'] != CONFIG['SYSTEMS'][system]['SUB_ACL']:
-            logger.debug('(MYSQL) subscriber ACL changed')
-        if SQLCONFIG[system]['TG1_ACL'] != CONFIG['SYSTEMS'][system]['TG1_ACL']:
-            logger.debug('(MYSQL) TG1 ACL changed')
-        if SQLCONFIG[system]['TG2_ACL'] != CONFIG['SYSTEMS'][system]['TG2_ACL']:
-            logger.debug('(MYSQL) TG2 ACL changed')
-            
-        #Preserve peers list
-        if system in CONFIG['SYSTEMS'] and CONFIG['SYSTEMS'][system]['ENABLED'] and 'PEERS' in CONFIG['SYSTEMS'][system] :
-            SQLCONFIG[system]['PEERS'] = CONFIG['SYSTEMS'][system]['PEERS']
-            CONFIG['SYSTEMS'][system].update(SQLCONFIG[system])
-        else:
-            CONFIG['SYSTEMS'][system].update(SQLCONFIG[system]) 
-        
-                
-    #Add MySQL config data to config dict
-    #CONFIG['SYSTEMS'].update(SQLCONFIG)
-   
-    SQLCONFIG = {} 
 
 class routerOBP(OPENBRIDGE):
 
@@ -1729,7 +1399,7 @@ class routerOBP(OPENBRIDGE):
                 # If we don't have a voice header then don't wait to decode the Embedded LC
                 # just make a new one from the HBP header. This is good enough, and it saves lots of time
                 else:
-                    self.STATUS[_stream_id]['LC'] = LC_OPT + _dst_id + _rf_src
+                    self.STATUS[_stream_id]['LC'] = b''.join([LC_OPT,_dst_id,_rf_src])
 
                 _inthops = 0 
                 if _hops:
@@ -1853,7 +1523,7 @@ class routerOBP(OPENBRIDGE):
                     logger.debug('(%s) Bridge for STAT TG %s does not exist. Creating',self._system, int_id(_dst_id))
                     make_stat_bridge(_dst_id)
             
-            _sysIgnore = []
+            _sysIgnore = deque()
             for _bridge in BRIDGES:
                     for _system in BRIDGES[_bridge]:
                         
@@ -2069,7 +1739,7 @@ class routerHBP(HBSYSTEM):
                                 _target_status[_target['TS']]['TX_RFS'] = _rf_src
                                 _target_status[_target['TS']]['TX_PEER'] = _peer_id
                                 # Generate LCs (full and EMB) for the TX stream
-                                dst_lc = self.STATUS[_slot]['RX_LC'][0:3] + _target['TGID'] + _rf_src
+                                dst_lc = b''.join([self.STATUS[_slot]['RX_LC'][0:3],_target['TGID'],_rf_src])
                                 _target_status[_target['TS']]['TX_H_LC'] = bptc.encode_header_lc(dst_lc)
                                 _target_status[_target['TS']]['TX_T_LC'] = bptc.encode_terminator_lc(dst_lc)
                                 _target_status[_target['TS']]['TX_EMB_LC'] = bptc.encode_emblc(dst_lc)
@@ -2372,7 +2042,7 @@ class routerHBP(HBSYSTEM):
                 
                 logger.info('(%s) Reflector: Private call from %s to %s',self._system, int_id(_rf_src), _int_dst_id)
                 if _int_dst_id >= 5 and _int_dst_id != 8  and _int_dst_id != 9 and _int_dst_id <= 999999:
-                    _bridgename = '#'+ str(_int_dst_id)
+                    _bridgename = ''.join(['#',str(_int_dst_id)])
                     if _bridgename not in BRIDGES and not (_int_dst_id >= 4000 and _int_dst_id <= 5000) and not (_int_dst_id >=9991 and _int_dst_id <= 9999):
                             logger.info('(%s) [A] Reflector for TG %s does not exist. Creating as User Activated. Timeout: %s',self._system, _int_dst_id,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
                             make_single_reflector(_dst_id,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'],self._system)
@@ -2568,7 +2238,7 @@ class routerHBP(HBSYSTEM):
                 # If we don't have a voice header then don't wait to decode it from the Embedded LC
                 # just make a new one from the HBP header. This is good enough, and it saves lots of time
                 else:
-                    self.STATUS[_slot]['RX_LC'] = LC_OPT + _dst_id + _rf_src
+                    self.STATUS[_slot]['RX_LC'] = b''.join([LC_OPT,_dst_id,_rf_src])
 
             #Create default bridge for unknown TG
                 if int_id(_dst_id) >= 5 and int_id(_dst_id) != 9 and int_id(_dst_id) != 4000 and int_id(_dst_id) != 5000  and (str(int_id(_dst_id)) not in BRIDGES):
@@ -2659,7 +2329,7 @@ class routerHBP(HBSYSTEM):
             #Save this packet
             self.STATUS[_slot]['lastData'] = _data
                           
-            _sysIgnore = []
+            _sysIgnore = deque()
             for _bridge in BRIDGES:
                 #if _bridge[0:1] != '#':
                 if True:
@@ -2671,7 +2341,7 @@ class routerHBP(HBSYSTEM):
                             if _bridge[0:1] == '#':
                                 _bridge = _bridge[1:]
                             else:
-                                _bridge = '#'+_bridge
+                                _bridge = ''.join(['#',_bridge])
                             if _bridge in BRIDGES:
                                 _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi,_source_rptr)
 
@@ -2793,12 +2463,12 @@ class bridgeReportFactory(reportFactory):
 
     def send_bridge(self):
         serialized = pickle.dumps(BRIDGES, protocol=2) #.decode("utf-8", errors='ignore')
-        self.send_clients(REPORT_OPCODES['BRIDGE_SND']+serialized)
+        self.send_clients(b''.join([REPORT_OPCODES['BRIDGE_SND'],serialized]))
 
     def send_bridgeEvent(self, _data):
         if isinstance(_data, str):
             _data = _data.decode('utf-8', error='ignore')
-        self.send_clients(REPORT_OPCODES['BRDG_EVENT']+_data)
+        self.send_clients(b''.join([REPORT_OPCODES['BRDG_EVENT'],_data]))
 
 
 #************************************************
@@ -2864,36 +2534,11 @@ if __name__ == '__main__':
     logger.info('Copyright (c) 2013, 2014, 2015, 2016, 2018, 2019\n\tThe Regents of the K0USY Group. All rights reserved.\n')
     logger.debug('(GLOBAL) Logging system started, anything from here on gets logged')
 
-    
-    #If MySQL is enabled, read master config from MySQL too
-    if CONFIG['MYSQL']['USE_MYSQL'] == True:
-        logger.info('(MYSQL) MySQL config enabled')
-        SQLCONFIG = {}
-        sql = useMYSQL(CONFIG['MYSQL']['SERVER'], CONFIG['MYSQL']['USER'], CONFIG['MYSQL']['PASS'], CONFIG['MYSQL']['DB'],CONFIG['MYSQL']['TABLE'],logger)
-        #Run it once immediately
-        if sql.con():
-            logger.info('(MYSQL) reading config from database')
-            try:
-                SQLCONFIG = sql.getConfig()
-                #Add MySQL config data to config dict
-            except:
-                logger.warning('(MYSQL) problem with SQL query, aborting')
-            sql.close()
-            logger.debug('(MYSQL) building ACLs')
-            # Build ACLs
-            for system in SQLCONFIG:
-                SQLCONFIG[system]['REG_ACL'] = acl_build(SQLCONFIG[system]['REG_ACL'], PEER_MAX)
-                for acl in ['SUB_ACL', 'TG1_ACL', 'TG2_ACL']:
-                    SQLCONFIG[system][acl] = acl_build(SQLCONFIG[system][acl], ID_MAX)
-            
-            CONFIG['SYSTEMS'].update(SQLCONFIG)
-        else:
-            logger.warning('(MYSQL) problem connecting to SQL server, aborting')
         
-        if CONFIG['ALLSTAR']['ENABLED']:
-            logger.info('(AMI) Setting up AMI: Server: %s, Port: %s, User: %s, Pass: %s, Node: %s',CONFIG['ALLSTAR']['SERVER'],CONFIG['ALLSTAR']['PORT'],CONFIG['ALLSTAR']['USER'],CONFIG['ALLSTAR']['PASS'],CONFIG['ALLSTAR']['NODE'])
-            
-            AMIOBJ = AMI(CONFIG['ALLSTAR']['SERVER'],CONFIG['ALLSTAR']['PORT'],CONFIG['ALLSTAR']['USER'],CONFIG['ALLSTAR']['PASS'],CONFIG['ALLSTAR']['NODE'])
+    if CONFIG['ALLSTAR']['ENABLED']:
+        logger.info('(AMI) Setting up AMI: Server: %s, Port: %s, User: %s, Pass: %s, Node: %s',CONFIG['ALLSTAR']['SERVER'],CONFIG['ALLSTAR']['PORT'],CONFIG['ALLSTAR']['USER'],CONFIG['ALLSTAR']['PASS'],CONFIG['ALLSTAR']['NODE'])
+        
+        AMIOBJ = AMI(CONFIG['ALLSTAR']['SERVER'],CONFIG['ALLSTAR']['PORT'],CONFIG['ALLSTAR']['USER'],CONFIG['ALLSTAR']['PASS'],CONFIG['ALLSTAR']['NODE'])
             
 
     # Set up the signal handler
@@ -2968,12 +2613,12 @@ if __name__ == '__main__':
     
     #Generator
     generator = {}
-    systemdelete = []
+    systemdelete = deque()
     for system in CONFIG['SYSTEMS']:
         if CONFIG['SYSTEMS'][system]['ENABLED']:
             if CONFIG['SYSTEMS'][system]['MODE'] == 'MASTER' and (CONFIG['SYSTEMS'][system]['GENERATOR'] > 1):
                 for count in range(CONFIG['SYSTEMS'][system]['GENERATOR']):
-                    _systemname = system+'-'+str(count)
+                    _systemname = ''.join([system,'-',str(count)])
                     generator[_systemname] = copy.deepcopy(CONFIG['SYSTEMS'][system])
                     generator[_systemname]['PORT'] = generator[_systemname]['PORT'] + count
                     generator[_systemname]['_default_options'] = "TS1_STATIC={};TS2_STATIC={};SINGLE={};DEFAULT_UA_TIMER={};DEFAULT_REFLECTOR={};VOICE={};LANG={}".format(generator[_systemname]['TS1_STATIC'],generator[_systemname]['TS2_STATIC'],int(generator[_systemname]['SINGLE_MODE']),generator[_systemname]['DEFAULT_UA_TIMER'],generator[_systemname]['DEFAULT_REFLECTOR'],int(generator[_systemname]['VOICE_IDENT']), generator[_systemname]['ANNOUNCEMENT_LANGUAGE'])
@@ -3046,7 +2691,7 @@ if __name__ == '__main__':
                 words[lang][_mapword] = words[lang][_map[_mapword]]
 
     # HBlink instance creation
-    logger.info('(GLOBAL) RYSEN \'bridge_master.py\' -- SYSTEM STARTING...')
+    logger.info('(GLOBAL) FreeDMR \'bridge_master.py\' -- SYSTEM STARTING...')
 
     
     listeningPorts = {}
@@ -3094,13 +2739,6 @@ if __name__ == '__main__':
     options_task = task.LoopingCall(options_config)
     options = options_task.start(26)
     options.addErrback(loopingErrHandle)
-    
-    #Mysql config checker
-    #This runs in a thread so as not to block the reactor
-    if CONFIG['MYSQL']['USE_MYSQL'] == True:
-        mysql_task = task.LoopingCall(threadedMysql)
-        mysql = mysql_task.start(33)
-        mysql.addErrback(loopingErrHandle)
         
     #STAT trimmer - once every hour (roughly - shifted so all timed tasks don't run at once
     if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:

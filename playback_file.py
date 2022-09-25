@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# RYSEN DMRMaster+ Version 1.3.8 
 #
 ###############################################################################
 #   Copyright (C) 2016-2019  Cortney T. Buffington, N0MJS <n0mjs@me.com> (and Mike Zingman N4IRR)
@@ -271,7 +270,7 @@ if __name__ == '__main__':
     report_server = config_reports(CONFIG, reportFactory)    
     
     # HBlink instance creation
-    logger.info('RYSEN \'playback_file.py\' (c) 2022 Simon Adlem based on work from 2017-2019 Cort Buffington, N0MJS & Mike Zingman, N4IRR -- SYSTEM STARTING...')
+    logger.info('FreeDMR \'playback_file.py\' (c) 2022 Simon Adlem based on work from 2017-2019 Cort Buffington, N0MJS & Mike Zingman, N4IRR -- SYSTEM STARTING...')
     for system in CONFIG['SYSTEMS']:
         if CONFIG['SYSTEMS'][system]['ENABLED']:
             if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':

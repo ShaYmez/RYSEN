@@ -1,5 +1,3 @@
-# RYSEN DMRMaster+ Version 1.3.8 
-#
 ###############################################################################
 # Copyright (C) 2022 Simon Adlem, G7RZU <g7rzu@gb7fr.org.uk>  
 #
@@ -26,7 +24,7 @@ __license__    = 'GNU GPLv3'
 __maintainer__ = 'Simon Adlem G7RZU'
 __email__      = 'simon@gb7fr.org.uk'
 
-#This is example code to connect to the report service in RYSEN / HBLink3
+#This is example code to connect to the report service in FreeDMR / HBLink3
 #It can be used as a skeleton to build logging and monitoring tools. 
 
 import pickle

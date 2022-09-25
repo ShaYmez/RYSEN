@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# RYSEN DMRMaster+ Version 1.3.8 
 #
 ###############################################################################
 #   Copyright (C) 2016-2018 Cortney T. Buffington, N0MJS <n0mjs@me.com>
@@ -129,7 +128,6 @@ def build_config(_config_file):
     CONFIG['LOGGER'] = {}
     CONFIG['ALIASES'] = {}
     CONFIG['SYSTEMS'] = {}
-    CONFIG['MYSQL'] = {}
     CONFIG['ALLSTAR'] = {}
 
     try:
@@ -191,16 +189,6 @@ def build_config(_config_file):
                     
                 })
                 
-            elif section == 'MYSQL':
-                CONFIG['MYSQL'].update({
-                    'USE_MYSQL': config.getboolean(section, 'USE_MYSQL'),
-                    'USER': config.get(section, 'USER'),
-                    'PASS': config.get(section, 'PASS'),
-                    'DB': config.get(section, 'DB'),
-                    'SERVER': config.get(section, 'SERVER'),
-                    'PORT': config.getint(section,'PORT'),
-                    'TABLE': config.get(section, 'TABLE')
-            })
                 
             elif section == 'ALLSTAR':
                 CONFIG['ALLSTAR'].update({
@@ -214,8 +202,6 @@ def build_config(_config_file):
                 
             elif section == 'PROXY':
                 pass
-            
-                
 
             elif config.getboolean(section, 'ENABLED'):
                 if config.get(section, 'MODE') == 'PEER':
@@ -432,4 +418,3 @@ if __name__ == '__main__':
         return not _acl[0]
         
     print(acl_check(b'\x00\x01\x37', CONFIG['GLOBAL']['TG1_ACL']))
-    

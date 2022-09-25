@@ -18,5 +18,5 @@
 #   Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 ###############################################################################
 
-cd /opt/rysen
-python /opt/rysen/bridge_master.py -c rysen.cfg -r rules.py
+cd /opt/freedmr
+python /opt/freedmr/bridge_master.py -c freedmr.cfg -r rules.py

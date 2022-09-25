@@ -1,5 +1,3 @@
-# RYSEN DMRMaster+ Version 1.3.8 
-#
 ###############################################################################
 # Copyright (C) 2022 Simon Adlem, G7RZU <g7rzu@gb7fr.org.uk>  
 #
@@ -18,7 +16,7 @@
 #   Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 ###############################################################################
 
-#This is example code to connect to the report service in RYSEN / HBLink3
+#This is example code to connect to the report service in FreeDMR / HBLink3
 #It can be used as a skeleton to build logging and monitoring tools. 
 
 import pickle
@@ -71,10 +69,16 @@ class reportClient(NetstringReceiver):
         
     def bridgeSend(self,data):
         self.BRIDGES = pickle.loads(data)
-        if cli_args.WATCH and cli_args.WATCH in self.BRIDGES:
-            pprint(self.BRIDGES[cli_args.WATCH], compact=True)
+        if cli_args.STATS:
+            print('There are currently {} active bridges in the bridge table:\n'.format(len(self.BRIDGES)))
+            for _bridge in self.BRIDGES.keys():
+                print('{},'.format({str(_bridge)}))
+            
         else:
-            pprint(self.BRIDGES, compact=True, indent=4)
+            if cli_args.WATCH and cli_args.WATCH in self.BRIDGES:
+                pprint(self.BRIDGES[cli_args.WATCH], compact=True)
+            else:
+                pprint(self.BRIDGES, compact=True, indent=4)
         
     def configSend(self,data):
         self.CONFIG = pickle.loads(data)
@@ -130,7 +134,7 @@ if __name__ == '__main__':
     parser.add_argument('-w', '--watch', action='store', dest='WATCH', help='watch bridge <name>')
     parser.add_argument('-o', '--host', action='store', dest='HOST', help='host to connect to <ip address>')
     parser.add_argument('-p', '--port', action='store', dest='PORT', help='port to connect to <port>')
-    
+    parser.add_argument('-s', '--stats', action='store', dest='STATS', help='print stats only') 
     
     cli_args = parser.parse_args()
 

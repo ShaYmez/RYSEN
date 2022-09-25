@@ -33,7 +33,7 @@ figlet "SYSTEM-X."
 sleep 2
 echo "Stopping RYMonv3....."
 systemctl stop rymon
-figlet "RYMonv2."
+figlet "RYMonv3."
 echo "Done."
 sleep 1
 

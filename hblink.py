@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# RYSEN DMRMaster+ Version 1.3.8 
 #
 ###############################################################################
 #   Copyright (C) 2016-2019 Cortney T. Buffington, N0MJS <n0mjs@me.com>
@@ -92,7 +91,7 @@ def config_reports(_config, _factory):
     logger.info('(GLOBAL) HBlink TCP reporting server configured')
 
     report_server = _factory(_config)
-    report_server.clients = []
+    report_server.clients = deque()
     reactor.listenTCP(_config['REPORTS']['REPORT_PORT'], report_server)
 
     reporting = task.LoopingCall(reporting_loop, logger, report_server)
@@ -257,7 +256,7 @@ class OPENBRIDGE(DatagramProtocol):
             
     def send_bcve(self):
         if self._config['ENHANCED_OBP'] and self._config['TARGET_IP']:
-            _packet = BCVE + VER.to_bytes(1,'big')
+            _packet = b''.join([BCVE,VER.to_bytes(1,'big')])
             _packet = b''.join([_packet, (hmac_new(self._config['PASSPHRASE'],_packet[4:5],sha1).digest())])
             self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
             logger.trace('(%s) *BridgeControl* sent BCVE. Ver: %s',self._system,VER)
@@ -288,7 +287,9 @@ class OPENBRIDGE(DatagramProtocol):
                 if compare_digest(_hash, _ckhs) and (_sockaddr == self._config['TARGET_SOCK'] or self._config['RELAX_CHECKS']):
                     _peer_id = _data[11:15]
                     if self._config['NETWORK_ID'] != _peer_id:
-                        logger.error('(%s) OpenBridge packet discarded because NETWORK_ID: %s Does not match sent Peer ID: %s', self._system, int_id(self._config['NETWORK_ID']), int_id(_peer_id))
+                        if _stream_id not in self._laststrid:
+                            logger.error('(%s) OpenBridge packet discarded because NETWORK_ID: %s Does not match sent Peer ID: %s', self._system, int_id(self._config['NETWORK_ID']), int_id(_peer_id))
+                            self._laststrid.append(_stream_id)
                         return
                     
                     #This is a v1 packet, so all the extended stuff we can set to default
@@ -413,11 +414,15 @@ class OPENBRIDGE(DatagramProtocol):
                     _h.update(_packet[:69])
                     
                 _ckhs = _h.digest()
+                
+                _stream_id = _data[16:20]
 
                 if compare_digest(_hash, _ckhs) and (_sockaddr == self._config['TARGET_SOCK'] or self._config['RELAX_CHECKS']):
                     _peer_id = _data[11:15]
                     if self._config['NETWORK_ID'] != _peer_id:
-                        logger.error('(%s) OpenBridge packet discarded because NETWORK_ID: %s Does not match sent Peer ID: %s', self._system, int_id(self._config['NETWORK_ID']), int_id(_peer_id))
+                        if _stream_id not in self._laststrid:
+                            logger.error('(%s) OpenBridge packet discarded because NETWORK_ID: %s Does not match sent Peer ID: %s', self._system, int_id(self._config['NETWORK_ID']), int_id(_peer_id))
+                            self._laststrid.append(_stream_id)
                         return
                     _seq = _data[4]
                     _rf_src = _data[5:8]
@@ -434,7 +439,6 @@ class OPENBRIDGE(DatagramProtocol):
                         _call_type = 'group'
                     _frame_type = (_bits & 0x30) >> 4
                     _dtype_vseq = (_bits & 0xF) # data, 1=voice header, 2=voice terminator; voice, 0=burst A ... 5=burst F
-                    _stream_id = _data[16:20]
                     #logger.debug('(%s) DMRD - Seqence: %s, RF Source: %s, Destination ID: %s', self._system, int_id(_seq), int_id(_rf_src), int_id(_dst_id))
                     
                     #Don't do anything if we are STUNned
@@ -549,7 +553,9 @@ class OPENBRIDGE(DatagramProtocol):
                 if compare_digest(_hash, _ckhs) and (_sockaddr == self._config['TARGET_SOCK'] or self._config['RELAX_CHECKS']):
                     _peer_id = _data[11:15]
                     if self._config['NETWORK_ID'] != _peer_id:
-                        logger.error('(%s) OpenBridge packet discarded because NETWORK_ID: %s Does not match sent Peer ID: %s', self._system, int_id(self._config['NETWORK_ID']), int_id(_peer_id))
+                        if _stream_id not in self._laststrid:
+                            logger.error('(%s) OpenBridge packet discarded because NETWORK_ID: %s Does not match sent Peer ID: %s', self._system, int_id(self._config['NETWORK_ID']), int_id(_peer_id))
+                            self._laststrid.append(_stream_id)
                         return
                     _seq = _data[4]
                     _rf_src = _data[5:8]
@@ -763,7 +769,7 @@ class HBSYSTEM(DatagramProtocol):
     # Aliased in __init__ to maintenance_loop if system is a master
     def master_maintenance_loop(self):
         logger.debug('(%s) Master maintenance loop started', self._system)
-        remove_list = []
+        remove_list = deque()
         for peer in self._peers:
             _this_peer = self._peers[peer]
             # Check to see if any of the peers have been quiet (no ping) longer than allowed
@@ -873,11 +879,11 @@ class HBSYSTEM(DatagramProtocol):
 
     def master_dereg(self):
         for _peer in self._peers:
-            self.send_peer(_peer, MSTCL + _peer)
+            self.send_peer(_peer, b''.join([MSTCL,_peer]))
             logger.info('(%s) De-Registration sent to Peer: %s (%s)', self._system, self._peers[_peer]['CALLSIGN'], self._peers[_peer]['RADIO_ID'])
 
     def peer_dereg(self):
-        self.send_master(RPTCL + self._config['RADIO_ID'])
+        self.send_master(b''.join([RPTCL,self._config['RADIO_ID']]))
         logger.info('(%s) De-Registration sent to Master: %s:%s', self._system, self._config['MASTER_SOCKADDR'][0], self._config['MASTER_SOCKADDR'][1])
         
     def proxy_IPBlackList(self,peer_id,sockaddr):
@@ -1377,9 +1383,9 @@ class reportFactory(Factory):
 def try_download(_path, _file, _url, _stale,):
     no_verify = ssl._create_unverified_context()
     now = time()
-    file_exists = isfile(_path+_file) == True
+    file_exists = isfile(''.join([_path,_file])) == True
     if file_exists:
-        file_old = (getmtime(_path+_file) + _stale) < now
+        file_old = (getmtime(''.join([_path,_file])) + _stale) < now
     if not file_exists or (file_exists and file_old):
         try:
             with urlopen(_url, context=no_verify) as response:
@@ -1392,7 +1398,7 @@ def try_download(_path, _file, _url, _stale,):
         else:
             if data and (data != b'{}'):
                 try:
-                    with open(_path+_file, 'wb') as outfile:
+                    with open(''.join([_path,_file]), 'wb') as outfile:
                         outfile.write(data)
                         outfile.close()
                 except IOError:
@@ -1409,7 +1415,7 @@ def try_download(_path, _file, _url, _stale,):
 def mk_server_dict(path,filename):
     server_ids = {}
     try:
-        with open(path+filename,newline='') as csvfile:
+        with open(''.join([path,filename]),newline='') as csvfile:
             reader = csv.DictReader(csvfile,dialect='excel-tab')
             for _row in reader:
                 server_ids[_row['OPB Net ID']] = _row['Country']
@@ -1443,20 +1449,18 @@ def mk_aliases(_config):
         
     # Make Dictionaries
     try:
-        _peer_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'])
+        peer_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'])
     except Exception as e:
         logger.error('(ALIAS) ID ALIAS MAPPER: problem with data in peer_ids dictionary, not updating: %s',e)
     else:
-        peer_ids = _peer_ids
         if peer_ids:
             logger.info('(ALIAS) ID ALIAS MAPPER: peer_ids dictionary is available')
 
     try:
-        _subscriber_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['SUBSCRIBER_FILE'])
+        subscriber_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['SUBSCRIBER_FILE'])
     except Exception as e:
         logger.info('(ALIAS) ID ALIAS MAPPER: problem with data in subscriber_ids dictionary, not updating: %s',e)
     else:
-        subscriber_ids = _subscriber_ids
         #Add special IDs to DB
         subscriber_ids[900999] = 'D-APRS'
         subscriber_ids[4294967295] = 'SC'
@@ -1464,27 +1468,23 @@ def mk_aliases(_config):
         if subscriber_ids:
             logger.info('(ALIAS) ID ALIAS MAPPER: subscriber_ids dictionary is available')
     try:
-        _talkgroup_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['TGID_FILE'])
+        talkgroup_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['TGID_FILE'])
     except Exception as e:
         logger.info('(ALIAS) ID ALIAS MAPPER: problem with data in talkgroup_ids dictionary, not updating: %s',e)
     else:
-        talkgroup_ids = _talkgroup_ids
         if talkgroup_ids:
             logger.info('(ALIAS) ID ALIAS MAPPER: talkgroup_ids dictionary is available')
     try:   
-        _local_subscriber_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['LOCAL_SUBSCRIBER_FILE'])
+        local_subscriber_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['LOCAL_SUBSCRIBER_FILE'])
     except Exception as e:
         logger.info('(ALIAS) ID ALIAS MAPPER: problem with data in local_subscriber_ids dictionary, not updating: %s',e)
     else:
-        local_subscriber_ids = _local_subscriber_ids
         if subscriber_ids:
             logger.info('(ALIAS) ID ALIAS MAPPER: local_subscriber_ids dictionary is available')
     try:        
-        _server_ids = mk_server_dict(_config['ALIASES']['PATH'], _config['ALIASES']['SERVER_ID_FILE'])
+        server_ids = mk_server_dict(_config['ALIASES']['PATH'], _config['ALIASES']['SERVER_ID_FILE'])
     except Exception as e:
         logger.info('(ALIAS) ID ALIAS MAPPER: problem with data in server_ids dictionary, not updating: %s',e)
-    else:
-        server_ids = _server_ids
     if server_ids:
         logger.info('(ALIAS) ID ALIAS MAPPER: server_ids dictionary is available')
         
