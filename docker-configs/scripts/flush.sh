@@ -59,6 +59,8 @@ echo "/opt/RYMonv3/data....."
 rm /opt/RYMonv3/data/talkgroup_ids.json
 rm /opt/RYMonv3/data/subscriber_ids.csv
 rm /opt/RYMonv3/data/peer_ids.json
+#Permissions reset
+chown -R 54000 /etc/freedmr
 echo "JSON files will be downloaded from freestar.network....."
 figlet "FreeSTAR CL V1.3.8"
 
