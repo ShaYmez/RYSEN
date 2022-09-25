@@ -53,6 +53,7 @@ rm /etc/rysen/json/local_subscriber_ids.json
 rm /etc/rysen/json/peer_ids.json
 rm /etc/rysen/json/server_ids.tsv
 rm /etc/rysen/json/sub_map.pkl
+rm /etc/rysen/json/topography.json
 #Get local subscriber file..
 curl https://freestar.network/downloads/local_subscriber_ids.json -o /etc/rysen/json/local_subscriber_ids.json
 echo "/opt/RYMonv3/data....."
@@ -62,7 +63,7 @@ rm /opt/RYMonv3/data/peer_ids.json
 #Permissions reset
 chown -R 54000 /etc/freedmr
 echo "JSON files will be downloaded from freestar.network....."
-figlet "FreeSTAR CL V1.3.8"
+figlet "FreeSTAR CL V1.3.9"
 
 #Restart all services gracefully
 echo "Restart all services....."
