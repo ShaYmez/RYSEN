@@ -49,13 +49,13 @@ sleep 1
 echo "/etc/rysen/json....."
 rm /etc/rysen/json/talkgroup_ids.json
 rm /etc/rysen/json/subscriber_ids.json
-rm /etc/rysen/json/local_subscriber_ids.json
+#rm /etc/rysen/json/local_subscriber_ids.json
 rm /etc/rysen/json/peer_ids.json
 rm /etc/rysen/json/server_ids.tsv
 rm /etc/rysen/json/sub_map.pkl
 rm /etc/rysen/json/topography.json
 #Get local subscriber file..
-curl https://freestar.network/downloads/local_subscriber_ids.json -o /etc/rysen/json/local_subscriber_ids.json
+#curl https://freestar.network/downloads/local_subscriber_ids.json -o /etc/rysen/json/local_subscriber_ids.json
 echo "/opt/RYMonv3/data....."
 rm /opt/RYMonv3/data/talkgroup_ids.json
 rm /opt/RYMonv3/data/subscriber_ids.csv
