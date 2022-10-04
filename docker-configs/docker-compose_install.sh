@@ -1,7 +1,8 @@
 #!/bin/bash
 #
 ###############################################################################
-# Copyright (C) 2020 Simon Adlem, G7RZU <g7rzu@gb7fr.org.uk>  
+#   Copyright (C) 2020 Simon Adlem, G7RZU <g7rzu@gb7fr.org.uk>
+#   
 #
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -105,13 +106,13 @@ PATH: ./json/
 PEER_FILE: peer_ids.json
 SUBSCRIBER_FILE: subscriber_ids.json
 TGID_FILE: talkgroup_ids.json
-PEER_URL: http://rysen-lh.gb7fr.org.uk/json/peer_ids.json
-SUBSCRIBER_URL: http://rysen-lh.gb7fr.org.uk/json/subscriber_ids.json
-TGID_URL: http://rysen-lh.gb7fr.org.uk/json/talkgroup_ids.json
+PEER_URL: https://freestar.network/downloads/peer_ids.json
+SUBSCRIBER_URL: https://freestar.network/downloads/subscriber_ids.json
+TGID_URL: https://freestar.network/downloads/talkgroup_ids.json
 LOCAL_SUBSCRIBER_FILE: local_subscriber_ids.json
-STALE_DAYS: 1
+STALE_DAYS: 14
 SUB_MAP_FILE: sub_map.pkl
-SERVER_ID_URL: http://rysen-lh.gb7fr.org.uk/json/server_ids.tsv
+SERVER_ID_URL: https://freestar.network/downloads/SystemX_Hosts.csv
 SERVER_ID_FILE: server_ids.tsv
 TOPO_FILE: topography.json
 
@@ -211,7 +212,7 @@ chown -R 54000 /etc/rysen &&
 
 echo Get docker-compose.yml...
 cd /etc/rysen &&
-curl https://gitlab.hacknix.net/hacknix/RYSEN/-/raw/master/docker-configs/docker-compose.yml -o docker-compose.yml &&
+curl https://github.com/ShaYmez/RYSEN/-/raw/master/docker-configs/docker-compose.yml -o docker-compose.yml &&
 
 chmod 755 /etc/cron.daily/lastheard
 
