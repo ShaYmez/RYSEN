@@ -768,7 +768,7 @@ class HBSYSTEM(DatagramProtocol):
 
     # Aliased in __init__ to maintenance_loop if system is a master
     def master_maintenance_loop(self):
-        logger.debug('(%s) Master maintenance loop started', self._system)
+        logger.trace('(%s) Master maintenance loop started', self._system)
         remove_list = deque()
         for peer in self._peers:
             _this_peer = self._peers[peer]

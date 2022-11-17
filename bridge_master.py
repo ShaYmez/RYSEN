@@ -307,6 +307,11 @@ def remove_bridge_system(system):
                 if _bridge not in _bridgestemp:
                     _bridgestemp[_bridge] = []
                 _bridgestemp[_bridge].append(_bridgesystem)
+            else:
+                if _bridge not in _bridgestemp:
+                    _bridgestemp[_bridge] = []
+                _bridgestemp[_bridge].append({'SYSTEM': system, 'TS': _bridgesystem['TS'], 'TGID': _bridgesystem['TGID'],'ACTIVE': False,'TIMEOUT':  _bridgesystem['TIMEOUT'],'TO_TYPE': 'ON','OFF': [],'ON': [_bridgesystem['TGID'],],'RESET': [], 'TIMER': time() + _bridgesystem['TIMEOUT']})
+            
     BRIDGES.update(_bridgestemp)
                 
 
@@ -331,7 +336,7 @@ def rule_timer_loop():
                         _bridge_used = True
                         logger.info('(ROUTER) Conference Bridge ACTIVE (ON timer running): System: %s Bridge: %s, TS: %s, TGID: %s, Timeout in: %.2fs,', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']),  timeout_in)
                 elif _system['ACTIVE'] == False:
-                    logger.trace('(ROUTER) Conference Bridge INACTIVE (no change): System: %s Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
+                    logger.debug('(ROUTER) Conference Bridge INACTIVE (no change): System: %s Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
             elif _system['TO_TYPE'] == 'OFF':
                 if _system['ACTIVE'] == False:
                     if _system['TIMER'] < _now:
@@ -344,13 +349,13 @@ def rule_timer_loop():
                         logger.info('(ROUTER) Conference Bridge INACTIVE (OFF timer running): System: %s Bridge: %s, TS: %s, TGID: %s, Timeout in: %.2fs,', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']),  timeout_in)
                 elif _system['ACTIVE'] == True:
                     _bridge_used = True
-                    logger.trace('(ROUTER) Conference Bridge ACTIVE (no change): System: %s Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
+                    logger.debug('(ROUTER) Conference Bridge ACTIVE (no change): System: %s Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
             else:
                 if _system['SYSTEM'][0:3] != 'OBP':
                     _bridge_used = True
                 elif _system['SYSTEM'][0:3] == 'OBP' and _system['TO_TYPE'] == 'STAT':
                     _bridge_used = True
-                logger.trace('(ROUTER) Conference Bridge NO ACTION: System: %s, Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
+                logger.debug('(ROUTER) Conference Bridge NO ACTION: System: %s, Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
                 
         if _bridge_used == False:
             _remove_bridges.append(_bridge)
@@ -703,7 +708,7 @@ def ident():
                 _say.append(words[_lang]['silence'])
                 _say.append(words[_lang]['silence'])
                 
-                _say.append(words[_lang]['rysen'])
+                # _say.append(words[_lang]['freedmr'])
                 
                 #test 
                 #_say.append(AMBEobj.readSingleFile('alpha.ambe'))
@@ -2740,10 +2745,10 @@ if __name__ == '__main__':
     options = options_task.start(26)
     options.addErrback(loopingErrHandle)
         
-    #STAT trimmer - once every hour (roughly - shifted so all timed tasks don't run at once
+    #STAT trimmer - once every 10 mins (roughly - shifted so all timed tasks don't run at once
     if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:
         stat_trimmer_task = task.LoopingCall(statTrimmer)
-        stat_trimmer = stat_trimmer_task.start(3700)#3600
+        stat_trimmer = stat_trimmer_task.start(523)#3600
         stat_trimmer.addErrback(loopingErrHandle)
         
     #KA Reporting

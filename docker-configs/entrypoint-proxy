@@ -24,7 +24,7 @@ then
         echo 'Starting in Bridge mode...'
         python /opt/rysen/bridge.py -c rysen.cfg -r rules.py
 else
-	echo 'Starting in FreeDMR mode...'
+	echo 'Starting in RYSEN mode...'
 	python /opt/rysen/hotspot_proxy_v2.py &
 	python /opt/rysen/playback.py -c loro.cfg &
 	python /opt/rysen/bridge_master.py -c rysen.cfg -r rules.py

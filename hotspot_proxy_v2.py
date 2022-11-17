@@ -364,4 +364,3 @@ if __name__ == '__main__':
     blacklista.addErrback(loopingErrHandle)
     
     reactor.run()
-    
