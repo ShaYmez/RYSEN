@@ -22,12 +22,13 @@
 clear
 
 echo "Starting System-X....."
-sleep 2
+sleep 1
 echo .
 sleep 1
 echo ..
 sleep 1
 echo ...
+cd /etc/rysen
 docker-compose up -d
 
 sleep 1
@@ -35,12 +36,12 @@ figlet "SYSTEM-X."
 sleep 1
 echo "Checking System-X is composed....."
 
-sleep 2
+sleep 1
 docker ps
-sleep 2
+sleep 1
 echo "Checking startup error logs....."
 
-sleep 2
+sleep 1
 docker container logs systemx 
 echo "Done."
 

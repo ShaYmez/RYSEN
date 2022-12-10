@@ -21,18 +21,36 @@
 
 clear
 
-echo "Stopping System-X....."
-sleep 2
+echo "Starting System-X....."
+sleep 1
 echo .
 sleep 1
 echo ..
 sleep 1
 echo ...
-docker-compose down
-figlet "SYSTEM-X."
-sleep 2
-echo "Stopping RYMonv3....."
-systemctl stop rymon
+cd /etc/rysen
+docker-compose up -d
+
+sleep 1
+figlet "SYSTEM-X." 
+sleep 1
+echo "Checking System-X is composed....."
+
+sleep 1
+docker ps
+sleep 1
+echo "Checking startup error logs....."
+
+sleep 1
+docker container logs systemx 
+echo "Done."
+
+echo "Flushing network tracking table....."
+conntrack -F
+sleep 1
+
+echo "Starting RYMonv3....."
+systemctl restart rymon
 figlet "RYMonv3."
 echo "Done."
 sleep 1
@@ -46,7 +64,7 @@ sleep 1
 echo ...
 sleep 1
 echo ....
-echo "System-X is now stopped. AKA ShaYmez."
+echo "System-X is now online. Flush is complete and you may now exit. AKA ShaYmez."
 #
 # This script has been developed by the one and only ShaYmez. Visit https://repo.radio/ShaYmez for more super scripts!
 echo "All systems have been flushed/cleaned and ready to go. Aka Dr. Node. ShaYmez, SYSTEM-X"
