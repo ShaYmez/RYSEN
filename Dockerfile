@@ -1,4 +1,4 @@
-FROM python:alpine3.16
+FROM python:alpine3.17
 
 COPY entrypoint /entrypoint
 
