@@ -737,6 +737,7 @@ def options_config():
             logger.debug('(OPTIONS) Bridge reset for %s - no peers',_system)
             remove_bridge_system(_system)
             CONFIG['SYSTEMS'][_system]['_reset'] = False
+            continue
         try:
             if CONFIG['SYSTEMS'][_system]['MODE'] != 'MASTER':
                 continue
