@@ -263,7 +263,7 @@ def reset_static_tg(tg,ts,_tmout,system):
             
         BRIDGES[str(tg)] = bridgetemp
     except KeyError:
-        logger.exception('(%s) KeyError in reset_static_tg() - bridge gone away? TG: %s',system,tg)
+        logger.exception('(ERROR) KeyError in reset_static_tg() - bridge gone away?')
         return
         
 def reset_default_reflector(reflector,_tmout,system):
@@ -387,52 +387,6 @@ def statTrimmer():
         logger.debug('(ROUTER) STAT bridge %s removed',_bridgerem)
     if CONFIG['REPORTS']['REPORT']:
         report_server.send_clients(b'bridge updated')
-
-#Debug and fix bridge table issues.
-def bridgeDebug():
-    logger.info('(BRIDGEDEBUG) Running bridge debug')
-    statroll = 0
-    for system in CONFIG['SYSTEMS']:
-        bridgeroll = 0
-        dialroll = 0
-        activeroll = 0
-        for _bridge in BRIDGES:
-            for enabled_system in BRIDGES[_bridge]:
-                if enabled_system['SYSTEM'] == system:
-                    bridgeroll += 1
-                    if enabled_system['ACTIVE']:
-                        if _bridge and _bridge[0:1] == '#':
-                            dialroll += 1
-                            activeroll += 1
-                        else:
-                            activeroll += 1
-                    if enabled_system['TO_TYPE'] == 'STAT':
-                        statroll += 1
-        if bridgeroll:
-            logger.debug('(BRIDGEDEBUG) system %s has %s bridges of which %s are in an ACTIVE state', system, bridgeroll, activeroll)
-
-        if dialroll > 1 and CONFIG['SYSTEMS'][system]['MODE'] == 'MASTER':
-            logger.warning('(BRIDGEDEBUG) system %s has more than one active dial bridge (%s) - fixing',system, dialroll)
-            times = {}
-            for _bridge in BRIDGES:
-                for enabled_system in BRIDGES[_bridge]:
-                    if enabled_system['ACTIVE'] and _bridge and _bridge[0:1] == '#':
-                        times[enabled_system['TIMER']] = _bridge
-            ordered = sorted(times.keys())
-            _setbridge = times[ordered.pop()]
-            if CONFIG['SYSTEMS'][system]['MODE'] == 'MASTER':
-                logger.warning('(BRIDGEDEBUG) setting %s dial bridge to %s as this bridge has the longest timer set to run',system, _setbridge)
-
-            for _tstamp in ordered:
-                for _bridge in times.values():
-                    for _entry in BRIDGES[_bridge]:
-
-                        if CONFIG['SYSTEMS'][system]['MODE'] == 'MASTER':
-                            if _entry['SYSTEM'] == system:
-                                _entry['ACTIVE'] = False
-
-    logger.info('(BRIDGEDEBUG) The server currently has %s STATic bridges',statroll)
-
 
 def kaReporting():
     logger.debug('(ROUTER) KeepAlive reporting loop started')
@@ -754,7 +708,7 @@ def ident():
                 _say.append(words[_lang]['silence'])
                 _say.append(words[_lang]['silence'])
                 
-                #_say.append(words[_lang]['freedmr'])
+                # _say.append(words[_lang]['freedmr'])
                 
                 #test 
                 #_say.append(AMBEobj.readSingleFile('alpha.ambe'))
@@ -928,12 +882,6 @@ def options_config():
                     if isinstance(_options['DEFAULT_UA_TIMER'], str) and not _options['DEFAULT_UA_TIMER'].isdigit():
                         logger.debug('(OPTIONS) %s - DEFAULT_REFLECTOR is not an integer, ignoring',_system)
                         continue
-
-                    #if the UA timer is set to 0 - actually set it to (close to) maximum size of a 32
-                    #bit signed int - which works out at around 68 years!
-                    #For all practical purposes, this implements an unlimited timer - aka sticky static.
-                    if int(_options['DEFAULT_UA_TIMER']) == 0:
-                        _options['DEFAULT_UA_TIMER'] = 35791394
                         
                     _tmout = int(_options['DEFAULT_UA_TIMER'])
                     
@@ -1533,7 +1481,6 @@ class routerOBP(OPENBRIDGE):
                 #Rate drop
                 if self.STATUS[_stream_id]['packets'] > 18 and (self.STATUS[_stream_id]['packets'] / self.STATUS[_stream_id]['START'] > 25):
                     logger.warning("(%s) *PacketControl* RATE DROP! Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
-                    self.proxy_BadPeer()
                     return
                 
                 #Duplicate handling#
@@ -2589,7 +2536,7 @@ if __name__ == '__main__':
     if cli_args.LOG_LEVEL:
         CONFIG['LOGGER']['LOG_LEVEL'] = cli_args.LOG_LEVEL
     logger = log.config_logging(CONFIG['LOGGER'])
-    logger.info('\n\nCopyright (c) 2020, 2021, 2022, 2023 Simon G7RZU simon@gb7fr.org.uk')
+    logger.info('\n\nCopyright (c) 2020, 2021, 2022 Simon G7RZU simon@gb7fr.org.uk')
     logger.info('Copyright (c) 2013, 2014, 2015, 2016, 2018, 2019\n\tThe Regents of the K0USY Group. All rights reserved.\n')
     logger.debug('(GLOBAL) Logging system started, anything from here on gets logged')
 
@@ -2624,7 +2571,7 @@ if __name__ == '__main__':
     CONFIG['_PEER_IDS'] = peer_ids
     CONFIG['_LOCAL_SUBSCRIBER_IDS'] = local_subscriber_ids
     CONFIG['_SERVER_IDS'] = server_ids
-
+    
     
     
     # Import the ruiles file as a module, and create BRIDGES from it
@@ -2809,13 +2756,6 @@ if __name__ == '__main__':
     ka_task = task.LoopingCall(kaReporting)
     ka = ka_task.start(60)
     ka.addErrback(loopingErrHandle)
-
-    #Debug bridges
-    if CONFIG['GLOBAL']['DEBUG_BRIDGES']:
-        debug_bridges_task = task.LoopingCall(bridgeDebug)
-        debug_bridges = debug_bridges_task.start(66)
-        debug_bridges.addErrback(loopingErrHandle)
-
     
     #Subscriber map trimmer
     sub_trimmer_task = task.LoopingCall(SubMapTrimmer)
