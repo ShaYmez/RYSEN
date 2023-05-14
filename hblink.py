@@ -45,7 +45,8 @@ from twisted.internet import reactor, task
 import log
 import config
 from const import *
-from dmr_utils3.utils import int_id, bytes_4, mk_id_dict
+from utils import mk_id_dict, try_download,load_json,blake2bsum
+from dmr_utils3.utils import int_id, bytes_4
 
 # Imports for the reporting server
 import pickle
@@ -59,9 +60,10 @@ from functools import partial, partialmethod
 
 import ssl
 
-from os.path import isfile, getmtime
+from os.path import isfile, getmtime, exists, getsize
 from urllib.request import urlopen
 
+import shutil
 import csv
 
 
@@ -199,20 +201,10 @@ class OPENBRIDGE(DatagramProtocol):
                 self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
             
             elif 'VER' in self._config and self._config['VER'] == 3:
-                _packet = b''.join([DMRF,_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'],_packet[15:]])
-                _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
-                _h.update(_packet)
-                _hash = _h.digest()
-                _packet = b''.join([_packet,time_ns().to_bytes(8,'big'), _hops, _hash])
-                self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
+               logger.error('(%s) protocol version 3 no longer supported',self._system)
             
             elif 'VER' in self._config and self._config['VER'] == 2:
-                _packet = b''.join([DMRF,_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'],_packet[15:], time_ns().to_bytes(8,'big')])
-                _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
-                _h.update(_packet)
-                _hash = _h.digest()
-                _packet = b''.join([_packet,_hops, _hash])
-                self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
+               logger.error('(%s) protocol version 2 no longer supported',self._system)
                 # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
                 #logger.debug('(%s) TX Packet to OpenBridge %s:%s -- %s %s', self._system, self._config['TARGET_IP'], self._config['TARGET_PORT'], _packet, _hash)
             else:                
@@ -484,16 +476,39 @@ class OPENBRIDGE(DatagramProtocol):
                         self.send_bcsq(_dst_id,_stream_id)
                         return
                     
-                    
+
                     #Low-level TG filtering 
                     if _call_type != 'unit':
                         _int_dst_id = int_id(_dst_id)
-                        if _int_dst_id <= 79 or (_int_dst_id >= 9990 and _int_dst_id <= 9999) or _int_dst_id == 900999:
+
+                        if _int_dst_id <= 79:
                             if _stream_id not in self._laststrid:
-                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY GLOBAL TG FILTER', self._system, int_id(_stream_id), _int_dst_id)
+                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY GLOBAL TG FILTER (local to repeater)', self._system, int_id(_stream_id), _int_dst_id)
                                 self.send_bcsq(_dst_id,_stream_id)
                                 self._laststrid.append(_stream_id)
                             return
+
+                        if (_int_dst_id >= 9990 and _int_dst_id <= 9999) or _int_dst_id == 900999:
+                            if _stream_id not in self._laststrid:
+                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY GLOBAL TG FILTER (local to server)', self._system, int_id(_stream_id), _int_dst_id)
+                                self.send_bcsq(_dst_id,_stream_id)
+                                self._laststrid.append(_stream_id)
+                            return
+
+                        if (_int_dst_id >= 92 and _int_dst_id <= 199) and int(str(int.from_bytes(_source_server,'big'))[:4]) != int(str(int.from_bytes(self._CONFIG['GLOBAL']['SERVER_ID'],'big'))[:4]):
+                            if _stream_id not in self._laststrid:
+                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY GLOBAL TG FILTER (local to server main ID)', self._system, int_id(_stream_id), _int_dst_id)
+                                self.send_bcsq(_dst_id,_stream_id)
+                                self._laststrid.append(_stream_id)
+                            return
+
+                        if ((_int_dst_id >= 80 and _int_dst_id <= 89) or (_int_dst_id >= 800 and _int_dst_id <= 899)) and int(str(int.from_bytes(_source_server,'big'))[:3]) != int(str(int.from_bytes(self._CONFIG['GLOBAL']['SERVER_ID'],'big'))[:3]):
+                            if _stream_id not in self._laststrid:
+                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY GLOBAL TG FILTER (local to MCC)', self._system, int_id(_stream_id), _int_dst_id)
+                                self.send_bcsq(_dst_id,_stream_id)
+                                self._laststrid.append(_stream_id)
+                            return
+
                     
                     # ACL Processing
                     if self._CONFIG['GLOBAL']['USE_ACL']:
@@ -537,114 +552,7 @@ class OPENBRIDGE(DatagramProtocol):
 
 
             elif _packet[:4] == DMRF:
-                _data = _packet[:53]
-                _timestamp = _packet[53:60]
-                _hops = _packet[61]
-                _hash = _packet[62:]
-                #_ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
-                _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
-                if 'VER' in self._config and self._config['VER'] > 2:
-                    _h.update(_packet[:53])
-                elif 'VER' in self._config and self._config['VER'] == 2:
-                    _h.update(_packet[:61])
-                    
-                _ckhs = _h.digest()
-
-                if compare_digest(_hash, _ckhs) and (_sockaddr == self._config['TARGET_SOCK'] or self._config['RELAX_CHECKS']):
-                    _peer_id = _data[11:15]
-                    if self._config['NETWORK_ID'] != _peer_id:
-                        if _stream_id not in self._laststrid:
-                            logger.error('(%s) OpenBridge packet discarded because NETWORK_ID: %s Does not match sent Peer ID: %s', self._system, int_id(self._config['NETWORK_ID']), int_id(_peer_id))
-                            self._laststrid.append(_stream_id)
-                        return
-                    _seq = _data[4]
-                    _rf_src = _data[5:8]
-                    _dst_id = _data[8:11]
-                    _int_dst_id = int_id(_dst_id)
-                    _bits = _data[15]
-                    _slot = 2 if (_bits & 0x80) else 1
-                    #_call_type = 'unit' if (_bits & 0x40) else 'group'
-                    if _bits & 0x40:
-                        _call_type = 'unit'
-                    elif (_bits & 0x23) == 0x23:
-                        _call_type = 'vcsbk'
-                    else:
-                        _call_type = 'group'
-                    _frame_type = (_bits & 0x30) >> 4
-                    _dtype_vseq = (_bits & 0xF) # data, 1=voice header, 2=voice terminator; voice, 0=burst A ... 5=burst F
-                    _stream_id = _data[16:20]
-                    #logger.debug('(%s) DMRD - Seqence: %s, RF Source: %s, Destination ID: %s', self._system, int_id(_seq), int_id(_rf_src), int_id(_dst_id))
-                    
-                    #Don't do anything if we are STUNned
-                    if 'STUN' in self._CONFIG:
-                            if _stream_id not in self._laststrid:
-                                logger.warning('(%s) Bridge STUNned, discarding', self._system)
-                                self._laststrid.append(_stream_id)
-                            return
-                        
-                    #Increment max hops
-                    _inthops = _hops +1 
-                    
-                    if _inthops > 10:
-                        logger.warning('(%s) MAX HOPS exceed, dropping. Hops: %s, DST: %s', self._system, _inthops, _int_dst_id)
-                        self.send_bcsq(_dst_id,_stream_id)
-                        return
-                    
-                    
-                    #Low-level TG filtering 
-                    if _call_type != 'unit':
-                        _int_dst_id = int_id(_dst_id)
-                        if _int_dst_id <= 79 or (_int_dst_id >= 9990 and _int_dst_id <= 9999) or _int_dst_id == 900999:
-                            if _stream_id not in self._laststrid:
-                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY GLOBAL TG FILTER', self._system, int_id(_stream_id), _int_dst_id)
-                                self.send_bcsq(_dst_id,_stream_id)
-                                self._laststrid.append(_stream_id)
-                            return
-                    
-                    # ACL Processing
-                    if self._CONFIG['GLOBAL']['USE_ACL']:
-                        if not acl_check(_rf_src, self._CONFIG['GLOBAL']['SUB_ACL']):
-                            if _stream_id not in self._laststrid:
-                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY GLOBAL TS1 ACL', self._system, int_id(_stream_id), int_id(_rf_src))
-                                self.send_bcsq(_dst_id,_stream_id)
-                                self._laststrid.append(_stream_id)
-                            return
-                        if _slot == 1 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG1_ACL']):
-                            if _stream_id not in self._laststrid:
-                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY GLOBAL TS1 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
-                                self.send_bcsq(_dst_id,_stream_id)
-                                self._laststrid.append(_stream_id)
-                            return
-                    if self._config['USE_ACL']:
-                        if not acl_check(_rf_src, self._config['SUB_ACL']):
-                            if _stream_id not in self._laststrid:
-                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY SYSTEM ACL', self._system, int_id(_stream_id), int_id(_rf_src))
-                                self.send_bcsq(_dst_id,_stream_id)
-                                self._laststrid.append(_stream_id)
-                            return
-                        if not acl_check(_dst_id, self._config['TG1_ACL']):
-                            if _stream_id not in self._laststrid:
-                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY SYSTEM ACL', self._system, int_id(_stream_id), int_id(_dst_id))
-                                self.send_bcsq(_dst_id,_stream_id)
-                                self._laststrid.append(_stream_id)
-                            return
-                
-
-                    
-                    #Remove timestamp from data. For now dmrd_received does not expect it
-                    #Leaving it in screws up the AMBE data
-                    #_data = b''.join([_data[:5],_data[12:]])
-                    _data = b''.join([DMRD,_data[4:]])
-                    
-                    _hops = _inthops.to_bytes(1,'big')
-                    # Userland actions -- typically this is the function you subclass for an application
-                    self.dmrd_received(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data,_hash,_hops)
-                    #Silently treat a DMRD packet like a keepalive - this is because it's traffic and the 
-                    #Other end may not have enabled ENAHNCED_OBP
-                    self._config['_bcka'] = time()
-                else:
-                    h,p = _sockaddr
-                    logger.warning('(%s) FreeBridge HMAC failed, packet discarded - OPCODE: %s DATA: %s HMAC LENGTH: %s HMAC: %s SRC IP: %s SRC PORT: %s', self._system, _packet[:4], repr(_packet[:61]), len(_packet[61:]), repr(_packet[61:]),h,p) 
+                logger.error('(%s) Protocol versions 2 and 3 no longer supported',self._system)
 
         if self._config['ENHANCED_OBP']:
             if _packet[:2] == BC:    # Bridge Control packet (Extended OBP)
@@ -701,7 +609,9 @@ class OPENBRIDGE(DatagramProtocol):
                     if compare_digest(_hash, _ckhs):
                         logger.trace('(%s) *ProtoControl*  BCVE Version received, Ver: %s',self._system,_ver)
                         
-                        if _ver > self._config['VER']:
+                        if _ver == 2 or _ver == 3 or _ver > 5:
+                            logger.info('(%s) *ProtoControl*  BCVE Version not supported, Ver: %s',self._system,_ver)
+                        elif _ver > self._config['VER']:
                             logger.info('(%s) *ProtoControl*  BCVE Version upgrade, Ver: %s',self._system,_ver)
                             self._config['VER'] = _ver
                         elif _ver == self._config['VER']:
@@ -892,6 +802,10 @@ class HBSYSTEM(DatagramProtocol):
         _bltime = str(_bltime)
         _prpacket = b''.join([PRBL,peer_id,_bltime.encode('UTF-8')])
         self.transport.write(_prpacket,sockaddr)
+
+    def proxy_BadPeer(self):
+        for _pi in self._peers:
+            self.proxy_IPBlackList(_pi,self._peers[_pi]['SOCKADDR'])
         
     def validate_id(self,_peer_id):
         
@@ -925,7 +839,6 @@ class HBSYSTEM(DatagramProtocol):
 
         # Extract the command, which is various length, all but one 4 significant characters -- RPTCL
         _command = _data[:4]
-
         if _command == DMRD:    # DMRData -- encapsulated DMR data frame
             _peer_id = _data[11:15]
             if _peer_id in self._peers \
@@ -1379,37 +1292,6 @@ class reportFactory(Factory):
         logger.debug('(REPORT) Send config')
         self.send_clients(b''.join([REPORT_OPCODES['CONFIG_SND'], serialized]))
 
-#Use this try_download instead of that from dmr_utils3
-def try_download(_path, _file, _url, _stale,):
-    no_verify = ssl._create_unverified_context()
-    now = time()
-    file_exists = isfile(''.join([_path,_file])) == True
-    if file_exists:
-        file_old = (getmtime(''.join([_path,_file])) + _stale) < now
-    if not file_exists or (file_exists and file_old):
-        try:
-            with urlopen(_url, context=no_verify) as response:
-                data = response.read()
-                #outfile.write(data)
-                response.close()
-            result = 'ID ALIAS MAPPER: \'{}\' successfully downloaded'.format(_file)
-        except IOError:
-            result = 'ID ALIAS MAPPER: \'{}\' could not be downloaded due to an IOError'.format(_file)
-        else:
-            if data and (data != b'{}'):
-                try:
-                    with open(''.join([_path,_file]), 'wb') as outfile:
-                        outfile.write(data)
-                        outfile.close()
-                except IOError:
-                    result = 'ID ALIAS mapper \'{}\' file could not be written due to an IOError'.format(_file)
-            else:
-                result = 'ID ALIAS mapper \'{}\' file not written because downloaded data is empty for some reason'.format(_file)
-                
-    else:
-        result = 'ID ALIAS MAPPER: \'{}\' is current, not downloaded'.format(_file)
-    
-    return result
 
 #Read list of listed servers from CSV (actually TSV) file 
 def mk_server_dict(path,filename):
@@ -1420,9 +1302,9 @@ def mk_server_dict(path,filename):
             for _row in reader:
                 server_ids[_row['OPB Net ID']] = _row['Country']
         return(server_ids)
-    except IOError as err:
-        logger.warning('ID ALIAS MAPPER: %s could not be read due to IOError: %s',filename,err)
-        return(False)
+    except Exception as err:
+        logger.warning('ID ALIAS MAPPER: %s could not be read: %s',filename,err)
+        raise(err)
 
 
 # ID ALIAS CREATION
@@ -1433,7 +1315,21 @@ def mk_aliases(_config):
     local_subscriber_ids = {}
     talkgroup_ids = {}
     server_ids = {}
+    checksums = {}
     if _config['ALIASES']['TRY_DOWNLOAD'] == True:
+
+        #Try updating checksum file
+        if _config['ALIASES']['CHECKSUM_FILE'] and _config['ALIASES']['CHECKSUM_URL']:
+            result = try_download(_config['ALIASES']['PATH'], _config['ALIASES']['CHECKSUM_FILE'], _config['ALIASES']['CHECKSUM_URL'], _config['ALIASES']['STALE_TIME'])
+            logger.info('(ALIAS) %s', result)
+
+            try:
+                checksums = load_json(''.join([_config['ALIASES']['PATH'], _config['ALIASES']['CHECKSUM_FILE']]))
+            except Exception as e:
+                logger.error('(ALIAS) ID ALIAS MAPPER: Cannot load checksums: %s',e)
+        else:
+            logger.warning('(ALIAS) ID ALIAS MAPPER: CHECKSUM_FILE or CHECKSUM_URL is empty. Not downloading checksums!')
+
         # Try updating peer aliases file
         result = try_download(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'], _config['ALIASES']['PEER_URL'], _config['ALIASES']['STALE_TIME'])
         logger.info('(ALIAS) %s', result)
@@ -1446,50 +1342,141 @@ def mk_aliases(_config):
         #Try updating server ids file
         result = try_download(_config['ALIASES']['PATH'], _config['ALIASES']['SERVER_ID_FILE'], _config['ALIASES']['SERVER_ID_URL'], _config['ALIASES']['STALE_TIME'])
         logger.info('(ALIAS) %s', result)
+
         
     # Make Dictionaries
+    #Peer IDs
     try:
-        peer_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'])
+        if exists(_config['ALIASES']['PATH'] + _config['ALIASES']['PEER_FILE'] + '.bak') and (getsize(_config['ALIASES']['PATH'] + _config['ALIASES']['PEER_FILE'] + '.bak') > getsize(_config['ALIASES']['PATH'] + _config['ALIASES']['PEER_FILE'])):
+            raise Exception('backup peer_ids file is larger than new file')
+        try:
+            if blake2bsum(''.join([_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE']])) != checksums['peer_ids']:
+                raise(Exception('bad checksum'))
+        except Exception as e:
+            logger.error('(ALIAS) ID ALIAS MAPPER: problem with blake2bsum of peer_ids file. not updating.: %s',e)
+        else:
+            peer_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'])
     except Exception as e:
         logger.error('(ALIAS) ID ALIAS MAPPER: problem with data in peer_ids dictionary, not updating: %s',e)
+        try:
+            peer_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'] + '.bak')
+        except Exception as f:
+            logger.error('(ALIAS) ID ALIAS MAPPER: Tried backup peer_ids file, but couldn\'t load that either: %s',f)
     else:
+
         if peer_ids:
             logger.info('(ALIAS) ID ALIAS MAPPER: peer_ids dictionary is available')
 
+        try:
+            shutil.copy(_config['ALIASES']['PATH'] + _config['ALIASES']['PEER_FILE'],_config['ALIASES']['PATH'] + _config['ALIASES']['PEER_FILE'] + '.bak')
+        except IOError as g:
+                logger.info('(ALIAS) ID ALIAS MAPPER: couldn\'t make backup copy of peer_ids file %s',g)
+
+
+    #Subscriber IDs
     try:
-        subscriber_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['SUBSCRIBER_FILE'])
+        if exists(_config['ALIASES']['PATH'] + _config['ALIASES']['SUBSCRIBER_FILE'] + '.bak') and (getsize(_config['ALIASES']['PATH'] + _config['ALIASES']['SUBSCRIBER_FILE'] + '.bak') > getsize(_config['ALIASES']['PATH'] + _config['ALIASES']['SUBSCRIBER_FILE'])):
+            raise Exception('backup subscriber_ids file is larger than new file')
+        try:
+            if blake2bsum(''.join([_config['ALIASES']['PATH'], _config['ALIASES']['SUBSCRIBER_FILE']])) != checksums['subscriber_ids']:
+                raise(Exception('bad checksum'))
+        except Exception as e:
+            logger.error('(ALIAS) ID ALIAS MAPPER: problem with blake2bsum of subscriber_ids file. not updating.: %s',e)
+        else:
+            subscriber_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['SUBSCRIBER_FILE'])
     except Exception as e:
-        logger.info('(ALIAS) ID ALIAS MAPPER: problem with data in subscriber_ids dictionary, not updating: %s',e)
+        logger.error('(ALIAS) ID ALIAS MAPPER: problem with data in subscriber_ids dictionary, not updating: %s',e)
+        try:
+            subscriber_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['SUBSCRIBER_FILE'] + '.bak')
+        except Exception as f:
+            logger.error('(ALIAS) ID ALIAS MAPPER: Tried backup subscriber_ids file, but couldn\'t load that either: %s',f)
     else:
+
+        if subscriber_ids:
+            logger.info('(ALIAS) ID ALIAS MAPPER: subscriber_ids dictionary is available')
+
         #Add special IDs to DB
         subscriber_ids[900999] = 'D-APRS'
         subscriber_ids[4294967295] = 'SC'
 
-        if subscriber_ids:
-            logger.info('(ALIAS) ID ALIAS MAPPER: subscriber_ids dictionary is available')
+        try:
+            shutil.copy(_config['ALIASES']['PATH'] + _config['ALIASES']['SUBSCRIBER_FILE'],_config['ALIASES']['PATH'] + _config['ALIASES']['SUBSCRIBER_FILE'] + '.bak')
+        except IOError as g:
+                logger.info('(ALIAS) ID ALIAS MAPPER: couldn\'t make backup copy of subscriber_ids file %s',g)
+
+    #Talkgroup IDs
     try:
-        talkgroup_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['TGID_FILE'])
+        if exists(_config['ALIASES']['PATH'] + _config['ALIASES']['TGID_FILE'] + '.bak') and (getsize(_config['ALIASES']['PATH'] + _config['ALIASES']['TGID_FILE'] + '.bak') > getsize(_config['ALIASES']['PATH'] + _config['ALIASES']['TGID_FILE'])):
+            raise Exception('backup talkgroup_ids file is larger than new file')
+        try:
+            if blake2bsum(''.join([_config['ALIASES']['PATH'], _config['ALIASES']['TGID_FILE']])) != checksums['talkgroup_ids']:
+                raise(Exception('bad checksum'))
+        except Exception as e:
+            logger.error('(ALIAS) ID ALIAS MAPPER: problem with blake2bsum of talkgroup_ids file. not updating.: %s',e)
+        else:
+            talkgroup_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['TGID_FILE'])
     except Exception as e:
-        logger.info('(ALIAS) ID ALIAS MAPPER: problem with data in talkgroup_ids dictionary, not updating: %s',e)
+        logger.error('(ALIAS) ID ALIAS MAPPER: problem with data in talkgroup_ids dictionary, not updating: %s',e)
+        try:
+            talkgroup_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['TGID_FILE'] + '.bak')
+        except Exception as f:
+            logger.error('(ALIAS) ID ALIAS MAPPER: Tried backup talkgroup_ids file, but couldn\'t load that either: %s',f)
     else:
+
         if talkgroup_ids:
             logger.info('(ALIAS) ID ALIAS MAPPER: talkgroup_ids dictionary is available')
-    try:   
-        local_subscriber_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['LOCAL_SUBSCRIBER_FILE'])
-    except Exception as e:
-        logger.info('(ALIAS) ID ALIAS MAPPER: problem with data in local_subscriber_ids dictionary, not updating: %s',e)
+
+        try:
+            shutil.copy(_config['ALIASES']['PATH'] + _config['ALIASES']['TGID_FILE'],_config['ALIASES']['PATH'] + _config['ALIASES']['TGID_FILE'] + '.bak')
+        except IOError as g:
+                logger.info('(ALIAS) ID ALIAS MAPPER: couldn\'t make backup copy of talkgroup_ids file %s',g)
+
+    #Local subscriber override
+    if exists(_config['ALIASES']['PATH'] + _config['ALIASES']['LOCAL_SUBSCRIBER_FILE']):
+        try:
+            local_subscriber_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['LOCAL_SUBSCRIBER_FILE'])
+        except Exception as e:
+            logger.error('(ALIAS) ID ALIAS MAPPER: problem with data in local_subscriber_ids dictionary, not updating: %s',e)
+            try:
+                local_subscriber_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'] + '.bak')
+            except Exception as f:
+                logger.error('(ALIAS) ID ALIAS MAPPER: Tried backup local_subscriber_ids file, but couldn\'t load that either: %s',f)
+        else:
+            if local_subscriber_ids:
+                logger.info('(ALIAS) ID ALIAS MAPPER: local_subscriber_ids dictionary is available')
+                try:
+                    shutil.copy(_config['ALIASES']['PATH'] + _config['ALIASES']['LOCAL_SUBSCRIBER_FILE'],_config['ALIASES']['PATH'] + _config['ALIASES']['LOCAL_SUBSCRIBER_FILE'] + '.bak')
+                except IOError as g:
+                    logger.info('(ALIAS) ID ALIAS MAPPER: couldn\'t make backup copy of local_subscriber_ids file %s',g)
     else:
-        if subscriber_ids:
-            logger.info('(ALIAS) ID ALIAS MAPPER: local_subscriber_ids dictionary is available')
-    try:        
-        server_ids = mk_server_dict(_config['ALIASES']['PATH'], _config['ALIASES']['SERVER_ID_FILE'])
+        logger.info('(ALIAS) ID ALIAS MAPPER: local subscriber file does not exist and is optional, skipping. ')
+
+    #Server IDs
+    try:
+        try:
+            if blake2bsum(''.join([_config['ALIASES']['PATH'], _config['ALIASES']['SERVER_ID_FILE']])) != checksums['server_ids']:
+                raise(Exception('bad checksum'))
+        except Exception as e:
+            logger.error('(ALIAS) ID ALIAS MAPPER: problem with blake2bsum of server_ids file: %s',e)
+            raise(e)
+        else:
+            server_ids = mk_server_dict(_config['ALIASES']['PATH'], _config['ALIASES']['SERVER_ID_FILE'])
     except Exception as e:
-        logger.info('(ALIAS) ID ALIAS MAPPER: problem with data in server_ids dictionary, not updating: %s',e)
-    if server_ids:
-        logger.info('(ALIAS) ID ALIAS MAPPER: server_ids dictionary is available')
+        logger.error('(ALIAS) ID ALIAS MAPPER: problem with data in server_ids dictionary, not updating: %s',e)
+        try:
+            server_ids = mk_server_dict(_config['ALIASES']['PATH'], _config['ALIASES']['SERVER_ID_FILE'] + '.bak')
+        except Exception as f:
+            logger.error('(ALIAS) ID ALIAS MAPPER: Tried backup server_ids file, but couldn\'t load that either: %s',f)
+    else:
+        if server_ids:
+            logger.info('(ALIAS) ID ALIAS MAPPER: server_ids dictionary is available')
+            try:
+                shutil.copy(_config['ALIASES']['PATH'] + _config['ALIASES']['SERVER_ID_FILE'],_config['ALIASES']['PATH'] + _config['ALIASES']['SERVER_ID_FILE'] + '.bak')
+            except IOError as g:
+                logger.info('(ALIAS) ID ALIAS MAPPER: couldn\'t make backup copy of server_ids file %s',g)
         
         
-    return peer_ids, subscriber_ids, talkgroup_ids, local_subscriber_ids, server_ids
+    return peer_ids, subscriber_ids, talkgroup_ids, local_subscriber_ids, server_ids, checksums
 
 
 #************************************************
