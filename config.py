@@ -178,16 +178,14 @@ def build_config(_config_file):
                     'PEER_FILE': config.get(section, 'PEER_FILE', fallback='peer_ids.json'),
                     'SUBSCRIBER_FILE': config.get(section, 'SUBSCRIBER_FILE', fallback='subscriber_ids.json'),
                     'TGID_FILE': config.get(section, 'TGID_FILE', fallback='talkgroup_ids.json'),
-                    'PEER_URL': config.get(section, 'PEER_URL', fallback='https://freedmr-lh.gb7fr.org.uk/json/peer_ids.json'),
-                    'SUBSCRIBER_URL': config.get(section, 'SUBSCRIBER_URL', fallback='https://freedmr-lh.gb7fr.org.uk/json/subscriber_ids.json'),
-                    'TGID_URL': config.get(section, 'TGID_URL', fallback='https://freedmr-lh.gb7fr.org.uk/json/talkgroup_ids.json'),
+                    'PEER_URL': config.get(section, 'PEER_URL', fallback='https://radioid.net/static/rptrs.json'),
+                    'SUBSCRIBER_URL': config.get(section, 'SUBSCRIBER_URL', fallback='https://radioid.net/static/user.csv'),
+                    'TGID_URL': config.get(section, 'TGID_URL', fallback='https://freestar.network/downloads/talkgroup_ids.json'),
                     'STALE_TIME': config.getint(section, 'STALE_DAYS', fallback=1) * 86400,
                     'SUB_MAP_FILE': config.get(section, 'SUB_MAP_FILE', fallback='sub_map.pkl'),
                     'LOCAL_SUBSCRIBER_FILE': config.get(section, 'LOCAL_SUBSCRIBER_FILE', fallback='local_subscribers.json'),
-                    'SERVER_ID_URL': config.get(section, 'SERVER_ID_URL', fallback='https://freedmr-lh.gb7fr.org.uk/json/server_ids.tsv'),
-                    'SERVER_ID_FILE': config.get(section, 'SERVER_ID_FILE', fallback='server_ids.tsv'),
-                    'CHECKSUM_URL': config.get(section, 'CHECKSUM_URL', fallback='https://freedmr-lh.gb7fr.org.uk/file_checksums.json'),
-                    'CHECKSUM_FILE': config.get(section, 'CHECKSUM_FILE', fallback='file_checksums.json')
+                    'SERVER_ID_URL': config.get(section, 'SERVER_ID_URL', fallback='https://freestar.network/downloads/SystemX_Hosts.csv'),
+                    'SERVER_ID_FILE': config.get(section, 'SERVER_ID_FILE', fallback='server_ids.tsv')
 
                     
                 })
@@ -317,15 +315,15 @@ def build_config(_config_file):
                         'SUB_ACL': config.get(section, 'SUB_ACL', fallback=''),
                         'TG1_ACL': config.get(section, 'TGID_TS1_ACL', fallback=''),
                         'TG2_ACL': config.get(section, 'TGID_TS2_ACL', fallback=''),
-                        'DEFAULT_UA_TIMER': config.getint(section, 'DEFAULT_UA_TIMER', fallback=10),
+                        'DEFAULT_UA_TIMER': config.getint(section, 'DEFAULT_UA_TIMER', fallback=15),
                         'SINGLE_MODE': config.getboolean(section, 'SINGLE_MODE', fallback=True),
-                        'VOICE_IDENT': config.getboolean(section, 'VOICE_IDENT', fallback=True),
+                        'VOICE_IDENT': config.getboolean(section, 'VOICE_IDENT', fallback=False),
                         'TS1_STATIC': config.get(section,'TS1_STATIC', fallback=''),
                         'TS2_STATIC': config.get(section,'TS2_STATIC', fallback=''),
                         'DEFAULT_REFLECTOR': config.getint(section, 'DEFAULT_REFLECTOR'),
                         'GENERATOR': config.getint(section, 'GENERATOR', fallback=100),
                         'ANNOUNCEMENT_LANGUAGE': config.get(section, 'ANNOUNCEMENT_LANGUAGE', fallback='en_GB'),
-                        'ALLOW_UNREG_ID': config.getboolean(section,'ALLOW_UNREG_ID', fallback=False),
+                        'ALLOW_UNREG_ID': config.getboolean(section,'ALLOW_UNREG_ID', fallback=True),
                         'PROXY_CONTROL' : config.getboolean(section,'PROXY_CONTROL', fallback=True),
                         'OVERRIDE_IDENT_TG': config.get(section, 'OVERRIDE_IDENT_TG', fallback=False)
                     }})
@@ -405,13 +403,13 @@ if __name__ == '__main__':
 
     # CLI argument parser - handles picking up the config file from the command line, and sending a "help" message
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', action='store', dest='CONFIG_FILE', help='/full/path/to/config.file (usually freedmr.cfg)')
+    parser.add_argument('-c', '--config', action='store', dest='CONFIG_FILE', help='/full/path/to/config.file (usually rysen.cfg)')
     cli_args = parser.parse_args()
 
 
     # Ensure we have a path for the config file, if one wasn't specified, then use the execution directory
     if not cli_args.CONFIG_FILE:
-        cli_args.CONFIG_FILE = os.path.dirname(os.path.abspath(__file__))+'/freedmr.cfg'
+        cli_args.CONFIG_FILE = os.path.dirname(os.path.abspath(__file__))+'/rysen.cfg'
     
     CONFIG = build_config(cli_args.CONFIG_FILE)
     pprint(CONFIG)
