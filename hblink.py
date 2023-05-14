@@ -1341,7 +1341,7 @@ def mk_aliases(_config):
             peer_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'] + '.bak')
         except Exception as f:
             logger.error('(ALIAS) ID ALIAS MAPPER: Tried backup peer_ids file, but couldn\'t load that either: %s',f)
-    else:
+    #else:
 
         if peer_ids:
             logger.info('(ALIAS) ID ALIAS MAPPER: peer_ids dictionary is available')
