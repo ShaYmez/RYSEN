@@ -2804,6 +2804,13 @@ if __name__ == '__main__':
     ka = ka_task.start(60)
     ka.addErrback(loopingErrHandle)
     
+    #Debug bridges
+    if CONFIG['GLOBAL']['DEBUG_BRIDGES']:
+        debug_bridges_task = task.LoopingCall(bridgeDebug)
+        debug_bridges = debug_bridges_task.start(66)
+        debug_bridges.addErrback(loopingErrHandle)
+
+    
     #Subscriber map trimmer
     sub_trimmer_task = task.LoopingCall(SubMapTrimmer)
     sub_trimmer = sub_trimmer_task.start(3600)#3600
