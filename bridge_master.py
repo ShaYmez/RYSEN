@@ -263,7 +263,7 @@ def reset_static_tg(tg,ts,_tmout,system):
             
         BRIDGES[str(tg)] = bridgetemp
     except KeyError:
-        logger.exception('(ERROR) KeyError in reset_static_tg() - bridge gone away?')
+        logger.exception('(%s) KeyError in reset_static_tg() - bridge gone away? TG: %s',system,tg)
         return
         
 def reset_default_reflector(reflector,_tmout,system):
