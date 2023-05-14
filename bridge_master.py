@@ -388,6 +388,53 @@ def statTrimmer():
     if CONFIG['REPORTS']['REPORT']:
         report_server.send_clients(b'bridge updated')
 
+#Debug and fix bridge table issues.
+def bridgeDebug():
+    logger.info('(BRIDGEDEBUG) Running bridge debug')
+    statroll = 0
+    for system in CONFIG['SYSTEMS']:
+        bridgeroll = 0
+        dialroll = 0
+        activeroll = 0
+        for _bridge in BRIDGES:
+            for enabled_system in BRIDGES[_bridge]:
+                if enabled_system['SYSTEM'] == system:
+                    bridgeroll += 1
+                    if enabled_system['ACTIVE']:
+                        if _bridge and _bridge[0:1] == '#':
+                            dialroll += 1
+                            activeroll += 1
+                        else:
+                            activeroll += 1
+
+                    if enabled_system['TO_TYPE'] == 'STAT':
+                        statroll += 1
+        if bridgeroll:
+            logger.debug('(BRIDGEDEBUG) system %s has %s bridges of which %s are in an ACTIVE state', system, bridgeroll, activeroll)
+
+        if dialroll > 1 and CONFIG['SYSTEMS'][system]['MODE'] == 'MASTER':
+            logger.warning('(BRIDGEDEBUG) system %s has more than one active dial bridge (%s) - fixing',system, dialroll)
+            times = {}
+            for _bridge in BRIDGES:
+                for enabled_system in BRIDGES[_bridge]:
+                    if enabled_system['ACTIVE'] and _bridge and _bridge[0:1] == '#':
+                        times[enabled_system['TIMER']] = _bridge
+            ordered = sorted(times.keys())
+            _setbridge = times[ordered.pop()]
+            if CONFIG['SYSTEMS'][system]['MODE'] == 'MASTER':
+                logger.warning('(BRIDGEDEBUG) setting %s dial bridge to %s as this bridge has the longest timer set to run',system, _setbridge)
+
+            for _tstamp in ordered:
+                for _bridge in times.values():
+                    for _entry in BRIDGES[_bridge]:
+
+                        if CONFIG['SYSTEMS'][system]['MODE'] == 'MASTER':
+                            if _entry['SYSTEM'] == system:
+                                _entry['ACTIVE'] = False
+
+    logger.info('(BRIDGEDEBUG) The server currently has %s STATic bridges',statroll)
+
+
 def kaReporting():
     logger.debug('(ROUTER) KeepAlive reporting loop started')
     for system in systems:
