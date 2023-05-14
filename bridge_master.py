@@ -406,7 +406,6 @@ def bridgeDebug():
                             activeroll += 1
                         else:
                             activeroll += 1
-
                     if enabled_system['TO_TYPE'] == 'STAT':
                         statroll += 1
         if bridgeroll:
@@ -695,12 +694,12 @@ def threadAlias():
     logger.debug('(ALIAS) starting alias thread')
     reactor.callInThread(aliasb)
 
-def setAlias(_peer_ids,_subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids):
-    peer_ids, subscriber_ids, talkgroup_ids,local_subscriber_ids,server_ids = _peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids,_server_ids
+def setAlias(_peer_ids,_subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids, _checksums):
+    peer_ids, subscriber_ids, talkgroup_ids,local_subscriber_ids,server_ids,checksums = _peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids,_server_ids,_checksums
     
 def aliasb():
-    _peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids = mk_aliases(CONFIG)
-    reactor.callFromThread(setAlias,_peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids)
+    _peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids, _checksums = mk_aliases(CONFIG)
+    reactor.callFromThread(setAlias,_peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids, _checksums)
 
 def ident():
     for system in systems:
@@ -755,7 +754,7 @@ def ident():
                 _say.append(words[_lang]['silence'])
                 _say.append(words[_lang]['silence'])
                 
-                # _say.append(words[_lang]['freedmr'])
+                _say.append(words[_lang]['freedmr'])
                 
                 #test 
                 #_say.append(AMBEobj.readSingleFile('alpha.ambe'))
@@ -929,6 +928,12 @@ def options_config():
                     if isinstance(_options['DEFAULT_UA_TIMER'], str) and not _options['DEFAULT_UA_TIMER'].isdigit():
                         logger.debug('(OPTIONS) %s - DEFAULT_REFLECTOR is not an integer, ignoring',_system)
                         continue
+
+                    #if the UA timer is set to 0 - actually set it to (close to) maximum size of a 32
+                    #bit signed int - which works out at around 68 years!
+                    #For all practical purposes, this implements an unlimited timer - aka sticky static.
+                    if int(_options['DEFAULT_UA_TIMER']) == 0:
+                        _options['DEFAULT_UA_TIMER'] = 35791394
                         
                     _tmout = int(_options['DEFAULT_UA_TIMER'])
                     
@@ -1528,6 +1533,7 @@ class routerOBP(OPENBRIDGE):
                 #Rate drop
                 if self.STATUS[_stream_id]['packets'] > 18 and (self.STATUS[_stream_id]['packets'] / self.STATUS[_stream_id]['START'] > 25):
                     logger.warning("(%s) *PacketControl* RATE DROP! Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
+                    self.proxy_BadPeer()
                     return
                 
                 #Duplicate handling#
@@ -2583,7 +2589,7 @@ if __name__ == '__main__':
     if cli_args.LOG_LEVEL:
         CONFIG['LOGGER']['LOG_LEVEL'] = cli_args.LOG_LEVEL
     logger = log.config_logging(CONFIG['LOGGER'])
-    logger.info('\n\nCopyright (c) 2020, 2021, 2022 Simon G7RZU simon@gb7fr.org.uk')
+    logger.info('\n\nCopyright (c) 2020, 2021, 2022, 2023 Simon G7RZU simon@gb7fr.org.uk')
     logger.info('Copyright (c) 2013, 2014, 2015, 2016, 2018, 2019\n\tThe Regents of the K0USY Group. All rights reserved.\n')
     logger.debug('(GLOBAL) Logging system started, anything from here on gets logged')
 
@@ -2608,7 +2614,7 @@ if __name__ == '__main__':
         signal.signal(sig, sig_handler)
 
     # Create the name-number mapping dictionaries
-    peer_ids, subscriber_ids, talkgroup_ids, local_subscriber_ids, server_ids = mk_aliases(CONFIG)
+    peer_ids, subscriber_ids, talkgroup_ids, local_subscriber_ids, server_ids, checksums = mk_aliases(CONFIG)
     
     #Add special IDs to DB
     subscriber_ids[900999] = 'D-APRS'
@@ -2618,7 +2624,8 @@ if __name__ == '__main__':
     CONFIG['_PEER_IDS'] = peer_ids
     CONFIG['_LOCAL_SUBSCRIBER_IDS'] = local_subscriber_ids
     CONFIG['_SERVER_IDS'] = server_ids
-    
+    CONFIG['CHECKSUMS'] = checksums
+
     
     
     # Import the ruiles file as a module, and create BRIDGES from it
@@ -2744,7 +2751,7 @@ if __name__ == '__main__':
                 words[lang][_mapword] = words[lang][_map[_mapword]]
 
     # HBlink instance creation
-    logger.info('(GLOBAL) RYSEN \'bridge_master.py\' -- SYSTEM STARTING...')
+    logger.info('(GLOBAL) FreeDMR \'bridge_master.py\' -- SYSTEM STARTING...')
 
     
     listeningPorts = {}
@@ -2803,7 +2810,7 @@ if __name__ == '__main__':
     ka_task = task.LoopingCall(kaReporting)
     ka = ka_task.start(60)
     ka.addErrback(loopingErrHandle)
-    
+
     #Debug bridges
     if CONFIG['GLOBAL']['DEBUG_BRIDGES']:
         debug_bridges_task = task.LoopingCall(bridgeDebug)
