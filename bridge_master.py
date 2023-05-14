@@ -754,7 +754,7 @@ def ident():
                 _say.append(words[_lang]['silence'])
                 _say.append(words[_lang]['silence'])
                 
-                _say.append(words[_lang]['freedmr'])
+                #_say.append(words[_lang]['freedmr'])
                 
                 #test 
                 #_say.append(AMBEobj.readSingleFile('alpha.ambe'))
@@ -2614,7 +2614,7 @@ if __name__ == '__main__':
         signal.signal(sig, sig_handler)
 
     # Create the name-number mapping dictionaries
-    peer_ids, subscriber_ids, talkgroup_ids, local_subscriber_ids, server_ids, checksums = mk_aliases(CONFIG)
+    peer_ids, subscriber_ids, talkgroup_ids, local_subscriber_ids, server_ids = mk_aliases(CONFIG)
     
     #Add special IDs to DB
     subscriber_ids[900999] = 'D-APRS'
@@ -2624,7 +2624,6 @@ if __name__ == '__main__':
     CONFIG['_PEER_IDS'] = peer_ids
     CONFIG['_LOCAL_SUBSCRIBER_IDS'] = local_subscriber_ids
     CONFIG['_SERVER_IDS'] = server_ids
-    CONFIG['CHECKSUMS'] = checksums
 
     
     
@@ -2751,7 +2750,7 @@ if __name__ == '__main__':
                 words[lang][_mapword] = words[lang][_map[_mapword]]
 
     # HBlink instance creation
-    logger.info('(GLOBAL) FreeDMR \'bridge_master.py\' -- SYSTEM STARTING...')
+    logger.info('(GLOBAL) RYSEN \'bridge_master.py\' -- SYSTEM STARTING...')
 
     
     listeningPorts = {}
