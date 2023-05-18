@@ -34,7 +34,7 @@ services:
             - '62031:62031/udp'
             #Change the below to include ports used for your OBP(s)
             - '62034-62050:62034-62050/udp'
-              #HBMon Port (Report)
+              #RYMon Port (Report)
             - '4321:4321/tcp'
               #APRS Master
             - '52555:52555/udp'          
@@ -59,12 +59,13 @@ services:
     D-APRS:
         container_name: D-APRS
         environment:
-          - APRS_CALL=YOURCALL
+          - APRS_CALL=M0ABC-12
+          - APRS_SSID=9
           - APRS_PASSCODE=12345
-        volumes:
-          - '/etc/rysen/aprs/gps_data.cfg:/opt/gps_data.cfg'
-          - '/etc/rysen/aprs/usersettings.txt:/usersettings/usersettings.txt'
-        image: 'gitlab.hacknix.net:5050/hacknix/docker-freedmr-kf7eel-gps_data:development-latest'
+          - DATA_DMR_ID=9059
+          - MASTER_IP=myip.com
+          - MASTER_PASS=daprs1234
+        image: 'shaymez/rysen-d-aprs:latest'
         #Container will persist over reboots
         restart: "unless-stopped"
         networks:
@@ -77,4 +78,4 @@ networks:
       driver: default
       config:
         - subnet: 172.16.238.0/24
-          gateway: 172.16.238.1        
+          gateway: 172.16.238.1     
