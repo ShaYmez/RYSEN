@@ -6,4 +6,4 @@ configparser>=3.0.0
 resettabletimer>=0.7.0
 setproctitle
 service-identity>=21.1.0
-mysqlclient>=2.1.1
+mysql-connector-python
