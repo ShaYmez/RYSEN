@@ -4,7 +4,7 @@ COPY entrypoint /entrypoint
 
 ENTRYPOINT [ "/entrypoint" ]
 
-RUN adduser -D -u 54000 radio && \
+RUN useradd -D -u 54000 radio && \
         apt update && \
         apt upgrade && \
         apt install git gcc g++ python3-dev libffi-dev openssl-dev musl-dev && \
