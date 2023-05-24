@@ -6,7 +6,8 @@ ENTRYPOINT [ "/entrypoint" ]
 
 RUN adduser -D -u 54000 radio && \
         apk update && \
-        apk add git gcc musl-dev && \
+        apk add git gcc musl-dev  && \
+        pip install --upgrade pip && \
         cd /opt && \
         git clone https://github.com/ShaYmez/RYSEN.git rysen && \
         cd /opt/rysen && \
