@@ -1,4 +1,4 @@
-setup-tools>=67.8.0
+setup-tools
 wheel
 bitstring>=3.1.5
 bitarray>=0.8.1
