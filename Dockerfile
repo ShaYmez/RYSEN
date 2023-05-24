@@ -9,8 +9,7 @@ RUN adduser -D -u 54000 radio && \
         apk upgrade && \
         apk add git gcc g++ python3-dev libffi-dev openssl-dev musl-dev && \
         pip install --upgrade pip && \
-        pip install setuptools && \
-        pip install msqlclient && \
+        pip install MySQL-python && \
         pip install service-identity && \
         cd /opt && \
         git clone https://github.com/ShaYmez/RYSEN.git rysen && \
