@@ -8,6 +8,7 @@ RUN adduser -D -u 54000 radio && \
         apk update && \
         apk upgrade && \
         apk add git gcc musl-dev py3-pip && \
+        pip install --upgrade pip && \
         cd /opt && \
         git clone https://github.com/ShaYmez/RYSEN.git rysen && \
         cd /opt/rysen && \
