@@ -1,15 +1,14 @@
-FROM python:alpine3.18
+FROM debian:11.5
 
 COPY entrypoint /entrypoint
 
 ENTRYPOINT [ "/entrypoint" ]
 
 RUN adduser -D -u 54000 radio && \
-        apk update && \
-        apk upgrade && \
-        apk add git gcc g++ python3-dev libffi-dev openssl-dev musl-dev && \
+        apt update && \
+        apt upgrade && \
+        apt install git gcc g++ python3-dev libffi-dev openssl-dev musl-dev && \
         pip install --upgrade pip && \
-        pip install --upgrade setuptools && \
         pip install MySQL-python && \
         pip install service-identity && \
         cd /opt && \
