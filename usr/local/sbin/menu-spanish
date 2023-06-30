@@ -19,39 +19,39 @@
 
 # Main MENU system.....
 while : ; do
-menuopt=$(whiptail --title "RYSEN Master+ | SYSTEM-X Control" --menu "Select option by using the up and down arrows on your keyboard. Once selected by press enter:" 23 56 13 \
-1 " Restart Master " \
-2 " Stop Master " \
-3 " Start Master " \
-4 " Hard Flush Master " \
-5 " Soft Flush Master " \
-6 " Edit Configuration " \
-7 " Edit rules.py " \
-8 " Edit Dashboard Config " \
-9 " Update Master Server Software " \
-10 " Full Upgrade RYSEN Master+ " \
-11 " Operating System update " \
-12 " Reboot Entire Server " 3>&1 1>&2 2>&3)
+menuopt=$(whiptail --title "RYSEN Master+ | SYSTEM-X Control" --menu "Seleccione la opción usando las flechas hacia arriba y hacia abajo en su teclado. Una vez seleccionado, presione enter:" 23 56 13 \
+1 " Reiniciar maestro (Restart) " \
+2 " detener maestro (Stop) " \
+3 " Maestro de inicio (Start) " \
+4 " Maestro de descarga dura (Hard Flush) " \
+5 " Maestro de descarga suave (Soft Flush) " \
+6 " Editar configuración (Edit cfg) " \
+7 " Editar rules.py " \
+8 " Editar configuración del tablero (Edit Dash) " \
+9 " Actualizar el software del servidor maestro (Update) " \
+10 " Actualización completa RYSEN Master+ (Full Upgrade) " \
+11 " Actualización del sistema operativo (OS Update) " \
+12 " Reiniciar todo el servidor (Reboot) " 3>&1 1>&2 2>&3)
 exitstatus=$?
 # Back-end rysen menu
 #exitstatus=$?
 if [ $exitstatus = 0 ]; then
     echo "You have chosen option:" $menuopt
 else
-    echo "Type 'menu' to start RYSEN Master+ SYSTEX-X Control Menu "; break;
+    echo "Escriba 'menu' para iniciar el menú de control RYSEN Master+ SYSTEM-X "; break;
 fi
 # Action
 case $menuopt in
 1)
-/usr/local/sbin/systemx-restart ;;
+/usr/bin/systemx-restart ;;
 2)
-/usr/local/sbin/systemx-stop ;;
+/usr/bin/systemx-stop ;;
 3)
-/usr/local/sbin/systemx-start ;;
+/usr/bin/systemx-start ;;
 4)
-/usr/local/sbin/systemx-flush ;;
+/usr/bin/systemx-flush ;;
 5)
-/usr/local/sbin/systemx-soft-flush ;;
+/usr/bin/systemx-soft-flush ;;
 6)
 sudo nano /etc/rysen/rysen.cfg ;;
 7)
@@ -59,7 +59,7 @@ sudo nano /etc/rysen/rules.py ;;
 8)
 sudo nano /opt/RYMonv3/rymon.cfg ;;
 9)
-/usr/local/sbin/systemx-update ;;
+/usr/bin/systemx-update ;;
 10)
 echo "No updates" && sleep 2 ;;
 11)

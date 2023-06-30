@@ -54,8 +54,14 @@ rm /etc/rysen/json/peer_ids.json
 rm /etc/rysen/json/server_ids.tsv
 rm /etc/rysen/json/sub_map.pkl
 rm /etc/rysen/json/topography.json
-#Get local subscriber file..
-#curl https://freestar.network/downloads/local_subscriber_ids.json -o /etc/rysen/json/local_subscriber_ids.json
+#Get JSON files..
+curl https://radioid.net/static/rptrs.json -o /etc/rysen/json/peer_ids.json
+sleep 2
+curl https://radioid.net/static/users.json -o /etc/rysen/json/subscriber_ids.json
+sleep 2
+curl https://freestar.network/downloads/talkgroup_ids.json -o /etc/rysen/json/talkgroup_ids.json
+sleep 2
+curl https://freestar.network/downloads/SystemX_Hosts.csv -o /etc/rysen/json/server_ids.tsv
 echo "/opt/RYMonv3/data....."
 rm /opt/RYMonv3/data/talkgroup_ids.json
 rm /opt/RYMonv3/data/subscriber_ids.csv

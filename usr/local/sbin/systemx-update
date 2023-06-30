@@ -42,7 +42,7 @@ docker rmi $(docker images -q -a) --force
 figlet "ShaYmez." 
 sleep 1
 echo Flushing services and restarting.....
-/usr/bin/systemx-flush
+/usr/local/sbin/systemx-flush
 sleep 1        
 echo "Done."        
 echo ""
