@@ -334,7 +334,7 @@ class OPENBRIDGE(DatagramProtocol):
                     #Low-level TG filtering 
                     if _call_type != 'unit':
                         _int_dst_id = int_id(_dst_id)
-                        if _int_dst_id <= 79 or (_int_dst_id >= 9990 and _int_dst_id <= 9999) or (_int_dst_id >= 92 and _int_dst_id <= 199)  or _int_dst_id == 900999:
+                        if _int_dst_id <= 59 or (_int_dst_id >= 9990 and _int_dst_id <= 9999) or (_int_dst_id >= 92 and _int_dst_id <= 199)  or _int_dst_id == 900999:
                             if _stream_id not in self._laststrid:
                                 logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY GLOBAL TG FILTER', self._system, int_id(_stream_id), _int_dst_id)
                                 self.send_bcsq(_dst_id,_stream_id)
@@ -488,7 +488,7 @@ class OPENBRIDGE(DatagramProtocol):
                     #Low-level TG filtering 
                     if _call_type != 'unit':
                         _int_dst_id = int_id(_dst_id)
-                        if _int_dst_id <= 79 or (_int_dst_id >= 9990 and _int_dst_id <= 9999) or _int_dst_id == 900999:
+                        if _int_dst_id <= 59 or (_int_dst_id >= 9990 and _int_dst_id <= 9999) or _int_dst_id == 900999:
                             if _stream_id not in self._laststrid:
                                 logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY GLOBAL TG FILTER', self._system, int_id(_stream_id), _int_dst_id)
                                 self.send_bcsq(_dst_id,_stream_id)
@@ -594,7 +594,7 @@ class OPENBRIDGE(DatagramProtocol):
                     #Low-level TG filtering 
                     if _call_type != 'unit':
                         _int_dst_id = int_id(_dst_id)
-                        if _int_dst_id <= 79 or (_int_dst_id >= 9990 and _int_dst_id <= 9999) or _int_dst_id == 900999:
+                        if _int_dst_id <= 59 or (_int_dst_id >= 9990 and _int_dst_id <= 9999) or _int_dst_id == 900999:
                             if _stream_id not in self._laststrid:
                                 logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY GLOBAL TG FILTER', self._system, int_id(_stream_id), _int_dst_id)
                                 self.send_bcsq(_dst_id,_stream_id)
