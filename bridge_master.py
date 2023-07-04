@@ -205,7 +205,7 @@ def make_single_bridge(_tgid,_sourcesystem,_slot,_tmout):
                 BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time()})
                 BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time()})
                 
-        if _system[0:3] == 'OBP' and (int_id(_tgid) >= 79 and (int_id(_tgid) < 9990 or int_id(_tgid) > 9999)):
+        if _system[0:3] == 'OBP' and (int_id(_tgid) >= 59 and (int_id(_tgid) < 9990 or int_id(_tgid) > 9999)):
             BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': '','TO_TYPE': 'NONE','OFF': [],'ON': [],'RESET': [], 'TIMER': time()})
         
 #Make static bridge - used for on-the-fly relay bridges
@@ -263,7 +263,7 @@ def reset_static_tg(tg,ts,_tmout,system):
             
         BRIDGES[str(tg)] = bridgetemp
     except KeyError:
-        logger.exception('(%s) KeyError in reset_static_tg() - bridge gone away? TG: %s',system,tg)
+        logger.exception('(ERROR) KeyError in reset_static_tg() - bridge gone away?')
         return
         
 def reset_default_reflector(reflector,_tmout,system):
@@ -295,7 +295,7 @@ def make_single_reflector(_tgid,_tmout,_sourcesystem):
                 BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': True,'TIMEOUT':  _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time() + (_tmout * 60)})
             else:
                 BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': False,'TIMEOUT':  CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER'] * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time()})
-        if _system[0:3] == 'OBP' and (int_id(_tgid) >= 79 and (int_id(_tgid) < 9990 or int_id(_tgid) > 9999)):
+        if _system[0:3] == 'OBP' and (int_id(_tgid) >= 59 and (int_id(_tgid) < 9990 or int_id(_tgid) > 9999)):
             BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': '','TO_TYPE': 'NONE','OFF': [],'ON': [],'RESET': [], 'TIMER': time()})
         
 def remove_bridge_system(system):
@@ -387,67 +387,6 @@ def statTrimmer():
         logger.debug('(ROUTER) STAT bridge %s removed',_bridgerem)
     if CONFIG['REPORTS']['REPORT']:
         report_server.send_clients(b'bridge updated')
-
-#Debug and fix bridge table issues.
-def bridgeDebug():
-    logger.debug('(BRIDGEDEBUG) Running bridge debug')
-    _rst_time = time()
-    statroll = 0
-
-    #Kill off any bridges that should nnot exist, ever.
-    for b in ['0','1','2','3','4','5','6','7','8','9']:
-        BRIDGES.pop(b,None)
-        BRIDGES.pop('#'+b, None)
-
-    for system in CONFIG['SYSTEMS']:
-        bridgeroll = 0
-        dialroll = 0
-        activeroll = 0
-        for _bridge in BRIDGES:
-            for enabled_system in BRIDGES[_bridge]:
-                if enabled_system['SYSTEM'] == system:
-                    bridgeroll += 1
-                    if enabled_system['ACTIVE']:
-                        if _bridge and _bridge[0:1] == '#':
-                            dialroll += 1
-                            activeroll += 1
-                        else:
-                            activeroll += 1
-
-                    if enabled_system['TO_TYPE'] == 'STAT':
-                        statroll += 1
-        if bridgeroll:
-            logger.debug('(BRIDGEDEBUG) system %s has %s bridges of which %s are in an ACTIVE state', system, bridgeroll, activeroll)
-
-        if dialroll > 1 and CONFIG['SYSTEMS'][system]['MODE'] == 'MASTER':
-            logger.warning('(BRIDGEDEBUG) system %s has more than one active dial bridge (%s) - fixing',system, dialroll)
-            times = {}
-            for _bridge in BRIDGES:
-                for enabled_system in BRIDGES[_bridge]:
-                    if enabled_system['ACTIVE'] and _bridge and _bridge[0:1] == '#':
-                        times[enabled_system['TIMER']] = _bridge
-            ordered = sorted(times.keys())
-            #bridgetmout = ordered.pop()
-            #_setbridge = str(times[bridgetmout])
-            if CONFIG['SYSTEMS'][system]['MODE'] == 'MASTER':
-                for _bridge in set(times.values()):
-                    logger.warning('(BRIDGEDEBUG) deactivating system: %s for bridge: %s',system,_bridge)
-                    bridgetemp = deque()
-                    for bridgesystem in BRIDGES[_bridge]:
-                        if _bridge[0:1] == '#':
-                            _setbridge = int(_bridge[1:])
-                        else:
-                            _setbridge = int(_bridge)
-
-                        if bridgesystem['SYSTEM'] == system and bridgesystem['TS'] == 2:
-                            bridgetemp.append({'SYSTEM': system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': False,'TIMEOUT':  _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(_setbridge),],'RESET': [], 'TIMER': _rst_time + (_tmout * 60)})
-                        else:
-                            bridgetemp.append(bridgesystem)
-                        BRIDGES[_bridge] = bridgetemp
-
-
-    logger.info('(BRIDGEDEBUG) The server currently has %s STATic bridges',statroll)
-
 
 def kaReporting():
     logger.debug('(ROUTER) KeepAlive reporting loop started')
@@ -709,12 +648,12 @@ def threadAlias():
     logger.debug('(ALIAS) starting alias thread')
     reactor.callInThread(aliasb)
 
-def setAlias(_peer_ids,_subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids, _checksums):
-    peer_ids, subscriber_ids, talkgroup_ids,local_subscriber_ids,server_ids,checksums = _peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids,_server_ids,_checksums
+def setAlias(_peer_ids,_subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids):
+    peer_ids, subscriber_ids, talkgroup_ids,local_subscriber_ids,server_ids = _peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids,_server_ids
     
 def aliasb():
-    _peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids, _checksums = mk_aliases(CONFIG)
-    reactor.callFromThread(setAlias,_peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids, _checksums)
+    _peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids = mk_aliases(CONFIG)
+    reactor.callFromThread(setAlias,_peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids)
 
 def ident():
     for system in systems:
@@ -769,7 +708,7 @@ def ident():
                 _say.append(words[_lang]['silence'])
                 _say.append(words[_lang]['silence'])
                 
-                _say.append(words[_lang]['freedmr'])
+                # _say.append(words[_lang]['freedmr'])
                 
                 #test 
                 #_say.append(AMBEobj.readSingleFile('alpha.ambe'))
@@ -791,21 +730,14 @@ def ident():
                     _pkt_time = time()
                     reactor.callFromThread(sendVoicePacket,systems[system],pkt,_source_id,_dst_id,_slot)
 
-def bridge_reset():
-    logger.debug('(BRIDGERESET) Running bridge resetter')
-    for _system in CONFIG['SYSTEMS']:
-        if '_reset' in  CONFIG['SYSTEMS'][_system] and CONFIG['SYSTEMS'][_system]['_reset']:
-            logger.info('(BRIDGERESET) Bridge reset for %s - no peers',_system)
-            remove_bridge_system(_system)
-            CONFIG['SYSTEMS'][_system]['_reset'] = False
-
-
 def options_config():
     logger.debug('(OPTIONS) Running options parser')
-
-    prohibitedTGs = [0,1,2,3,4,5,9,9990,9991,9992,9993,9994,9995,9996,9997,9998,9999]
-
     for _system in CONFIG['SYSTEMS']:
+        if '_reset' in  CONFIG['SYSTEMS'][_system] and CONFIG['SYSTEMS'][_system]['_reset']:
+            logger.debug('(OPTIONS) Bridge reset for %s - no peers',_system)
+            remove_bridge_system(_system)
+            CONFIG['SYSTEMS'][_system]['_reset'] = False
+            continue
         try:
             if CONFIG['SYSTEMS'][_system]['MODE'] != 'MASTER':
                 continue
@@ -948,14 +880,8 @@ def options_config():
                     
                     
                     if isinstance(_options['DEFAULT_UA_TIMER'], str) and not _options['DEFAULT_UA_TIMER'].isdigit():
-                        logger.debug('(OPTIONS) %s - DEFAULT_UA_TIMER is not an integer, ignoring',_system)
+                        logger.debug('(OPTIONS) %s - DEFAULT_REFLECTOR is not an integer, ignoring',_system)
                         continue
-
-                    #if the UA timer is set to 0 - actually set it to (close to) maximum size of a 32
-                    #bit signed int - which works out at around 68 years!
-                    #For all practical purposes, this implements an unlimited timer - aka sticky static.
-                    if int(_options['DEFAULT_UA_TIMER']) == 0:
-                        _options['DEFAULT_UA_TIMER'] = 35791394
                         
                     _tmout = int(_options['DEFAULT_UA_TIMER'])
                     
@@ -984,9 +910,6 @@ def options_config():
                             logger.debug('(OPTIONS) %s default reflector changed, updating',_system) 
                             reset_default_reflector(CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR'],_tmout,_system)
                             make_default_reflector(int(_options['DEFAULT_REFLECTOR']),_tmout,_system)
-                        elif int(_options['DEFAULT_REFLECTOR']) in prohibitedTGs:
-                            logger.debug('(OPTIONS) %s default reflector is prohibited, ignoring change',_system)
-
                         else:
                             logger.debug('(OPTIONS) %s default reflector disabled, updating',_system) 
                             reset_default_reflector(int(_options['DEFAULT_REFLECTOR']),_tmout,_system)
@@ -1008,8 +931,6 @@ def options_config():
                             for tg in ts1:
                                 if not tg:
                                     continue
-                                elif int(tg) in prohibitedTGs:
-                                    logger.debug('(OPTIONS) %s TS1 TG %s is prohibited, ignoring change',_system,tg)
                                 tg = int(tg)
                                 make_static_tg(tg,1,_tmout,_system)
                     ts2 = []
@@ -1029,10 +950,6 @@ def options_config():
                             for tg in ts2:
                                 if not tg or int(tg) == 0 or int(tg) >= 16777215:
                                     continue
-                                elif int(tg) in prohibitedTGs:
-                                    logger.debug('(OPTIONS) %s TS2 TG %s is prohibited, ignoring change',_system,tg)
-                                    continue
-
                                 tg = int(tg)
                                 make_static_tg(tg,2,_tmout,_system)
                     
@@ -1564,7 +1481,6 @@ class routerOBP(OPENBRIDGE):
                 #Rate drop
                 if self.STATUS[_stream_id]['packets'] > 18 and (self.STATUS[_stream_id]['packets'] / self.STATUS[_stream_id]['START'] > 25):
                     logger.warning("(%s) *PacketControl* RATE DROP! Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
-                    self.proxy_BadPeer()
                     return
                 
                 #Duplicate handling#
@@ -1934,14 +1850,6 @@ class routerHBP(HBSYSTEM):
     
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
-
-        try:
-            if CONFIG['SYSTEMS'][self._system]['_reset'] == True:
-                logger.info('(%s) disallow transmission until reset cycle is complete')
-                return
-        except KeyError:
-            pass
-
         pkt_time = time()
         dmrpkt = _data[20:53]
         
@@ -2206,7 +2114,7 @@ class routerHBP(HBSYSTEM):
                     _say.append(words[_lang]['silence'])
                     self.STATUS[_slot]['_stopTgAnnounce'] = True
                     
-                #Allstar mode switch
+                #AllStar mode switch
                 if CONFIG['ALLSTAR']['ENABLED'] and _int_dst_id == 8:
                     logger.info('(%s) Reflector: voice called - TG 8 AllStar"', self._system)
                     _say.append(words[_lang]['all-star-link-mode'])
@@ -2628,7 +2536,7 @@ if __name__ == '__main__':
     if cli_args.LOG_LEVEL:
         CONFIG['LOGGER']['LOG_LEVEL'] = cli_args.LOG_LEVEL
     logger = log.config_logging(CONFIG['LOGGER'])
-    logger.info('\n\nCopyright (c) 2020, 2021, 2022, 2023 Simon G7RZU simon@gb7fr.org.uk')
+    logger.info('\n\nCopyright (c) 2020, 2021, 2022 Simon G7RZU simon@gb7fr.org.uk')
     logger.info('Copyright (c) 2013, 2014, 2015, 2016, 2018, 2019\n\tThe Regents of the K0USY Group. All rights reserved.\n')
     logger.debug('(GLOBAL) Logging system started, anything from here on gets logged')
 
@@ -2653,7 +2561,7 @@ if __name__ == '__main__':
         signal.signal(sig, sig_handler)
 
     # Create the name-number mapping dictionaries
-    peer_ids, subscriber_ids, talkgroup_ids, local_subscriber_ids, server_ids, checksums = mk_aliases(CONFIG)
+    peer_ids, subscriber_ids, talkgroup_ids, local_subscriber_ids, server_ids = mk_aliases(CONFIG)
     
     #Add special IDs to DB
     subscriber_ids[900999] = 'D-APRS'
@@ -2663,8 +2571,7 @@ if __name__ == '__main__':
     CONFIG['_PEER_IDS'] = peer_ids
     CONFIG['_LOCAL_SUBSCRIBER_IDS'] = local_subscriber_ids
     CONFIG['_SERVER_IDS'] = server_ids
-    CONFIG['CHECKSUMS'] = checksums
-
+    
     
     
     # Import the ruiles file as a module, and create BRIDGES from it
@@ -2732,15 +2639,13 @@ if __name__ == '__main__':
     
     del generator
     del systemdelete
-
-    prohibitedTGs = [0,1,2,3,4,5,9,9990,9991,9992,9993,9994,9995,9996,9997,9998,9999]
     
     # Default reflector
     logger.debug('(ROUTER) Setting default reflectors')
     for system in CONFIG['SYSTEMS']:
         if CONFIG['SYSTEMS'][system]['MODE'] != 'MASTER':
             continue
-        if CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'] not in prohibitedTGs:
+        if CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'] > 0:
             make_default_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'],CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER'],system)
             
     #static TGs 
@@ -2759,14 +2664,10 @@ if __name__ == '__main__':
         for tg in ts1:
                 if not tg:
                     continue
-                if tg in prohibitedTGs:
-                    continue
                 tg = int(tg)
                 make_static_tg(tg,1,_tmout,system)
         for tg in ts2:
                 if not tg:
-                    continue
-                if tg in prohibitedTGs:
                     continue
                 tg = int(tg)
                 make_static_tg(tg,2,_tmout,system)
@@ -2796,7 +2697,7 @@ if __name__ == '__main__':
                 words[lang][_mapword] = words[lang][_map[_mapword]]
 
     # HBlink instance creation
-    logger.info('(GLOBAL) FreeDMR \'bridge_master.py\' -- SYSTEM STARTING...')
+    logger.info('(GLOBAL) RYSEN \'bridge_master.py\' -- SYSTEM STARTING...')
 
     
     listeningPorts = {}
@@ -2844,29 +2745,17 @@ if __name__ == '__main__':
     options_task = task.LoopingCall(options_config)
     options = options_task.start(26)
     options.addErrback(loopingErrHandle)
-
-    #bridge reset
-    bridge_task = task.LoopingCall(bridge_reset)
-    bridge = bridge_task.start(6)
-    bridge.addErrback(loopingErrHandle)
         
-    #STAT trimmer - once every 5 mins (roughly - shifted so all timed tasks don't run at once
+    #STAT trimmer - once every 10 mins (roughly - shifted so all timed tasks don't run at once
     if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:
         stat_trimmer_task = task.LoopingCall(statTrimmer)
-        stat_trimmer = stat_trimmer_task.start(303)#3600
+        stat_trimmer = stat_trimmer_task.start(523)#3600
         stat_trimmer.addErrback(loopingErrHandle)
         
     #KA Reporting
     ka_task = task.LoopingCall(kaReporting)
     ka = ka_task.start(60)
     ka.addErrback(loopingErrHandle)
-
-    #Debug bridges
-    if CONFIG['GLOBAL']['DEBUG_BRIDGES']:
-        debug_bridges_task = task.LoopingCall(bridgeDebug)
-        debug_bridges = debug_bridges_task.start(66)
-        debug_bridges.addErrback(loopingErrHandle)
-
     
     #Subscriber map trimmer
     sub_trimmer_task = task.LoopingCall(SubMapTrimmer)
