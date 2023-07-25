@@ -25,10 +25,11 @@ import ipaddress
 import os
 from setproctitle import setproctitle
 from datetime import datetime
+import Pyro5.api
 
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Simon Adlem - G7RZU'
-__copyright__  = 'Copyright (c) Simon Adlem, G7RZU 2020,2021,2022'
+__copyright__  = 'Copyright (c) Simon Adlem, G7RZU 2020,2021,2022,2023'
 __credits__    = 'Jon Lee, G4TSN; Norman Williams, M6NBP; Christian, OA4DOA'
 __license__    = 'GNU GPLv3'
 __maintainer__ = 'Simon Adlem G7RZU'
@@ -49,10 +50,45 @@ def IsIPv6Address(ip):
     except ValueError as errorCode:
         pass
 
+class privHelper():
+    def __init__(self):
+        self._netfilterURI = 'PYRO:netfilterControl@./u:/run/priv_control/priv_control.unixsocket'
+        self._conntrackURI = 'PYRO:conntrackControl@./u:/run/priv_control/priv_control.unixsocket'
+
+    def addBL(self,dport,ip):
+        try:
+            with Pyro5.api.Proxy(self._netfilterURI) as nf:
+                nf.blocklistAdd(dport,ip)
+        except Exception as e:
+            print('(PrivError) {}'.format(e))
+
+    def delBL(self,dport,ip):
+        try:
+            with Pyro5.api.Proxy(self._netfilterURI) as nf:
+                nf.blocklistDel(dport,ip)
+        except Exception as e:
+            print('(PrivError) {}'.format(e))
+
+    def blocklistFlush(self):
+        try:
+            with Pyro5.api.Proxy(self._netfilterURI) as nf:
+                nf.blocklistFlush()
+        except Exception as e:
+            print('(PrivError) {}'.format(e))
+
+    def flushCT(self):
+        try:
+            with Pyro5.api.Proxy(self._conntrackURI) as ct:
+                ct.flushUDPTarget(62031)
+        except Exception as e:
+            print('(PrivError) {}'.format(e))
+
+
 class Proxy(DatagramProtocol):
 
-    def __init__(self,Master,ListenPort,connTrack,peerTrack,blackList,IPBlackList,Timeout,Debug,ClientInfo,DestportStart,DestPortEnd):
+    def __init__(self,Master,ListenPort,connTrack,peerTrack,blackList,IPBlackList,Timeout,Debug,ClientInfo,DestportStart,DestPortEnd,privHelper,rptlTrack):
         self.master = Master
+        self.ListenPort = ListenPort
         self.connTrack = connTrack
         self.peerTrack = peerTrack
         self.timeout = Timeout
@@ -63,7 +99,9 @@ class Proxy(DatagramProtocol):
         self.destPortStart = DestportStart
         self.destPortEnd = DestPortEnd
         self.numPorts = DestPortEnd - DestportStart
-        
+        self.privHelper = privHelper
+        self.rptlTrack = rptlTrack
+
         
     def reaper(self,_peer_id):
         if self.debug:
@@ -131,6 +169,9 @@ class Proxy(DatagramProtocol):
                     return
                 if self.clientinfo:
                     print('Add to blacklist: host {}. Expire time {}'.format(self.peerTrack[_peer_id]['shost'],_bltime))
+                if self.privHelper:
+                    print('Ask priv_helper to add to iptables: host {}, port {}.'.format(self.peerTrack[_peer_id]['shost'],self.ListenPort))
+                    reactor.callInThread(self.privHelper.addBL,self.ListenPort,self.peerTrack[_peer_id]['shost'])
                 return
             
             if _command == DMRD:
@@ -168,6 +209,27 @@ class Proxy(DatagramProtocol):
                 _peer_id = data[4:8]
             elif _command == RPTL:              # RPTLogin -- a repeater wants to login
                 _peer_id = data[4:8]
+
+                #if we have seen more than 20 RPTL packets from this IP since the RPTL tracking table was reset (every 60 secs)
+                #blacklist IP for 10 minutes
+                if host not in self.rptlTrack:
+                    self.rptlTrack[host] = 1
+                else:
+                    self.rptlTrack[host] += 1
+
+                if self.rptlTrack[host] > 20:
+                    print('(RPTL) exceeded max: {}'.format(self.rptlTrack[host]))
+                    _bltime = nowtime + 600
+                    self.IPBlackList[host] = _bltime
+                    self.rptlTrack.pop(host)
+
+                    if self.clientinfo:
+                        print('(RPTL) Add to blacklist: host {}. Expire time {}'.format(host,_bltime))
+                    if self.privHelper:
+                        print('(RPTL) Ask priv_helper to add to iptables: host {}, port {}.'.format(host,self.ListenPort))
+                        reactor.callInThread(self.privHelper.addBL,self.ListenPort,host)
+                    return
+
             elif _command == RPTK:              # Repeater has answered our login challenge
                 _peer_id = data[4:8]
             elif _command == RPTC:              # Repeater is sending it's configuraiton OR disconnecting
@@ -226,6 +288,10 @@ if __name__ == '__main__':
     import argparse
     import sys
     import json
+    import stat
+    import functools
+
+    print = functools.partial(print, flush=True)
 
     #Set process title early
     setproctitle(__file__)
@@ -235,13 +301,13 @@ if __name__ == '__main__':
 
     # CLI argument parser - handles picking up the config file from the command line, and sending a "help" message
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', action='store', dest='CONFIG_FILE', help='/full/path/to/config.file (usually rysen.cfg)')
+    parser.add_argument('-c', '--config', action='store', dest='CONFIG_FILE', help='/full/path/to/config.file (usually freedmr.cfg)')
     cli_args = parser.parse_args()
 
 
     # Ensure we have a path for the config file, if one wasn't specified, then use the execution directory
     if not cli_args.CONFIG_FILE:
-        cli_args.CONFIG_FILE = os.path.dirname(os.path.abspath(__file__))+'/rysen.cfg'
+        cli_args.CONFIG_FILE = os.path.dirname(os.path.abspath(__file__))+'/freedmr.cfg'
     
     _config_file = cli_args.CONFIG_FILE
     
@@ -288,7 +354,9 @@ if __name__ == '__main__':
     
     CONNTRACK = {}
     PEERTRACK = {}
-    
+    RPTLTRACK = {}
+    PRIV_HELPER = None
+
     # Set up the signal handler
     def sig_handler(_signal, _frame):
         print('(GLOBAL) SHUTDOWN: PROXY IS TERMINATING WITH SIGNAL {}'.format(str(_signal)))
@@ -313,7 +381,18 @@ if __name__ == '__main__':
         ClientInfo = bool(os.environ['FDPROXY_CLIENTINFO'])
     if 'FDPROXY_LISTENPORT' in os.environ:
         ListenPort = int(os.environ['FDPROXY_LISTENPORT'])
-        
+
+    unixSocket = '/run/priv_control/priv_control.unixsocket'
+
+    if os.path.exists(unixSocket) and stat.S_ISSOCK(os.stat(unixSocket).st_mode):
+        print('(PRIV) Found UNIX socket. Enabling priv helper')
+        PRIV_HELPER = privHelper()
+        print('(PRIV) flush conntrack')
+        PRIV_HELPER.flushCT()
+        print('(PRIV) flush blocklist')
+        PRIV_HELPER.blocklistFlush()
+
+
     for port in range(DestportStart,DestPortEnd+1,1):
         CONNTRACK[port] = False
     
@@ -322,7 +401,7 @@ if __name__ == '__main__':
     if ListenIP == '::' and IsIPv4Address(Master):
         Master = '::ffff:' + Master
 
-    reactor.listenUDP(ListenPort,Proxy(Master,ListenPort,CONNTRACK,PEERTRACK,BlackList,IPBlackList,Timeout,Debug,ClientInfo,DestportStart,DestPortEnd),interface=ListenIP)
+    reactor.listenUDP(ListenPort,Proxy(Master,ListenPort,CONNTRACK,PEERTRACK,BlackList,IPBlackList,Timeout,Debug,ClientInfo,DestportStart,DestPortEnd,PRIV_HELPER, RPTLTRACK),interface=ListenIP)
 
     def loopingErrHandle(failure):
         print('(GLOBAL) STOPPING REACTOR TO AVOID MEMORY LEAK: Unhandled error innowtimed loop.\n {}'.format(failure))
@@ -352,6 +431,14 @@ if __name__ == '__main__':
             IPBlackList.pop(delete)
             if ClientInfo:
                 print('Remove dynamic blacklist entry for {}'.format(delete))
+            if PRIV_HELPER:
+                print('Ask priv helper to remove blacklist entry for {} from iptables'.format(delete))
+                reactor.callInThread(PRIV_HELPER.delBL,ListenPort,delete)
+
+    def rptlTrimmer():
+        RPTLTRACK.clear()
+        print('Purge RPTL table')
+
 
         
     if Stats == True:
@@ -362,5 +449,11 @@ if __name__ == '__main__':
     blacklist_task = task.LoopingCall(blackListTrimmer)
     blacklista = blacklist_task.start(15)
     blacklista.addErrback(loopingErrHandle)
+
+
+    rptlTrimmer_task = task.LoopingCall(rptlTrimmer)
+    rptlTrimmera = rptlTrimmer_task.start(60)
+    rptlTrimmera.addErrback(loopingErrHandle)
+
     
     reactor.run()
