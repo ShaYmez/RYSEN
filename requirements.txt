@@ -5,4 +5,4 @@ dmr_utils3>=0.1.29
 configparser>=3.0.0
 resettabletimer>=0.7.0
 setproctitle
-mysqlclient=>2.1.0
+mysqlclient
