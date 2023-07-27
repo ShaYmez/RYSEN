@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# RYSEN DMRMaster+ Version 1.3.9r3 
+#
 ###############################################################################
 # Copyright (C) 2020 Simon Adlem, G7RZU <g7rzu@gb7fr.org.uk>
 #
@@ -33,9 +35,9 @@ from proxy_db import ProxyDB
 
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Simon Adlem - G7RZU'
-__verion__     = '1.0.0'
+__verion__     = '1.0.2'
 __copyright__  = 'Copyright (c) Simon Adlem, G7RZU 2020,2021,2022'
-__credits__    = 'Jon Lee, G4TSN; Norman Williams, M6NBP; Christian, OA4DOA'
+__credits__    = 'Christian, OA4DOA'
 __license__    = 'GNU GPLv3'
 __maintainer__ = 'Simon Adlem G7RZU'
 __email__      = 'simon@gb7fr.org.uk'
@@ -295,13 +297,13 @@ if __name__ == '__main__':
 
     # CLI argument parser - handles picking up the config file from the command line, and sending a "help" message
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', action='store', dest='CONFIG_FILE', help='/full/path/to/config.file (usually freedmr.cfg)')
+    parser.add_argument('-c', '--config', action='store', dest='CONFIG_FILE', help='/full/path/to/config.file (usually rysen.cfg)')
     cli_args = parser.parse_args()
 
 
     # Ensure we have a path for the config file, if one wasn't specified, then use the execution directory
     if not cli_args.CONFIG_FILE:
-        cli_args.CONFIG_FILE = os.path.dirname(os.path.abspath(__file__))+'/freedmr.cfg'
+        cli_args.CONFIG_FILE = os.path.dirname(os.path.abspath(__file__))+'/rysen.cfg'
 
     _config_file = cli_args.CONFIG_FILE
 
@@ -337,7 +339,7 @@ if __name__ == '__main__':
         print('Using default config')
 #*** CONFIG HERE ***
 
-        Master = "127.0.0.1"
+        Master = "172.16.238.10"
         ListenPort = 62031
         #'' = all IPv4, '::' = all IPv4 and IPv6 (Dual Stack)
         ListenIP = ''
@@ -354,9 +356,9 @@ if __name__ == '__main__':
         # Self Service database configuration
         use_selfservice = True
         db_server = 'localhost'
-        db_username = 'root'
+        db_username = 'selfcare'
         db_password = ''
-        db_name = 'test'
+        db_name = 'selfcare'
         db_port = 3306
 
 #*******************        
