@@ -1,5 +1,6 @@
 ###############################################################################
-# Copyright (C) 2020 Simon Adlem, G7RZU <g7rzu@gb7fr.org.uk>  
+#   Copyright (C) 2020 Simon Adlem, G7RZU <g7rzu@gb7fr.org.uk>
+#   Edited by (C) 2022 Shane Daley, MOVUB <support@gb7nr.co.uk>
 #
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -15,45 +16,33 @@
 #   along with this program; if not, write to the Free Software Foundation,
 #   Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 ###############################################################################
-version: '2.1'
+
+version: '2.4'
 services:
-    freedmr:
-        container_name: freedmr
-        depends_on:
-            - ipv6nat
+    rysen:
+        container_name: systemx
+        cpu_shares: 1024
+        mem_reservation: 600m
         volumes:
-            - '/etc/freedmr/freedmr.cfg:/opt/freedmr/freedmr.cfg'
-            - '/var/log/freedmr/freedmr.log:/opt/freedmr/freedmr.log'
-            - '/etc/freedmr/rules.py:/opt/freedmr/rules.py'
+            - '/etc/rysen/rysen.cfg:/opt/rysen/rysen.cfg'
+            - '/var/log/rysen/:/opt/rysen/log/'
+            - '/etc/rysen/rules.py:/opt/rysen/rules.py'
             #Write JSON files outside of container
-            - '/etc/freedmr/json/talkgroup_ids.json:/opt/freedmr/talkgroup_ids.json'
-            - '/etc/freedmr/json/subscriber_ids.json:/opt/freedmr/subscriber_ids.json'
-            - '/etc/freedmr/json/peer_ids.json:/opt/freedmr/peer_ids.json'
+            - '/etc/rysen/json/:/opt/rysen/json/'
         ports:
-            - '62031:62031/udp'
-            #Change the below to inlude ports used for your OBP(s)
-            - '62041:62041/udp'
+            #Change the below to include ports used for your OBP(s)
+            - '62034-62050:62034-62050/udp'
+              #HBMon Port (Report)
             - '4321:4321/tcp'
-        image: 'hacknix/freedmr:development-latest'
+              #APRS Master
+            - '52555:52555/udp'          
+        image: 'shaymez/rysen:latest'
         restart: "unless-stopped"
         networks:
            app_net:
              ipv4_address: 172.16.238.10
              ipv6_address: fd2a:70b6:9f54:29b6::10
-        #Control parameters inside container
-        environment:
-            #IPV6 support 
-            - FDPROXY_IPV6=1
-            #Display connection stats in log
-            - FDPROXY_STATS=1
-            #Display conneting client info in log
-            - FDPROXY_CLIENTINFO=1
-            #Debug HBP session in log (lots of data!!)
-            - FDPROXY_DEBUG=0
-            #Override proxy external port
-            #- FDPROXY_LISTENPORT=62031
         read_only: "true"
-
     ipv6nat:
         container_name: ipv6nat
         image: 'robbertkl/ipv6nat'
@@ -63,50 +52,6 @@ services:
         privileged: "true"
         network_mode: "host"
         restart: "unless-stopped"
-    
-    freedmrmon:
-        container_name: freedmrmon
-        depends_on:
-            - freedmr
-        volumes:
-            #This should be kept to a manageable size from
-            #cron or logrotate outisde of the container.
-            - '/var/log/freeDMRmonitor/lastheard.log:/opt/FreeDMRmonitor/log/lastheard.log'
-            - '/var/log/freeDMRmonitor/hbmon.log:/opt/FreeDMRmonitor/log/hbmon.log'
-            #Write JSON files outside of container
-            - '/etc/freedmr/json/talkgroup_ids.json:/opt/FreeDMRmonitor/talkgroup_ids.json'
-            - '/etc/freedmr/json/subscriber_ids.json:/opt/FreeDMRmonitor/subscriber_ids.json'
-            - '/etc/freedmr/json/peer_ids.json:/opt/FreeDMRmonitor/peer_ids.json'
-
-        #Override config file
-        #    - '/etc/freedmr/config.py:/opt/FreeDMRmonitor/config.py'
-        ports:
-            - '9000:9000/tcp'
-        image: 'hacknix/freedmrmonitor:latest'
-        restart: "unless-stopped"
-        networks:
-           app_net:
-             ipv4_address: 172.16.238.20
-             ipv6_address: fd2a:70b6:9f54:29b6::20
-     
-    freedmrmonpache:
-        container_name: freedmrmonapache
-        depends_on:
-             - freedmrmon
-        #Use to override html files
-        #And images
-        #volumes:
-        #    - '/var/www/html/:/var/www/html/'
-        #    - '/var/www/html/images/:/var/www/html/images/'
-        ports:
-            - '80:80/tcp'
-        image: hacknix/freedmrmonitor-apache:latest
-        restart: "unless-stopped"
-        networks:
-           app_net:
-             ipv4_address: 172.16.238.30
-             ipv6_address: fd2a:70b6:9f54:29b6::30
-
 networks:
   app_net:
     enable_ipv6: true
