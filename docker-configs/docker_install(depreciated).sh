@@ -68,7 +68,7 @@ SERVER_ID_FILE: server_ids.tsv
 ENABLED: False
 USER:llcgi
 PASS: mypass
-SERVER: my.asl.server
+SERVER: 127.0.0.1
 PORT: 5038
 NODE: 0000
 
