@@ -39,6 +39,7 @@ cd /etc/rysen
 docker-compose down
 echo Removing all docker images.....
 docker rmi $(docker images -q -a) --force
+docker system prune
 figlet "ShaYmez." 
 sleep 1
 echo Flushing services and restarting.....

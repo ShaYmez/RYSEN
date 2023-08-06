@@ -31,11 +31,6 @@ echo ...
 cd /etc/rysen
 docker-compose down
 figlet "SYSTEM-X."
-sleep 2
-echo "Stopping RYMonv3....."
-systemctl stop rymon
-figlet "RYMonv2."
-echo "Done."
 sleep 1
 
 echo "Done. Now Exiting....."

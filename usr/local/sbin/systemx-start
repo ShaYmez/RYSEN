@@ -49,12 +49,6 @@ echo "Flushing network tracking table....."
 conntrack -F
 sleep 1
 
-echo "Starting RYMonv3....."
-systemctl restart rymon
-figlet "RYMonv3."
-echo "Done."
-sleep 1
-
 echo "Done. Now Exiting....."
 sleep 1
 echo .

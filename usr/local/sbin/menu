@@ -27,11 +27,12 @@ menuopt=$(whiptail --title "RYSEN Master+ | SYSTEM-X Control" --menu "Select opt
 5 " Soft Flush Master " \
 6 " Edit Configuration " \
 7 " Edit rules.py " \
-8 " Edit Dashboard Config " \
-9 " Update Master Server Software " \
-10 " Full Upgrade RYSEN Master+ " \
-11 " Operating System update " \
-12 " Reboot Entire Server " 3>&1 1>&2 2>&3)
+8 " Edit Proxy Config " \
+9 " Edit Dashboard Config " \
+10 " Update Master Server Software " \
+11 " Full Upgrade RYSEN Master+ " \
+12 " Operating System update " \
+13 " Reboot Entire Server " 3>&1 1>&2 2>&3)
 exitstatus=$?
 # Back-end rysen menu
 #exitstatus=$?
@@ -57,14 +58,16 @@ sudo nano /etc/rysen/rysen.cfg ;;
 7)
 sudo nano /etc/rysen/rules.py ;;
 8)
-sudo nano /opt/RYMonv3/rymon.cfg ;;
+sudo nano /etc/rysen/proxy.cfg ;;
 9)
-/usr/local/sbin/systemx-update ;;
+sudo nano /etc/rysen/fdmr-mon.cfg ;;
 10)
-echo "No updates" && sleep 2 ;;
+/usr/local/sbin/systemx-update ;;
 11)
-sudo apt-get update -y && sudo apt-get upgrade ;;
+echo "No updates" && sleep 2 ;;
 12)
+sudo apt-get update -y && sudo apt-get upgrade ;;
+13)
 sudo reboot now ;
 esac
 done

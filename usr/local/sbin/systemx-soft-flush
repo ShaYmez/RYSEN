@@ -23,11 +23,6 @@ echo "Stopping services....."
 cd /etc/rysen
 docker-compose down
 echo "Done."
-sleep 30
-
-echo "Stopping RYMonv3....."
-systemctl stop rymon
-echo "Done."
 sleep 1
 
 echo "System-X Flush and maintenance loop starting....."
@@ -35,9 +30,6 @@ sleep 1
 
 echo "Starting truncate RYSEN log /var/log/rysen....."
 truncate -s 0 /var/log/rysen/*log &&
-
-echo "Starting truncate Lastheard....."
-truncate -s 0 /opt/RYMonv3/log/*log
 
 #Permissions reset
 chown -R 54000 /etc/rysen
@@ -66,11 +58,6 @@ echo "Done."
 echo "Flushing network tracking table....."
 conntrack -F
 sleep 1
-
-echo "Starting RYMonv3....."
-systemctl restart rymon
-figlet "RYMonv2."
-echo "Done."
 
 echo "Done. Now Exiting....."
 

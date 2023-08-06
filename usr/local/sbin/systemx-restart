@@ -40,19 +40,9 @@ sleep 1
 docker ps
 sleep 1
 
-#echo "Checking startup error logs....."
-#sleep 1
-#docker container logs systemx 
-#echo "Done."
-
 echo "Flushing network tracking table....."
 conntrack -F
 sleep 1
-
-echo "Restarting RYMonv3....."
-systemctl restart rymon
-figlet "RYMonv3."
-echo "Done."
 
 echo "Now Exiting....."
 sleep 1

@@ -27,11 +27,12 @@ menuopt=$(whiptail --title "RYSEN Master+ | SYSTEM-X Control" --menu "Seleccione
 5 " Maestro de descarga suave (Soft Flush) " \
 6 " Editar configuración (Edit cfg) " \
 7 " Editar rules.py " \
-8 " Editar configuración del tablero (Edit Dash) " \
-9 " Actualizar el software del servidor maestro (Update) " \
-10 " Actualización completa RYSEN Master+ (Full Upgrade) " \
-11 " Actualización del sistema operativo (OS Update) " \
-12 " Reiniciar todo el servidor (Reboot) " 3>&1 1>&2 2>&3)
+8 " Editar configuración del proxy (Edit Proxy) " \
+9 " Editar configuración del tablero (Edit Dash) " \
+10 " Actualizar el software del servidor maestro (Update) " \
+11 " Actualización completa RYSEN Master+ (Full Upgrade) " \
+12 " Actualización del sistema operativo (OS Update) " \
+13 " Reiniciar todo el servidor (Reboot) " 3>&1 1>&2 2>&3)
 exitstatus=$?
 # Back-end rysen menu
 #exitstatus=$?
@@ -57,7 +58,9 @@ sudo nano /etc/rysen/rysen.cfg ;;
 7)
 sudo nano /etc/rysen/rules.py ;;
 8)
-sudo nano /opt/RYMonv3/rymon.cfg ;;
+sudo nano /etc/rysen/proxy.cfg ;;
+8)
+sudo nano /etc/rysen/fdmr-mon.cfg ;;
 9)
 /usr/bin/systemx-update ;;
 10)
