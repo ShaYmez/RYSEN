@@ -1,6 +1,8 @@
 ## RYSEN DMRMaster+ Master Stack ##
 ### A fork of the HBlink3 / FreeDMR project ###
 
+###Stable Ver 1.3.9r3 ###
+
 RYSEN DMRMaster+ - Software to build and scale DMR Master server software. Thanks to all thats credited in code, testing and develpment of this software. This software is completly open source and is derived from the orginal fork of HBlink3 / FreeDMR. Developed in PYTHON. A number of developers have contributed to the fork and I thought the time is right to develop this version of the code completly out in the open.. as it should be. No private forks..Open Source for people to freely develop.
 
 The base code is written by Cortney Buffington N0MJS and further develped by Simon G7RZU, Eric, K7EEL, Shane M0VUB & others.
@@ -11,6 +13,7 @@ More to come as development continues as a fork. - codename: RYSEN
 
 **PROPERTY:**  
 This work represents the author's interpretation of the HomeBrew Repeater Protocol, based on the 2015-07-26 documents from DMRplus, "IPSC Protocol Specs for homebrew DMR repeater" as written by Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT, also licenced under Creative Commons BY-NC-SA license.
+This has been further develeped under Simon Adlem; G7RZU as the FreeDMR fork and then further develped for SystemX by Shane Daley; M0VUB under codename RYSEN.
 
 **WARRANTY**
 None. The owners of this work make absolutely no warranty, express or implied. Use this software at your own risk.
@@ -41,7 +44,7 @@ This image is multi-arch
 Wake up your container
 
 ```bash
-touch /var/log/hblink.log
+touch /var/log/rysen.log
 chown 54000 -R /var/log/rysen.log
  run -v /var/log/rysen/rysen.log:/var/log/rysen/rysen.log -e GIT_USER=$USER -e GIT_PASSWORD=$PASSWORD -e GIT_REPO=$URL_TO_REPO_WITHOUT_HTTPS://  -p 54000:54000  shaymez/rysen:latest
  ```
