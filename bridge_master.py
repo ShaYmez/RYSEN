@@ -1059,13 +1059,20 @@ class routerOBP(OPENBRIDGE):
                         dmrbits = _target_status[_stream_id]['H_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['H_LC'][98:197]
                     # Create a voice terminator packet (FULL LC)
                     elif _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
-                        dmrbits = _target_status[_stream_id]['T_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['T_LC'][98:197]
+                        try:
+                            dmrbits = _target_status[_stream_id]['T_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['T_LC'][98:197]
+                        except KeyError:
+                            logger.warning('(%s) KeyError - T_LC, Skipping',system)
                         if CONFIG['REPORTS']['REPORT']:
                             call_duration = pkt_time - _target_status[_stream_id]['START']
                             systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
                     # Create a Burst B-E packet (Embedded LC)
                     elif _dtype_vseq in [1,2,3,4]:
-                        dmrbits = dmrbits[0:116] + _target_status[_stream_id]['EMB_LC'][_dtype_vseq] + dmrbits[148:264]
+                        try:
+                            dmrbits = dmrbits[0:116] + _target_status[_stream_id]['EMB_LC'][_dtype_vseq] + dmrbits[148:264]
+                        except KeyError:
+                            logger.warning('(%s) KeyError - EMB_LC, skipping',system)
+                            continue
                     dmrpkt = dmrbits.tobytes()
                     _tmp_data = b''.join([_tmp_data, dmrpkt])
 
