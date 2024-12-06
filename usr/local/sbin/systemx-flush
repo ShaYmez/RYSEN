@@ -1,11 +1,11 @@
 #!/bin/bash
-
+# Version 1.3.9r3
 # SYSTEM-X FORMERLY RYSEN MASTER+ (HBlink3) A FORK OF THE FREEDMR / HBLINK PROJECT
 # This script written by Shane Daley M0VUB. The script gracefully shutsdown services while services are cleaned and logs are truncated.
 # We can also add items in this script for future use like updates or further log trims.
 # Add to the cron tab for auto execution
 
-#   Copyright (C) 2020 Shane P, Daley  M0VUB <support@gb7nr.co.uk>
+#   Copyright (C) 2024 Shane P, Daley  M0VUB <support@gb7nr.co.uk>
 #
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
 #   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #   GNU General Public License for more details.
 
-# Start service clean/truncate/ and restart of services.
+# Start service clean/truncate/flush and restart of services.
 
 echo "Stopping services....."
 sleep 1
@@ -28,10 +28,6 @@ docker-compose down
 echo "Done."
 sleep 1
 
-#echo "Stopping Dashboard....."
-#systemctl stop fdmr_mon
-#echo "Done."
-
 echo "System-X Flush and maintenance loop starting....."
 sleep 1
 
@@ -41,35 +37,24 @@ truncate -s 0 /var/log/*log
 echo "Starting truncate OBP entire log /var/log/rysen....."
 truncate -s 0 /var/log/rysen/*log &&
 
-echo "Starting truncate Lastheard....."
-truncate -s 0 /opt/FDMR-Monitor/log/*log
-
-echo "Flushing JSON files....."
+echo "Flushing JSON files & DB....."
 sleep 1
 echo "/etc/rysen/json....."
-rm /etc/rysen/json/talkgroup_ids.json
-rm /etc/rysen/json/subscriber_ids.json
-#rm /etc/rysen/json/local_subscriber_ids.json
-rm /etc/rysen/json/peer_ids.json
-rm /etc/rysen/json/server_ids.tsv
-rm /etc/rysen/json/sub_map.pkl
-rm /etc/rysen/json/topography.json
+rm -rf /etc/rysen/json/*
+
 #Get JSON files..
 curl https://radioid.net/static/rptrs.json -o /etc/rysen/json/peer_ids.json
-sleep 2
+sleep 1
 curl https://radioid.net/static/users.json -o /etc/rysen/json/subscriber_ids.json
-sleep 2
-curl https://freestar.network/downloads/talkgroup_ids.json -o /etc/rysen/json/talkgroup_ids.json
-sleep 2
-curl https://freestar.network/downloads/SystemX_Hosts.csv -o /etc/rysen/json/server_ids.tsv
-echo "/opt/FDMR-Monitor/data....."
-#rm /opt/FDMR-Monitor/data/talkgroup_ids.json
-#rm /opt/FDMR-Monitor/data/subscriber_ids.csv
-#rm /opt/FDMR-Monitor/data/peer_ids.json
+sleep 1
+curl https://api.freestar.network/v1/talkgroup_ids.json -o /etc/rysen/json/talkgroup_ids.json
+sleep 1
+curl https://api.freestar.network/v1/SystemX_Hosts.csv -o /etc/rysen/json/server_ids.tsv
+
 #Permissions reset
 chown -R 54000 /etc/rysen
 echo "JSON files will be downloaded from freestar.network....."
-figlet "FreeSTAR CL V1.3.9"
+figlet "FreeSTAR API V1"
 
 #Restart all services gracefully
 echo "Restart all services....."
@@ -86,7 +71,7 @@ echo "Done."
 sleep 1
 
 echo "Starting System-X....."
-sleep 2
+sleep 1
 echo .
 sleep 1
 echo ..
@@ -112,11 +97,9 @@ echo "Flushing network tracking table....."
 conntrack -F
 sleep 1
 
-#echo "Starting Dashboard....."
-#systemctl restart fdmr_mon
-#figlet "FDMR-Monitor."
-#echo "Done."
-#sleep 1
+echo "Flushing dashboard tables"
+docker exec monitor python3 mon_db.py --create
+docker exec monitor python3 mon_db.py --update
 
 echo "Done. Now Exiting....."
 sleep 1
@@ -129,5 +112,4 @@ sleep 1
 echo ....
 echo "System-X is now online. Flush is complete and you may now exit. AKA ShaYmez."
 #
-# This script has been developed by the one and only ShaYmez. Visit https://repo.radio/ShaYmez for more super scripts!
-echo "All systems have been flushed/cleaned and ready to go. Aka Dr. Node. ShaYmez, System-X"
+# This script has been developed by the one and only ShaYmez. Visit https://github.com/shaymez for more super scripts!

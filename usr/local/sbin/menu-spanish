@@ -1,4 +1,5 @@
 #!/bin/bash
+# Version 1.3.9r3
 # RYSEN Master+ Configuration menu DO-NOT-ALTER THIS FILE!!!!!!!!!!
 # SYSTEM-X FORMERLY RYSEN MASTER+ (HBlink3) A FORK OF THE FREEDMR / HBLINK PROJECT
 # This script written by Shane Daley M0VUB. The script gracefully shutsdown services while services are cleaned and logs are truncated.
@@ -44,30 +45,30 @@ fi
 # Action
 case $menuopt in
 1)
-/usr/bin/systemx-restart ;;
+/usr/local/sbin/systemx-restart ;;
 2)
-/usr/bin/systemx-stop ;;
+/usr/local/sbin/systemx-stop ;;
 3)
-/usr/bin/systemx-start ;;
+/usr/local/sbin/systemx-start ;;
 4)
-/usr/bin/systemx-flush ;;
+/usr/local/sbin/systemx-flush ;;
 5)
-/usr/bin/systemx-soft-flush ;;
+/usr/local/sbin/systemx-soft-flush ;;
 6)
 sudo nano /etc/rysen/rysen.cfg ;;
 7)
 sudo nano /etc/rysen/rules.py ;;
 8)
 sudo nano /etc/rysen/proxy.cfg ;;
-8)
-sudo nano /etc/rysen/fdmr-mon.cfg ;;
 9)
-/usr/bin/systemx-update ;;
+sudo nano /etc/rysen/fdmr-mon.cfg ;;
 10)
-echo "No updates" && sleep 2 ;;
+/usr/local/sbin/systemx-update ;;
 11)
-sudo apt-get update -y && sudo apt-get upgrade ;;
+echo "No updates" && sleep 2 ;;
 12)
+sudo apt-get update -y && sudo apt-get upgrade ;;
+13)
 sudo reboot now ;
 esac
 done

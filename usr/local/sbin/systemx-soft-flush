@@ -1,11 +1,11 @@
 #!/bin/bash
-
+# Version 1.3.9r3
 # SYSTEM-X FORMERLY RYSEN MASTER+ (HBlink3) A FORK OF THE FREEDMR / HBLINK PROJECT
 # This script written by Shane Daley M0VUB. The script gracefully shutsdown services while services are cleaned and logs are truncated.
 # We can also add items in this script for future use like updates or further log trims.
 # Add to the cron tab for auto execution
 
-#   Copyright (C) 2020 Shane P, Daley  M0VUB <support@gb7nr.co.uk>
+#   Copyright (C) 2024 Shane P, Daley  M0VUB <support@gb7nr.co.uk>
 #
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -17,9 +17,9 @@
 #   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #   GNU General Public License for more details.
 
-# Start service clean/truncate/ and restart of services.
+# Start service clean/truncate/soft flush and restart of services.
 
-echo "Stopping services....."
+echo "Stopping Master Stack....."
 cd /etc/rysen
 docker-compose down
 echo "Done."
@@ -33,8 +33,6 @@ truncate -s 0 /var/log/rysen/*log &&
 
 #Permissions reset
 chown -R 54000 /etc/rysen
-
-figlet "FreeSTAR CL V1.3.9 SOFT"
 
 #Restart all services gracefully
 echo "Restart all services....."
@@ -59,9 +57,12 @@ echo "Flushing network tracking table....."
 conntrack -F
 sleep 1
 
+echo "Flushing dashboard tables"
+docker exec monitor python3 mon_db.py --update
+
 echo "Done. Now Exiting....."
 
 echo "System-X is now online. Soft Flush is complete and you may now exit. AKA ShaYmez."
 #
-# This script has been developed by the one and only ShaYmez. Visit https://repo.radio/ShaYmez for more super scripts!
+# This script has been developed by the one and only ShaYmez. Visit https://github/shaymez for more super scripts!
 echo "All systems have been flushed/cleaned and ready to go. Aka Dr. Node. ShaYmez, System-X"
