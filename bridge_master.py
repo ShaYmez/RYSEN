@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# RYSEN DMRMaster+ Version 1.3.8r3
+# RYSEN DMRMaster+ Version 1.3.9r3
 ###############################################################################
 # Copyright (C) 2020 Simon Adlem, G7RZU <g7rzu@gb7fr.org.uk>  
 # Copyright (C) 2016-2019 Cortney T. Buffington, N0MJS <n0mjs@me.com>
@@ -859,14 +859,14 @@ def options_config():
                         _options['TS2_STATIC'] = False
                         
                     if _options['TS1_STATIC']:
-                        re.sub("\s","",_options['TS1_STATIC'])
-                        if re.search("![\d\,]",_options['TS1_STATIC']):
+                        re.sub("\\s","",_options['TS1_STATIC'])
+                        if re.search("![\\d\,]",_options['TS1_STATIC']):
                             logger.debug('(OPTIONS) %s - TS1_STATIC contains characters other than numbers and comma, ignoring',_system)
                             continue
                     
                     if _options['TS2_STATIC']:
-                        re.sub("\s","",_options['TS2_STATIC'])
-                        if re.search("![\d\,]",_options['TS2_STATIC']):
+                        re.sub("\\s","",_options['TS2_STATIC'])
+                        if re.search("![\\d\,]",_options['TS2_STATIC']):
                             logger.debug('(OPTIONS) %s - TS2_STATIC contains characters other than numbers and comma, ignoring',_system)
                             continue
                     
