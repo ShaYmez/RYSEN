@@ -2,7 +2,7 @@
 
 Docker is the fastest way to having a running system, complete with proxy and echo, ready to serve repeaters and hotspots. The Docker image can be run on any system that can run Linux docker containers. We recommend Debian 11.
 
-Not convinced? Read [Why Docker?](Why%20Docker)
+Not convinced? Read [Why Docker?](https://github.com/ShaYmez/RYSEN/blob/master/doc/why-docker.md)
 
 # Quick Start
 
