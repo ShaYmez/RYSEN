@@ -41,11 +41,11 @@ place the rysen.cfg file in this directory.
 
 `echo "BRIDGES = {'9990': [{'SYSTEM': 'ECHO', 'TS': 2, 'TGID': 9990, 'ACTIVE': True, 'TIMEOUT': 2, 'TO_TYPE': 'NONE', 'ON': [], 'OFF': [], 'RESET': []},]}" > /etc/rysen/rules.py`
 
-##Make JSON directory
+## Make JSON directory
 
 `mkdir -p /etc/rysen/json`
 
-## Make sure docker container can access config and rules
+## Make sure docker container can access config and rules ##
 
 `chmod 755 /etc/rysen -R`
 
@@ -81,11 +81,11 @@ Once you are sure it has run correctly, you can restart in the background
 
 `docker-compose up -d`
 
-## Stop docker container
+## Stop docker container 
 
 `docker-compose down`
 
-## Update rysen
+## Update rysen 
 
 `cd /etc/rysen`
 
@@ -109,9 +109,9 @@ For more docker commands go [here](Docker%20Commands%20Cheat%20Sheet)
 
 ## Postrequisites
 
-*RYSEN Master+ Suite (SYSTEMX)*
+### RYSEN Master+ Suite (SYSTEMX)
 You can however add the RYSEN Master+ suite, Dashboard, Whiptail menus and additional software to make a fully fletched DMR Master Server if you wish by executing our official installer [here](https://github.com/shaymez/RYSEN-Installer)
 
-*Credits*
-Simon G7RZU
+*Credits:*
+Simon G7RZU,
 Shaymez M0VUB
