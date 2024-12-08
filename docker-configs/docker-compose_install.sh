@@ -104,7 +104,6 @@ chmod -R 755 /var/log/rysen &&
 chown -R 54000 /var/log/rysen &&
 
 echo "Run RYSEN container..."
-figlet "SYSTEM-X" &&
 docker-compose up -d &&
 docker container logs systemx &&
 
