@@ -25,7 +25,7 @@ echo Installing required packages...
 echo Install Docker Community Edition...
 apt-get -y remove docker docker-engine docker.io &&
 apt-get -y update &&
-apt-get -y install sudo apt-transport-https ca-certificates curl gnupg2 software-properties-common &&
+apt-get -y install sudo apt-transport-https ca-certificates curl gnupg2 software-properties-common figlet &&
 curl -fsSL https://download.docker.com/linux/debian/gpg | sudo apt-key add - &&
 ARCH=`/usr/bin/arch`
 echo "System architecture is $ARCH" 
