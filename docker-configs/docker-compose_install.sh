@@ -166,9 +166,9 @@ REPORT_CLIENTS: *
 # CRITICAL - only serious events
 
 [LOGGER]
-LOG_FILE: log/rysen.log
+LOG_FILE: /var/log/rysen.log
 LOG_HANDLERS: file-timed,console-timed
-LOG_LEVEL: ERROR
+LOG_LEVEL: INFO
 LOG_NAME: RYSEN
 
 # DOWNLOAD AND IMPORT SUBSCRIBER, PEER and TGID ALIASES
@@ -423,6 +423,9 @@ EOF
 
 echo "Create Log directory"
 mkdir -p /var/log/rysen/ &&
+touch /var/log/rysen/rysen.log &&
+chmod -r /var/log/rysen &&
+chown -r 54000:54000
 
 echo Run RYSEN container...
 docker-compose up -d
