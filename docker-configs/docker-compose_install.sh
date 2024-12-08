@@ -25,19 +25,17 @@ echo Installing required packages...
 echo Install Docker Community Edition...
 apt-get -y remove docker docker-engine docker.io &&
 apt-get -y update &&
-apt-get -y install sudo apt-transport-https ca-certificates curl gnupg2 software-properties-common figlet &&
-curl -fsSL https://download.docker.com/linux/debian/gpg | sudo apt-key add - &&
-ARCH=`/usr/bin/arch`
-echo "System architecture is $ARCH" 
-if [ "$ARCH" == "x86_64" ]
-then
-    ARCH="amd64"
-fi
-add-apt-repository \ 
-"deb [arch=$ARCH] https://download.docker.com/linux/debian \ 
-$(lsb_release -cs) \ 
-stable" &&
+apt-get -y install sudo apt-transport-https ca-certificates curl gnupg2 software-properties-common &&
 
+sudo install -m 0755 -d /etc/apt/keyrings &&
+sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc &&
+sudo chmod a+r /etc/apt/keyrings/docker.asc &&
+
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null &&
+ 
 apt-get -y update &&
 apt-get -y install docker-ce &&
 
