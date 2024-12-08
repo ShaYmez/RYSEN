@@ -404,7 +404,7 @@ chown -R 54000 /etc/rysen &&
 
 echo "Get docker-compose.yml..."
 cd /etc/rysen &&
-curl https://github.com/shaymez/RYSEN/-/raw/master/docker-configs/scripts/docker-compose.yml -o docker-compose.yml &&
+curl https://raw.githubusercontent.com/ShaYmez/RYSEN/refs/heads/master/docker-configs/scripts/docker-compose.yml -o docker-compose.yml &&
 
 chmod 755 /etc/cron.daily/lastheard
 
@@ -420,6 +420,9 @@ net.netfilter.nf_conntrack_udp_timeout_stream=35
 EOF
 
 /usr/sbin/sysctl -p &&
+
+echo "Create Log directory"
+mkdir -p /var/log/rysen/ &&
 
 echo Run RYSEN container...
 docker-compose up -d
