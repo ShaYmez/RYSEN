@@ -102,7 +102,7 @@ echo "Create Log directory"
 mkdir -p /var/log/rysen/ &&
 touch /var/log/rysen/rysen.log &&
 chmod -R 755 /var/log/rysen &&
-chown -R 54000:54000 /var/log/rysen &&
+chown -R 54000 /var/log/rysen &&
 
 echo "Run RYSEN container..."
 figlet "SYSTEM-X" &&
