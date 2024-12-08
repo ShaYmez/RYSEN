@@ -33,10 +33,11 @@ if [ "$ARCH" == "x86_64" ]
 then
     ARCH="amd64"
 fi
-add-apt-repository \
-   "deb [arch=$ARCH] https://download.docker.com/linux/debian \
-   $(lsb_release -cs) \
-   stable" &&
+add-apt-repository \ 
+"deb [arch=$ARCH] https://download.docker.com/linux/debian \ 
+$(lsb_release -cs) \ 
+stable" &&
+
 apt-get -y update &&
 apt-get -y install docker-ce &&
 
