@@ -69,8 +69,8 @@ echo make json directory...
 mkdir -p /etc/rysen/json &&
 chown 54000:54000 /etc/rysen/json &&
 
-echo Install /etc/rysen/rysen.cfg ... 
-cat << EOF > /etc/rysen/rysen.cfg
+echo "Install /etc/rysen/rysen.cfg ..." 
+cat << EOF > /etc/rysen/rysen.cfg &&
 # PROGRAM-WIDE PARAMETERS GO HERE
 # Version 1.3.9r3
 # PATH - working path for files, leave it alone unless you NEED to change it
@@ -399,16 +399,16 @@ OVERRIDE_IDENT_TG:
 EOF
 
 
-echo Set perms on config directory...
+echo "Set perms on config directory..."
 chown -R 54000 /etc/rysen &&
 
-echo Get docker-compose.yml...
+echo "Get docker-compose.yml..."
 cd /etc/rysen &&
 curl https://github.com/shaymez/RYSEN/-/raw/master/docker-configs/scripts/docker-compose.yml -o docker-compose.yml &&
 
 chmod 755 /etc/cron.daily/lastheard
 
-echo Tune network stack...
+echo "Tune network stack..."
 cat << EOF > /etc/sysctl.conf &&
 net.core.rmem_default=134217728
 net.core.rmem_max=134217728
