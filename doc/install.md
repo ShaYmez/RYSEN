@@ -11,7 +11,7 @@ For a one-shot install on a Debian or Debian-based system, paste this into the t
 *Important!*
 Must be root!! for this install to work corectly! Sudo is for amateurs!
 
-`curl https://github.com/shaymez/RYSEN/master/docker-configs/docker-compose_install.sh | bash`
+`curl https://raw.githubusercontent.com/ShaYmez/RYSEN/refs/heads/master/docker-configs/docker-compose_install.sh | bash`
 
 This works on Debian 10, 11, 12, PiOs (Raspbian) and recent Ubuntu systems, on other flavours, you may need to follow the process below.
 
