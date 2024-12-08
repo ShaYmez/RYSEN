@@ -1,7 +1,7 @@
-#!/bin/sh
-
+#!/bin/sh 
+# RYSEN DMRMaster+ Version 1.3.8r3
 ###############################################################################
-# Copyright (C) 2020 Simon Adlem, G7RZU <g7rzu@gb7fr.org.uk>
+# Copyright (C) 2020 Simon Adlem, G7RZU <g7rzu@gb7fr.org.uk>  
 #
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -19,4 +19,13 @@
 ###############################################################################
 
 cd /opt/rysen
-python /opt/rysen/bridge_master.py -c rysen.cfg -r rules.py
+
+if [ "$BRIDGE_SERVER" == 1 ]
+then
+        echo 'Starting in Bridge mode...'
+        python /opt/rysen/bridge.py -c rysen.cfg -r rules.py
+else
+	echo 'Starting in RYSEN mode...'
+	python /opt/rysen/playback.py -c loro.cfg &
+	python /opt/rysen/bridge_master.py -c rysen.cfg -r rules.py
+fi

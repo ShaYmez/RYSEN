@@ -1,0 +1,123 @@
+  ###############################################################################
+#   Copyright (C) 2020 Simon Adlem, G7RZU <g7rzu@gb7fr.org.uk>
+#   Edited by (C) 2022 Shane Daley, MOVUB <support@gb7nr.co.uk>
+#
+#   This program is free software; you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation; either version 3 of the License, or
+#   (at your option) any later version.
+#
+#   This program is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+#
+#   You should have received a copy of the GNU General Public License
+#   along with this program; if not, write to the Free Software Foundation,
+#   Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
+###############################################################################
+
+version: '2.4'
+services:
+    rysen:
+        container_name: systemx
+        cpu_shares: 1024
+        mem_reservation: 600m
+        volumes:
+            - '/etc/rysen/rysen.cfg:/opt/rysen/rysen.cfg'
+            - '/var/log/rysen/:/opt/rysen/log/'
+            - '/etc/rysen/rules.py:/opt/rysen/rules.py'
+            #Write JSON files outside of container
+            - '/etc/rysen/json/:/opt/rysen/json/'
+        ports:
+            #Change the below to include ports used for your OBP(s)
+            - '62034-62050:62034-62050/udp'
+              #HBMon Port (Report)
+            #- '4321:4321/tcp'
+              #APRS Master
+            - '52555:52555/udp'
+        image: 'shaymez/rysen:latest'
+        restart: "unless-stopped"
+        networks:
+           app_net:
+             ipv4_address: 172.16.238.10
+        read_only: "true"
+    mariadb:
+        image: 'lscr.io/linuxserver/mariadb:latest'
+        container_name: mariadb
+        restart: "always"
+        working_dir: /mysql
+        volumes:
+            - './mysql:/mysql'
+            - './mysql:/config'
+        environment:
+            - MYSQL_ROOT_PASSWORD=pass
+            - MYSQL_DATABASE=pass
+            - MYSQL_USER=selfcare
+            - MYSQL_PASSWORD=pass
+        ports:
+            - '8306:3306'
+        networks:
+           app_net:
+             ipv4_address: 172.16.238.11
+    proxy:
+        container_name: proxy
+        volumes:
+            - '/etc/rysen/proxy.cfg:/opt/rysen-sp-selfcare/proxy.cfg'
+        ports:
+            - '62031:62031/udp'
+        image: 'shaymez/rysen-sp-selfcare:latest'
+        restart: "unless-stopped"
+        depends_on:
+            - 'rysen'
+        networks:
+            app_net:
+              ipv4_address: 172.16.238.20
+        read_only: "true"
+    d-aprs:
+        container_name: d-aprs
+        environment:
+          - APRS_CALL=M0ABC-12
+          - APRS_SSID=9
+          - APRS_PASSCODE=00000
+          - DATA_DMR_ID=9059
+          - MASTER_IP=172.16.238.10
+          - MASTER_PASS=pass
+        volumes:
+           - '/etc/rysen/json/:/usersettings/'
+        image: 'shaymez/rysen-d-aprs:latest'
+        #Container will persist over reboots
+        restart: "unless-stopped"
+        depends_on:
+            - 'rysen'
+            - 'proxy'
+        networks:
+           app_net:
+             ipv4_address: 172.16.238.40
+    monitor:
+        container_name: monitor
+        working_dir: /monitor
+        volumes:
+            - '/etc/rysen/fdmr-mon.cfg:/monitor/fdmr-mon.cfg'
+            - '/var/log/rysen/:/monitor/log/'
+            - '/etc/rysen/json/subscriber_ids.json:/monitor/data/subscriber_ids.json'
+            - '/etc/rysen/json/peer_ids.json:/monitor/data/peer_ids.json'
+            - '/etc/rysen/json/talkgroup_ids.json:/monitor/data/talkgroup_ids.json'
+        ports:
+            - '9000:9000'
+        image: 'shaymez/rysen-monitor:latest'
+        restart: "unless-stopped"
+        depends_on:
+            - 'rysen'
+            - 'mariadb'
+        networks:
+            app_net:
+              ipv4_address: 172.16.238.12
+networks:
+  app_net:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.16.238.0/24
+          gateway: 172.16.238.1  
