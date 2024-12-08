@@ -68,7 +68,7 @@ mkdir -p /etc/rysen/json &&
 
 echo "Get config /etc/rysen/rysen.cfg ..." 
 cd /etc/rysen &&
-curl https://raw.githubusercontent.com/ShaYmez/RYSEN/refs/heads/master/docker-configs/config/rysen.cfg -o rules.py &&
+curl https://raw.githubusercontent.com/ShaYmez/RYSEN/refs/heads/master/docker-configs/config/rysen.cfg -o rysen.cfg &&
 
 "Get rules /etc/rysen/rules.py..."
 cd /etc/rysen &&
@@ -81,8 +81,6 @@ curl https://raw.githubusercontent.com/ShaYmez/RYSEN/refs/heads/master/docker-co
 echo "Set perms on config directory..."
 chmod -R 755 /etc/rysen &&
 chown -R 54000 /etc/rysen &&
-
-chmod 755 /etc/cron.daily/lastheard &&
 
 echo "Tune network stack..."
 cat << EOF > /etc/sysctl.conf &&
