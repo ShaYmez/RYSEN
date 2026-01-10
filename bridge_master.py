@@ -472,18 +472,25 @@ def SubMapTrimmer():
     for _subscriber in SUB_MAP:
         # BACKWARDS COMPATIBILITY: Handle 3, 4, and 5-element formats
         try:
+            # Determine timestamp index based on format
             if len(SUB_MAP[_subscriber]) == 5:
                 # New format: (system, ts, tg, timestamp, peer_id)
-                if SUB_MAP[_subscriber][3] < (_sub_time - 86400):
-                    _remove_list.append(_subscriber)
+                _timestamp_idx = 3
             elif len(SUB_MAP[_subscriber]) == 4:
                 # Old format: (system, ts, tg, timestamp)
-                if SUB_MAP[_subscriber][3] < (_sub_time - 86400):
-                    _remove_list.append(_subscriber)
+                _timestamp_idx = 3
             elif len(SUB_MAP[_subscriber]) == 3:
                 # Old format: (system, ts, timestamp)
-                if SUB_MAP[_subscriber][2] < (_sub_time - 86400):
-                    _remove_list.append(_subscriber)
+                _timestamp_idx = 2
+            else:
+                logger.warning('(SUBSCRIBER) Invalid SUB_MAP entry for subscriber %s: unexpected length %s', 
+                             int_id(_subscriber), len(SUB_MAP[_subscriber]))
+                _remove_list.append(_subscriber)
+                continue
+            
+            # Check if entry should be removed (older than 24 hours)
+            if SUB_MAP[_subscriber][_timestamp_idx] < (_sub_time - 86400):
+                _remove_list.append(_subscriber)
         except (TypeError, IndexError) as e:
             logger.warning('(SUBSCRIBER) Invalid SUB_MAP entry for subscriber %s, removing: %s', int_id(_subscriber), e)
             _remove_list.append(_subscriber)
@@ -829,8 +836,16 @@ def options_config():
                                     try:
                                         k, v = x.split('=')
                                         if k == 'STICKY':
-                                            # Store per-peer STICKY setting (1 = True, 0 = False)
-                                            _peer['STICKY'] = bool(int(v))
+                                            # Validate and store per-peer STICKY setting
+                                            # Accept: "1", "0", "true", "false", "yes", "no"
+                                            if v.lower() in ['1', 'true', 'yes']:
+                                                _peer['STICKY'] = True
+                                            elif v.lower() in ['0', 'false', 'no']:
+                                                _peer['STICKY'] = False
+                                            else:
+                                                logger.warning('(OPTIONS) %s - Peer %s invalid STICKY value "%s", ignoring', 
+                                                             _system, int_id(_peer_id), v)
+                                                continue
                                             logger.info('(OPTIONS) %s - Peer %s set STICKY=%s', _system, int_id(_peer_id), _peer['STICKY'])
                                             break
                                     except (ValueError, KeyError):
@@ -2391,6 +2406,7 @@ class routerHBP(HBSYSTEM):
                 # This enables sticky TG functionality - subscriber is now associated with this TG
                 if _rf_src in SUB_MAP:
                     # BACKWARDS COMPATIBILITY: Handle 3, 4, and 5-element formats
+                    _sub_peer_id = None  # Initialize for backwards compatibility
                     try:
                         if len(SUB_MAP[_rf_src]) == 5:
                             _system, _ts, _old_tg, _timestamp, _sub_peer_id = SUB_MAP[_rf_src]
