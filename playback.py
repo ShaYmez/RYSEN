@@ -53,7 +53,7 @@ __maintainer__ = 'Cort Buffington, N0MJS'
 __email__      = 'n0mjs@me.com'
 __status__     = 'pre-alpha'
 
-# Module gobal varaibles
+# Module gobal variables
 
 class playback(HBSYSTEM):
 

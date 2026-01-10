@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# RYSEN DMRMaster+ Version 1.3.8r3
+# RYSEN DMRMaster+ Version 1.3.9r3
 ###############################################################################
 #   Copyright (C) 2016-2019 Cortney T. Buffington, N0MJS <n0mjs@me.com>
 #
@@ -27,7 +27,7 @@ works stand-alone before troubleshooting any applications that use it. It has
 sufficient logging to be used standalone as a troubleshooting application.
 '''
 
-# Specifig functions from modules we need
+# Specific functions from modules we need
 from binascii import b2a_hex as ahex
 from binascii import a2b_hex as bhex
 from random import randint
@@ -789,7 +789,6 @@ class HBSYSTEM(DatagramProtocol):
                 self._CONFIG['SYSTEMS'][self._system]['_reset'] = True
             else:
                 del self._CONFIG['SYSTEMS'][self._system]['OPTIONS']
-                w
                 logger.info('(%s) Deleting HBP Options',self._system)
 
     # Aliased in __init__ to maintenance_loop if system is a peer
@@ -1073,7 +1072,7 @@ class HBSYSTEM(DatagramProtocol):
                 self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                 logger.info('(%s) Login challenge from Radio ID that has not logged in: %s', self._system, int_id(_peer_id))
 
-        elif _command == RPTC:    # Repeater is sending it's configuraiton OR disconnecting
+        elif _command == RPTC:    # Repeater is sending it's configuration OR disconnecting
             if _data[:5] == RPTCL:    # Disconnect command
                 _peer_id = _data[5:9]
                 if _peer_id in self._peers \

@@ -20,13 +20,13 @@
 ###############################################################################
 
 '''
-This application, in conjuction with it's rule file (rules.py) will
+This application, in conjunction with it's rule file (rules.py) will
 work like a "conference bridge". This is similar to what most hams think of as a
 reflector. You define conference bridges and any system joined to that conference
 bridge will both receive traffic from, and send traffic to any other system
 joined to the same conference bridge. It does not provide end-to-end connectivity
 as each end system must individually be joined to a conference bridge (a name
-you create in the configuraiton file) to pass traffic.
+you create in the configuration file) to pass traffic.
 
 This program currently only works with group voice calls.
 '''
@@ -58,6 +58,7 @@ from config import acl_build
 import log
 from const import *
 from mk_voice import pkt_gen
+# NOTE: 'words' is loaded dynamically via readAMBE() at runtime (see line ~2689)
 #from voice_lib import words
 
 #Read voices
@@ -67,13 +68,9 @@ from i8n_voice_map import voiceMap
 
 # Stuff for socket reporting
 import pickle
-# REMOVE LATER from datetime import datetime
 # The module needs logging, but handlers, etc. are controlled by the parent
 import logging
 logger = logging.getLogger(__name__)
-
-#REGEX
-import re
 
 from binascii import b2a_hex as ahex
 
@@ -860,13 +857,13 @@ def options_config():
                         
                     if _options['TS1_STATIC']:
                         re.sub("\\s","",_options['TS1_STATIC'])
-                        if re.search("![\\d\\,]",_options['TS1_STATIC']):
+                        if re.search(r"[^\d,]",_options['TS1_STATIC']):
                             logger.debug('(OPTIONS) %s - TS1_STATIC contains characters other than numbers and comma, ignoring',_system)
                             continue
                     
                     if _options['TS2_STATIC']:
                         re.sub("\\s","",_options['TS2_STATIC'])
-                        if re.search("![\\d\\,]",_options['TS2_STATIC']):
+                        if re.search(r"[^\d,]",_options['TS2_STATIC']):
                             logger.debug('(OPTIONS) %s - TS2_STATIC contains characters other than numbers and comma, ignoring',_system)
                             continue
                     
