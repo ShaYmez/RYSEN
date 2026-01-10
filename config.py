@@ -320,6 +320,7 @@ def build_config(_config_file):
                         'TS1_STATIC': config.get(section,'TS1_STATIC'),
                         'TS2_STATIC': config.get(section,'TS2_STATIC'),
                         'DEFAULT_REFLECTOR': config.getint(section, 'DEFAULT_REFLECTOR'),
+                        'STICKY_TG': config.getboolean(section, 'STICKY_TG'),
                         'GENERATOR': config.getint(section, 'GENERATOR'),
                         'ANNOUNCEMENT_LANGUAGE': config.get(section, 'ANNOUNCEMENT_LANGUAGE'),
                         'ALLOW_UNREG_ID': config.getboolean(section,'ALLOW_UNREG_ID'),
