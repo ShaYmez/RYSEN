@@ -328,7 +328,8 @@ def rule_timer_loop():
                     # PRODUCTION SAFETY: Feature flag check - only apply sticky logic if enabled
                     # This ensures existing systems continue working unchanged when STICKY_TG=False
                     _sticky_active = False
-                    if CONFIG['SYSTEMS'][_system['SYSTEM']]['MODE'] == 'MASTER' and CONFIG['SYSTEMS'][_system['SYSTEM']]['STICKY_TG']:
+                    if (CONFIG['SYSTEMS'][_system['SYSTEM']]['MODE'] == 'MASTER' and 
+                        CONFIG['SYSTEMS'][_system['SYSTEM']].get('STICKY_TG', False)):
                         # Check if any subscriber has this TG as their sticky TG
                         for _subscriber in SUB_MAP:
                             try:
@@ -2340,7 +2341,9 @@ class routerHBP(HBSYSTEM):
                         _system, _ts, _old_tg, _timestamp = self._system, _slot, None, pkt_time
                     
                     SUB_MAP[_rf_src] = (_system, _ts, _dst_id, _timestamp)
-                    if CONFIG['SYSTEMS'][self._system]['STICKY_TG'] and _old_tg and _old_tg != _dst_id:
+                    if (CONFIG['SYSTEMS'][self._system]['MODE'] == 'MASTER' and 
+                        CONFIG['SYSTEMS'][self._system].get('STICKY_TG', False) and 
+                        _old_tg and _old_tg != _dst_id):
                         logger.info('(%s) STICKY_TG: Subscriber %s changed from TG %s to TG %s', 
                                    self._system, int_id(_rf_src), int_id(_old_tg), int_id(_dst_id))
 
