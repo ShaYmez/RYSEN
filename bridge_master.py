@@ -2327,7 +2327,18 @@ class routerHBP(HBSYSTEM):
                 # Update SUB_MAP with the TG for this call
                 # This enables sticky TG functionality - subscriber is now associated with this TG
                 if _rf_src in SUB_MAP:
-                    _system, _ts, _old_tg, _timestamp = SUB_MAP[_rf_src]
+                    # BACKWARDS COMPATIBILITY: Handle both 3-element and 4-element formats
+                    try:
+                        if len(SUB_MAP[_rf_src]) == 4:
+                            _system, _ts, _old_tg, _timestamp = SUB_MAP[_rf_src]
+                        else:  # Old 3-element format
+                            _system, _ts, _timestamp = SUB_MAP[_rf_src]
+                            _old_tg = None
+                    except (TypeError, ValueError) as e:
+                        logger.warning('(%s) Invalid SUB_MAP entry for subscriber %s: %s', 
+                                      self._system, int_id(_rf_src), e)
+                        _system, _ts, _old_tg, _timestamp = self._system, _slot, None, pkt_time
+                    
                     SUB_MAP[_rf_src] = (_system, _ts, _dst_id, _timestamp)
                     if CONFIG['SYSTEMS'][self._system]['STICKY_TG'] and _old_tg and _old_tg != _dst_id:
                         logger.info('(%s) STICKY_TG: Subscriber %s changed from TG %s to TG %s', 
