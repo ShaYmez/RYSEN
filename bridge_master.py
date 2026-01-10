@@ -323,7 +323,36 @@ def rule_timer_loop():
             if _system['TO_TYPE'] == 'ON':
                 if _system['ACTIVE'] == True:
                     _bridge_used = True
-                    if _system['TIMER'] < _now:
+                    
+                    # STICKY_TG LOGIC: Check if this bridge should remain active due to sticky TG
+                    # PRODUCTION SAFETY: Feature flag check - only apply sticky logic if enabled
+                    # This ensures existing systems continue working unchanged when STICKY_TG=False
+                    _sticky_active = False
+                    if CONFIG['SYSTEMS'][_system['SYSTEM']]['MODE'] == 'MASTER' and CONFIG['SYSTEMS'][_system['SYSTEM']]['STICKY_TG']:
+                        # Check if any subscriber has this TG as their sticky TG
+                        for _subscriber in SUB_MAP:
+                            try:
+                                if len(SUB_MAP[_subscriber]) == 4:
+                                    _sub_system, _sub_ts, _sub_tg, _sub_time = SUB_MAP[_subscriber]
+                                    # Check if subscriber is on this system and has this TG as sticky
+                                    if (_sub_system == _system['SYSTEM'] and 
+                                        _sub_ts == _system['TS'] and 
+                                        _sub_tg == _system['TGID'] and
+                                        _sub_tg is not None):
+                                        _sticky_active = True
+                                        logger.debug('(%s) STICKY_TG: Bridge %s kept active for subscriber %s on TG %s', 
+                                                   _system['SYSTEM'], _bridge, int_id(_subscriber), int_id(_sub_tg))
+                                        break
+                            except (TypeError, ValueError, IndexError):
+                                pass
+                    
+                    if _sticky_active:
+                        # Keep bridge active due to sticky TG - don't timeout
+                        _bridge_used = True
+                        logger.debug('(ROUTER) Conference Bridge ACTIVE (STICKY_TG): System: %s Bridge: %s, TS: %s, TGID: %s', 
+                                   _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
+                    elif _system['TIMER'] < _now:
+                        # Normal timeout behavior when sticky TG not active
                         _system['ACTIVE'] = False
                         logger.info('(ROUTER) Conference Bridge TIMEOUT: DEACTIVATE System: %s, Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
                         if _bridge[0:1] == '#':
@@ -335,6 +364,8 @@ def rule_timer_loop():
                 elif _system['ACTIVE'] == False:
                     logger.debug('(ROUTER) Conference Bridge INACTIVE (no change): System: %s Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
             elif _system['TO_TYPE'] == 'OFF':
+                # PRIORITY: Static TGs always override - they use TO_TYPE='OFF'
+                # Static TGs (TS1_STATIC/TS2_STATIC) have highest priority and always remain active
                 if _system['ACTIVE'] == False:
                     if _system['TIMER'] < _now:
                         _system['ACTIVE'] = True
