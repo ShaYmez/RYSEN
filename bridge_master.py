@@ -326,20 +326,46 @@ def rule_timer_loop():
                     
                     # STICKY_TG LOGIC: Check if this bridge should remain active due to sticky TG
                     # PRODUCTION SAFETY: Feature flag check - only apply sticky logic if enabled
-                    # This ensures existing systems continue working unchanged when STICKY_TG=False
+                    # Priority: Peer STICKY > System STICKY_TG > Default (False)
                     _sticky_active = False
-                    if (CONFIG['SYSTEMS'][_system['SYSTEM']]['MODE'] == 'MASTER' and 
-                        CONFIG['SYSTEMS'][_system['SYSTEM']].get('STICKY_TG', False)):
+                    if CONFIG['SYSTEMS'][_system['SYSTEM']]['MODE'] == 'MASTER':
                         # Check if any subscriber has this TG as their sticky TG
                         for _subscriber in SUB_MAP:
                             try:
-                                if len(SUB_MAP[_subscriber]) == 4:
+                                _sub_peer_id = None
+                                if len(SUB_MAP[_subscriber]) == 5:
+                                    _sub_system, _sub_ts, _sub_tg, _sub_time, _sub_peer_id = SUB_MAP[_subscriber]
+                                elif len(SUB_MAP[_subscriber]) == 4:
                                     _sub_system, _sub_ts, _sub_tg, _sub_time = SUB_MAP[_subscriber]
-                                    # Check if subscriber is on this system and has this TG as sticky
-                                    if (_sub_system == _system['SYSTEM'] and 
-                                        _sub_ts == _system['TS'] and 
-                                        _sub_tg == _system['TGID'] and
-                                        _sub_tg is not None):
+                                else:
+                                    continue  # Old 3-element format doesn't support sticky TG
+                                
+                                # Check if subscriber is on this system and has this TG as sticky
+                                if (_sub_system == _system['SYSTEM'] and 
+                                    _sub_ts == _system['TS'] and 
+                                    _sub_tg == _system['TGID'] and
+                                    _sub_tg is not None):
+                                    
+                                    # Determine if sticky TG is enabled for this subscriber
+                                    # Priority 1: Per-peer STICKY setting (if available)
+                                    # Priority 2: System-wide STICKY_TG setting
+                                    # Priority 3: Default to False
+                                    _sticky_enabled = False
+                                    if (_sub_peer_id and 
+                                        'PEERS' in CONFIG['SYSTEMS'][_system['SYSTEM']] and
+                                        _sub_peer_id in CONFIG['SYSTEMS'][_system['SYSTEM']]['PEERS'] and
+                                        'STICKY' in CONFIG['SYSTEMS'][_system['SYSTEM']]['PEERS'][_sub_peer_id]):
+                                        # Peer has explicit STICKY setting - use it
+                                        _sticky_enabled = CONFIG['SYSTEMS'][_system['SYSTEM']]['PEERS'][_sub_peer_id]['STICKY']
+                                        logger.debug('(%s) STICKY_TG: Using peer-level STICKY=%s for subscriber %s (peer %s)', 
+                                                   _system['SYSTEM'], _sticky_enabled, int_id(_subscriber), int_id(_sub_peer_id))
+                                    elif CONFIG['SYSTEMS'][_system['SYSTEM']].get('STICKY_TG', False):
+                                        # No peer-level setting, use system default
+                                        _sticky_enabled = True
+                                        logger.debug('(%s) STICKY_TG: Using system-level STICKY_TG for subscriber %s', 
+                                                   _system['SYSTEM'], int_id(_subscriber))
+                                    
+                                    if _sticky_enabled:
                                         _sticky_active = True
                                         logger.debug('(%s) STICKY_TG: Bridge %s kept active for subscriber %s on TG %s', 
                                                    _system['SYSTEM'], _bridge, int_id(_subscriber), int_id(_sub_tg))
@@ -444,16 +470,27 @@ def SubMapTrimmer():
     _sub_time = time()
     _remove_list = deque()
     for _subscriber in SUB_MAP:
-        # BACKWARDS COMPATIBILITY: Handle both 3-element and 4-element formats
+        # BACKWARDS COMPATIBILITY: Handle 3, 4, and 5-element formats
         try:
-            if len(SUB_MAP[_subscriber]) == 3:
-                # Old format: (system, ts, timestamp)
-                if SUB_MAP[_subscriber][2] < (_sub_time - 86400):
-                    _remove_list.append(_subscriber)
+            # Determine timestamp index based on format
+            if len(SUB_MAP[_subscriber]) == 5:
+                # New format: (system, ts, tg, timestamp, peer_id)
+                _timestamp_idx = 3
             elif len(SUB_MAP[_subscriber]) == 4:
-                # New format: (system, ts, tg, timestamp)
-                if SUB_MAP[_subscriber][3] < (_sub_time - 86400):
-                    _remove_list.append(_subscriber)
+                # Old format: (system, ts, tg, timestamp)
+                _timestamp_idx = 3
+            elif len(SUB_MAP[_subscriber]) == 3:
+                # Old format: (system, ts, timestamp)
+                _timestamp_idx = 2
+            else:
+                logger.warning('(SUBSCRIBER) Invalid SUB_MAP entry for subscriber %s: unexpected length %s', 
+                             int_id(_subscriber), len(SUB_MAP[_subscriber]))
+                _remove_list.append(_subscriber)
+                continue
+            
+            # Check if entry should be removed (older than 24 hours)
+            if SUB_MAP[_subscriber][_timestamp_idx] < (_sub_time - 86400):
+                _remove_list.append(_subscriber)
         except (TypeError, IndexError) as e:
             logger.warning('(SUBSCRIBER) Invalid SUB_MAP entry for subscriber %s, removing: %s', int_id(_subscriber), e)
             _remove_list.append(_subscriber)
@@ -782,6 +819,40 @@ def options_config():
             if CONFIG['SYSTEMS'][_system]['MODE'] != 'MASTER':
                 continue
             if CONFIG['SYSTEMS'][_system]['ENABLED'] == True:
+                # Process per-peer OPTIONS first to extract STICKY setting
+                if 'PEERS' in CONFIG['SYSTEMS'][_system]:
+                    for _peer_id in CONFIG['SYSTEMS'][_system]['PEERS']:
+                        _peer = CONFIG['SYSTEMS'][_system]['PEERS'][_peer_id]
+                        if 'OPTIONS' in _peer and _peer['OPTIONS']:
+                            try:
+                                _peer_options_str = _peer['OPTIONS'].decode() if isinstance(_peer['OPTIONS'], bytes) else str(_peer['OPTIONS'])
+                                _peer_options_str = _peer_options_str.rstrip('\x00')
+                                _peer_options_str = _peer_options_str.encode('ascii', 'ignore').decode()
+                                _peer_options_str = re.sub("\'","",_peer_options_str)
+                                _peer_options_str = re.sub("\"","",_peer_options_str)
+                                
+                                # Parse STICKY option from peer OPTIONS
+                                for x in _peer_options_str.split(";"):
+                                    try:
+                                        k, v = x.split('=')
+                                        if k == 'STICKY':
+                                            # Validate and store per-peer STICKY setting
+                                            # Accept: "1", "0", "true", "false", "yes", "no"
+                                            if v.lower() in ['1', 'true', 'yes']:
+                                                _peer['STICKY'] = True
+                                            elif v.lower() in ['0', 'false', 'no']:
+                                                _peer['STICKY'] = False
+                                            else:
+                                                logger.warning('(OPTIONS) %s - Peer %s invalid STICKY value "%s", ignoring', 
+                                                             _system, int_id(_peer_id), v)
+                                                continue
+                                            logger.info('(OPTIONS) %s - Peer %s set STICKY=%s', _system, int_id(_peer_id), _peer['STICKY'])
+                                            break
+                                    except (ValueError, KeyError):
+                                        continue
+                            except Exception as e:
+                                logger.debug('(OPTIONS) %s - Error parsing peer %s OPTIONS: %s', _system, int_id(_peer_id), e)
+                
                 if 'OPTIONS' in CONFIG['SYSTEMS'][_system]:
                     _options = {}
                     CONFIG['SYSTEMS'][_system]['OPTIONS'] = CONFIG['SYSTEMS'][_system]['OPTIONS'].rstrip('\x00')
@@ -1381,9 +1452,11 @@ class routerOBP(OPENBRIDGE):
             
             #If destination ID is in the Subscriber Map
             if _dst_id in SUB_MAP:
-                # BACKWARDS COMPATIBILITY: Handle both 3-element and 4-element formats
+                # BACKWARDS COMPATIBILITY: Handle 3, 4, and 5-element formats
                 try:
-                    if len(SUB_MAP[_dst_id]) == 4:
+                    if len(SUB_MAP[_dst_id]) == 5:
+                        (_d_system, _d_slot, _d_tg, _d_time, _d_peer_id) = SUB_MAP[_dst_id]
+                    elif len(SUB_MAP[_dst_id]) == 4:
                         (_d_system, _d_slot, _d_tg, _d_time) = SUB_MAP[_dst_id]
                     else:  # Old 3-element format
                         (_d_system, _d_slot, _d_time) = SUB_MAP[_dst_id]
@@ -1936,18 +2009,20 @@ class routerHBP(HBSYSTEM):
         _voice_call = False
         
         # Add system to SUB_MAP - initialize with current TG as None (will be updated for group calls)
-        # New format: SUB_MAP[subscriber] = (system, ts, tg, timestamp)
+        # New format: SUB_MAP[subscriber] = (system, ts, tg, timestamp, peer_id)
         # Keep existing TG if subscriber already in map, else set to None
         _existing_tg = None
         if _rf_src in SUB_MAP:
             try:
-                if len(SUB_MAP[_rf_src]) == 4:
+                if len(SUB_MAP[_rf_src]) == 5:
                     _existing_tg = SUB_MAP[_rf_src][2]  # Keep existing sticky TG
+                elif len(SUB_MAP[_rf_src]) == 4:
+                    _existing_tg = SUB_MAP[_rf_src][2]  # Keep existing sticky TG (old format)
                 elif len(SUB_MAP[_rf_src]) == 3:
                     _existing_tg = None  # Old format, no TG
             except (TypeError, IndexError):
                 _existing_tg = None
-        SUB_MAP[_rf_src] = (self._system, _slot, _existing_tg, pkt_time)
+        SUB_MAP[_rf_src] = (self._system, _slot, _existing_tg, pkt_time, _peer_id)
         
         def resetallStarMode():
             self.STATUS[_slot]['_allStarMode'] = False
@@ -2015,9 +2090,11 @@ class routerHBP(HBSYSTEM):
                     
             #If destination ID is in the Subscriber Map
             if _dst_id in SUB_MAP:
-                # BACKWARDS COMPATIBILITY: Handle both 3-element and 4-element formats
+                # BACKWARDS COMPATIBILITY: Handle 3, 4, and 5-element formats
                 try:
-                    if len(SUB_MAP[_dst_id]) == 4:
+                    if len(SUB_MAP[_dst_id]) == 5:
+                        (_d_system, _d_slot, _d_tg, _d_time, _d_peer_id) = SUB_MAP[_dst_id]
+                    elif len(SUB_MAP[_dst_id]) == 4:
                         (_d_system, _d_slot, _d_tg, _d_time) = SUB_MAP[_dst_id]
                     else:  # Old 3-element format
                         (_d_system, _d_slot, _d_time) = SUB_MAP[_dst_id]
@@ -2328,9 +2405,12 @@ class routerHBP(HBSYSTEM):
                 # Update SUB_MAP with the TG for this call
                 # This enables sticky TG functionality - subscriber is now associated with this TG
                 if _rf_src in SUB_MAP:
-                    # BACKWARDS COMPATIBILITY: Handle both 3-element and 4-element formats
+                    # BACKWARDS COMPATIBILITY: Handle 3, 4, and 5-element formats
+                    _sub_peer_id = None  # Initialize for backwards compatibility
                     try:
-                        if len(SUB_MAP[_rf_src]) == 4:
+                        if len(SUB_MAP[_rf_src]) == 5:
+                            _system, _ts, _old_tg, _timestamp, _sub_peer_id = SUB_MAP[_rf_src]
+                        elif len(SUB_MAP[_rf_src]) == 4:
                             _system, _ts, _old_tg, _timestamp = SUB_MAP[_rf_src]
                         else:  # Old 3-element format
                             _system, _ts, _timestamp = SUB_MAP[_rf_src]
@@ -2340,12 +2420,23 @@ class routerHBP(HBSYSTEM):
                                       self._system, int_id(_rf_src), e)
                         _system, _ts, _old_tg, _timestamp = self._system, _slot, None, pkt_time
                     
-                    SUB_MAP[_rf_src] = (_system, _ts, _dst_id, _timestamp)
+                    SUB_MAP[_rf_src] = (_system, _ts, _dst_id, pkt_time, _peer_id)
+                    
+                    # Check if we should log sticky TG change based on per-peer or system-wide setting
+                    _sticky_enabled = False
                     if (CONFIG['SYSTEMS'][self._system]['MODE'] == 'MASTER' and 
-                        CONFIG['SYSTEMS'][self._system].get('STICKY_TG', False) and 
-                        _old_tg and _old_tg != _dst_id):
-                        logger.info('(%s) STICKY_TG: Subscriber %s changed from TG %s to TG %s', 
-                                   self._system, int_id(_rf_src), int_id(_old_tg), int_id(_dst_id))
+                        'PEERS' in CONFIG['SYSTEMS'][self._system] and
+                        _peer_id in CONFIG['SYSTEMS'][self._system]['PEERS']):
+                        # Priority 1: Check peer-specific STICKY setting
+                        if 'STICKY' in CONFIG['SYSTEMS'][self._system]['PEERS'][_peer_id]:
+                            _sticky_enabled = CONFIG['SYSTEMS'][self._system]['PEERS'][_peer_id]['STICKY']
+                        # Priority 2: Check system-wide STICKY_TG setting
+                        elif CONFIG['SYSTEMS'][self._system].get('STICKY_TG', False):
+                            _sticky_enabled = True
+                    
+                    if _sticky_enabled and _old_tg and _old_tg != _dst_id:
+                        logger.info('(%s) STICKY_TG: Subscriber %s (Peer %s) changed from TG %s to TG %s', 
+                                   self._system, int_id(_rf_src), int_id(_peer_id), int_id(_old_tg), int_id(_dst_id))
 
             self.STATUS[_slot]['packets'] = self.STATUS[_slot]['packets'] +1
             
@@ -2706,23 +2797,28 @@ if __name__ == '__main__':
             with open(CONFIG['ALIASES']['PATH'] + CONFIG['ALIASES']['SUB_MAP_FILE'],'rb') as _fh:
                 SUB_MAP = pickle.load(_fh)
             
-            # BACKWARDS COMPATIBILITY: Handle old 3-element SUB_MAP format
-            # Old format: SUB_MAP[subscriber] = (system, ts, timestamp)
-            # New format: SUB_MAP[subscriber] = (system, ts, tg, timestamp)
-            # Convert old format to new format by adding None for TG field
+            # BACKWARDS COMPATIBILITY: Handle old SUB_MAP formats
+            # Old 3-element format: SUB_MAP[subscriber] = (system, ts, timestamp)
+            # Old 4-element format: SUB_MAP[subscriber] = (system, ts, tg, timestamp)
+            # New 5-element format: SUB_MAP[subscriber] = (system, ts, tg, timestamp, peer_id)
+            # Convert old formats to new format by adding None for missing fields
             _converted_count = 0
             for _subscriber in list(SUB_MAP.keys()):
                 try:
-                    if len(SUB_MAP[_subscriber]) == 3:  # Old format
+                    if len(SUB_MAP[_subscriber]) == 3:  # Old 3-element format
                         _system, _ts, _timestamp = SUB_MAP[_subscriber]
-                        SUB_MAP[_subscriber] = (_system, _ts, None, _timestamp)
+                        SUB_MAP[_subscriber] = (_system, _ts, None, _timestamp, None)
+                        _converted_count += 1
+                    elif len(SUB_MAP[_subscriber]) == 4:  # Old 4-element format
+                        _system, _ts, _tg, _timestamp = SUB_MAP[_subscriber]
+                        SUB_MAP[_subscriber] = (_system, _ts, _tg, _timestamp, None)
                         _converted_count += 1
                 except (TypeError, ValueError) as e:
                     logger.warning('(SUBSCRIBER) Invalid SUB_MAP entry for subscriber %s, removing: %s', int_id(_subscriber), e)
                     SUB_MAP.pop(_subscriber, None)
             
             if _converted_count > 0:
-                logger.info('(SUBSCRIBER) Converted %s SUB_MAP entries from old 3-element format to new 4-element format', _converted_count)
+                logger.info('(SUBSCRIBER) Converted %s SUB_MAP entries to new 5-element format', _converted_count)
             logger.info('(SUBSCRIBER) Loaded SUB_MAP with %s entries', len(SUB_MAP))
         except Exception as e:
             logger.warning('(SUBSCRIBER) Cannot load SUB_MAP file: %s', e)
