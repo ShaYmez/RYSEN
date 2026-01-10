@@ -323,7 +323,36 @@ def rule_timer_loop():
             if _system['TO_TYPE'] == 'ON':
                 if _system['ACTIVE'] == True:
                     _bridge_used = True
-                    if _system['TIMER'] < _now:
+                    
+                    # STICKY_TG LOGIC: Check if this bridge should remain active due to sticky TG
+                    # PRODUCTION SAFETY: Feature flag check - only apply sticky logic if enabled
+                    # This ensures existing systems continue working unchanged when STICKY_TG=False
+                    _sticky_active = False
+                    if CONFIG['SYSTEMS'][_system['SYSTEM']]['MODE'] == 'MASTER' and CONFIG['SYSTEMS'][_system['SYSTEM']]['STICKY_TG']:
+                        # Check if any subscriber has this TG as their sticky TG
+                        for _subscriber in SUB_MAP:
+                            try:
+                                if len(SUB_MAP[_subscriber]) == 4:
+                                    _sub_system, _sub_ts, _sub_tg, _sub_time = SUB_MAP[_subscriber]
+                                    # Check if subscriber is on this system and has this TG as sticky
+                                    if (_sub_system == _system['SYSTEM'] and 
+                                        _sub_ts == _system['TS'] and 
+                                        _sub_tg == _system['TGID'] and
+                                        _sub_tg is not None):
+                                        _sticky_active = True
+                                        logger.debug('(%s) STICKY_TG: Bridge %s kept active for subscriber %s on TG %s', 
+                                                   _system['SYSTEM'], _bridge, int_id(_subscriber), int_id(_sub_tg))
+                                        break
+                            except (TypeError, ValueError, IndexError):
+                                pass
+                    
+                    if _sticky_active:
+                        # Keep bridge active due to sticky TG - don't timeout
+                        _bridge_used = True
+                        logger.debug('(ROUTER) Conference Bridge ACTIVE (STICKY_TG): System: %s Bridge: %s, TS: %s, TGID: %s', 
+                                   _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
+                    elif _system['TIMER'] < _now:
+                        # Normal timeout behavior when sticky TG not active
                         _system['ACTIVE'] = False
                         logger.info('(ROUTER) Conference Bridge TIMEOUT: DEACTIVATE System: %s, Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
                         if _bridge[0:1] == '#':
@@ -335,6 +364,8 @@ def rule_timer_loop():
                 elif _system['ACTIVE'] == False:
                     logger.debug('(ROUTER) Conference Bridge INACTIVE (no change): System: %s Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
             elif _system['TO_TYPE'] == 'OFF':
+                # PRIORITY: Static TGs always override - they use TO_TYPE='OFF'
+                # Static TGs (TS1_STATIC/TS2_STATIC) have highest priority and always remain active
                 if _system['ACTIVE'] == False:
                     if _system['TIMER'] < _now:
                         _system['ACTIVE'] = True
@@ -412,7 +443,18 @@ def SubMapTrimmer():
     _sub_time = time()
     _remove_list = deque()
     for _subscriber in SUB_MAP:
-        if SUB_MAP[_subscriber][2] < (_sub_time - 86400):
+        # BACKWARDS COMPATIBILITY: Handle both 3-element and 4-element formats
+        try:
+            if len(SUB_MAP[_subscriber]) == 3:
+                # Old format: (system, ts, timestamp)
+                if SUB_MAP[_subscriber][2] < (_sub_time - 86400):
+                    _remove_list.append(_subscriber)
+            elif len(SUB_MAP[_subscriber]) == 4:
+                # New format: (system, ts, tg, timestamp)
+                if SUB_MAP[_subscriber][3] < (_sub_time - 86400):
+                    _remove_list.append(_subscriber)
+        except (TypeError, IndexError) as e:
+            logger.warning('(SUBSCRIBER) Invalid SUB_MAP entry for subscriber %s, removing: %s', int_id(_subscriber), e)
             _remove_list.append(_subscriber)
     
     for _remove in _remove_list:
@@ -1338,10 +1380,18 @@ class routerOBP(OPENBRIDGE):
             
             #If destination ID is in the Subscriber Map
             if _dst_id in SUB_MAP:
-                (_d_system,_d_slot,_d_time) = SUB_MAP[_dst_id]
-                _dst_slot  = systems[_d_system].STATUS[_d_slot]
-                logger.info('(%s) SUB_MAP matched, System: %s Slot: %s, Time: %s',self._system, _d_system,_d_slot,_d_time)
-                #If slot is idle for RX and TX
+                # BACKWARDS COMPATIBILITY: Handle both 3-element and 4-element formats
+                try:
+                    if len(SUB_MAP[_dst_id]) == 4:
+                        (_d_system, _d_slot, _d_tg, _d_time) = SUB_MAP[_dst_id]
+                    else:  # Old 3-element format
+                        (_d_system, _d_slot, _d_time) = SUB_MAP[_dst_id]
+                except (TypeError, ValueError):
+                    logger.warning('(%s) Invalid SUB_MAP entry for destination %s', self._system, int_id(_dst_id))
+                else:
+                    _dst_slot  = systems[_d_system].STATUS[_d_slot]
+                    logger.info('(%s) SUB_MAP matched, System: %s Slot: %s, Time: %s',self._system, _d_system,_d_slot,_d_time)
+                    #If slot is idle for RX and TX
                 if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):                
                 #rewrite slot if required
                     if _slot != _d_slot:
@@ -1884,8 +1934,19 @@ class routerHBP(HBSYSTEM):
         _data_call = False
         _voice_call = False
         
-        #Add system to SUB_MAP
-        SUB_MAP[_rf_src] = (self._system,_slot,pkt_time)
+        # Add system to SUB_MAP - initialize with current TG as None (will be updated for group calls)
+        # New format: SUB_MAP[subscriber] = (system, ts, tg, timestamp)
+        # Keep existing TG if subscriber already in map, else set to None
+        _existing_tg = None
+        if _rf_src in SUB_MAP:
+            try:
+                if len(SUB_MAP[_rf_src]) == 4:
+                    _existing_tg = SUB_MAP[_rf_src][2]  # Keep existing sticky TG
+                elif len(SUB_MAP[_rf_src]) == 3:
+                    _existing_tg = None  # Old format, no TG
+            except (TypeError, IndexError):
+                _existing_tg = None
+        SUB_MAP[_rf_src] = (self._system, _slot, _existing_tg, pkt_time)
         
         def resetallStarMode():
             self.STATUS[_slot]['_allStarMode'] = False
@@ -1953,20 +2014,28 @@ class routerHBP(HBSYSTEM):
                     
             #If destination ID is in the Subscriber Map
             if _dst_id in SUB_MAP:
-                (_d_system,_d_slot,_d_time) = SUB_MAP[_dst_id]
-                _dst_slot  = systems[_d_system].STATUS[_d_slot]
-                logger.info('(%s) SUB_MAP matched, System: %s Slot: %s, Time: %s',self._system, _d_system,_d_slot,_d_time)
-                #If slot is idle for RX and TX
-                if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):                
-                #rewrite slot if required
-                    if _slot != _d_slot:
-                        _tmp_bits = _bits ^ 1 << 7
-                    else: 
-                        _tmp_bits = _bits                        
-                    self.sendDataToHBP(_d_system,_d_slot,_dst_id,_tmp_bits,_data,dmrpkt,_rf_src,_stream_id,_peer_id)
-                        
+                # BACKWARDS COMPATIBILITY: Handle both 3-element and 4-element formats
+                try:
+                    if len(SUB_MAP[_dst_id]) == 4:
+                        (_d_system, _d_slot, _d_tg, _d_time) = SUB_MAP[_dst_id]
+                    else:  # Old 3-element format
+                        (_d_system, _d_slot, _d_time) = SUB_MAP[_dst_id]
+                except (TypeError, ValueError):
+                    logger.warning('(%s) Invalid SUB_MAP entry for destination %s', self._system, int_id(_dst_id))
                 else:
-                    logger.debug('(%s) UNIT Data not bridged to HBP on slot 1 - target busy: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
+                    _dst_slot  = systems[_d_system].STATUS[_d_slot]
+                    logger.info('(%s) SUB_MAP matched, System: %s Slot: %s, Time: %s',self._system, _d_system,_d_slot,_d_time)
+                    #If slot is idle for RX and TX
+                    if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):                
+                    #rewrite slot if required
+                        if _slot != _d_slot:
+                            _tmp_bits = _bits ^ 1 << 7
+                        else: 
+                            _tmp_bits = _bits                        
+                        self.sendDataToHBP(_d_system,_d_slot,_dst_id,_tmp_bits,_data,dmrpkt,_rf_src,_stream_id,_peer_id)
+                            
+                    else:
+                        logger.debug('(%s) UNIT Data not bridged to HBP on slot 1 - target busy: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
             
             elif _int_dst_id == 900999:
                     if 'D-APRS' in systems and CONFIG['SYSTEMS']['D-APRS']['MODE'] == 'MASTER':
@@ -2254,6 +2323,26 @@ class routerHBP(HBSYSTEM):
                 if int_id(_dst_id) >= 5 and int_id(_dst_id) != 9 and int_id(_dst_id) != 4000 and int_id(_dst_id) != 5000  and (str(int_id(_dst_id)) not in BRIDGES):
                     logger.info('(%s) Bridge for TG %s does not exist. Creating as User Activated. Timeout %s',self._system, int_id(_dst_id),CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
                     make_single_bridge(_dst_id,self._system,_slot,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
+                
+                # Update SUB_MAP with the TG for this call
+                # This enables sticky TG functionality - subscriber is now associated with this TG
+                if _rf_src in SUB_MAP:
+                    # BACKWARDS COMPATIBILITY: Handle both 3-element and 4-element formats
+                    try:
+                        if len(SUB_MAP[_rf_src]) == 4:
+                            _system, _ts, _old_tg, _timestamp = SUB_MAP[_rf_src]
+                        else:  # Old 3-element format
+                            _system, _ts, _timestamp = SUB_MAP[_rf_src]
+                            _old_tg = None
+                    except (TypeError, ValueError) as e:
+                        logger.warning('(%s) Invalid SUB_MAP entry for subscriber %s: %s', 
+                                      self._system, int_id(_rf_src), e)
+                        _system, _ts, _old_tg, _timestamp = self._system, _slot, None, pkt_time
+                    
+                    SUB_MAP[_rf_src] = (_system, _ts, _dst_id, _timestamp)
+                    if CONFIG['SYSTEMS'][self._system]['STICKY_TG'] and _old_tg and _old_tg != _dst_id:
+                        logger.info('(%s) STICKY_TG: Subscriber %s changed from TG %s to TG %s', 
+                                   self._system, int_id(_rf_src), int_id(_old_tg), int_id(_dst_id))
 
             self.STATUS[_slot]['packets'] = self.STATUS[_slot]['packets'] +1
             
@@ -2613,12 +2702,31 @@ if __name__ == '__main__':
         try:
             with open(CONFIG['ALIASES']['PATH'] + CONFIG['ALIASES']['SUB_MAP_FILE'],'rb') as _fh:
                 SUB_MAP = pickle.load(_fh)
-        except:
-            logger.warning('(SUBSCRIBER) Cannot load SUB_MAP file')
+            
+            # BACKWARDS COMPATIBILITY: Handle old 3-element SUB_MAP format
+            # Old format: SUB_MAP[subscriber] = (system, ts, timestamp)
+            # New format: SUB_MAP[subscriber] = (system, ts, tg, timestamp)
+            # Convert old format to new format by adding None for TG field
+            _converted_count = 0
+            for _subscriber in list(SUB_MAP.keys()):
+                try:
+                    if len(SUB_MAP[_subscriber]) == 3:  # Old format
+                        _system, _ts, _timestamp = SUB_MAP[_subscriber]
+                        SUB_MAP[_subscriber] = (_system, _ts, None, _timestamp)
+                        _converted_count += 1
+                except (TypeError, ValueError) as e:
+                    logger.warning('(SUBSCRIBER) Invalid SUB_MAP entry for subscriber %s, removing: %s', int_id(_subscriber), e)
+                    SUB_MAP.pop(_subscriber, None)
+            
+            if _converted_count > 0:
+                logger.info('(SUBSCRIBER) Converted %s SUB_MAP entries from old 3-element format to new 4-element format', _converted_count)
+            logger.info('(SUBSCRIBER) Loaded SUB_MAP with %s entries', len(SUB_MAP))
+        except Exception as e:
+            logger.warning('(SUBSCRIBER) Cannot load SUB_MAP file: %s', e)
             #sys.exit('(SUBSCRIBER) TERMINATING: SUB_MAP file not found or invalid')
         
         #Test value
-        #SUB_MAP[bytes_3(73578)] = ('REP-1',1,time())
+        #SUB_MAP[bytes_3(73578)] = ('REP-1',1,None,time())
     
     
     #Generator
