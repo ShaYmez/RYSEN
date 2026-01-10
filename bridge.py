@@ -19,13 +19,13 @@
 ###############################################################################
 
 '''
-This application, in conjuction with it's rule file (rules.py) will
+This application, in conjunction with it's rule file (rules.py) will
 work like a "conference bridge". This is similar to what most hams think of as a
 reflector. You define conference bridges and any system joined to that conference
 bridge will both receive traffic from, and send traffic to any other system
 joined to the same conference bridge. It does not provide end-to-end connectivity
 as each end system must individually be joined to a conference bridge (a name
-you create in the configuraiton file) to pass traffic.
+you create in the configuration file) to pass traffic.
 
 This program currently only works with group voice calls.
 '''
@@ -51,7 +51,6 @@ from const import *
 
 # Stuff for socket reporting
 import pickle
-# REMOVE LATER from datetime import datetime
 # The module needs logging, but handlers, etc. are controlled by the parent
 import logging
 logger = logging.getLogger(__name__)
@@ -65,7 +64,7 @@ __license__    = 'GNU GPLv3'
 __maintainer__ = 'Cort Buffington, N0MJS'
 __email__      = 'n0mjs@me.com'
 
-# Module gobal varaibles
+# Module gobal variables
 
 # Timed loop used for reporting HBP status
 #

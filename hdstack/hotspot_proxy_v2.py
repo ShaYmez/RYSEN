@@ -100,7 +100,7 @@ class Proxy(DatagramProtocol):
                 _peer_id = data[4:8]
             elif _command == RPTK:              # Repeater has answered our login challenge
                 _peer_id = data[4:8]
-            elif _command == RPTC:              # Repeater is sending it's configuraiton OR disconnecting
+            elif _command == RPTC:              # Repeater is sending it's configuration OR disconnecting
                 if data[:5] == RPTCL:          # Disconnect command
                     _peer_id = data[5:9]
                 else:

@@ -56,7 +56,7 @@ __maintainer__ = 'Cort Buffington, N0MJS'
 __email__      = 'simon@gb7fr.org.uk'
 __status__     = 'pre-alpha'
 
-# Module gobal varaibles
+# Module gobal variables
 
 def playFile(fileName,dstTG,subid):
     for system in systems:
