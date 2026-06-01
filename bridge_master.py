@@ -250,18 +250,17 @@ def make_static_tg(tg,ts,_tmout,system):
     
 def reset_static_tg(tg,ts,_tmout,system):
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
-    bridgetemp = deque()
-    try:
-        for bridgesystem in BRIDGES[str(tg)]:
-            if bridgesystem['SYSTEM'] == system and bridgesystem['TS'] == ts:
-                bridgetemp.append({'SYSTEM': system, 'TS': ts, 'TGID': bytes_3(tg),'ACTIVE': False,'TIMEOUT':  _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(tg),],'RESET': [], 'TIMER': time() + (_tmout * 60)})
-            else:
-                bridgetemp.append(bridgesystem)
-            
-        BRIDGES[str(tg)] = bridgetemp
-    except KeyError:
-        logger.exception('(ERROR) KeyError in reset_static_tg() - bridge gone away?')
+    if str(tg) not in BRIDGES:
+        logger.debug('(OPTIONS) reset_static_tg skipped, missing bridge %s for %s TS%s', tg, system, ts)
         return
+    bridgetemp = deque()
+    for bridgesystem in BRIDGES[str(tg)]:
+        if bridgesystem['SYSTEM'] == system and bridgesystem['TS'] == ts:
+            bridgetemp.append({'SYSTEM': system, 'TS': ts, 'TGID': bytes_3(tg),'ACTIVE': False,'TIMEOUT':  _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(tg),],'RESET': [], 'TIMER': time() + (_tmout * 60)})
+        else:
+            bridgetemp.append(bridgesystem)
+        
+    BRIDGES[str(tg)] = bridgetemp
         
 def reset_default_reflector(reflector,_tmout,system):
     bridge = ''.join(['#',str(reflector)])
@@ -2654,8 +2653,46 @@ class routerHBP(HBSYSTEM):
 #
 class bridgeReportFactory(reportFactory):
 
+    @staticmethod
+    def _clean_trigger_list(value):
+        if value is None:
+            return []
+        if isinstance(value, (list, tuple, deque)):
+            return list(value)
+        return [value]
+
+    @classmethod
+    def _safe_bridges_payload(cls):
+        safe_bridges = {}
+        for bridge, systems in BRIDGES.items():
+            if not isinstance(systems, (list, tuple, deque)):
+                logger.warning('(REPORT) Skipping malformed bridge %s payload type: %s', bridge, type(systems))
+                continue
+            safe_systems = []
+            for bridge_system in systems:
+                if not isinstance(bridge_system, dict):
+                    logger.warning('(REPORT) Skipping malformed bridge entry in %s payload type: %s', bridge, type(bridge_system))
+                    continue
+                if 'SYSTEM' not in bridge_system or 'TS' not in bridge_system or 'TGID' not in bridge_system:
+                    logger.warning('(REPORT) Skipping incomplete bridge entry in %s: %s', bridge, bridge_system)
+                    continue
+                safe_systems.append({
+                    'SYSTEM': bridge_system['SYSTEM'],
+                    'TS': bridge_system['TS'],
+                    'TGID': bridge_system['TGID'],
+                    'ACTIVE': bool(bridge_system.get('ACTIVE', False)),
+                    'TIMEOUT': bridge_system.get('TIMEOUT', ''),
+                    'TO_TYPE': bridge_system.get('TO_TYPE', 'NONE'),
+                    'OFF': cls._clean_trigger_list(bridge_system.get('OFF')),
+                    'ON': cls._clean_trigger_list(bridge_system.get('ON')),
+                    'RESET': cls._clean_trigger_list(bridge_system.get('RESET')),
+                    'TIMER': bridge_system.get('TIMER', time())
+                })
+            safe_bridges[str(bridge)] = safe_systems
+        return safe_bridges
+
     def send_bridge(self):
-        serialized = pickle.dumps(BRIDGES, protocol=2) #.decode("utf-8", errors='ignore')
+        serialized = pickle.dumps(self._safe_bridges_payload(), protocol=2) #.decode("utf-8", errors='ignore')
         self.send_clients(b''.join([REPORT_OPCODES['BRIDGE_SND'],serialized]))
 
     def send_bridgeEvent(self, _data):
