@@ -167,41 +167,6 @@ class OPENBRIDGE(DatagramProtocol):
     def dereg(self):
         logger.info('(%s) is mode OPENBRIDGE. No De-Registration required, continuing shutdown', self._system)
 
-    def _obp_signing_keys(self):
-        _keys = []
-        _mode = self._config.get('PASSPHRASE_MODE', 'PADDED')
-        _raw = self._config.get('PASSPHRASE_RAW')
-        _padded = self._config.get('PASSPHRASE')
-
-        if _mode == 'RAW' and _raw is not None:
-            _keys.append(_raw)
-            if _padded is not None:
-                _keys.append(_padded)
-        else:
-            if _padded is not None:
-                _keys.append(_padded)
-            if _raw is not None:
-                _keys.append(_raw)
-
-        _deduped = []
-        for _key in _keys:
-            if _key not in _deduped:
-                _deduped.append(_key)
-        return _deduped
-
-    def _obp_blake16(self, _payload, _key = None):
-        if _key is None:
-            _key = self._obp_signing_keys()[0]
-        _h = blake2b(key=_key, digest_size=16)
-        _h.update(_payload)
-        return _h.digest()
-
-    def _obp_verify_blake16(self, _payload, _hash):
-        for _key in self._obp_signing_keys():
-            if compare_digest(_hash, self._obp_blake16(_payload, _key)):
-                return True
-        return False
-
     def send_system(self, _packet, _hops = b'', _ber = b'\x00', _rssi = b'\x00', _source_server = b'\x00\x00\x00\x00', _source_rptr = b'\x00\x00\x00\x00'):                      
         #Don't do anything if we are STUNned
         if 'STUN' in self._CONFIG:
@@ -218,26 +183,34 @@ class OPENBRIDGE(DatagramProtocol):
             if 'VER' in self._config and self._config['VER'] > 4:
                 _ver = VER.to_bytes(1,'big')
                 _packet = b''.join([DMRE,_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'],_packet[15:],_ber,_rssi,_ver,time_ns().to_bytes(8,'big'), _source_server, _source_rptr, _hops])
-                _hash = self._obp_blake16(_packet)
+                _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
+                _h.update(_packet)
+                _hash = _h.digest()
                 _packet = b''.join([_packet, _hash])
                 self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
 
             elif 'VER' in self._config and self._config['VER'] == 4:
                 _ver = VER.to_bytes(1,'big')
                 _packet = b''.join([DMRE,_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'],_packet[15:],_ber,_rssi,_ver,time_ns().to_bytes(8,'big'), _source_server, _hops])
-                _hash = self._obp_blake16(_packet)
+                _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
+                _h.update(_packet)
+                _hash = _h.digest()
                 _packet = b''.join([_packet, _hash])
                 self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
             
             elif 'VER' in self._config and self._config['VER'] == 3:
                 _packet = b''.join([DMRF,_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'],_packet[15:]])
-                _hash = self._obp_blake16(_packet)
+                _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
+                _h.update(_packet)
+                _hash = _h.digest()
                 _packet = b''.join([_packet,time_ns().to_bytes(8,'big'), _hops, _hash])
                 self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
             
             elif 'VER' in self._config and self._config['VER'] == 2:
                 _packet = b''.join([DMRF,_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'],_packet[15:], time_ns().to_bytes(8,'big')])
-                _hash = self._obp_blake16(_packet)
+                _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
+                _h.update(_packet)
+                _hash = _h.digest()
                 _packet = b''.join([_packet,_hops, _hash])
                 self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
                 # KEEP THE FOLLOWING COMMENTED OUT UNLESS YOU'RE DEBUGGING DEEPLY!!!!
@@ -422,7 +395,9 @@ class OPENBRIDGE(DatagramProtocol):
                     _source_rptr = _packet[68:72]
                     _hops = _packet[72]
                     _hash = _packet[73:89]
-                    _payload = _packet[:73]
+                    #_ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
+                    _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
+                    _h.update(_packet[:73])
                 else:
                     _data = _packet[:53]
                     _ber = _packet[53:54]
@@ -434,11 +409,15 @@ class OPENBRIDGE(DatagramProtocol):
                     _source_rptr = b'\x00\x00\x00\x00'
                     _hops = _packet[68]
                     _hash = _packet[69:85]
-                    _payload = _packet[:69]
+                    #_ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
+                    _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
+                    _h.update(_packet[:69])
+                    
+                _ckhs = _h.digest()
                 
                 _stream_id = _data[16:20]
 
-                if self._obp_verify_blake16(_payload, _hash) and (_sockaddr == self._config['TARGET_SOCK'] or self._config['RELAX_CHECKS']):
+                if compare_digest(_hash, _ckhs) and (_sockaddr == self._config['TARGET_SOCK'] or self._config['RELAX_CHECKS']):
                     _peer_id = _data[11:15]
                     if self._config['NETWORK_ID'] != _peer_id:
                         if _stream_id not in self._laststrid:
@@ -562,14 +541,16 @@ class OPENBRIDGE(DatagramProtocol):
                 _timestamp = _packet[53:60]
                 _hops = _packet[61]
                 _hash = _packet[62:]
+                #_ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
+                _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
                 if 'VER' in self._config and self._config['VER'] > 2:
-                    _payload = _packet[:53]
+                    _h.update(_packet[:53])
                 elif 'VER' in self._config and self._config['VER'] == 2:
-                    _payload = _packet[:61]
-                else:
-                    _payload = _packet[:53]
+                    _h.update(_packet[:61])
+                    
+                _ckhs = _h.digest()
 
-                if self._obp_verify_blake16(_payload, _hash) and (_sockaddr == self._config['TARGET_SOCK'] or self._config['RELAX_CHECKS']):
+                if compare_digest(_hash, _ckhs) and (_sockaddr == self._config['TARGET_SOCK'] or self._config['RELAX_CHECKS']):
                     _peer_id = _data[11:15]
                     if self._config['NETWORK_ID'] != _peer_id:
                         if _stream_id not in self._laststrid:
