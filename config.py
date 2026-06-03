@@ -330,6 +330,10 @@ def build_config(_config_file):
                     CONFIG['SYSTEMS'][section].update({'PEERS': {}})
                     
                 elif config.get(section, 'MODE') == 'OPENBRIDGE':
+                    _obp_passphrase = config.get(section, 'PASSPHRASE')
+                    _obp_passphrase_mode = config.get(section, 'PASSPHRASE_MODE', fallback='PADDED').strip().upper()
+                    if _obp_passphrase_mode not in ('PADDED', 'RAW'):
+                        _obp_passphrase_mode = 'PADDED'
                     CONFIG['SYSTEMS'].update({section: {
                         'MODE': config.get(section, 'MODE'),
                         'ENABLED': config.getboolean(section, 'ENABLED'),
@@ -337,7 +341,9 @@ def build_config(_config_file):
                         #'OVERRIDE_SERVER_ID': config.getint(section, 'OVERRIDE_SERVER_ID').to_bytes(4, 'big'),
                         'IP': config.get(section, 'IP'),
                         'PORT': config.getint(section, 'PORT'),
-                        'PASSPHRASE': bytes(config.get(section, 'PASSPHRASE').ljust(20,'\x00')[:20], 'utf-8'),
+                        'PASSPHRASE': bytes(_obp_passphrase.ljust(20,'\x00')[:20], 'utf-8'),
+                        'PASSPHRASE_RAW': bytes(_obp_passphrase, 'utf-8'),
+                        'PASSPHRASE_MODE': _obp_passphrase_mode,
                         #'TARGET_SOCK': (gethostbyname(config.get(section, 'TARGET_IP')), config.getint(section, 'TARGET_PORT')),
                         'TARGET_IP': config.get(section, 'TARGET_IP'),
                         'TARGET_PORT': config.getint(section, 'TARGET_PORT'),
@@ -419,4 +425,3 @@ if __name__ == '__main__':
         return not _acl[0]
         
     print(acl_check(b'\x00\x01\x37', CONFIG['GLOBAL']['TG1_ACL']))
-
