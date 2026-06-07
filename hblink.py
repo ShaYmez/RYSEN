@@ -1081,7 +1081,7 @@ class HBSYSTEM(DatagramProtocol):
                     logger.info('(%s) Peer is closing down: %s (%s)', self._system, self._peers[_peer_id]['CALLSIGN'], int_id(_peer_id))
                     self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                     del self._peers[_peer_id]
-                    if 'OPTIONS' in self._CONFIG['SYSTEMS'][self._system]:
+                    if not self._peers and 'OPTIONS' in self._CONFIG['SYSTEMS'][self._system]:
                         if '_default_options' in self._CONFIG['SYSTEMS'][self._system]:
                             self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = self._CONFIG['SYSTEMS'][self._system]['_default_options']
                             logger.info('(%s) Setting default Options: %s',self._system, self._CONFIG['SYSTEMS'][self._system]['_default_options'])
