@@ -998,6 +998,18 @@ class HBSYSTEM(DatagramProtocol):
 
         elif _command == RPTL:    # RPTLogin -- a repeater wants to login
             _peer_id = _data[4:8]
+            if _peer_id in self._peers and self._peers[_peer_id]['SOCKADDR'] == _sockaddr:
+                _this_peer = self._peers[_peer_id]
+                _this_peer['LAST_PING'] = time()
+                if _this_peer['CONNECTION'] == 'CHALLENGE_SENT':
+                    _salt_str = bytes_4(_this_peer['SALT'])
+                    self.send_peer(_peer_id, b''.join([RPTACK, _salt_str]))
+                    logger.info('(%s) Duplicate login request from %s, re-sending challenge', self._system, int_id(_peer_id))
+                    return
+                if _this_peer['CONNECTION'] in ('WAITING_CONFIG', 'YES'):
+                    self.send_peer(_peer_id, b''.join([RPTACK, _peer_id]))
+                    logger.info('(%s) Duplicate login request from %s while already authenticated', self._system, int_id(_peer_id))
+                    return
             # Check to see if we've reached the maximum number of allowed peers
             if len(self._peers) < self._config['MAX_PEERS'] or _peer_id in self._peers:
                 # Check for valid Radio ID
@@ -1048,6 +1060,13 @@ class HBSYSTEM(DatagramProtocol):
         elif _command == RPTK:    # Repeater has answered our login challenge
             _peer_id = _data[4:8]
             if _peer_id in self._peers \
+                        and self._peers[_peer_id]['SOCKADDR'] == _sockaddr \
+                        and self._peers[_peer_id]['CONNECTION'] in ('WAITING_CONFIG', 'YES'):
+                self._peers[_peer_id]['LAST_PING'] = time()
+                self.send_peer(_peer_id, b''.join([RPTACK, _peer_id]))
+                logger.info('(%s) Duplicate login challenge response from %s ignored', self._system, int_id(_peer_id))
+                return
+            if _peer_id in self._peers \
                         and self._peers[_peer_id]['CONNECTION'] == 'CHALLENGE_SENT' \
                         and self._peers[_peer_id]['SOCKADDR'] == _sockaddr:
                 _this_peer = self._peers[_peer_id]
@@ -1093,6 +1112,13 @@ class HBSYSTEM(DatagramProtocol):
                     
             else:
                 _peer_id = _data[4:8]      # Configure Command
+                if _peer_id in self._peers \
+                            and self._peers[_peer_id]['CONNECTION'] == 'YES' \
+                            and self._peers[_peer_id]['SOCKADDR'] == _sockaddr:
+                    self._peers[_peer_id]['LAST_PING'] = time()
+                    self.send_peer(_peer_id, b''.join([RPTACK, _peer_id]))
+                    logger.info('(%s) Duplicate repeater configuration from %s ignored', self._system, int_id(_peer_id))
+                    return
                 if _peer_id in self._peers \
                             and self._peers[_peer_id]['CONNECTION'] == 'WAITING_CONFIG' \
                             and self._peers[_peer_id]['SOCKADDR'] == _sockaddr:
