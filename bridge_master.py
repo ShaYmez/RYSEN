@@ -130,6 +130,105 @@ def config_reports(_config, _factory):
     return report_server
 
 
+# ---------------------------------------------------------------------------
+# Routing index
+# BRIDGE_IDX maps (system_name, ts, tgid_bytes) -> set(bridge_names)
+# so per-packet routing can find the relevant bridge names in O(1) instead
+# of scanning the entire BRIDGES dict (which can grow to O(GENERATOR * TGs)).
+#
+# Rules:
+#   - Every function that adds/removes entries in BRIDGES MUST update the index.
+#   - The hot-path routing loops (routerOBP/routerHBP.dmrd_received) use
+#     BRIDGE_IDX to avoid the full O(N*M) scan.
+#   - If an index inconsistency is ever detected at runtime the code falls back
+#     to the full scan and schedules a rebuild (belt-and-suspenders safety).
+# ---------------------------------------------------------------------------
+BRIDGE_IDX = {}
+
+# Routing statistics counters (reset every _ROUTE_STATS_INTERVAL seconds)
+_ROUTE_STATS = {'packets': 0, 'index_hits': 0, 'index_misses': 0, 'fallbacks': 0}
+_ROUTE_STATS_INTERVAL = 300          # report every 5 minutes
+_ROUTE_STATS_NEXT_LOG = [0.0]        # mutable list so inner functions can write it
+
+# Reactor-lag diagnostics
+_REACTOR_LAG_INTERVAL = 5.0          # expected loop-call interval (seconds)
+_REACTOR_LAG_LAST = [None]           # timestamp of last check
+
+
+def _idx_add_bridge(bridge_name):
+    """Add all entries for *bridge_name* into BRIDGE_IDX."""
+    for e in BRIDGES.get(bridge_name, ()):
+        _key = (e['SYSTEM'], e['TS'], e['TGID'])
+        if _key not in BRIDGE_IDX:
+            BRIDGE_IDX[_key] = set()
+        BRIDGE_IDX[_key].add(bridge_name)
+
+
+def _idx_remove_bridge(bridge_name):
+    """Remove all BRIDGE_IDX entries that reference *bridge_name*."""
+    empty_keys = [k for k, v in BRIDGE_IDX.items() if bridge_name in v]
+    for _key in empty_keys:
+        BRIDGE_IDX[_key].discard(bridge_name)
+        if not BRIDGE_IDX[_key]:
+            del BRIDGE_IDX[_key]
+
+
+def _idx_replace_bridge(bridge_name):
+    """Refresh BRIDGE_IDX for a single bridge (remove stale, add fresh entries)."""
+    _idx_remove_bridge(bridge_name)
+    _idx_add_bridge(bridge_name)
+
+
+def rebuild_bridge_index():
+    """Rebuild BRIDGE_IDX from scratch.  Call after bulk BRIDGES mutations."""
+    global BRIDGE_IDX
+    new_idx = {}
+    for _bname, _entries in BRIDGES.items():
+        for e in _entries:
+            _key = (e['SYSTEM'], e['TS'], e['TGID'])
+            if _key not in new_idx:
+                new_idx[_key] = set()
+            new_idx[_key].add(_bname)
+    BRIDGE_IDX = new_idx
+    logger.debug('(ROUTER) BRIDGE_IDX rebuilt: %d keys across %d bridges',
+                 len(BRIDGE_IDX), len(BRIDGES))
+
+
+def reactorLagCheck():
+    """Looping diagnostic: warn when the Twisted reactor falls behind schedule."""
+    _now = time()
+    if _REACTOR_LAG_LAST[0] is not None:
+        _actual = _now - _REACTOR_LAG_LAST[0]
+        _lag = _actual - _REACTOR_LAG_INTERVAL
+        if _lag > 0.5:
+            logger.warning(
+                '(DIAGNOSTICS) Reactor lag: %.3fs behind schedule '
+                '(actual interval %.3fs vs expected %.1fs). '
+                'Bridge index size: %d keys / %d bridges.',
+                _lag, _actual, _REACTOR_LAG_INTERVAL,
+                len(BRIDGE_IDX), len(BRIDGES))
+    _REACTOR_LAG_LAST[0] = _now
+
+
+def _log_route_stats():
+    """Periodically log routing index hit/miss counters (called from hot path)."""
+    _now = time()
+    if _now >= _ROUTE_STATS_NEXT_LOG[0]:
+        logger.info(
+            '(DIAGNOSTICS) Routing stats (last %.0fs): '
+            'packets=%d idx_hits=%d idx_misses=%d fallbacks=%d '
+            'bridges=%d idx_keys=%d',
+            _ROUTE_STATS_INTERVAL,
+            _ROUTE_STATS['packets'], _ROUTE_STATS['index_hits'],
+            _ROUTE_STATS['index_misses'], _ROUTE_STATS['fallbacks'],
+            len(BRIDGES), len(BRIDGE_IDX))
+        _ROUTE_STATS['packets'] = 0
+        _ROUTE_STATS['index_hits'] = 0
+        _ROUTE_STATS['index_misses'] = 0
+        _ROUTE_STATS['fallbacks'] = 0
+        _ROUTE_STATS_NEXT_LOG[0] = _now + _ROUTE_STATS_INTERVAL
+
+
 # Import Bridging rules
 # Note: A stanza *must* exist for any MASTER or CLIENT configured in the main
 # configuration file and listed as "active". It can be empty,
@@ -204,7 +303,9 @@ def make_single_bridge(_tgid,_sourcesystem,_slot,_tmout):
                 
         if _system[0:3] == 'OBP' and (int_id(_tgid) >= 59 and (int_id(_tgid) < 9990 or int_id(_tgid) > 9999)):
             BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': '','TO_TYPE': 'NONE','OFF': [],'ON': [],'RESET': [], 'TIMER': time()})
-        
+    # Keep routing index in sync
+    _idx_add_bridge(_tgid_s)
+
 #Make static bridge - used for on-the-fly relay bridges
 def make_stat_bridge(_tgid):
     _tgid_s = str(int_id(_tgid))
@@ -218,6 +319,8 @@ def make_stat_bridge(_tgid):
                     
         if _system[0:3] == 'OBP':
             BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': '','TO_TYPE': 'STAT','OFF': [],'ON': [],'RESET': [], 'TIMER': time()})
+    # Keep routing index in sync
+    _idx_add_bridge(_tgid_s)
         
 
 def make_default_reflector(reflector,_tmout,system):
@@ -234,7 +337,8 @@ def make_default_reflector(reflector,_tmout,system):
             bridgetemp.append(bridgesystem)
             
         BRIDGES[bridge] = bridgetemp
-        
+    _idx_replace_bridge(bridge)
+
 def make_static_tg(tg,ts,_tmout,system):
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
     if str(tg) not in BRIDGES:
@@ -247,7 +351,8 @@ def make_static_tg(tg,ts,_tmout,system):
             bridgetemp.append(bridgesystem)
         
     BRIDGES[str(tg)] = bridgetemp
-    
+    _idx_replace_bridge(str(tg))
+
 def reset_static_tg(tg,ts,_tmout,system):
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
     if str(tg) not in BRIDGES:
@@ -261,7 +366,8 @@ def reset_static_tg(tg,ts,_tmout,system):
             bridgetemp.append(bridgesystem)
         
     BRIDGES[str(tg)] = bridgetemp
-        
+    _idx_replace_bridge(str(tg))
+
 def reset_default_reflector(reflector,_tmout,system):
     bridge = ''.join(['#',str(reflector)])
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
@@ -275,7 +381,8 @@ def reset_default_reflector(reflector,_tmout,system):
         else:
             bridgetemp.append(bridgesystem)
         BRIDGES[bridge] = bridgetemp
-            
+    _idx_replace_bridge(bridge)
+
 def make_single_reflector(_tgid,_tmout,_sourcesystem):
     _tgid_s = str(int_id(_tgid))
     _bridge = ''.join(['#',_tgid_s])
@@ -293,7 +400,9 @@ def make_single_reflector(_tgid,_tmout,_sourcesystem):
                 BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': False,'TIMEOUT':  CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER'] * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time()})
         if _system[0:3] == 'OBP' and (int_id(_tgid) >= 59 and (int_id(_tgid) < 9990 or int_id(_tgid) > 9999)):
             BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': '','TO_TYPE': 'NONE','OFF': [],'ON': [],'RESET': [], 'TIMER': time()})
-        
+    # Keep routing index in sync
+    _idx_add_bridge(_bridge)
+
 def remove_bridge_system(system):
     _bridgestemp = {}
     _bridgetemp = {}
@@ -309,6 +418,8 @@ def remove_bridge_system(system):
                 _bridgestemp[_bridge].append({'SYSTEM': system, 'TS': _bridgesystem['TS'], 'TGID': _bridgesystem['TGID'],'ACTIVE': False,'TIMEOUT':  _bridgesystem['TIMEOUT'],'TO_TYPE': 'ON','OFF': [],'ON': [_bridgesystem['TGID'],],'RESET': [], 'TIMER': time() + _bridgesystem['TIMEOUT']})
             
     BRIDGES.update(_bridgestemp)
+    # Entries for the system changed across ALL bridges; cheapest correct option is a full rebuild
+    rebuild_bridge_index()
                 
 
 # Run this every minute for rule timer updates
@@ -316,6 +427,20 @@ def rule_timer_loop():
     logger.debug('(ROUTER) routerHBP Rule timer loop started')
     _now = time()
     _remove_bridges = deque()
+
+    # Pre-compute set of systems that have any sticky-TG feature enabled.
+    # This avoids scanning the full SUB_MAP for every active bridge entry on
+    # systems where stickiness is not configured at all.
+    _sticky_enabled_systems = set()
+    for _sys in CONFIG['SYSTEMS']:
+        if CONFIG['SYSTEMS'][_sys].get('STICKY_TG', False):
+            _sticky_enabled_systems.add(_sys)
+        elif 'PEERS' in CONFIG['SYSTEMS'][_sys]:
+            for _pid in CONFIG['SYSTEMS'][_sys]['PEERS']:
+                if CONFIG['SYSTEMS'][_sys]['PEERS'][_pid].get('STICKY', False):
+                    _sticky_enabled_systems.add(_sys)
+                    break
+
     for _bridge in BRIDGES:
         _bridge_used = False
         for _system in BRIDGES[_bridge]:
@@ -327,7 +452,11 @@ def rule_timer_loop():
                     # PRODUCTION SAFETY: Feature flag check - only apply sticky logic if enabled
                     # Priority: Peer STICKY > System STICKY_TG > Default (False)
                     _sticky_active = False
-                    if CONFIG['SYSTEMS'][_system['SYSTEM']]['MODE'] == 'MASTER':
+                    # Optimisation: only scan SUB_MAP for systems that actually have
+                    # sticky TG enabled (pre-computed above).  Avoids O(N_subscribers)
+                    # scan for every active bridge entry on non-sticky systems.
+                    if (CONFIG['SYSTEMS'][_system['SYSTEM']]['MODE'] == 'MASTER' and
+                            _system['SYSTEM'] in _sticky_enabled_systems):
                         # Check if any subscriber has this TG as their sticky TG
                         for _subscriber in SUB_MAP:
                             try:
@@ -415,6 +544,7 @@ def rule_timer_loop():
             _remove_bridges.append(_bridge)
                 
     for _bridgerem in _remove_bridges:
+        _idx_remove_bridge(_bridgerem)
         del BRIDGES[_bridgerem]
         logger.debug('(ROUTER) Unused conference bridge %s removed',_bridgerem)
 
@@ -437,6 +567,7 @@ def statTrimmer():
         if _bridge_stat and not _in_use:
             _remove_bridges.append(_bridge)
     for _bridgerem in _remove_bridges:
+        _idx_remove_bridge(_bridgerem)
         del BRIDGES[_bridgerem]
         logger.debug('(ROUTER) STAT bridge %s removed',_bridgerem)
     if CONFIG['REPORTS']['REPORT']:
@@ -1014,6 +1145,9 @@ def options_config():
                             else:
                                 if ts2 == False:
                                     BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [bytes_3(4000)],'ON': [],'RESET': [], 'TIMER': time()})
+                        # Direct appends to BRIDGES above bypass the individual index helpers;
+                        # rebuild the full index to restore consistency.
+                        rebuild_bridge_index()
             
                     if int(_options['DEFAULT_REFLECTOR']) != CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR']:
                         if int(_options['DEFAULT_REFLECTOR']) > 0:
@@ -1656,12 +1790,38 @@ class routerOBP(OPENBRIDGE):
                     logger.debug('(%s) Bridge for STAT TG %s does not exist. Creating',self._system, int_id(_dst_id))
                     make_stat_bridge(_dst_id)
             
+            # --- OPTIMISED ROUTING: use BRIDGE_IDX for O(1) lookup instead of O(N*M) full scan ---
             _sysIgnore = deque()
-            for _bridge in BRIDGES:
+            _lookup_key = (self._system, _slot, _dst_id)
+            _candidate_bridges = BRIDGE_IDX.get(_lookup_key)
+            _ROUTE_STATS['packets'] += 1
+            if _candidate_bridges is None:
+                # Index miss - fall back to full scan and schedule a rebuild.
+                # This should never happen in normal operation; log at WARNING.
+                logger.warning('(%s) OBP BRIDGE_IDX miss for key (%s, %s, %s) '
+                               '- falling back to full scan and rebuilding index',
+                               self._system, self._system, _slot, int_id(_dst_id))
+                _ROUTE_STATS['index_misses'] += 1
+                _ROUTE_STATS['fallbacks'] += 1
+                rebuild_bridge_index()
+                _candidate_bridges = BRIDGE_IDX.get(_lookup_key, set())
+                # Full-scan fallback for safety
+                for _bridge in BRIDGES:
                     for _system in BRIDGES[_bridge]:
-                        
                         if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
                             _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore,_hops, _source_server, _ber, _rssi, _source_rptr)
+            else:
+                _ROUTE_STATS['index_hits'] += 1
+                for _orig_bridge in list(_candidate_bridges):
+                    if _orig_bridge not in BRIDGES:
+                        # Stale index entry - skip and schedule a rebuild
+                        logger.debug('(%s) OBP BRIDGE_IDX stale entry for bridge %s, skipping',
+                                     self._system, _orig_bridge)
+                        continue
+                    for _system in BRIDGES[_orig_bridge]:
+                        if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
+                            _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_orig_bridge,_system,False,_sysIgnore,_hops, _source_server, _ber, _rssi, _source_rptr)
+            _log_route_stats()
 
 
             # Final actions - Is this a voice terminator?
@@ -2521,21 +2681,45 @@ class routerHBP(HBSYSTEM):
             #Save this packet
             self.STATUS[_slot]['lastData'] = _data
                           
+            # --- OPTIMISED ROUTING: use BRIDGE_IDX for O(1) lookup instead of O(N*M) full scan ---
             _sysIgnore = deque()
-            for _bridge in BRIDGES:
-                #if _bridge[0:1] != '#':
-                if True:
+            _lookup_key = (self._system, _slot, _dst_id)
+            _candidate_bridges = BRIDGE_IDX.get(_lookup_key)
+            _ROUTE_STATS['packets'] += 1
+            if _candidate_bridges is None:
+                # Index miss - fall back to full scan and schedule a rebuild.
+                # This should never happen in normal operation; log at WARNING.
+                logger.warning('(%s) HBP BRIDGE_IDX miss for key (%s, %s, %s) '
+                               '- falling back to full scan and rebuilding index',
+                               self._system, self._system, _slot, int_id(_dst_id))
+                _ROUTE_STATS['index_misses'] += 1
+                _ROUTE_STATS['fallbacks'] += 1
+                rebuild_bridge_index()
+                _candidate_bridges = BRIDGE_IDX.get(_lookup_key, set())
+                # Full-scan fallback for safety
+                for _bridge in BRIDGES:
                     for _system in BRIDGES[_bridge]:
                         if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
                             _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi, _source_rptr)
-                        
-                            #Send to reflector or TG too, if it exists
-                            if _bridge[0:1] == '#':
-                                _bridge = _bridge[1:]
-                            else:
-                                _bridge = ''.join(['#',_bridge])
-                            if _bridge in BRIDGES:
-                                _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi,_source_rptr)
+                            _paired_bridge = _bridge[1:] if _bridge[0:1] == '#' else ''.join(['#', _bridge])
+                            if _paired_bridge in BRIDGES:
+                                _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_paired_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi,_source_rptr)
+            else:
+                _ROUTE_STATS['index_hits'] += 1
+                for _orig_bridge in list(_candidate_bridges):
+                    if _orig_bridge not in BRIDGES:
+                        # Stale index entry - skip
+                        logger.debug('(%s) HBP BRIDGE_IDX stale entry for bridge %s, skipping',
+                                     self._system, _orig_bridge)
+                        continue
+                    for _system in BRIDGES[_orig_bridge]:
+                        if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
+                            _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_orig_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi, _source_rptr)
+                            # Also route to paired reflector/TG bridge if it exists
+                            _paired_bridge = _orig_bridge[1:] if _orig_bridge[0:1] == '#' else ''.join(['#', _orig_bridge])
+                            if _paired_bridge in BRIDGES:
+                                _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_paired_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi,_source_rptr)
+            _log_route_stats()
 
             # Final actions - Is this a voice terminator?
             if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
@@ -2822,7 +3006,11 @@ if __name__ == '__main__':
         #os.unlink("bridge.pkl")
     #else:
     
-    BRIDGES = make_bridges(rules_module.BRIDGES) 
+    BRIDGES = make_bridges(rules_module.BRIDGES)
+    # Build initial routing index from the just-created BRIDGES dict
+    rebuild_bridge_index()
+    logger.info('(ROUTER) Initial BRIDGE_IDX built: %d keys across %d bridges',
+                len(BRIDGE_IDX), len(BRIDGES))
     
     #Subscriber map for unit calls - complete with test entry
     #SUB_MAP = {bytes_3(73578):('REP-1',1,time())}
@@ -3009,7 +3197,14 @@ if __name__ == '__main__':
     sub_trimmer_task = task.LoopingCall(SubMapTrimmer)
     sub_trimmer = sub_trimmer_task.start(3600)#3600
     sub_trimmer.addErrback(loopingErrHandle)
-    
+
+    # Reactor lag / event-loop health diagnostics
+    _REACTOR_LAG_LAST[0] = time()  # seed with current time so first check is meaningful
+    _ROUTE_STATS_NEXT_LOG[0] = time() + _ROUTE_STATS_INTERVAL
+    reactor_lag_task = task.LoopingCall(reactorLagCheck)
+    reactor_lag = reactor_lag_task.start(_REACTOR_LAG_INTERVAL)
+    reactor_lag.addErrback(loopingErrHandle)
+
     #more threads
     reactor.suggestThreadPoolSize(100)
     
