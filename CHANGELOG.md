@@ -1,5 +1,70 @@
 # RYSEN DMRMaster+ Changelog
 
+## Version 1.4.1 (2026-06-09)
+
+### Performance Improvements
+
+**Optimised Bridge Routing**
+- Added `BRIDGE_IDX`, an indexed routing map for bridge lookups keyed by system, timeslot, and TGID.
+- Replaced repeated full `BRIDGES` scans in the HBP and OBP packet routing hot paths with indexed lookups.
+- Added safe full-scan fallback and index rebuild behaviour if an index miss or stale entry is detected.
+- Keeps the routing index in sync when bridges are created, replaced, reset, trimmed, or removed.
+- Improved scalability for large generated bridge configurations and high talkgroup counts.
+
+**Sticky Talkgroup Timer Optimisation**
+- Pre-computes systems with sticky TG enabled before timer processing.
+- Avoids scanning the full subscriber map for non-sticky systems during bridge timer maintenance.
+
+### Reliability Improvements
+
+**Duplicate Peer Login Handling**
+- Handles duplicate `RPTL`, `RPTK`, and repeater configuration packets without incorrectly resetting peer state.
+- Re-sends the correct acknowledgement/challenge for duplicate login attempts from the same peer and socket.
+- Updates peer ping timestamps when duplicate authentication/configuration packets are received.
+- Only restores default OPTIONS when the final peer disconnects, preventing active peers from losing runtime options.
+
+**Hotspot Proxy Stability**
+- Fixed destination port range handling so the configured end port is included.
+- Added safer peer cleanup that cancels timers, releases connection tracking entries, and avoids missing-peer errors.
+- Handles master NAK/close messages more defensively.
+- Added packet length checks before reading peer IDs from incoming proxy packets.
+- Fixed DMRA peer ID parsing.
+- Uses available-port selection to avoid infinite loops when no proxy ports are free.
+- Corrected proxy stats to report the full configured port range.
+
+**Bridge Report Safety**
+- Sanitises bridge report payloads before pickling and sending to report clients.
+- Skips malformed or incomplete bridge entries with warnings instead of sending unsafe data.
+- Normalises bridge trigger lists for safer dashboard/report consumption.
+
+### Diagnostics and Testing
+
+**Routing Diagnostics**
+- Added periodic routing statistics for packets, index hits, index misses, fallbacks, bridge count, and index key count.
+- Added Twisted reactor lag diagnostics to warn when the event loop falls behind schedule.
+- Logs initial bridge index build details at startup.
+
+**Validation Tooling**
+- Added `tools/validate_bridge_index.py` to smoke-test routing index behaviour offline.
+- Covers index rebuild, add/remove/replace helpers, lookup parity with the old full-scan logic, missing bridge removal, sequence consistency, and large generated-system scenarios.
+
+### Technical Details
+
+**Files Modified**
+- `bridge_master.py` - Routing index, hot-path lookup optimisation, timer optimisation, report payload safety, route stats, reactor lag diagnostics.
+- `hblink.py` - Duplicate login/config packet handling and safer default OPTIONS restore logic.
+- `hdstack/hotspot_proxy_v2.py` - Proxy cleanup, port allocation, defensive packet parsing, and stats fixes.
+- `tools/validate_bridge_index.py` - New offline validation/smoke-test tool for bridge index correctness.
+
+### Backwards Compatibility
+
+- Existing bridge rules and configuration formats remain unchanged.
+- Routing falls back safely if the bridge index needs rebuilding.
+- Existing dashboard/report consumers continue receiving bridge data, now with malformed entries filtered out.
+- Hotspot proxy configuration remains compatible while using the full configured port range.
+
+---
+
 ## Version 1.4.0 (2026-01-10)
 
 ### New Features
