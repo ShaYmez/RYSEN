@@ -325,6 +325,15 @@ def make_stat_bridge(_tgid):
 
 _DIAL_A_TG = 9
 _DIAL_A_TG_BYTES = bytes_3(9)
+_DIAL_SERVICE_CODES = frozenset([9, 4000, 5000])
+
+
+def is_dial_service_code(reflector):
+    """TGs reserved for dial-a-tg signalling (channel, disconnect, status) — not link targets."""
+    try:
+        return int(reflector) in _DIAL_SERVICE_CODES
+    except (TypeError, ValueError):
+        return False
 
 
 def is_invalid_dial_reflector(reflector):
@@ -476,8 +485,8 @@ def reset_dynamic_reflectors(system):
         rebuild_bridge_index()
 
 
-def sanitize_dial_reflectors(system):
-    """Deactivate #9 and strip dial TG from poisoned ON lists for one MASTER slot."""
+def disconnect_dial_reflectors(system):
+    """Deactivate all # reflector bridges for one MASTER (private call 4000 disconnect)."""
     _changed = False
     for _bridge in BRIDGES:
         if _bridge[0:1] != '#':
@@ -485,12 +494,30 @@ def sanitize_dial_reflectors(system):
         for _sys in BRIDGES[_bridge]:
             if _sys['SYSTEM'] != system:
                 continue
-            if is_invalid_dial_reflector(_bridge[1:]):
+            if _sys['ACTIVE']:
+                _sys['ACTIVE'] = False
+                _sys['TIMER'] = time()
+                _changed = True
+                logger.info('(REFLECTOR) Disconnect (4000): deactivated %s for %s', _bridge, system)
+    if _changed:
+        rebuild_bridge_index()
+
+
+def sanitize_dial_reflectors(system):
+    """Deactivate service-code reflectors and strip dial TG from poisoned ON lists."""
+    _changed = False
+    for _bridge in BRIDGES:
+        if _bridge[0:1] != '#':
+            continue
+        for _sys in BRIDGES[_bridge]:
+            if _sys['SYSTEM'] != system:
+                continue
+            if is_dial_service_code(_bridge[1:]):
                 if _sys['ACTIVE']:
                     _sys['ACTIVE'] = False
                     _sys['TIMER'] = time()
                     _changed = True
-                    logger.info('(REFLECTOR) Cleared invalid dial reflector %s for %s', _bridge, system)
+                    logger.info('(REFLECTOR) Cleared dial service reflector %s for %s', _bridge, system)
                 if _sys['ON']:
                     _sys['ON'] = []
                     _changed = True
@@ -549,6 +576,19 @@ def clear_sub_map_for_peer(peer_id):
         SUB_MAP.pop(_subscriber, None)
     if _remove:
         logger.info('(SUBSCRIBER) Cleared %s SUB_MAP entries for peer %s', len(_remove), int_id(peer_id))
+
+
+def clear_subscriber_on_disconnect(system, subscriber_id, peer_id):
+    """Drop sticky-TG state when the user dials disconnect (4000)."""
+    if subscriber_id not in SUB_MAP:
+        return
+    try:
+        _entry = SUB_MAP[subscriber_id]
+        if _entry[0] == system or (len(_entry) >= 5 and _entry[4] == peer_id):
+            SUB_MAP.pop(subscriber_id, None)
+            logger.info('(SUBSCRIBER) Cleared sticky TG for subscriber %s on disconnect', int_id(subscriber_id))
+    except (TypeError, IndexError):
+        pass
 
 
 # Run this every minute for rule timer updates
@@ -2513,13 +2553,17 @@ class routerHBP(HBSYSTEM):
                 self.STATUS[_slot]['_stopTgAnnounce'] = False
                 
                 logger.info('(%s) Reflector: Private call from %s to %s',self._system, int_id(_rf_src), _int_dst_id)
+                if _int_dst_id == 4000:
+                    disconnect_dial_reflectors(self._system)
+                    clear_subscriber_on_disconnect(self._system, _rf_src, _peer_id)
                 if _int_dst_id >= 5 and _int_dst_id != 8  and _int_dst_id != 9 and _int_dst_id <= 999999:
                     _bridgename = ''.join(['#',str(_int_dst_id)])
                     if _bridgename not in BRIDGES and not (_int_dst_id >= 4000 and _int_dst_id <= 5000) and not (_int_dst_id >=9991 and _int_dst_id <= 9999):
                             logger.info('(%s) [A] Reflector for TG %s does not exist. Creating as User Activated. Timeout: %s',self._system, _int_dst_id,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
                             make_single_reflector(_dst_id,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'],self._system)
                     
-                    if _int_dst_id > 5 and _int_dst_id != 9 and _int_dst_id != 5000 and not (_int_dst_id >=9991 and _int_dst_id <= 9999):
+                    if (_int_dst_id > 5 and _int_dst_id != 9 and not is_dial_service_code(_int_dst_id)
+                            and not (_int_dst_id >=9991 and _int_dst_id <= 9999)):
                         for _bridge in BRIDGES:
                             if _bridge[0:1] != '#':
                                 continue
@@ -2532,7 +2576,8 @@ class routerHBP(HBSYSTEM):
                                         logger.info('(%s) [B] Transmission match for Reflector: %s. Reset timeout to %s', self._system, _bridge, _system['TIMER'])
                             
                                 # TGID matches an ACTIVATION trigger
-                                if _int_dst_id == int(_dehash_bridge) and _system['SYSTEM'] == self._system and  _slot == _system['TS']:
+                                if (not is_dial_service_code(_int_dst_id)
+                                        and _int_dst_id == int(_dehash_bridge) and _system['SYSTEM'] == self._system and  _slot == _system['TS']):
                                     # Set the matching rule as ACTIVE
                                     if _system['ACTIVE'] == False:
                                         _system['ACTIVE'] = True
@@ -2607,7 +2652,7 @@ class routerHBP(HBSYSTEM):
                 elif _int_dst_id == 5000:
                     _active = False
                     for _bridge in BRIDGES:
-                        if _bridge[0:1] != '#' or is_invalid_dial_reflector(_bridge[1:]):
+                        if _bridge[0:1] != '#' or is_dial_service_code(_bridge[1:]):
                             continue
                         for _system in BRIDGES[_bridge]:
                             _dehash_bridge = _bridge[1:]
