@@ -415,12 +415,78 @@ def remove_bridge_system(system):
             else:
                 if _bridge not in _bridgestemp:
                     _bridgestemp[_bridge] = []
-                _bridgestemp[_bridge].append({'SYSTEM': system, 'TS': _bridgesystem['TS'], 'TGID': _bridgesystem['TGID'],'ACTIVE': False,'TIMEOUT':  _bridgesystem['TIMEOUT'],'TO_TYPE': 'ON','OFF': [],'ON': [_bridgesystem['TGID'],],'RESET': [], 'TIMER': time() + _bridgesystem['TIMEOUT']})
+                _bridgestemp[_bridge].append({
+                    'SYSTEM': system,
+                    'TS': _bridgesystem['TS'],
+                    'TGID': _bridgesystem['TGID'],
+                    'ACTIVE': False,
+                    'TIMEOUT': _bridgesystem['TIMEOUT'],
+                    'TO_TYPE': _bridgesystem['TO_TYPE'],
+                    'OFF': list(_bridgesystem['OFF']),
+                    'ON': list(_bridgesystem['ON']) if _bridgesystem['ON'] else [_bridgesystem['TGID']],
+                    'RESET': list(_bridgesystem['RESET']),
+                    'TIMER': time() + _bridgesystem['TIMEOUT'],
+                })
             
     BRIDGES.update(_bridgestemp)
     # Entries for the system changed across ALL bridges; cheapest correct option is a full rebuild
     rebuild_bridge_index()
-                
+
+
+def reset_dynamic_reflectors(system):
+    """Deactivate dial-a-tg reflector links (TO_TYPE ON, bridge name #...) for one MASTER.
+
+    Static/default reflector bridges (TO_TYPE OFF from StartRef/DIAL) are not changed.
+    Default reflector is re-applied via options_config when the peer sends OPTIONS.
+    """
+    _changed = False
+    for _bridge in BRIDGES:
+        if _bridge[0:1] != '#':
+            continue
+        for _sys in BRIDGES[_bridge]:
+            if _sys['SYSTEM'] != system or _sys['TO_TYPE'] != 'ON':
+                continue
+            if _sys['ACTIVE']:
+                _sys['ACTIVE'] = False
+                _sys['TIMER'] = time()
+                _changed = True
+                logger.info('(REFLECTOR) Cleared dynamic dial-a-tg link %s for %s', _bridge, system)
+    if _changed:
+        rebuild_bridge_index()
+
+
+def deactivate_other_dynamic_reflectors(system, keep_bridge, slot=2):
+    """Ensure only one user-activated (TO_TYPE ON) reflector is active per MASTER."""
+    _changed = False
+    for _bridge in BRIDGES:
+        if _bridge[0:1] != '#' or _bridge == keep_bridge:
+            continue
+        for _sys in BRIDGES[_bridge]:
+            if (_sys['SYSTEM'] == system and _sys['TS'] == slot
+                    and _sys['TO_TYPE'] == 'ON' and _sys['ACTIVE']):
+                _sys['ACTIVE'] = False
+                _sys['TIMER'] = time()
+                _changed = True
+                logger.info('(REFLECTOR) Single dial-a-tg mode: deactivated %s for %s (keeping %s)',
+                            _bridge, system, keep_bridge)
+    if _changed:
+        rebuild_bridge_index()
+
+
+def clear_sub_map_for_system(system):
+    """Remove persisted subscriber entries for a MASTER (e.g. on hotspot login/disconnect)."""
+    _remove = []
+    for _subscriber in SUB_MAP:
+        try:
+            if SUB_MAP[_subscriber][0] == system:
+                _remove.append(_subscriber)
+        except (TypeError, IndexError):
+            pass
+    for _subscriber in _remove:
+        SUB_MAP.pop(_subscriber, None)
+    if _remove:
+        logger.info('(SUBSCRIBER) Cleared %s SUB_MAP entries for %s', len(_remove), system)
+
 
 # Run this every minute for rule timer updates
 def rule_timer_loop():
@@ -451,11 +517,14 @@ def rule_timer_loop():
                     # STICKY_TG LOGIC: Check if this bridge should remain active due to sticky TG
                     # PRODUCTION SAFETY: Feature flag check - only apply sticky logic if enabled
                     # Priority: Peer STICKY > System STICKY_TG > Default (False)
+                    # Dial-a-tg reflector bridges (#...) must not use sticky TG — they share TGID 9
+                    # and would all stay active while the user is on TG 9.
                     _sticky_active = False
                     # Optimisation: only scan SUB_MAP for systems that actually have
                     # sticky TG enabled (pre-computed above).  Avoids O(N_subscribers)
                     # scan for every active bridge entry on non-sticky systems.
-                    if (CONFIG['SYSTEMS'][_system['SYSTEM']]['MODE'] == 'MASTER' and
+                    if (_bridge[0:1] != '#' and
+                            CONFIG['SYSTEMS'][_system['SYSTEM']]['MODE'] == 'MASTER' and
                             _system['SYSTEM'] in _sticky_enabled_systems):
                         # Check if any subscriber has this TG as their sticky TG
                         for _subscriber in SUB_MAP:
@@ -1912,6 +1981,24 @@ class routerHBP(HBSYSTEM):
                 }
             }
 
+    def master_datagramReceived(self, _data, _sockaddr):
+        _command = _data[:4]
+        if _command == RPTC:
+            if _data[:5] == RPTCL and len(_data) >= 9:
+                _peer_id = _data[5:9]
+                if (_peer_id in self._peers
+                        and self._peers[_peer_id]['CONNECTION'] == 'YES'
+                        and self._peers[_peer_id]['SOCKADDR'] == _sockaddr):
+                    clear_sub_map_for_system(self._system)
+            elif len(_data) >= 8:
+                _peer_id = _data[4:8]
+                if (_peer_id in self._peers
+                        and self._peers[_peer_id]['CONNECTION'] == 'WAITING_CONFIG'
+                        and self._peers[_peer_id]['SOCKADDR'] == _sockaddr):
+                    reset_dynamic_reflectors(self._system)
+                    clear_sub_map_for_system(self._system)
+        HBSYSTEM.master_datagramReceived(self, _data, _sockaddr)
+
     def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,sysIgnore,_source_server, _ber, _rssi, _source_rptr):
         _sysIgnore = sysIgnore
         for _target in BRIDGES[_bridge]:
@@ -2412,6 +2499,7 @@ class routerHBP(HBSYSTEM):
                                         if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON' and _dst_id in _system['OFF']:
                                             _system['TIMER'] = pkt_time
                                             logger.info('(%s) [I] Reflector: %s has ON timer and set to "OFF": timeout timer cancelled', self._system, _bridge)
+                        deactivate_other_dynamic_reflectors(self._system, _bridgename, _slot)
             
             
             if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
