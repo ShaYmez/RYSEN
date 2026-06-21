@@ -279,6 +279,92 @@ def make_bridges(_rules):
     
     return _rules
 
+
+def augment_bridges_for_masters():
+    """After GENERATOR split, sync each bridge with all current MASTER systems.
+
+    make_bridges() runs before SYSTEM -> SYSTEM-0..N expansion, so rules-based bridges
+    may reference removed names and lack generated master slots. Safe to call with
+    GENERATOR 1 (no-op aside from stale entry cleanup).
+    """
+    _removed = 0
+    _added = 0
+    for _bridge in list(BRIDGES.keys()):
+        _fresh = []
+        for _entry in BRIDGES[_bridge]:
+            if _entry['SYSTEM'] not in CONFIG['SYSTEMS']:
+                _removed += 1
+                logger.info('(ROUTER) Removed stale bridge entry %s / %s (system not in config)',
+                            _bridge, _entry['SYSTEM'])
+                continue
+            _fresh.append(_entry)
+        BRIDGES[_bridge] = _fresh
+
+        try:
+            _bridge_tgid = int(_bridge[1:]) if _bridge[0:1] == '#' else int(_bridge)
+        except ValueError:
+            continue
+
+        for _confsystem in CONFIG['SYSTEMS']:
+            if CONFIG['SYSTEMS'][_confsystem]['MODE'] != 'MASTER':
+                continue
+            ts1 = False
+            ts2 = False
+            for _entry in BRIDGES[_bridge]:
+                if _entry['SYSTEM'] == _confsystem and _entry['TS'] == 1:
+                    ts1 = True
+                if _entry['SYSTEM'] == _confsystem and _entry['TS'] == 2:
+                    ts2 = True
+            _tmout = CONFIG['SYSTEMS'][_confsystem]['DEFAULT_UA_TIMER']
+            if _bridge[0:1] != '#':
+                if not ts1:
+                    BRIDGES[_bridge].append({
+                        'SYSTEM': _confsystem, 'TS': 1, 'TGID': bytes_3(_bridge_tgid),
+                        'ACTIVE': False, 'TIMEOUT': _tmout * 60, 'TO_TYPE': 'ON',
+                        'OFF': [], 'ON': [bytes_3(_bridge_tgid)], 'RESET': [], 'TIMER': time()})
+                    _added += 1
+                if not ts2:
+                    BRIDGES[_bridge].append({
+                        'SYSTEM': _confsystem, 'TS': 2, 'TGID': bytes_3(_bridge_tgid),
+                        'ACTIVE': False, 'TIMEOUT': _tmout * 60, 'TO_TYPE': 'ON',
+                        'OFF': [], 'ON': [bytes_3(_bridge_tgid)], 'RESET': [], 'TIMER': time()})
+                    _added += 1
+            elif not ts2:
+                BRIDGES[_bridge].append({
+                    'SYSTEM': _confsystem, 'TS': 2, 'TGID': bytes_3(9),
+                    'ACTIVE': False, 'TIMEOUT': _tmout * 60, 'TO_TYPE': 'ON',
+                    'OFF': [bytes_3(4000)], 'ON': [], 'RESET': [], 'TIMER': time()})
+                _added += 1
+
+    if _removed or _added:
+        rebuild_bridge_index()
+        logger.info('(ROUTER) Post-generator bridge augment: removed %s stale, added %s master slots',
+                    _removed, _added)
+
+
+def activate_ua_bridge_source(bridge_name, system, slot, tmout=None):
+    """Activate this master's UA slot on an existing bridge (e.g. direct TG 9990 PTT)."""
+    if bridge_name not in BRIDGES:
+        return False
+    if system not in CONFIG['SYSTEMS']:
+        return False
+    if tmout is None:
+        tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
+    if bridge_name == '9990':
+        tmout = 1
+    _timeout_s = tmout * 60
+    _changed = False
+    for _entry in BRIDGES[bridge_name]:
+        if (_entry['SYSTEM'] == system and _entry['TS'] == slot
+                and _entry['TO_TYPE'] != 'NONE'):
+            if not _entry['ACTIVE']:
+                _entry['ACTIVE'] = True
+                _changed = True
+                logger.info('(ROUTER) Bridge %s activated for %s TS%s', bridge_name, system, slot)
+            _entry['TIMER'] = time() + _timeout_s
+    return _changed
+
+
 #Make a single bridge - used for on-the-fly UA bridges
 def make_single_bridge(_tgid,_sourcesystem,_slot,_tmout):
     _tgid_s = str(int_id(_tgid))
@@ -2762,6 +2848,9 @@ class routerHBP(HBSYSTEM):
                 if int_id(_dst_id) >= 5 and int_id(_dst_id) != 9 and int_id(_dst_id) != 4000 and int_id(_dst_id) != 5000  and (str(int_id(_dst_id)) not in BRIDGES):
                     logger.info('(%s) Bridge for TG %s does not exist. Creating as User Activated. Timeout %s',self._system, int_id(_dst_id),CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
                     make_single_bridge(_dst_id,self._system,_slot,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
+                elif (CONFIG['SYSTEMS'][self._system]['MODE'] == 'MASTER'
+                        and str(int_id(_dst_id)) in BRIDGES):
+                    activate_ua_bridge_source(str(int_id(_dst_id)), self._system, _slot)
                 
                 # Update SUB_MAP with the TG for this call
                 # This enables sticky TG functionality - subscriber is now associated with this TG
@@ -3280,6 +3369,8 @@ if __name__ == '__main__':
     
     del generator
     del systemdelete
+
+    augment_bridges_for_masters()
     
     # Default reflector
     logger.debug('(ROUTER) Setting default reflectors')

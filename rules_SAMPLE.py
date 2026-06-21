@@ -39,15 +39,16 @@ BRIDGES = {
 
     ##########################################################################################################################################
     #                                                                                                                                        #
-    #  PARROT (TG 9990) — uncomment and set SYSTEM to your hotspot MASTER stanza name from rysen.cfg (e.g. SYSTEM, MASTER-1).                #
+    #  PARROT (TG 9990) — uncomment for echo / parrot routing.                                                                               #
     #                                                                                                                                        #
-    #  Both entries must be ACTIVE for direct group calls on TG 9990 to reach PARROT. Use TO_TYPE 'NONE' so SINGLE_MODE does not tear down   #
-    #  this bridge when dial-a-tg traffic ends on TG 9. PARROT-only rules work for dial-a-tg but not direct PTT.                             #
-    #  Prefer this over TS2_STATIC: 9990 in the master cfg — rules are server-side only and are not pushed to every hotspot via OPTIONS.     #
+    #  System-X / GENERATOR > 1: list PARROT only. Do NOT add SYSTEM or SYSTEM-N here — bridge_master adds every generated master slot        #
+    #  after startup and activates the calling SYSTEM-N on direct TG 9990 PTT. Scale GENERATOR (100, 200, 400…) without editing rules.       #
+    #  Use TO_TYPE 'NONE' on PARROT so SINGLE_MODE does not tear down this bridge when dial-a-tg traffic ends on TG 9.                       #
+    #  Prefer rules over TS2_STATIC: 9990 in cfg (rules are server-side; static TG is pushed to hotspots via OPTIONS).                         #
+    #                                                                                                                                        #
     ##########################################################################################################################################
     # '9990': [
-    #         {'SYSTEM': 'SYSTEM',  'TS': 2, 'TGID': 9990, 'ACTIVE': True, 'TIMEOUT': 15, 'TO_TYPE': 'NONE', 'ON': [], 'OFF': [], 'RESET': []},
-    #         {'SYSTEM': 'PARROT',  'TS': 2, 'TGID': 9990, 'ACTIVE': True, 'TIMEOUT': 15, 'TO_TYPE': 'NONE', 'ON': [], 'OFF': [], 'RESET': []},
+    #         {'SYSTEM': 'PARROT', 'TS': 2, 'TGID': 9990, 'ACTIVE': True, 'TIMEOUT': 15, 'TO_TYPE': 'NONE', 'ON': [], 'OFF': [], 'RESET': []},
     #      ],
 
 }
