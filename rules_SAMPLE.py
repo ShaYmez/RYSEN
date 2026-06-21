@@ -37,6 +37,18 @@ configuration file.
 
 BRIDGES = {
 
+    ##########################################################################################################################################
+    #                                                                                                                                        #
+    #  PARROT (TG 9990) — uncomment and set SYSTEM to your hotspot MASTER stanza name from rysen.cfg (e.g. SYSTEM, MASTER-1).                #
+    #                                                                                                                                        #
+    #  Both entries must be ACTIVE for direct group calls on TG 9990 to reach PARROT. PARROT-only rules work for dial-a-tg but not direct    #
+    #  PTT.                                                                                                                                  #
+    ##########################################################################################################################################
+    # '9990': [
+    #         {'SYSTEM': 'SYSTEM',  'TS': 2, 'TGID': 9990, 'ACTIVE': True, 'TIMEOUT': 15, 'TO_TYPE': 'NONE', 'ON': [], 'OFF': [], 'RESET': []},
+    #         {'SYSTEM': 'PARROT',  'TS': 2, 'TGID': 9990, 'ACTIVE': True, 'TIMEOUT': 15, 'TO_TYPE': 'NONE', 'ON': [], 'OFF': [], 'RESET': []},
+    #      ],
+
 }
 
 if __name__ == '__main__':
