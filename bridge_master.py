@@ -323,7 +323,22 @@ def make_stat_bridge(_tgid):
     _idx_add_bridge(_tgid_s)
         
 
+_DIAL_A_TG = 9
+_DIAL_A_TG_BYTES = bytes_3(9)
+
+
+def is_invalid_dial_reflector(reflector):
+    """Reflector 9 is the dial-a-tg relay channel, not a linkable reflector."""
+    try:
+        return int(reflector) == _DIAL_A_TG
+    except (TypeError, ValueError):
+        return False
+
+
 def make_default_reflector(reflector,_tmout,system):
+    if is_invalid_dial_reflector(reflector):
+        logger.warning('(REFLECTOR) Ignoring invalid default reflector %s for %s', reflector, system)
+        return
     bridge = ''.join(['#',str(reflector)])
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
     if bridge not in BRIDGES:
@@ -369,6 +384,8 @@ def reset_static_tg(tg,ts,_tmout,system):
     _idx_replace_bridge(str(tg))
 
 def reset_default_reflector(reflector,_tmout,system):
+    if is_invalid_dial_reflector(reflector):
+        return
     bridge = ''.join(['#',str(reflector)])
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
     if bridge not in BRIDGES:
@@ -384,6 +401,9 @@ def reset_default_reflector(reflector,_tmout,system):
     _idx_replace_bridge(bridge)
 
 def make_single_reflector(_tgid,_tmout,_sourcesystem):
+    if is_invalid_dial_reflector(int_id(_tgid)):
+        logger.warning('(REFLECTOR) Refusing to create invalid dial reflector #9 for %s', _sourcesystem)
+        return
     _tgid_s = str(int_id(_tgid))
     _bridge = ''.join(['#',_tgid_s])
     #1 min timeout for echo
@@ -423,7 +443,8 @@ def remove_bridge_system(system):
                     'TIMEOUT': _bridgesystem['TIMEOUT'],
                     'TO_TYPE': _bridgesystem['TO_TYPE'],
                     'OFF': list(_bridgesystem['OFF']),
-                    'ON': list(_bridgesystem['ON']) if _bridgesystem['ON'] else [_bridgesystem['TGID']],
+                    'ON': (list(_bridgesystem['ON']) if _bridgesystem['ON']
+                           else ([] if _bridge[0:1] == '#' else [_bridgesystem['TGID']])),
                     'RESET': list(_bridgesystem['RESET']),
                     'TIMER': time() + _bridgesystem['TIMEOUT'],
                 })
@@ -451,6 +472,32 @@ def reset_dynamic_reflectors(system):
                 _sys['TIMER'] = time()
                 _changed = True
                 logger.info('(REFLECTOR) Cleared dynamic dial-a-tg link %s for %s', _bridge, system)
+    if _changed:
+        rebuild_bridge_index()
+
+
+def sanitize_dial_reflectors(system):
+    """Deactivate #9 and strip dial TG from poisoned ON lists for one MASTER slot."""
+    _changed = False
+    for _bridge in BRIDGES:
+        if _bridge[0:1] != '#':
+            continue
+        for _sys in BRIDGES[_bridge]:
+            if _sys['SYSTEM'] != system:
+                continue
+            if is_invalid_dial_reflector(_bridge[1:]):
+                if _sys['ACTIVE']:
+                    _sys['ACTIVE'] = False
+                    _sys['TIMER'] = time()
+                    _changed = True
+                    logger.info('(REFLECTOR) Cleared invalid dial reflector %s for %s', _bridge, system)
+                if _sys['ON']:
+                    _sys['ON'] = []
+                    _changed = True
+            elif _DIAL_A_TG_BYTES in _sys['ON']:
+                _sys['ON'] = [x for x in _sys['ON'] if x != _DIAL_A_TG_BYTES]
+                _changed = True
+                logger.info('(REFLECTOR) Removed dial TG from ON list on %s for %s', _bridge, system)
     if _changed:
         rebuild_bridge_index()
 
@@ -486,6 +533,22 @@ def clear_sub_map_for_system(system):
         SUB_MAP.pop(_subscriber, None)
     if _remove:
         logger.info('(SUBSCRIBER) Cleared %s SUB_MAP entries for %s', len(_remove), system)
+
+
+def clear_sub_map_for_peer(peer_id):
+    """Remove SUB_MAP entries for a hotspot peer (survives REPEATER-N slot changes)."""
+    _remove = []
+    for _subscriber in SUB_MAP:
+        try:
+            _entry = SUB_MAP[_subscriber]
+            if len(_entry) >= 5 and _entry[4] == peer_id:
+                _remove.append(_subscriber)
+        except (TypeError, IndexError):
+            pass
+    for _subscriber in _remove:
+        SUB_MAP.pop(_subscriber, None)
+    if _remove:
+        logger.info('(SUBSCRIBER) Cleared %s SUB_MAP entries for peer %s', len(_remove), int_id(peer_id))
 
 
 # Run this every minute for rule timer updates
@@ -1134,6 +1197,9 @@ def options_config():
                         _options['TS2_STATIC'] = False
                         
                     if 'DEFAULT_REFLECTOR' not in _options:
+                        _options['DEFAULT_REFLECTOR'] = 0
+                    if is_invalid_dial_reflector(_options['DEFAULT_REFLECTOR']):
+                        logger.warning('(OPTIONS) %s DEFAULT_REFLECTOR=9 is invalid (dial-a-tg channel), treating as 0', _system)
                         _options['DEFAULT_REFLECTOR'] = 0
                     
                     if 'OVERRIDE_IDENT_TG' not in _options:
@@ -1990,13 +2056,16 @@ class routerHBP(HBSYSTEM):
                         and self._peers[_peer_id]['CONNECTION'] == 'YES'
                         and self._peers[_peer_id]['SOCKADDR'] == _sockaddr):
                     clear_sub_map_for_system(self._system)
+                    clear_sub_map_for_peer(_peer_id)
             elif len(_data) >= 8:
                 _peer_id = _data[4:8]
                 if (_peer_id in self._peers
                         and self._peers[_peer_id]['CONNECTION'] == 'WAITING_CONFIG'
                         and self._peers[_peer_id]['SOCKADDR'] == _sockaddr):
                     reset_dynamic_reflectors(self._system)
+                    sanitize_dial_reflectors(self._system)
                     clear_sub_map_for_system(self._system)
+                    clear_sub_map_for_peer(_peer_id)
         HBSYSTEM.master_datagramReceived(self, _data, _sockaddr)
 
     def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,sysIgnore,_source_server, _ber, _rssi, _source_rptr):
@@ -2538,7 +2607,7 @@ class routerHBP(HBSYSTEM):
                 elif _int_dst_id == 5000:
                     _active = False
                     for _bridge in BRIDGES:
-                        if _bridge[0:1] != '#':
+                        if _bridge[0:1] != '#' or is_invalid_dial_reflector(_bridge[1:]):
                             continue
                         for _system in BRIDGES[_bridge]:
                             _dehash_bridge = _bridge[1:]
@@ -2843,7 +2912,8 @@ class routerHBP(HBSYSTEM):
                                 logger.info('(%s) [1] Transmission match for Bridge: %s. Reset timeout to %s', self._system, _bridge, _system['TIMER'])
 
                             # TGID matches an ACTIVATION trigger
-                            if (_dst_id in _system['ON'] or _dst_id in _system['RESET']) and _slot == _system['TS']:
+                            # Dial-a-tg reflectors link via private call only, not group PTT on TG 9
+                            if not (_bridge[0:1] == '#' and _int_dst_id == _DIAL_A_TG) and (_dst_id in _system['ON'] or _dst_id in _system['RESET']) and _slot == _system['TS']:
                                 # Set the matching rule as ACTIVE
                                 if _dst_id in _system['ON']:
                                     if _system['ACTIVE'] == False:
@@ -3169,7 +3239,7 @@ if __name__ == '__main__':
     for system in CONFIG['SYSTEMS']:
         if CONFIG['SYSTEMS'][system]['MODE'] != 'MASTER':
             continue
-        if CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'] > 0:
+        if CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'] > 0 and not is_invalid_dial_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR']):
             make_default_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'],CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER'],system)
             
     #static TGs 
