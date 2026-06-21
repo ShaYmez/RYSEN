@@ -41,8 +41,9 @@ BRIDGES = {
     #                                                                                                                                        #
     #  PARROT (TG 9990) — uncomment and set SYSTEM to your hotspot MASTER stanza name from rysen.cfg (e.g. SYSTEM, MASTER-1).                #
     #                                                                                                                                        #
-    #  Both entries must be ACTIVE for direct group calls on TG 9990 to reach PARROT. PARROT-only rules work for dial-a-tg but not direct    #
-    #  PTT.                                                                                                                                  #
+    #  Both entries must be ACTIVE for direct group calls on TG 9990 to reach PARROT. Use TO_TYPE 'NONE' so SINGLE_MODE does not tear down   #
+    #  this bridge when dial-a-tg traffic ends on TG 9. PARROT-only rules work for dial-a-tg but not direct PTT.                             #
+    #  Prefer this over TS2_STATIC: 9990 in the master cfg — rules are server-side only and are not pushed to every hotspot via OPTIONS.     #
     ##########################################################################################################################################
     # '9990': [
     #         {'SYSTEM': 'SYSTEM',  'TS': 2, 'TGID': 9990, 'ACTIVE': True, 'TIMEOUT': 15, 'TO_TYPE': 'NONE', 'ON': [], 'OFF': [], 'RESET': []},
