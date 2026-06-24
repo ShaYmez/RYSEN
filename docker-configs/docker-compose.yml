@@ -31,7 +31,7 @@ services:
             - '4321:4321/tcp'
               #APRS Master
             - '52555:52555/udp'
-              #IPSC Phase 1 master (direct connect)
+              #IPSC Phase 1 master (direct connect; PORT in rysen.cfg must match host side)
             - '50001:50001/udp'
         restart: "unless-stopped"
         networks:

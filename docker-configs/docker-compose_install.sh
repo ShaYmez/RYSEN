@@ -130,7 +130,8 @@ docker container logs systemx
 
 echo "Check out docs @ https://github.com/ShaYmez/RYSEN for extra functionality."
 echo "IPSC Phase 1 is enabled in /etc/rysen/rysen.cfg ([IPSC] on UDP 50001)."
-echo "Edit ALLOWED_PEER_IDS and IPSC_MASTER_ID before connecting your repeater — see doc/ipsc-phase1.md."
+echo "If you change PORT, update docker-compose.yml port mapping and CPS Master port to match."
+echo "Set IPSC_MASTER_ID if needed; repeater radio ID comes from CPS. See doc/ipsc-phase1.md."
 echo "To enable hotspot proxy: docker compose --profile hotspot up -d"
 echo "To rebuild after git pull: cd ${RYSEN_SRC} && git pull && cd /etc/rysen && docker compose build rysen && docker compose up -d rysen"
 echo "Setup complete!"
