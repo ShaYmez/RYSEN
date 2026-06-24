@@ -41,7 +41,7 @@ Get the file: [rysen.cfg](https://github.com/ShaYmez/RYSEN/blob/ipsc/docker-conf
 
 place the rysen.cfg file in this directory.
 
-For IPSC, the docker install starts **rysen** and **ipsc-proxy** (public UDP **56002**, backends `IPSC-0`…`IPSC-199` on `56003`–`56202`). See [ipsc-phase1.md](ipsc-phase1.md), [IPSC-SAMPLE.cfg](../docker-configs/config/IPSC-SAMPLE.cfg), and [ipsc-proxy-SAMPLE.cfg](../docker-configs/config/ipsc-proxy-SAMPLE.cfg).
+For IPSC, the docker install starts **rysen** and **ipsc-proxy** (public UDP **56001** CPS Master port; backends `IPSC-0`…`IPSC-199` on `56003`–`56202`). Set repeater **Peer UDP port** to **56002** in CPS. See [ipsc-phase1.md](ipsc-phase1.md), [IPSC-SAMPLE.cfg](../docker-configs/config/IPSC-SAMPLE.cfg), and [ipsc-proxy-SAMPLE.cfg](../docker-configs/config/ipsc-proxy-SAMPLE.cfg).
 
 ## Make rules file
 

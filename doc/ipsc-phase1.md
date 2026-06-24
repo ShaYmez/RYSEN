@@ -14,14 +14,14 @@ Motorola IP Site Connect (IPSC) support in RYSEN.
 
 ### Phase 2a (ipsc branch docker install)
 
-- **`ipsc_proxy.py`** — public UDP **56002** → backend slots `IPSC-0` … `IPSC-199`
+- **`ipsc_proxy.py`** — public UDP **56001** (CPS Master port) → backend slots `IPSC-0` … `IPSC-199`
 - **`GENERATOR: 200`** on `[IPSC]` with `PORT: 56003` (backends `56003`–`56202` on compose network)
 - Proxy routes by repeater radio ID; master replies by backend source port
 - Sample proxy config: `docker-configs/config/ipsc-proxy-SAMPLE.cfg`
 
 ### Field test (2026-06)
 
-Verified on a Debian VM: repeater registration and ~10s re-registration with autonomous repeater radio ID from CPS (`ALLOWED_PEER_IDS` empty). Tested with CPS Master port **56002**.
+Verified on a Debian VM: repeater registration and ~10s re-registration with autonomous repeater radio ID from CPS (`ALLOWED_PEER_IDS` empty).
 
 ### Phase 2b (bridge parity)
 
@@ -41,7 +41,7 @@ Docker install ships:
 | File | Role |
 |------|------|
 | `rysen.cfg` `[IPSC]` | Backend masters (`PORT` = first backend, `GENERATOR` = slot count) |
-| `ipsc-proxy.cfg` | Public listen port **56002**, `DESTPORTSTART`/`END` = backend range |
+| `ipsc-proxy.cfg` | Public listen port **56001**, `DESTPORTSTART`/`END` = backend range |
 
 | Setting | Purpose |
 |---------|---------|
@@ -52,17 +52,18 @@ Docker install ships:
 | `ALLOWED_PEER_IDS` | Optional whitelist; empty = allow any |
 | `PROXY_CONTROL` | Enable `PRIN`/`PRCL` logging and proxy disconnect handling |
 
-## Motorola CPS
+## Motorola CPS (e.g. DR3000 peer)
 
 - Link type: **Peer**
 - Master IP: your server public IP
-- Master port: **56002** (proxy — not the backend `PORT` in `rysen.cfg`)
+- **Master UDP port: 56001** (must match `ipsc-proxy` / firewall / docker-compose)
+- **Peer UDP port: 56002** (repeater local bind port — set in CPS only, not on the server)
 - Repeater radio ID: configured in CPS; optional `ALLOWED_PEER_IDS` whitelist
 
 ## Architecture
 
 ```
-Motorola repeater ──UDP 56002──► ipsc-proxy ──UDP 56003+N──► [IPSC-N] routerIPSC
+Motorola repeater ──UDP 56001──► ipsc-proxy ──UDP 56003+N──► [IPSC-N] routerIPSC
                                                                     │
                                                                     ▼
                                                           bridge_master / rules.py
