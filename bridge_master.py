@@ -58,6 +58,8 @@ from config import acl_build
 import log
 from const import *
 from mk_voice import pkt_gen
+from ipsc_master import IpscMasterMixin
+from ipsc_const import is_routing_master
 # NOTE: 'words' is loaded dynamically via readAMBE() at runtime (see line ~2689)
 #from voice_lib import words
 
@@ -257,7 +259,7 @@ def make_bridges(_rules):
         
         for _confsystem in CONFIG['SYSTEMS']:
             #if _confsystem[0:3] == 'OBP':
-            if CONFIG['SYSTEMS'][_confsystem]['MODE'] != 'MASTER':
+            if not is_routing_master(CONFIG['SYSTEMS'][_confsystem]['MODE']):
                 continue
             ts1 = False 
             ts2 = False
@@ -306,7 +308,7 @@ def augment_bridges_for_masters():
             continue
 
         for _confsystem in CONFIG['SYSTEMS']:
-            if CONFIG['SYSTEMS'][_confsystem]['MODE'] != 'MASTER':
+            if not is_routing_master(CONFIG['SYSTEMS'][_confsystem]['MODE']):
                 continue
             ts1 = False
             ts2 = False
@@ -3127,6 +3129,19 @@ class routerHBP(HBSYSTEM):
             self.STATUS[_slot]['crcs'].add(_pkt_crc)
 
 #
+# Motorola IPSC master (MODE: IPSC) — Phase 1
+#
+class routerIPSC(IpscMasterMixin, routerHBP):
+
+    def __init__(self, _name, _config, _report):
+        if 'PEERS' not in _config['SYSTEMS'][_name]:
+            _config['SYSTEMS'][_name]['PEERS'] = {}
+        routerHBP.__init__(self, _name, _config, _report)
+        self._peers = _config['SYSTEMS'][_name]['PEERS']
+        self.init_ipsc()
+
+
+#
 # Socket-based reporting section
 #
 class bridgeReportFactory(reportFactory):
@@ -3352,7 +3367,8 @@ if __name__ == '__main__':
     systemdelete = deque()
     for system in CONFIG['SYSTEMS']:
         if CONFIG['SYSTEMS'][system]['ENABLED']:
-            if CONFIG['SYSTEMS'][system]['MODE'] == 'MASTER' and (CONFIG['SYSTEMS'][system]['GENERATOR'] > 1):
+            if (is_routing_master(CONFIG['SYSTEMS'][system]['MODE'])
+                    and (CONFIG['SYSTEMS'][system]['GENERATOR'] > 1)):
                 for count in range(CONFIG['SYSTEMS'][system]['GENERATOR']):
                     _systemname = ''.join([system,'-',str(count)])
                     generator[_systemname] = copy.deepcopy(CONFIG['SYSTEMS'][system])
@@ -3375,7 +3391,7 @@ if __name__ == '__main__':
     # Default reflector
     logger.debug('(ROUTER) Setting default reflectors')
     for system in CONFIG['SYSTEMS']:
-        if CONFIG['SYSTEMS'][system]['MODE'] != 'MASTER':
+        if not is_routing_master(CONFIG['SYSTEMS'][system]['MODE']):
             continue
         if CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'] > 0 and not is_invalid_dial_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR']):
             make_default_reflector(CONFIG['SYSTEMS'][system]['DEFAULT_REFLECTOR'],CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER'],system)
@@ -3383,7 +3399,7 @@ if __name__ == '__main__':
     #static TGs 
     logger.debug('(ROUTER) setting static TGs')
     for system in CONFIG['SYSTEMS']:
-        if CONFIG['SYSTEMS'][system]['MODE'] != 'MASTER':
+        if not is_routing_master(CONFIG['SYSTEMS'][system]['MODE']):
             continue
         _tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
         ts1 = []
@@ -3438,7 +3454,9 @@ if __name__ == '__main__':
     for system in CONFIG['SYSTEMS']:
         if CONFIG['SYSTEMS'][system]['ENABLED']:
             if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
-                systems[system] = routerOBP(system, CONFIG, report_server)                
+                systems[system] = routerOBP(system, CONFIG, report_server)
+            elif CONFIG['SYSTEMS'][system]['MODE'] == 'IPSC':
+                systems[system] = routerIPSC(system, CONFIG, report_server)
             else:
                 if CONFIG['SYSTEMS'][system]['MODE'] == 'MASTER' and CONFIG['SYSTEMS'][system]['ANNOUNCEMENT_LANGUAGE'] not in CONFIG['GLOBAL']['ANNOUNCEMENT_LANGUAGES'].split(','):
                     logger.warning('(GLOBAL) Invalid language in ANNOUNCEMENT_LANGUAGE, skipping system %s',system)

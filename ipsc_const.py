@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+###############################################################################
+#   Motorola IPSC protocol constants (derived from DMRlink / ipsc2hbp)
+#   Copyright (C) 2026 Shane Daley, M0VUB
+#
+#   This program is free software; you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation; either version 3 of the License, or
+#   (at your option) any later version.
+###############################################################################
+
+# IPSC opcodes
+GROUP_VOICE        = 0x80
+MASTER_REG_REQ     = 0x90
+MASTER_REG_REPLY   = 0x91
+PEER_LIST_REQ      = 0x92
+PEER_LIST_REPLY    = 0x93
+MASTER_ALIVE_REQ   = 0x96
+MASTER_ALIVE_REPLY = 0x97
+DE_REG_REQ         = 0x9A
+DE_REG_REPLY       = 0x9B
+XCMP_XNL           = 0x70
+
+# Burst types inside GROUP_VOICE
+VOICE_HEAD  = 0x01
+VOICE_TERM  = 0x02
+SLOT1_VOICE = 0x0A
+SLOT2_VOICE = 0x8A
+
+IPSC_VER = b'\x04\x02\x04\x01'
+
+TS_CALL_MSK = 0b00100000
+END_MSK     = 0b01000000
+
+GV_PEER_ID_OFF    = 1
+GV_CALL_SEQ_OFF   = 5
+GV_SRC_SUB_OFF    = 6
+GV_DST_GROUP_OFF  = 9
+GV_CALL_INFO_OFF  = 17
+GV_BURST_TYPE_OFF = 30
+GV_MIN_LEN        = 31
+
+AUTH_DIGEST_LEN = 10
+
+# Default capability bytes for IPSC master (DMRlink safe defaults)
+DEFAULT_IPSC_MODE_BYTE   = b'\x6A'
+DEFAULT_IPSC_FLAGS_BYTES = b'\x00\x00\x00\x05'  # VOICE + MSTR_PEER
+
+# DMRD flags (byte 15) — matches hblink / ipsc2hbp
+HBPF_TGID_TS2            = 0x80
+HBPF_FRAMETYPE_VOICE     = 0x00
+HBPF_FRAMETYPE_VOICESYNC = 0x10
+HBPF_FRAMETYPE_DATASYNC  = 0x20
+
+ROUTING_MASTER_MODES = ('MASTER', 'IPSC')
+
+
+def is_routing_master(mode):
+    return mode in ROUTING_MASTER_MODES
+
+
+def peer_id_from_packet(data):
+    """Extract 4-byte radio ID from standard IPSC management/voice packets."""
+    if len(data) >= 5:
+        return data[1:5]
+    return None
+
+
+def opcode_name(opcode):
+    names = {
+        GROUP_VOICE: 'GROUP_VOICE',
+        MASTER_REG_REQ: 'MASTER_REG_REQ',
+        MASTER_REG_REPLY: 'MASTER_REG_REPLY',
+        PEER_LIST_REQ: 'PEER_LIST_REQ',
+        PEER_LIST_REPLY: 'PEER_LIST_REPLY',
+        MASTER_ALIVE_REQ: 'MASTER_ALIVE_REQ',
+        MASTER_ALIVE_REPLY: 'MASTER_ALIVE_REPLY',
+        DE_REG_REQ: 'DE_REG_REQ',
+        DE_REG_REPLY: 'DE_REG_REPLY',
+    }
+    return names.get(opcode, '0x{:02x}'.format(opcode))
