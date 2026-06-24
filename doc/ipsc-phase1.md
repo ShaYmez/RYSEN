@@ -23,9 +23,14 @@ Motorola IP Site Connect (IPSC) support in RYSEN.
 
 Verified on a Debian VM: repeater registration and ~10s re-registration with autonomous repeater radio ID from CPS (`ALLOWED_PEER_IDS` empty). Tested with CPS Master port **56002**.
 
+### Phase 2b (bridge parity)
+
+- `make_stat_bridge` / `make_single_reflector` include **IPSC-N** slots (same as `SYSTEM-N`)
+- `augment_bridges_for_masters()` already augments IPSC after `GENERATOR` split
+- UA bridge activation and sticky-TG logic apply to IPSC sources
+
 ## Not yet implemented
 
-- Bridge parity (`make_stat_bridge`, augment on new TGs) — Phase 2b
 - Outbound voice to Motorola repeaters (bridged TX back over IPSC) — Phase 2c
 - Selfcare / `ipsc_proxy_v2_sc`
 
@@ -73,5 +78,4 @@ Development is on the `ipsc` branch; not merged to master.
 
 ## Phase 2 (remaining)
 
-1. Bridge parity (`make_stat_bridge`, augment on new TGs)
-2. Outbound IPSC voice (DMRD → `GROUP_VOICE`)
+1. Outbound IPSC voice (DMRD → `GROUP_VOICE`)

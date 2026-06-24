@@ -60,6 +60,7 @@ from const import *
 from mk_voice import pkt_gen
 from ipsc_master import IpscMasterMixin
 from ipsc_const import is_routing_master
+from bridge_helpers import iter_routing_master_systems as _iter_routing_master_systems
 # NOTE: 'words' is loaded dynamically via readAMBE() at runtime (see line ~2689)
 #from voice_lib import words
 
@@ -282,12 +283,17 @@ def make_bridges(_rules):
     return _rules
 
 
-def augment_bridges_for_masters():
-    """After GENERATOR split, sync each bridge with all current MASTER systems.
+def iter_routing_master_systems():
+    """Yield system names that are bridge routing endpoints (MASTER / IPSC, not OBP)."""
+    yield from _iter_routing_master_systems(CONFIG['SYSTEMS'])
 
-    make_bridges() runs before SYSTEM -> SYSTEM-0..N expansion, so rules-based bridges
-    may reference removed names and lack generated master slots. Safe to call with
-    GENERATOR 1 (no-op aside from stale entry cleanup).
+
+def augment_bridges_for_masters():
+    """After GENERATOR split, sync each bridge with all current routing masters.
+
+    make_bridges() runs before SYSTEM/IPSC -> SYSTEM-0..N / IPSC-0..N expansion, so
+    rules-based bridges may reference removed names and lack generated slots.
+    Safe to call with GENERATOR 1 (no-op aside from stale entry cleanup).
     """
     _removed = 0
     _added = 0
@@ -398,13 +404,11 @@ def make_single_bridge(_tgid,_sourcesystem,_slot,_tmout):
 def make_stat_bridge(_tgid):
     _tgid_s = str(int_id(_tgid))
     BRIDGES[_tgid_s] = []
+    for _system in iter_routing_master_systems():
+        _tmout = CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']
+        BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time()})
+        BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time()})
     for _system in CONFIG['SYSTEMS']:
-        if _system[0:3] != 'OBP':
-            if CONFIG['SYSTEMS'][_system]['MODE'] == 'MASTER':
-                _tmout = CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']
-                BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time()})
-                BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time()})
-                    
         if _system[0:3] == 'OBP':
             BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': '','TO_TYPE': 'STAT','OFF': [],'ON': [],'RESET': [], 'TIMER': time()})
     # Keep routing index in sync
@@ -507,14 +511,12 @@ def make_single_reflector(_tgid,_tmout,_sourcesystem):
     if _tgid_s == '9990':
         _tmout = 1
     BRIDGES[_bridge] = []
+    for _system in iter_routing_master_systems():
+        if _system == _sourcesystem:
+            BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': True,'TIMEOUT':  _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time() + (_tmout * 60)})
+        else:
+            BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': False,'TIMEOUT':  CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER'] * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time()})
     for _system in CONFIG['SYSTEMS']:
-        #if _system[0:3] != 'OBP':
-        if CONFIG['SYSTEMS'][_system]['MODE'] == 'MASTER':
-            #_tmout = CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']
-            if _system == _sourcesystem:
-                BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': True,'TIMEOUT':  _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time() + (_tmout * 60)})
-            else:
-                BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': False,'TIMEOUT':  CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER'] * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time()})
         if _system[0:3] == 'OBP' and (int_id(_tgid) >= 59 and (int_id(_tgid) < 9990 or int_id(_tgid) > 9999)):
             BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': '','TO_TYPE': 'NONE','OFF': [],'ON': [],'RESET': [], 'TIMER': time()})
     # Keep routing index in sync
@@ -715,7 +717,7 @@ def rule_timer_loop():
                     # sticky TG enabled (pre-computed above).  Avoids O(N_subscribers)
                     # scan for every active bridge entry on non-sticky systems.
                     if (_bridge[0:1] != '#' and
-                            CONFIG['SYSTEMS'][_system['SYSTEM']]['MODE'] == 'MASTER' and
+                            is_routing_master(CONFIG['SYSTEMS'][_system['SYSTEM']]['MODE']) and
                             _system['SYSTEM'] in _sticky_enabled_systems):
                         # Check if any subscriber has this TG as their sticky TG
                         for _subscriber in SUB_MAP:
@@ -2850,8 +2852,7 @@ class routerHBP(HBSYSTEM):
                 if int_id(_dst_id) >= 5 and int_id(_dst_id) != 9 and int_id(_dst_id) != 4000 and int_id(_dst_id) != 5000  and (str(int_id(_dst_id)) not in BRIDGES):
                     logger.info('(%s) Bridge for TG %s does not exist. Creating as User Activated. Timeout %s',self._system, int_id(_dst_id),CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
                     make_single_bridge(_dst_id,self._system,_slot,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
-                elif (CONFIG['SYSTEMS'][self._system]['MODE'] == 'MASTER'
-                        and str(int_id(_dst_id)) in BRIDGES):
+                elif is_routing_master(CONFIG['SYSTEMS'][self._system]['MODE']) and str(int_id(_dst_id)) in BRIDGES:
                     activate_ua_bridge_source(str(int_id(_dst_id)), self._system, _slot)
                 
                 # Update SUB_MAP with the TG for this call
@@ -2876,7 +2877,7 @@ class routerHBP(HBSYSTEM):
                     
                     # Check if we should log sticky TG change based on per-peer or system-wide setting
                     _sticky_enabled = False
-                    if (CONFIG['SYSTEMS'][self._system]['MODE'] == 'MASTER' and 
+                    if (is_routing_master(CONFIG['SYSTEMS'][self._system]['MODE']) and 
                         'PEERS' in CONFIG['SYSTEMS'][self._system] and
                         _peer_id in CONFIG['SYSTEMS'][self._system]['PEERS']):
                         # Priority 1: Check peer-specific STICKY setting
@@ -3069,7 +3070,7 @@ class routerHBP(HBSYSTEM):
                             #Single TG mode
                             # TO_TYPE NONE bridges (e.g. parrot rules) must not be cleared here —
                             # dial-a-tg PTT on TG 9 would otherwise deactivate bridge 9990 (9 != 9990).
-                            if (CONFIG['SYSTEMS'][self._system]['MODE'] == 'MASTER' and CONFIG['SYSTEMS'][self._system]['SINGLE_MODE']) == True and _system['TO_TYPE'] != 'NONE':
+                            if (is_routing_master(CONFIG['SYSTEMS'][self._system]['MODE']) and CONFIG['SYSTEMS'][self._system]['SINGLE_MODE']) == True and _system['TO_TYPE'] != 'NONE':
                                 if (_dst_id in _system['OFF']  or _dst_id in _system['RESET'] or _dst_id != _system['TGID']) and _slot == _system['TS']:
                                 #if (_dst_id in _system['OFF']  or _dst_id in _system['RESET']) and _slot == _system['TS']:
                                     # Set the matching rule as ACTIVE
