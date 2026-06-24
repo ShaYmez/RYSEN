@@ -43,7 +43,7 @@ services:
         volumes:
             - '/etc/rysen/ipsc-proxy.cfg:/etc/rysen/ipsc-proxy.cfg'
         ports:
-            - '56001:56001/udp'
+            - '56002:56002/udp'
         restart: "unless-stopped"
         depends_on:
             - 'rysen'

@@ -133,8 +133,9 @@ docker container logs systemx
 docker container logs ipsc-proxy
 
 echo "Check out docs @ https://github.com/ShaYmez/RYSEN for extra functionality."
-echo "IPSC Phase 2a: proxy on UDP 56001 (CPS Master port), backends 56003-56202."
-echo "CPS Peer UDP port on repeater is typically 56002. See doc/ipsc-phase1.md."
+echo "IPSC: proxy on UDP 56002 (CPS Master port), backends 56003-56202."
+echo "CPS: Master UDP 56002, IPSC auth on, key must match AUTH_KEY in rysen.cfg [IPSC]."
+echo "Open inbound UDP 56002 on the host firewall. See doc/ipsc-phase1.md."
 echo "To enable hotspot proxy: docker compose --profile hotspot up -d"
 echo "To rebuild after git pull: cd ${RYSEN_SRC} && git pull && cd /etc/rysen && docker compose build rysen && docker compose up -d rysen"
 echo "Setup complete!"
