@@ -38,7 +38,8 @@ services:
             context: /opt/rysen-src
             dockerfile: Dockerfile
         image: rysen-local:latest
-        command: ["python", "/opt/rysen/ipsc_proxy.py", "-c", "/etc/rysen/ipsc-proxy.cfg"]
+        entrypoint: ["python", "/opt/rysen/ipsc_proxy.py"]
+        command: ["-c", "/etc/rysen/ipsc-proxy.cfg"]
         volumes:
             - '/etc/rysen/ipsc-proxy.cfg:/etc/rysen/ipsc-proxy.cfg'
         ports:
