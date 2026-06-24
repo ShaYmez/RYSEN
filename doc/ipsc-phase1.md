@@ -29,9 +29,13 @@ Verified on a Debian VM (SYSTEM-XTEST): repeater registration, ~10s re-registrat
 - `augment_bridges_for_masters()` already augments IPSC after `GENERATOR` split
 - UA bridge activation and sticky-TG logic apply to IPSC sources
 
+### Phase 2c (outbound voice)
+
+- Bridged DMRD → **GROUP_VOICE** via `IpscVoiceTranslator.encode()` and `routerIPSC.ipsc_send_system()`
+- Transmits to all registered IPSC peers on the slot (peer ID rewritten per destination repeater)
+
 ## Not yet implemented
 
-- Outbound voice to Motorola repeaters (bridged TX back over IPSC) — Phase 2c
 - Selfcare / `ipsc_proxy_v2_sc`
 
 ## Configuration
@@ -81,4 +85,4 @@ Development is on the `ipsc` branch; not merged to master.
 
 ## Phase 2 (remaining)
 
-1. Outbound IPSC voice (DMRD → `GROUP_VOICE`)
+1. ~~Outbound IPSC voice (DMRD → `GROUP_VOICE`)~~ — Phase 2c (implemented)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 ###############################################################################
-#   IPSC GROUP_VOICE → internal DMRD translation for RYSEN routing
-#   Ported from ipsc2hbp translate/translator.py (outbound path only, Phase 1)
+#   IPSC GROUP_VOICE ↔ internal DMRD translation for RYSEN routing
+#   Inbound path ported from ipsc2hbp; outbound encode added in Phase 2c
 #
 #   Copyright (C) 2026 Shane Daley, M0VUB
 #
@@ -17,15 +17,15 @@ import struct
 from bitarray import bitarray
 
 from dmr_utils3 import bptc
-from dmr_utils3.ambe_utils import convert49BitTo72BitAMBE
+from dmr_utils3.ambe_utils import convert49BitTo72BitAMBE, convert72BitTo49BitAMBE
 from dmr_utils3.const import EMB, SLOT_TYPE, BS_VOICE_SYNC, BS_DATA_SYNC
 
-from const import DMRD, LC_OPT, HBPF_SLT_VHEAD, HBPF_SLT_VTERM
+from const import DMRD, LC_OPT, HBPF_SLT_VHEAD, HBPF_SLT_VTERM, HBPF_VOICE, HBPF_VOICE_SYNC, HBPF_DATA_SYNC
 from ipsc_const import (
-    VOICE_HEAD, VOICE_TERM,
-    TS_CALL_MSK,
-    GV_CALL_SEQ_OFF, GV_CALL_INFO_OFF,
-    GV_SRC_SUB_OFF, GV_DST_GROUP_OFF,
+    GROUP_VOICE, VOICE_HEAD, VOICE_TERM, SLOT1_VOICE, SLOT2_VOICE,
+    TS_CALL_MSK, END_MSK,
+    GV_CALL_SEQ_OFF, GV_CALL_INFO_OFF, GV_BURST_TYPE_OFF,
+    GV_SRC_SUB_OFF, GV_DST_GROUP_OFF, GV_MIN_LEN,
     HBPF_TGID_TS2, HBPF_FRAMETYPE_VOICE, HBPF_FRAMETYPE_VOICESYNC, HBPF_FRAMETYPE_DATASYNC,
 )
 
@@ -50,7 +50,7 @@ def _build_embed(pos, emb_lc):
 
 
 class IpscVoiceTranslator:
-    """Convert IPSC GROUP_VOICE bursts into DMRD packets for routerHBP.dmrd_received()."""
+    """Bidirectional IPSC GROUP_VOICE ↔ DMRD for routerHBP / routerIPSC."""
 
     def __init__(self, ts_prefer_call_info=False):
         self._ts_prefer_call_info = ts_prefer_call_info
@@ -60,6 +60,7 @@ class IpscVoiceTranslator:
         self._out_frame_pos = {1: 0, 2: 0}
         self._out_lc = {1: None, 2: None}
         self._out_emb_lc = {1: None, 2: None}
+        self._enc_stream_seq = {}
 
     def reset(self):
         for ts in (1, 2):
@@ -69,6 +70,7 @@ class IpscVoiceTranslator:
             self._out_emb_lc[ts] = None
             self._out_frame_pos[ts] = 0
         self._out_seq = 0
+        self._enc_stream_seq = {}
 
     def translate(self, data, ts, burst_type):
         """
@@ -175,3 +177,81 @@ class IpscVoiceTranslator:
         self._out_lc[ts] = None
         self._out_emb_lc[ts] = None
         self._out_frame_pos[ts] = 0
+
+    def encode(self, dmrd):
+        """Convert a bridged DMRD packet into one GROUP_VOICE burst (Phase 2c outbound)."""
+        if len(dmrd) < 53 or dmrd[:4] != DMRD:
+            return None
+
+        flags = dmrd[15]
+        ts = 2 if (flags & HBPF_TGID_TS2) else 1
+        frame_type = (flags & 0x30) >> 4
+        dtype_vseq = flags & 0x0F
+        stream_id = dmrd[16:20]
+        peer_id = dmrd[11:15]
+        src_sub = dmrd[5:8]
+        dst_group = dmrd[8:11]
+        payload = dmrd[20:53]
+        call_seq = self._encode_call_seq(ts, stream_id)
+        voice_extra = b''
+
+        if frame_type == HBPF_DATA_SYNC and dtype_vseq == HBPF_SLT_VHEAD:
+            burst_type = VOICE_HEAD
+            call_info = TS_CALL_MSK if ts == 2 else 0x00
+            pkt_len = GV_MIN_LEN
+        elif frame_type == HBPF_DATA_SYNC and dtype_vseq == HBPF_SLT_VTERM:
+            burst_type = VOICE_TERM
+            call_info = (END_MSK | TS_CALL_MSK) if ts == 2 else END_MSK
+            pkt_len = GV_MIN_LEN
+            self._clear_encode_stream(ts, stream_id)
+        elif frame_type == HBPF_VOICE_SYNC and dtype_vseq == 0:
+            burst_type = SLOT2_VOICE if ts == 2 else SLOT1_VOICE
+            call_info = 0x00
+            voice_extra = self._dmrd_payload_to_ambe(payload)
+            pkt_len = 52
+        elif frame_type == HBPF_VOICE and dtype_vseq in (1, 2, 3, 4):
+            burst_type = SLOT2_VOICE if ts == 2 else SLOT1_VOICE
+            call_info = 0x00
+            voice_extra = self._dmrd_payload_to_ambe(payload)
+            pkt_len = 52
+        else:
+            return None
+
+        pkt = bytearray(pkt_len)
+        pkt[0] = GROUP_VOICE
+        pkt[1:5] = peer_id
+        pkt[5] = call_seq
+        pkt[6:9] = src_sub
+        pkt[9:12] = dst_group
+        pkt[17] = call_info
+        pkt[GV_BURST_TYPE_OFF] = burst_type
+        if voice_extra:
+            pkt[33:33 + len(voice_extra)] = voice_extra
+        return bytes(pkt)
+
+    def _encode_call_seq(self, ts, stream_id):
+        key = (ts, stream_id)
+        if key not in self._enc_stream_seq:
+            self._enc_stream_seq[key] = stream_id[0] or 1
+        return self._enc_stream_seq[key]
+
+    def _clear_encode_stream(self, ts, stream_id):
+        self._enc_stream_seq.pop((ts, stream_id), None)
+
+    def _dmrd_payload_to_ambe(self, payload):
+        frame_bits = bitarray(endian='big')
+        frame_bits.frombytes(payload)
+        if len(frame_bits) < 248:
+            frame_bits.extend([0] * (248 - len(frame_bits)))
+        a1_72 = frame_bits[0:72]
+        a2_72 = frame_bits[72:108] + frame_bits[140:176]
+        a3_72 = frame_bits[176:248]
+        packed = bitarray(endian='big')
+        packed.extend(convert72BitTo49BitAMBE(a1_72))
+        packed.append(0)
+        packed.extend(convert72BitTo49BitAMBE(a2_72))
+        packed.append(0)
+        packed.extend(convert72BitTo49BitAMBE(a3_72))
+        while len(packed) < 152:
+            packed.append(0)
+        return packed.tobytes()[:19]

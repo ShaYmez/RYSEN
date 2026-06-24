@@ -19,6 +19,7 @@ from time import time
 from dmr_utils3.utils import int_id
 
 from hblink import HBSYSTEM, logger, acl_check
+from const import DMRD
 from ipsc_const import (
     GROUP_VOICE, MASTER_REG_REQ, MASTER_REG_REPLY,
     PEER_LIST_REQ, PEER_LIST_REPLY,
@@ -56,6 +57,7 @@ class IpscMasterMixin:
         self._dereg_reply = bytes([DE_REG_REPLY]) + self._master_id
         self.datagramReceived = self.ipsc_datagramReceived
         self.maintenance_loop = self.ipsc_maintenance_loop
+        self.send_system = self.ipsc_send_system
 
     def startProtocol(self):
         HBSYSTEM.startProtocol(self)
@@ -310,3 +312,29 @@ class IpscMasterMixin:
 
     def _ipsc_send(self, packet, host, port):
         self.transport.write(packet + self._auth_suffix(packet), (host, port))
+
+    def ipsc_send_system(self, _packet, _hops=b'', _ber=b'\x00', _rssi=b'\x00',
+                         _source_server=b'\x00\x00\x00\x00', _source_rptr=b'\x00\x00\x00\x00'):
+        """Bridge outbound DMRD → GROUP_VOICE to registered IPSC peers (Phase 2c)."""
+        if _packet[:4] != DMRD:
+            return
+        if len(_packet) < 54:
+            _packet = b''.join([_packet, _ber, _rssi])
+
+        _bits = _packet[15]
+        if _bits & 0x40:
+            return
+        if (_bits & 0x23) == 0x23:
+            return
+
+        if not self._config.get('REPEAT', True):
+            return
+
+        gv = self._voice.encode(_packet)
+        if gv is None or not self._ipsc_peers:
+            return
+
+        for peer_id, peer in self._ipsc_peers.items():
+            pkt = bytearray(gv)
+            pkt[1:5] = peer_id
+            self._ipsc_send(bytes(pkt), peer['host'], peer['port'])
