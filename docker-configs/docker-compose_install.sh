@@ -96,8 +96,12 @@ curl -fsSL "${RYSEN_REPO_BASE}/docker-configs/config/ipsc-proxy-SAMPLE.cfg" -o /
 echo "Get proxy.cfg (optional hotspot profile)..."
 curl -fsSL "${RYSEN_REPO_BASE}/docker-configs/config/proxy-SAMPLE.cfg" -o /etc/rysen/proxy.cfg
 
-echo "Get compose file..."
-curl -fsSL "${RYSEN_REPO_BASE}/docker-configs/docker-compose.yml" -o /etc/rysen/docker-compose.yml
+echo "Clone RYSEN source (${RYSEN_GIT_BRANCH}) for local image build..."
+rm -rf "${RYSEN_SRC}"
+git clone -b "${RYSEN_GIT_BRANCH}" --depth 1 "${RYSEN_GIT_REPO}" "${RYSEN_SRC}"
+
+echo "Install compose file from clone..."
+cp "${RYSEN_SRC}/docker-configs/docker-compose.yml" /etc/rysen/docker-compose.yml
 
 echo "Set perms on config directory..."
 chmod -R 755 /etc/rysen
@@ -120,10 +124,6 @@ mkdir -p /var/log/rysen
 touch /var/log/rysen/rysen.log
 chmod -R 755 /var/log/rysen
 chown -R 54000:54000 /var/log/rysen
-
-echo "Clone RYSEN source (${RYSEN_GIT_BRANCH}) for local image build..."
-rm -rf "${RYSEN_SRC}"
-git clone -b "${RYSEN_GIT_BRANCH}" --depth 1 "${RYSEN_GIT_REPO}" "${RYSEN_SRC}"
 
 echo "Build and start RYSEN + IPSC proxy (hotspot proxy optional via --profile hotspot)..."
 cd /etc/rysen

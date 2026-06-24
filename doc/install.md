@@ -104,15 +104,19 @@ Optional hotspot proxy (not required for IPSC):
 
 ## Update rysen (ipsc branch — rebuild from source)
 
-`cd /opt/rysen-src`
+```bash
+cd /opt/rysen-src && git pull
+cp docker-configs/config/rysen.cfg /etc/rysen/rysen.cfg
+cp docker-configs/config/ipsc-proxy-SAMPLE.cfg /etc/rysen/ipsc-proxy.cfg
+cp docker-configs/docker-compose.yml /etc/rysen/docker-compose.yml
+cd /etc/rysen
+docker compose config --services    # should list: rysen, ipsc-proxy, proxy
+docker compose build rysen ipsc-proxy
+docker compose up -d rysen ipsc-proxy
+conntrack -F
+```
 
-`git pull`
-
-`cd /etc/rysen`
-
-`docker compose build rysen`
-
-`docker compose up -d rysen`
+If `ipsc-proxy` is missing from `docker compose config --services`, check for a stale `compose.yaml` in `/etc/rysen` that overrides `docker-compose.yml`.
 
 ## Restart the container (for example when config is changed)
 
