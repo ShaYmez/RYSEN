@@ -20,7 +20,9 @@ Motorola IP Site Connect (IPSC) support in RYSEN — initial implementation.
 
 ## Configuration
 
-Copy fields from `IPSC-SAMPLE.cfg` into `rysen.cfg`. Enable the stanza and set:
+The docker install ships `docker-configs/config/rysen.cfg` with an enabled `[IPSC]` stanza on port **50001**. Standalone reference: `docker-configs/config/IPSC-SAMPLE.cfg` (same fields).
+
+Edit before connecting a repeater:
 
 | Setting | Purpose |
 |---------|---------|

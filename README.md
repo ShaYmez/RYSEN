@@ -30,16 +30,17 @@ To work with provided docker setup you will need:
 * A server with docker installed
 * Follow this simple steps:
 
-Build your own image from source
+Build your own image from source (from the repository root):
 
 ```bash
 
-docker build . -t shaymez/rysen:latest
+docker build . -t rysen-local:latest
 
 ```
 
-Or user a prebuilt one in docker hub: shaymez/rysen:latest
-This image is multi-arch
+On the **ipsc** branch, the recommended test install clones to `/opt/rysen-src` and uses `docker compose build` — see [doc/install.md](doc/install.md).
+
+Or use a prebuilt one on Docker Hub: `shaymez/rysen:latest` (built from **master** on push).
 
 Wake up your container
 
