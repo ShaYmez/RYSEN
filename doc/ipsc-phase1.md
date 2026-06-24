@@ -1,52 +1,69 @@
-# IPSC Phase 1
+# IPSC Phase 1 & 2a
 
-Motorola IP Site Connect (IPSC) support in RYSEN — initial implementation.
+Motorola IP Site Connect (IPSC) support in RYSEN.
 
-## What works (Phase 1)
+## What works
+
+### Phase 1
 
 - `MODE: IPSC` system stanza (example: `[IPSC]`)
-- IPSC master on a single UDP port (default **50001**; any port works if `rysen.cfg`, docker-compose, and CPS agree)
-- One repeater per instance (`MAX_PEERS: 1`, `GENERATOR: 1`)
+- IPSC master UDP listener per generated slot
 - Registration (`MASTER_REG_REQ`), keepalives, peer list, de-register
 - Inbound group voice → RYSEN `dmrd_received()` routing (same bridge/rules as HBP masters)
 - Optional IPSC HMAC auth (`AUTH_ENABLED` / `AUTH_KEY`)
 
-### Field test (ipsc branch, 2026-06)
+### Phase 2a (ipsc branch docker install)
 
-Verified on a Debian VM with docker install: repeater registration and ~10s re-registration with autonomous repeater radio ID from CPS (`ALLOWED_PEER_IDS` empty). Inbound voice to Motorola is not implemented in Phase 1.
+- **`ipsc_proxy.py`** — public UDP **56002** → backend slots `IPSC-0` … `IPSC-199`
+- **`GENERATOR: 200`** on `[IPSC]` with `PORT: 56003` (backends `56003`–`56202` on compose network)
+- Proxy routes by repeater radio ID; master replies by backend source port
+- Sample proxy config: `docker-configs/config/ipsc-proxy-SAMPLE.cfg`
+
+### Field test (2026-06)
+
+Verified on a Debian VM: repeater registration and ~10s re-registration with autonomous repeater radio ID from CPS (`ALLOWED_PEER_IDS` empty). Tested with CPS Master port **56002**.
 
 ## Not yet implemented
 
-- `ipsc_proxy` (single public port → many backend slots)
-- `GENERATOR: 200` scaling
-- Outbound voice to Motorola repeaters (bridged TX back over IPSC)
+- Bridge parity (`make_stat_bridge`, augment on new TGs) — Phase 2b
+- Outbound voice to Motorola repeaters (bridged TX back over IPSC) — Phase 2c
 - Selfcare / `ipsc_proxy_v2_sc`
 
 ## Configuration
 
-The docker install ships `docker-configs/config/rysen.cfg` with an enabled `[IPSC]` stanza on port **50001**. Standalone reference: `docker-configs/config/IPSC-SAMPLE.cfg` (same fields).
+Docker install ships:
 
-Edit before connecting a repeater:
+| File | Role |
+|------|------|
+| `rysen.cfg` `[IPSC]` | Backend masters (`PORT` = first backend, `GENERATOR` = slot count) |
+| `ipsc-proxy.cfg` | Public listen port **56002**, `DESTPORTSTART`/`END` = backend range |
 
 | Setting | Purpose |
 |---------|---------|
-| `PORT` | UDP port repeaters connect to (must match docker-compose mapping and CPS) |
-| `IPSC_MASTER_ID` | Virtual master ID presented to repeaters (not the repeater radio ID) |
-| `MAX_PEERS` | Peers allowed on this instance (use `1` for Phase 1) |
-| `ALLOWED_PEER_IDS` | Optional whitelist of repeater radio IDs; empty = allow any |
+| `PORT` | First backend port (`IPSC-0`); `IPSC-N` uses `PORT + N` |
+| `GENERATOR` | Number of backend slots (200 on docker install) |
+| `IPSC_MASTER_ID` | Virtual master ID (not the repeater radio ID) |
+| `MAX_PEERS` | Peers per slot (`1` recommended) |
+| `ALLOWED_PEER_IDS` | Optional whitelist; empty = allow any |
+| `PROXY_CONTROL` | Enable `PRIN`/`PRCL` logging and proxy disconnect handling |
 
 ## Motorola CPS
 
-- Link type: **Peer** (registers to your RYSEN server as IPSC master)
-- Master IP: your server
-- Master port: `PORT` from config (e.g. 50001)
-- Repeater radio ID: configured in CPS; optional `ALLOWED_PEER_IDS` whitelist if set
+- Link type: **Peer**
+- Master IP: your server public IP
+- Master port: **56002** (proxy — not the backend `PORT` in `rysen.cfg`)
+- Repeater radio ID: configured in CPS; optional `ALLOWED_PEER_IDS` whitelist
 
 ## Architecture
 
 ```
-Motorola repeater ──IPSC UDP──► [IPSC] routerIPSC ──► bridge_master / rules.py
+Motorola repeater ──UDP 56002──► ipsc-proxy ──UDP 56003+N──► [IPSC-N] routerIPSC
+                                                                    │
+                                                                    ▼
+                                                          bridge_master / rules.py
 ```
+
+Run proxy manually: `python3 ipsc_proxy.py -c ipsc-proxy.cfg`
 
 Protocol constants and voice translation are derived from [ipsc2hbp](https://github.com/n0mjs710/ipsc2hbp) (GPLv3).
 
@@ -54,8 +71,7 @@ Protocol constants and voice translation are derived from [ipsc2hbp](https://git
 
 Development is on the `ipsc` branch; not merged to master.
 
-## Phase 2 (next)
+## Phase 2 (remaining)
 
-1. `ipsc_proxy` + `GENERATOR: 200` (`IPSC-0` … `IPSC-N`) like hotspot `SYSTEM-N`
-2. Bridge parity (`make_stat_bridge`, augment on new TGs)
-3. Outbound IPSC voice (DMRD → `GROUP_VOICE`)
+1. Bridge parity (`make_stat_bridge`, augment on new TGs)
+2. Outbound IPSC voice (DMRD → `GROUP_VOICE`)

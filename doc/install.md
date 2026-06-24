@@ -41,7 +41,7 @@ Get the file: [rysen.cfg](https://github.com/ShaYmez/RYSEN/blob/ipsc/docker-conf
 
 place the rysen.cfg file in this directory.
 
-For IPSC Phase 1 testing, the docker `rysen.cfg` includes an enabled `[IPSC]` stanza (UDP port **50001**). Edit `ALLOWED_PEER_IDS` and `IPSC_MASTER_ID` as needed — see [ipsc-phase1.md](ipsc-phase1.md) and [IPSC-SAMPLE.cfg](../docker-configs/config/IPSC-SAMPLE.cfg).
+For IPSC, the docker install starts **rysen** and **ipsc-proxy** (public UDP **56002**, backends `IPSC-0`…`IPSC-199` on `56003`–`56202`). See [ipsc-phase1.md](ipsc-phase1.md), [IPSC-SAMPLE.cfg](../docker-configs/config/IPSC-SAMPLE.cfg), and [ipsc-proxy-SAMPLE.cfg](../docker-configs/config/ipsc-proxy-SAMPLE.cfg).
 
 ## Make rules file
 
@@ -94,7 +94,7 @@ Once you are sure it has run correctly, you can restart in the background
 
 `docker compose up -d rysen`
 
-Optional hotspot proxy (not required for IPSC Phase 1):
+Optional hotspot proxy (not required for IPSC):
 
 `docker compose --profile hotspot up -d`
 

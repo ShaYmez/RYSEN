@@ -31,12 +31,29 @@ services:
             - '4321:4321/tcp'
               #APRS Master
             - '52555:52555/udp'
-              #IPSC Phase 1 master (direct connect; PORT in rysen.cfg must match host side)
-            - '50001:50001/udp'
+              #IPSC backends (compose network only — public port is ipsc-proxy:56002)
         restart: "unless-stopped"
         networks:
            app_net:
              ipv4_address: 172.16.238.10
+        read_only: "true"
+    ipsc-proxy:
+        container_name: ipsc-proxy
+        build:
+            context: /opt/rysen-src
+            dockerfile: Dockerfile
+        image: rysen-local:latest
+        command: ["python", "/opt/rysen/ipsc_proxy.py", "-c", "/etc/rysen/ipsc-proxy.cfg"]
+        volumes:
+            - '/etc/rysen/ipsc-proxy.cfg:/etc/rysen/ipsc-proxy.cfg'
+        ports:
+            - '56002:56002/udp'
+        restart: "unless-stopped"
+        depends_on:
+            - 'rysen'
+        networks:
+            app_net:
+              ipv4_address: 172.16.238.30
         read_only: "true"
     proxy:
         container_name: proxy

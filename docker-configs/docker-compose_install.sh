@@ -90,6 +90,9 @@ curl -fsSL "${RYSEN_REPO_BASE}/docker-configs/config/rysen.cfg" -o /etc/rysen/ry
 echo "Get rules /etc/rysen/rules.py..."
 curl -fsSL "${RYSEN_REPO_BASE}/docker-configs/config/rules.py" -o /etc/rysen/rules.py
 
+echo "Get ipsc-proxy.cfg ..."
+curl -fsSL "${RYSEN_REPO_BASE}/docker-configs/config/ipsc-proxy-SAMPLE.cfg" -o /etc/rysen/ipsc-proxy.cfg
+
 echo "Get proxy.cfg (optional hotspot profile)..."
 curl -fsSL "${RYSEN_REPO_BASE}/docker-configs/config/proxy-SAMPLE.cfg" -o /etc/rysen/proxy.cfg
 
@@ -122,16 +125,16 @@ echo "Clone RYSEN source (${RYSEN_GIT_BRANCH}) for local image build..."
 rm -rf "${RYSEN_SRC}"
 git clone -b "${RYSEN_GIT_BRANCH}" --depth 1 "${RYSEN_GIT_REPO}" "${RYSEN_SRC}"
 
-echo "Build and start RYSEN (IPSC / master stack; proxy optional via --profile hotspot)..."
+echo "Build and start RYSEN + IPSC proxy (hotspot proxy optional via --profile hotspot)..."
 cd /etc/rysen
-docker compose build rysen
-docker compose up -d rysen
+docker compose build rysen ipsc-proxy
+docker compose up -d rysen ipsc-proxy
 docker container logs systemx
+docker container logs ipsc-proxy
 
 echo "Check out docs @ https://github.com/ShaYmez/RYSEN for extra functionality."
-echo "IPSC Phase 1 is enabled in /etc/rysen/rysen.cfg ([IPSC] on UDP 50001)."
-echo "If you change PORT, update docker-compose.yml port mapping and CPS Master port to match."
-echo "Set IPSC_MASTER_ID if needed; repeater radio ID comes from CPS. See doc/ipsc-phase1.md."
+echo "IPSC Phase 2a: proxy on UDP 56002, backends IPSC-0..199 on 56003-56202."
+echo "CPS Master port = 56002. See doc/ipsc-phase1.md and ipsc-proxy.cfg."
 echo "To enable hotspot proxy: docker compose --profile hotspot up -d"
 echo "To rebuild after git pull: cd ${RYSEN_SRC} && git pull && cd /etc/rysen && docker compose build rysen && docker compose up -d rysen"
 echo "Setup complete!"

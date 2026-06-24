@@ -28,6 +28,7 @@ from ipsc_const import (
     GV_BURST_TYPE_OFF, GV_CALL_INFO_OFF, GV_MIN_LEN, TS_CALL_MSK,
     AUTH_DIGEST_LEN, IPSC_VER,
     DEFAULT_IPSC_MODE_BYTE, DEFAULT_IPSC_FLAGS_BYTES,
+    PRCL, PRIN,
     opcode_name, peer_id_from_packet,
 )
 from ipsc_voice import IpscVoiceTranslator
@@ -73,6 +74,16 @@ class IpscMasterMixin:
 
     def ipsc_datagramReceived(self, data, addr):
         host, port = addr
+
+        if len(data) >= 4 and data[:4] == PRCL:
+            if len(data) >= 8:
+                self._remove_ipsc_peer(data[4:8])
+            return
+
+        if len(data) >= 5 and data[:4] == PRIN:
+            logger.info('(%s) *ProxyInfo* Connection from IP:Port: %s',
+                        self._system, data[4:].decode('utf-8', errors='replace'))
+            return
 
         if self._auth_enabled:
             if not self._check_auth(data):
