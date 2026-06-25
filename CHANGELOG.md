@@ -1,5 +1,43 @@
 # RYSEN DMRMaster+ Changelog
 
+## Unreleased — `ipsc` branch (pre-merge)
+
+Motorola IP Site Connect support. Field-tested on SYSTEM-XTEST (GB7NR, TG 2350 TS2, DroidStar + OpenBridge). **Not merged to `master` yet** — see [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md) for merge blockers (monitor dashboards, soak test).
+
+### New Features
+
+**IPSC master (`MODE: IPSC`)**
+- Registration, keepalives, peer list, de-register with optional HMAC auth
+- `ipsc_proxy.py` — CPS Master UDP **56002** front-end to `IPSC-0`…`N` backends
+- Inbound GROUP_VOICE → standard `dmrd_received()` bridge routing
+- Outbound DMRD → Motorola extended GROUP_VOICE (54/52-byte packets, RTP + embedded LC)
+- 60 ms jitter-buffered outbound voice delivery (ipsc2hbp model)
+- `learn_peer_header()` — echo repeater call-control bytes on outbound
+- Bridge parity: `augment_bridges_for_masters()`, UA/stat bridges include IPSC slots
+- Auto-activate IPSC peer legs when hotspot keys UA bridge (`_activate_bridge_peer_masters`)
+
+### Configuration
+
+- `[IPSC]` stanza in `rysen.cfg` / `IPSC-SAMPLE.cfg` (`IPSC_MASTER_ID`, `AUTH_KEY`, `GENERATOR`, etc.)
+- Docker compose: `ipsc-proxy` service on port 56002
+- Install path: `/opt/rysen-src`, branch `ipsc` — [doc/install.md](doc/install.md)
+
+### Tests
+
+- `tests/test_ipsc_phase1.py`, `test_ipsc_outbound.py`, `test_ipsc_proxy.py`, `test_ipsc_bridge.py`
+
+### Known gaps before merge
+
+- IPSC registered peers not visualised on TCP report / monitor dashboards
+- Selfcare / `ipsc_proxy_v2_sc` not implemented
+- Sample `AUTH_KEY` must be changed for production
+
+### Key commits (reference)
+
+- Phase 2c outbound voice, extended packet format, jitter buffer, bridge peer-leg fix
+
+---
+
 ## Version 1.4.1 (2026-06-09)
 
 ### Performance Improvements

@@ -1,45 +1,65 @@
-# IPSC Phase 1 & 2a
+# Motorola IPSC in RYSEN
 
-Motorola IP Site Connect (IPSC) support in RYSEN.
+Motorola IP Site Connect (IPSC) support on the **`ipsc`** branch. Field-tested on SYSTEM-XTEST (2026-06) with GB7NR (DR3000), DroidStar hotspot, and BlueDV/OpenBridge.
 
 ## What works
 
-### Phase 1
+### Phase 1 — master & registration
 
 - `MODE: IPSC` system stanza (example: `[IPSC]`)
-- IPSC master UDP listener per generated slot
+- IPSC master UDP listener per generated slot (`IPSC-0` … `IPSC-N`)
 - Registration (`MASTER_REG_REQ`), keepalives, peer list, de-register
-- Inbound group voice → RYSEN `dmrd_received()` routing (same bridge/rules as HBP masters)
+- Inbound group voice → `dmrd_received()` routing (same bridge/rules as HBP masters)
 - Optional IPSC HMAC auth (`AUTH_ENABLED` / `AUTH_KEY`)
+- `XCMP_XNL` ignored (logged at debug)
 
-### Phase 2a (ipsc branch docker install)
+### Phase 2a — docker / proxy
 
-- **`ipsc_proxy.py`** — public UDP **56002** (CPS Master port) → backend slots `IPSC-0` … `IPSC-199`
+- **`ipsc_proxy.py`** — public UDP **56002** (CPS Master port) → backend slots
 - **`GENERATOR: 200`** on `[IPSC]` with `PORT: 56003` (backends `56003`–`56202` on compose network)
 - Proxy routes by repeater radio ID; master replies by backend source port
-- Sample proxy config: `docker-configs/config/ipsc-proxy-SAMPLE.cfg`
+- Sample configs: `docker-configs/config/ipsc-proxy-SAMPLE.cfg`, `IPSC-SAMPLE.cfg`
 
-### Field test (2026-06)
-
-Verified on a Debian VM (SYSTEM-XTEST): repeater registration, ~10s re-registration, and **inbound group voice** (TG 2350) with CPS Master UDP **56002**, IPSC auth enabled, and `ipsc-proxy` on the same port. Matches FreeSTAR/Motorola CPS conventions (`ALLOWED_PEER_IDS` empty).
-
-### Phase 2b (bridge parity)
+### Phase 2b — bridge parity
 
 - `make_stat_bridge` / `make_single_reflector` include **IPSC-N** slots (same as `SYSTEM-N`)
-- `augment_bridges_for_masters()` already augments IPSC after `GENERATOR` split
+- `augment_bridges_for_masters()` syncs bridges after `GENERATOR` split
 - UA bridge activation and sticky-TG logic apply to IPSC sources
+- **`_activate_bridge_peer_masters()`** — when a hotspot keys a UA bridge, peer MASTER/IPSC legs on the same TG/slot auto-activate (fixes cold-start hotspot → repeater)
 
-### Phase 2c (outbound voice)
+### Phase 2c — outbound voice
 
 - Bridged DMRD → **GROUP_VOICE** via `IpscVoiceTranslator.handle_outbound()` and `routerIPSC.ipsc_send_system()`
-- Motorola extended format (54-byte HEAD/TERM, 52-byte SLOT_VOICE): RTP header, call-control bytes, embedded LC payload (per ipsc2hbp)
-- Outbound voice uses **60 ms jitter-buffered delivery** (ipsc2hbp model) — repeaters expect paced TDMA slots, not immediate firehose
-- Outbound bytes 1–4 use **IPSC_MASTER_ID** (not repeater ID); call-control learned from inbound peer packets
-- Transmits to all registered IPSC peers on the slot
+- Motorola extended format (54-byte HEAD/TERM, 52-byte SLOT_VOICE): RTP header, call-control bytes, embedded LC payload (per [ipsc2hbp](https://github.com/n0mjs710/ipsc2hbp))
+- Outbound voice uses **60 ms jitter-buffered delivery** — repeaters expect paced TDMA slots, not immediate firehose
+- Outbound bytes 1–4 use **`IPSC_MASTER_ID`** (not repeater ID); call-control learned from inbound peer packets via `learn_peer_header()`
+- Paced voice sent through `_ipsc_send_voice` callback (Twisted `callLater` timer)
 
-## Not yet implemented
+### Field test summary (2026-06, SYSTEM-XTEST)
 
-- Selfcare / `ipsc_proxy_v2_sc`
+| Path | Result |
+|------|--------|
+| GB7NR registration on UDP 56002 + auth | OK |
+| Repeater → RYSEN → bridge (TG 2350 TS2) | OK |
+| DroidStar → hotspot proxy → `SYSTEM-N` → IPSC → GB7NR | OK (voice + RF key) |
+| BlueDV → OBP → bridge → repeater | OK |
+| Outbound tcpdump to repeater (~60 ms voice cadence) | OK |
+
+Test subscriber: M0VUB (2345875). Repeater: GB7NR (235287). TG 2350 TS2.
+
+## Architecture
+
+```
+DroidStar ──UDP 62031──► hotspot-proxy ──► SYSTEM-N (MASTER)
+                                              │
+                                              ▼ bridge 2350 TS2
+Motorola repeater ──UDP 56002──► ipsc-proxy ──► IPSC-N (routerIPSC)
+                                              │
+                                              ▼
+                                    bridge_master / rules.py
+
+BlueDV ──► OBP-MX (TS1) ──► stat/UA bridge ──► IPSC-N / SYSTEM-N
+```
 
 ## Configuration
 
@@ -48,7 +68,8 @@ Docker install ships:
 | File | Role |
 |------|------|
 | `rysen.cfg` `[IPSC]` | Backend masters (`PORT` = first backend, `GENERATOR` = slot count) |
-| `ipsc-proxy.cfg` | Public listen port **56002**, `DESTPORTSTART`/`END` = backend range |
+| `ipsc-proxy.cfg` | Public listen **56002**, `DESTPORTSTART`/`END` = backend range |
+| `rules.py` | Usually empty; static bridges optional (see below) |
 
 | Setting | Purpose |
 |---------|---------|
@@ -57,35 +78,77 @@ Docker install ships:
 | `IPSC_MASTER_ID` | Virtual master ID (not the repeater radio ID) |
 | `MAX_PEERS` | Peers per slot (`1` recommended) |
 | `ALLOWED_PEER_IDS` | Optional whitelist; empty = allow any |
-| `PROXY_CONTROL` | Enable `PRIN`/`PRCL` logging and proxy disconnect handling |
-| `AUTH_ENABLED` / `AUTH_KEY` | HMAC auth (sample ships enabled; change key for production) |
+| `ALLOWED_PEER_IPS` | Optional IP whitelist |
+| `PROXY_CONTROL` | `PRIN`/`PRCL` logging and proxy disconnect handling |
+| `AUTH_ENABLED` / `AUTH_KEY` | HMAC auth — **change key for production** |
+| `TS_PREFER_CALL_INFO` | Use call_info byte for TS on SLOT_VOICE if burst_type disagrees (DMRlink confbridge workaround) |
+| `KEEPALIVE_WATCHDOG` | Drop IPSC peers with no keepalive (default 60 s) |
 
-## Motorola CPS (e.g. DR3000 peer)
+### Motorola CPS (e.g. DR3000 peer)
 
 - Link type: **Peer**
 - Master IP: your server public IP
 - **Master UDP port: 56002** (must match `ipsc-proxy` / firewall / docker-compose)
-- **Peer UDP port: 56002** (repeater local bind — set in CPS; NAT may use another source port)
-- IPSC authentication: enabled; auth key must match `AUTH_KEY` in `rysen.cfg`
-- Repeater radio ID: configured in CPS; optional `ALLOWED_PEER_IDS` whitelist
+- **Peer UDP port: 56002** (repeater local bind in CPS)
+- IPSC authentication: enabled; key must match `AUTH_KEY` in `rysen.cfg`
+- Repeater radio ID in CPS; optional `ALLOWED_PEER_IDS` whitelist
 
-## Architecture
+### Optional static bridge (`rules.py`)
 
+Normally UA bridges are created on first PTT. For always-on TG routing without waiting for activation:
+
+```python
+BRIDGES = {
+    '2350': [
+        {'SYSTEM': 'SYSTEM-62', 'TS': 2, 'TGID': 2350, 'ACTIVE': True,
+         'TIMEOUT': '', 'TO_TYPE': 'NONE', 'ON': [], 'OFF': [], 'RESET': []},
+        {'SYSTEM': 'IPSC-79', 'TS': 2, 'TGID': 2350, 'ACTIVE': True,
+         'TIMEOUT': '', 'TO_TYPE': 'NONE', 'ON': [], 'OFF': [], 'RESET': []},
+    ],
+}
 ```
-Motorola repeater ──UDP 56002──► ipsc-proxy ──UDP 56003+N──► [IPSC-N] routerIPSC
-                                                                    │
-                                                                    ▼
-                                                          bridge_master / rules.py
+
+Slot names (`SYSTEM-62`, `IPSC-79`) change with proxy assignments — check logs. Alternatively set `TS2_STATIC: 2350` on both `[SYSTEM]` and `[IPSC]` in `rysen.cfg`.
+
+## Soak-test checklist
+
+Before merging `ipsc` → `master`:
+
+- [ ] DroidStar cold PTT (after RYSEN restart) — log shows `peer leg activated: IPSC-N`
+- [ ] Repeater → hotspot return audio
+- [ ] Long call (~2 min) — no stuck bridge / zombie stream
+- [ ] Second repeater on another `IPSC-N` slot (proxy ID routing)
+- [ ] Auth failure with wrong key (repeater rejected)
+- [ ] `tcpdump` during hotspot TX: HEAD 64 B, then ~62 B voice at ~60 ms spacing
+
+## Pre-merge work (not yet done)
+
+See [ipsc-roadmap.md](ipsc-roadmap.md) for the full list. Highlights:
+
+- **Monitor dashboards** — registered IPSC repeaters are not mirrored into `CONFIG['SYSTEMS'][*]['PEERS']` for TCP report clients; FDMR-Monitor / dashboards show HBP peers only today
+- **Selfcare / `ipsc_proxy_v2_sc`**
+- **CHANGELOG / version bump** on merge to `master`
+- **Production `AUTH_KEY`** rotation off sample defaults
+- **Docker Hub** image rebuild from `master` after merge
+
+## Tests
+
+```bash
+python -m unittest tests.test_ipsc_phase1 tests.test_ipsc_outbound tests.test_ipsc_proxy tests.test_ipsc_bridge -v
 ```
 
-Run proxy manually: `python3 ipsc_proxy.py -c ipsc-proxy.cfg`
+## Branch status
 
-Protocol constants and voice translation are derived from [ipsc2hbp](https://github.com/n0mjs710/ipsc2hbp) (GPLv3).
+Development and field testing on **`ipsc`** — **not merged to `master`**. Soak testing in progress.
 
-## Branch
+Protocol constants and voice translation derived from [ipsc2hbp](https://github.com/n0mjs710/ipsc2hbp) (GPLv3).
 
-Development is on the `ipsc` branch; not merged to master.
+## Key source files
 
-## Phase 2 (remaining)
-
-1. ~~Outbound IPSC voice (DMRD → `GROUP_VOICE`)~~ — Phase 2c (implemented)
+| File | Role |
+|------|------|
+| `ipsc_master.py` | `IpscMasterMixin`, registration, `ipsc_send_system()` |
+| `ipsc_voice.py` | `IpscVoiceTranslator` — inbound translate + outbound jitter buffer |
+| `ipsc_const.py` | Opcodes, packet lengths, timing constants |
+| `ipsc_proxy.py` | Public 56002 front-end |
+| `bridge_master.py` | `routerIPSC`, bridge peer-leg activation |

@@ -38,7 +38,7 @@ docker build . -t rysen-local:latest
 
 ```
 
-On the **ipsc** branch, the recommended test install clones to `/opt/rysen-src` and uses `docker compose build` — see [doc/install.md](doc/install.md).
+On the **ipsc** branch, the recommended test install clones to `/opt/rysen-src` and uses `docker compose build` — see [doc/install.md](doc/install.md). Motorola IPSC repeater support (registration, voice bridging, `ipsc-proxy` on 56002) is documented in [doc/ipsc-phase1.md](doc/ipsc-phase1.md); pre-merge work in [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md).
 
 Or use a prebuilt one on Docker Hub: `shaymez/rysen:latest` (built from **master** on push).
 
