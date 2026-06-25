@@ -370,7 +370,28 @@ def activate_ua_bridge_source(bridge_name, system, slot, tmout=None):
                 _changed = True
                 logger.info('(ROUTER) Bridge %s activated for %s TS%s', bridge_name, system, slot)
             _entry['TIMER'] = time() + _timeout_s
+    _activate_bridge_peer_masters(bridge_name, system, slot, _timeout_s)
     return _changed
+
+
+def _activate_bridge_peer_masters(bridge_name, source_system, slot, timeout_s):
+    """Bring peer MASTER/IPSC legs up when a hotspot keys a UA bridge (hotspot → IPSC)."""
+    if bridge_name not in BRIDGES:
+        return
+    _now = time()
+    for _entry in BRIDGES[bridge_name]:
+        _sys = _entry['SYSTEM']
+        if _sys == source_system or _sys not in CONFIG['SYSTEMS']:
+            continue
+        if not is_routing_master(CONFIG['SYSTEMS'][_sys]['MODE']):
+            continue
+        if _entry['TS'] != slot or _entry['TO_TYPE'] == 'NONE':
+            continue
+        if not _entry['ACTIVE']:
+            _entry['ACTIVE'] = True
+            logger.info('(ROUTER) Bridge %s peer leg activated: %s TS%s (source %s)',
+                        bridge_name, _sys, slot, source_system)
+        _entry['TIMER'] = _now + timeout_s
 
 
 #Make a single bridge - used for on-the-fly UA bridges
@@ -397,6 +418,7 @@ def make_single_bridge(_tgid,_sourcesystem,_slot,_tmout):
                 
         if _system[0:3] == 'OBP' and (int_id(_tgid) >= 59 and (int_id(_tgid) < 9990 or int_id(_tgid) > 9999)):
             BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': '','TO_TYPE': 'NONE','OFF': [],'ON': [],'RESET': [], 'TIMER': time()})
+    _activate_bridge_peer_masters(_tgid_s, _sourcesystem, _slot, _tmout * 60)
     # Keep routing index in sync
     _idx_add_bridge(_tgid_s)
 
