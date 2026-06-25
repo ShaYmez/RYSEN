@@ -106,7 +106,7 @@ Merge ─────────────► master
 | Docker / `ipsc-proxy` install | Done | See [install.md](install.md) |
 | Unit tests (protocol / voice / bridge) | Done | `tests/test_ipsc_*.py` |
 | Soak test (multi-day field use) | In progress | — |
-| **Monitor / report (Phase 2)** | **Not started** | See below |
+| **Monitor / report (Phase 2)** | **In progress** | 2.1–2.3 done; verify FDMR-Monitor (2.5–2.6) |
 | Selfcare proxy | Not planned for merge | Optional later |
 | Production auth defaults | Ops | Rotate `AUTH_KEY` off sample |
 | CHANGELOG / version on merge | Pending | 1.5.0 entry when merging |
@@ -128,14 +128,14 @@ RYSEN reports to TCP clients (FDMR-Monitor and similar) via `reportFactory.send_
 
 **RYSEN (required for merge)**
 
-- [ ] **2.1** Add `_build_peer_record(peer_id, host, port, protocol='IPSC')` (or shared helper in `hblink.py`) that returns HBP-compatible `PEERS` entries; use from `_register_hbp_peer()` and any future paths.
-- [ ] **2.2** Mirror `_ipsc_peers` fields into `PEERS` (`LAST_KA` → `LAST_PING`, optional `PROTOCOL`, IPSC `mode` byte).
-- [ ] **2.3** Call `_report.send_config()` on IPSC reg, re-reg, timeout (`_remove_ipsc_peer`), and de-reg.
+- [x] **2.1** Add `build_peer_record()` shared helper in `hblink.py`; use from `_register_hbp_peer()`.
+- [x] **2.2** Mirror `_ipsc_peers` fields into `PEERS` (`LAST_KA` → `LAST_PING`, `PROTOCOL`, `IPSC_MODE`).
+- [x] **2.3** Call `_report.send_config()` on IPSC reg, re-reg, timeout (`_remove_ipsc_peer`), and de-reg.
 - [ ] **2.4** Align `ident()` / `options_config()` where safe: either treat `is_routing_master('IPSC')` like `MASTER` for peer iteration, or document explicit exclusions.
 - [ ] **2.5** Verify with `report_receiver.py` (CONFIG) and live FDMR-Monitor: `IPSC-N` slot shows GB7NR when registered.
 - [ ] **2.6** Verify bridge report shows `IPSC-N` on active conference bridges.
 - [ ] **2.7** Document final `PEERS` field contract in this file (table below).
-- [ ] **2.8** Unit test: IPSC registration populates `CONFIG['SYSTEMS'][slot]['PEERS']` with HBP-shaped keys.
+- [x] **2.8** Unit test: IPSC registration populates `CONFIG['SYSTEMS'][slot]['PEERS']` with HBP-shaped keys (`tests/test_ipsc_peers.py`).
 
 **Monitor UI (external repos — coordinate)**
 
@@ -243,7 +243,7 @@ python3 report_receiver.py -c <rysen-host> <report-port>
 
 - [ ] Soak test complete (group voice, bridge, hotspot → IPSC)
 - [ ] Phase 2: IPSC peers visible in FDMR-Monitor / `report_receiver`
-- [ ] Phase 2: HBP-shaped `PEERS` records + lifecycle `send_config()`
+- [x] Phase 2: HBP-shaped `PEERS` records + lifecycle `send_config()` (2.1–2.3)
 - [ ] Bridge dashboard shows `IPSC-N` legs
 - [ ] Rotate production `AUTH_KEY`
 - [ ] Merge `ipsc` → `master`, CHANGELOG 1.5.0

@@ -24,11 +24,11 @@ Motorola IP Site Connect support. Field-tested on SYSTEM-XTEST (GB7NR, TG 2350 T
 
 ### Tests
 
-- `tests/test_ipsc_phase1.py`, `test_ipsc_outbound.py`, `test_ipsc_proxy.py`, `test_ipsc_bridge.py`
+- `tests/test_ipsc_phase1.py`, `test_ipsc_outbound.py`, `test_ipsc_proxy.py`, `test_ipsc_bridge.py`, `test_ipsc_peers.py`
 
 ### Known gaps before merge
 
-- **Phase 2 (roadmap):** IPSC peers not consistently visible on TCP report / FDMR-Monitor — `PEERS` records must match HBP shape; lifecycle `send_config()` not wired. See [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md).
+- **Phase 2 (roadmap):** IPSC `PEERS` records now HBP-shaped; `send_config()` on peer lifecycle (2.1–2.3). FDMR-Monitor field verification still pending — see [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md).
 - Selfcare / `ipsc_proxy_v2_sc` not implemented
 - Sample `AUTH_KEY` must be changed for production
 

@@ -18,7 +18,7 @@ from time import time
 
 from dmr_utils3.utils import int_id
 
-from hblink import HBSYSTEM, logger, acl_check
+from hblink import HBSYSTEM, logger, acl_check, build_peer_record
 from const import DMRD
 from ipsc_const import (
     GROUP_VOICE, MASTER_REG_REQ, MASTER_REG_REPLY,
@@ -105,7 +105,7 @@ class IpscMasterMixin:
 
         peer_id = peer_id_from_packet(data)
         if peer_id and peer_id in self._ipsc_peers and self._ipsc_peers[peer_id]['host'] == host:
-            self._ipsc_peers[peer_id]['last_ka'] = time()
+            self._touch_ipsc_peer(peer_id)
 
         if opcode == MASTER_REG_REQ:
             self._on_reg_req(data, host, port)
@@ -160,13 +160,15 @@ class IpscMasterMixin:
                            self._system, self._max_peers)
             return
 
+        now = time()
         self._ipsc_peers[peer_id] = {
             'host': host,
             'port': port,
             'mode': peer_mode,
-            'last_ka': time(),
+            'last_ka': now,
         }
-        self._register_hbp_peer(peer_id, host, port)
+        self._register_hbp_peer(peer_id, host, port, peer_mode=peer_mode, is_new=is_new, now=now)
+        self._send_peers_config()
 
         reg_reply = (
             bytes([MASTER_REG_REPLY])
@@ -186,16 +188,26 @@ class IpscMasterMixin:
             logger.info('(%s) IPSC peer re-registered: ID %s from %s:%s',
                         self._system, peer_id_int, host, port)
 
-    def _register_hbp_peer(self, peer_id, host, port):
-        self._peers[peer_id] = {
-            'CONNECTION': 'YES',
-            'CONNECTED': time(),
-            'PINGS_RECEIVED': 0,
-            'LAST_PING': time(),
-            'CALLSIGN': str(int_id(peer_id)).encode('utf-8').ljust(8)[:8],
-            'RADIO_ID': peer_id,
-            'SOCKADDR': (host, port),
-        }
+    def _register_hbp_peer(self, peer_id, host, port, peer_mode=None, is_new=True, now=None):
+        existing = None if is_new else self._peers.get(peer_id)
+        self._peers[peer_id] = build_peer_record(
+            peer_id, host, port,
+            protocol='IPSC',
+            connection='YES',
+            peer_mode=peer_mode,
+            existing=existing,
+            now=now,
+        )
+
+    def _touch_ipsc_peer(self, peer_id):
+        now = time()
+        self._ipsc_peers[peer_id]['last_ka'] = now
+        if peer_id in self._peers:
+            self._peers[peer_id]['LAST_PING'] = now
+
+    def _send_peers_config(self):
+        if self._report is not None:
+            self._report.send_config()
 
     def _on_alive_req(self, data, host, port):
         if len(data) < 5:
@@ -203,7 +215,9 @@ class IpscMasterMixin:
         peer_id = data[1:5]
         if peer_id not in self._ipsc_peers:
             return
-        self._ipsc_peers[peer_id]['last_ka'] = time()
+        self._touch_ipsc_peer(peer_id)
+        if peer_id in self._peers:
+            self._peers[peer_id]['PINGS_RECEIVED'] = self._peers[peer_id].get('PINGS_RECEIVED', 0) + 1
         self._ipsc_send(self._alive_reply, host, port)
 
     def _on_peer_list_req(self, host, port):
@@ -277,12 +291,15 @@ class IpscMasterMixin:
                            _frame_type, _dtype_vseq, _stream_id, _data)
 
     def _remove_ipsc_peer(self, peer_id):
+        had_peer = peer_id in self._ipsc_peers or peer_id in self._peers
         if peer_id in self._ipsc_peers:
             del self._ipsc_peers[peer_id]
         if peer_id in self._peers:
             del self._peers[peer_id]
         if not self._ipsc_peers:
             self._voice.reset()
+        if had_peer:
+            self._send_peers_config()
 
     def _send_peer_list(self, host, port):
         entries = b''

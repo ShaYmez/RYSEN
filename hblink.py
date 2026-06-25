@@ -116,6 +116,53 @@ def acl_check(_id, _acl):
     return not _acl[0]
 
 
+def build_peer_record(peer_id, host, port, *, protocol='HBP', connection='YES',
+                      peer_mode=None, existing=None, now=None):
+    """Build a HBP-compatible CONFIG['SYSTEMS'][slot]['PEERS'] entry.
+
+    Used by IPSC registration and available for HBP login paths so monitors
+    (FDMR-Monitor, report_receiver) see a consistent peer shape.
+    """
+    if now is None:
+        now = time()
+    radio_id = str(int_id(peer_id))
+    callsign = radio_id.encode('utf-8').ljust(8)[:8]
+    if existing and existing.get('CALLSIGN'):
+        callsign = existing['CALLSIGN']
+
+    record = {
+        'CONNECTION': connection,
+        'CONNECTED': existing['CONNECTED'] if existing else now,
+        'PINGS_RECEIVED': existing.get('PINGS_RECEIVED', 0) if existing else 0,
+        'LAST_PING': now,
+        'SOCKADDR': (host, port),
+        'IP': host,
+        'PORT': port,
+        'RADIO_ID': radio_id,
+        'CALLSIGN': callsign,
+        'RX_FREQ': existing.get('RX_FREQ', '') if existing else '',
+        'TX_FREQ': existing.get('TX_FREQ', '') if existing else '',
+        'TX_POWER': existing.get('TX_POWER', '') if existing else '',
+        'COLORCODE': existing.get('COLORCODE', '') if existing else '',
+        'LATITUDE': existing.get('LATITUDE', '') if existing else '',
+        'LONGITUDE': existing.get('LONGITUDE', '') if existing else '',
+        'HEIGHT': existing.get('HEIGHT', '') if existing else '',
+        'LOCATION': existing.get('LOCATION', '') if existing else '',
+        'DESCRIPTION': existing.get('DESCRIPTION', '') if existing else '',
+        'SLOTS': existing.get('SLOTS', '') if existing else '',
+        'URL': existing.get('URL', '') if existing else '',
+        'SOFTWARE_ID': existing.get('SOFTWARE_ID', '') if existing else '',
+        'PACKAGE_ID': existing.get('PACKAGE_ID', '') if existing else '',
+        'PROTOCOL': protocol,
+    }
+    if peer_mode is not None:
+        if isinstance(peer_mode, (bytes, bytearray)):
+            record['IPSC_MODE'] = peer_mode[0] if peer_mode else 0
+        else:
+            record['IPSC_MODE'] = int(peer_mode)
+    return record
+
+
 #************************************************
 #    OPENBRIDGE CLASS
 #************************************************
