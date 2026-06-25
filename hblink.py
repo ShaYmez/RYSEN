@@ -45,7 +45,10 @@ from twisted.internet import reactor, task
 import log
 import config
 from const import *
-from dmr_utils3.utils import int_id, bytes_4, mk_id_dict
+from dmr_utils3.utils import int_id, bytes_3, bytes_4, get_alias, mk_id_dict
+from ipsc_peer_meta import (
+    lookup_peer_alias, callsign_bytes, parse_ipsc_peer_status, ipsc_peer_display_fields,
+)
 
 # Imports for the reporting server
 import pickle
@@ -117,7 +120,8 @@ def acl_check(_id, _acl):
 
 
 def build_peer_record(peer_id, host, port, *, protocol='HBP', connection='YES',
-                      peer_mode=None, existing=None, now=None):
+                      peer_mode=None, existing=None, now=None, full_config=None,
+                      ipsc_status=None):
     """Build a HBP-compatible CONFIG['SYSTEMS'][slot]['PEERS'] entry.
 
     Used by IPSC registration and available for HBP login paths so monitors
@@ -126,9 +130,17 @@ def build_peer_record(peer_id, host, port, *, protocol='HBP', connection='YES',
     if now is None:
         now = time()
     radio_id = str(int_id(peer_id))
-    callsign = radio_id.encode('utf-8').ljust(8)[:8]
+    callsign = callsign_bytes(None, peer_id)
     if existing and existing.get('CALLSIGN'):
-        callsign = existing['CALLSIGN']
+        existing_cs = existing['CALLSIGN']
+        if isinstance(existing_cs, bytes):
+            existing_cs = existing_cs.decode('utf-8', errors='ignore').rstrip()
+        if existing_cs and existing_cs != radio_id:
+            callsign = callsign_bytes(existing_cs, peer_id)
+
+    alias = lookup_peer_alias(full_config, peer_id) if full_config else None
+    if alias:
+        callsign = callsign_bytes(alias, peer_id)
 
     record = {
         'CONNECTION': connection,
@@ -160,6 +172,15 @@ def build_peer_record(peer_id, host, port, *, protocol='HBP', connection='YES',
             record['IPSC_MODE'] = peer_mode[0] if peer_mode else 0
         else:
             record['IPSC_MODE'] = int(peer_mode)
+
+    if protocol == 'IPSC' and ipsc_status:
+        display = ipsc_peer_display_fields(
+            ipsc_status['mode'], ipsc_status['flags'], ipsc_status['protocol'])
+        for key, value in display.items():
+            if key.startswith('IPSC_'):
+                record[key] = value
+            elif value and (not existing or not existing.get(key)):
+                record[key] = value
     return record
 
 

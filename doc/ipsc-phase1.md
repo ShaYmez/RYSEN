@@ -125,7 +125,7 @@ Before merging `ipsc` → `master`:
 
 See [ipsc-roadmap.md](ipsc-roadmap.md) for the full list. Highlights:
 
-- **Monitor dashboards** — registered IPSC repeaters are not mirrored into `CONFIG['SYSTEMS'][*]['PEERS']` for TCP report clients; FDMR-Monitor / dashboards show HBP peers only today
+- **Monitor dashboards** — IPSC `PEERS` records are HBP-shaped with alias callsign and protocol metadata; RYMonv3 display polish still pending (see roadmap 2.9–2.10)
 - **Selfcare / `ipsc_proxy_v2_sc`**
 - **CHANGELOG / version bump** on merge to `master`
 - **Production `AUTH_KEY`** rotation off sample defaults

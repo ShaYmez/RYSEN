@@ -156,8 +156,15 @@ RYSEN reports to TCP clients (FDMR-Monitor and similar) via `reportFactory.send_
 | `IP` | str | Same as sockaddr host |
 | `PORT` | int | Same as sockaddr port |
 | `RADIO_ID` | str | Decimal string (match HBP) |
-| `CALLSIGN` | bytes | 8-byte padded |
+| `CALLSIGN` | bytes | 8-byte padded; from `peer_ids.json` alias when available |
+| `SOFTWARE_ID` | bytes | Motorola IPSC protocol version + capabilities (from reg packet) |
+| `PACKAGE_ID` | bytes | `Motorola IPSC Repeater` |
+| `DESCRIPTION` | bytes | Peer mode summary (digital/mixed, TS1/TS2 routing) |
 | `PROTOCOL` | str | `'IPSC'` (optional, for UI) |
+| `IPSC_FLAGS` | bytes | Raw 4-byte PeerFlags from registration |
+| `IPSC_PROTOCOL` | bytes | Raw 4-byte PeerProtocol from registration |
+
+Registration layout follows [node-dmr-lib](https://github.com/rick51231/node-dmr-lib) (`MasterRegReq`: mode + flags + protocol after peer ID). Motorola does not send MMDVM `RPTC` fields (freq, model serial); use `peer_ids.json` for callsign and optional future `IPSC_PEER_INFO` cfg for static site metadata.
 
 ---
 

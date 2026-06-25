@@ -15,6 +15,7 @@ Motorola IP Site Connect support. Field-tested on SYSTEM-XTEST (GB7NR, TG 2350 T
 - `learn_peer_header()` — echo repeater call-control bytes on outbound
 - Bridge parity: `augment_bridges_for_masters()`, UA/stat bridges include IPSC slots
 - Linked IPSC UA activation via `OPTIONS: IPSC=` / `LINK_IPSC=` (per-connection isolation; no blanket peer wake)
+- IPSC peer monitor fields: `peer_ids.json` callsign alias + protocol metadata from registration ([node-dmr-lib](https://github.com/rick51231/node-dmr-lib) layout)
 
 ### Configuration
 

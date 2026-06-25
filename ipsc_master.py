@@ -32,6 +32,7 @@ from ipsc_const import (
     PRCL, PRIN,
     opcode_name, peer_id_from_packet,
 )
+from ipsc_peer_meta import parse_ipsc_peer_status, ipsc_peer_display_fields
 from ipsc_voice import IpscVoiceTranslator
 
 
@@ -124,13 +125,14 @@ class IpscMasterMixin:
                          self._system, opcode_name(opcode), host, port, len(data))
 
     def _on_reg_req(self, data, host, port):
-        if len(data) < 10:
+        if len(data) < 6:
             logger.warning('(%s) MASTER_REG_REQ too short from %s:%s', self._system, host, port)
             return
 
         peer_id = data[1:5]
         peer_id_int = int_id(peer_id)
-        peer_mode = data[5:6]
+        ipsc_status = parse_ipsc_peer_status(data)
+        peer_mode = bytes([ipsc_status['mode']]) if ipsc_status else data[5:6]
         is_new = peer_id not in self._ipsc_peers
 
         if self._config.get('USE_ACL') and not acl_check(peer_id, self._config['REG_ACL']):
@@ -167,7 +169,12 @@ class IpscMasterMixin:
             'mode': peer_mode,
             'last_ka': now,
         }
-        self._register_hbp_peer(peer_id, host, port, peer_mode=peer_mode, is_new=is_new, now=now)
+        if ipsc_status:
+            self._ipsc_peers[peer_id]['flags'] = ipsc_status['flags']
+            self._ipsc_peers[peer_id]['protocol'] = ipsc_status['protocol']
+        self._register_hbp_peer(
+            peer_id, host, port, peer_mode=peer_mode, ipsc_status=ipsc_status,
+            is_new=is_new, now=now)
         self._send_peers_config()
 
         reg_reply = (
@@ -188,7 +195,8 @@ class IpscMasterMixin:
             logger.info('(%s) IPSC peer re-registered: ID %s from %s:%s',
                         self._system, peer_id_int, host, port)
 
-    def _register_hbp_peer(self, peer_id, host, port, peer_mode=None, is_new=True, now=None):
+    def _register_hbp_peer(self, peer_id, host, port, peer_mode=None, ipsc_status=None,
+                           is_new=True, now=None):
         existing = None if is_new else self._peers.get(peer_id)
         self._peers[peer_id] = build_peer_record(
             peer_id, host, port,
@@ -197,6 +205,8 @@ class IpscMasterMixin:
             peer_mode=peer_mode,
             existing=existing,
             now=now,
+            full_config=self._CONFIG,
+            ipsc_status=ipsc_status,
         )
 
     def _touch_ipsc_peer(self, peer_id):
@@ -215,6 +225,19 @@ class IpscMasterMixin:
         peer_id = data[1:5]
         if peer_id not in self._ipsc_peers:
             return
+        ipsc_status = parse_ipsc_peer_status(data)
+        if ipsc_status:
+            self._ipsc_peers[peer_id]['mode'] = bytes([ipsc_status['mode']])
+            self._ipsc_peers[peer_id]['flags'] = ipsc_status['flags']
+            self._ipsc_peers[peer_id]['protocol'] = ipsc_status['protocol']
+            if peer_id in self._peers:
+                display = ipsc_peer_display_fields(
+                    ipsc_status['mode'], ipsc_status['flags'], ipsc_status['protocol'])
+                for key, value in display.items():
+                    if key.startswith('IPSC_'):
+                        self._peers[peer_id][key] = value
+                    elif value:
+                        self._peers[peer_id][key] = value
         self._touch_ipsc_peer(peer_id)
         if peer_id in self._peers:
             self._peers[peer_id]['PINGS_RECEIVED'] = self._peers[peer_id].get('PINGS_RECEIVED', 0) + 1

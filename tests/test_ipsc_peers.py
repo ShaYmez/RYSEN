@@ -44,6 +44,7 @@ class _StubIpsc(IpscMasterMixin):
         self._system = 'IPSC-0'
         self._peers = {}
         self._ipsc_peers = {}
+        self._CONFIG = {'_PEER_IDS': {235287: 'GB7NR'}}
         self._config = {
             'USE_ACL': False,
             'REG_ACL': (True, []),
@@ -71,7 +72,8 @@ class _StubIpsc(IpscMasterMixin):
 class TestIpscPeerReporting(unittest.TestCase):
 
     def _reg_packet(self):
-        return bytes([MASTER_REG_REQ]) + PEER_ID + b'\x6a' + b'\x00' * 5
+        return (bytes([MASTER_REG_REQ]) + PEER_ID + bytes([0x6a])
+                + b'\x00\x00\x00\x05' + b'\x04\x02\x04\x01')
 
     def test_registration_populates_config_peers(self):
         stub = _StubIpsc()
@@ -79,7 +81,9 @@ class TestIpscPeerReporting(unittest.TestCase):
         self.assertIn(PEER_ID, stub._peers)
         self.assertEqual(stub._peers[PEER_ID]['IP'], HOST)
         self.assertEqual(stub._peers[PEER_ID]['RADIO_ID'], '235287')
+        self.assertEqual(stub._peers[PEER_ID]['CALLSIGN'].decode().rstrip(), 'GB7NR')
         self.assertEqual(stub._peers[PEER_ID]['PROTOCOL'], 'IPSC')
+        self.assertTrue(stub._peers[PEER_ID]['SOFTWARE_ID'])
         stub._report.send_config.assert_called_once()
 
     def test_re_registration_sends_config(self):
