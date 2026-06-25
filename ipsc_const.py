@@ -46,6 +46,11 @@ GV_VOICE_LEN      = 52   # extended SLOT_VOICE burst
 DEFAULT_PEER_CALL_TYPE = b'\x02'
 DEFAULT_PEER_CALL_CTRL = b'\x00\x00\x43\xe2'
 
+# Outbound voice delivery (ipsc2hbp translate/const.py)
+JITTER_BUFFER_DEPTH = 2      # slots × 60 ms before first voice delivery
+MAX_SYNTH_BURSTS = 6         # consecutive silence slots → synthesize TERM
+SLOT_INTERVAL_S = 0.060      # TDMA cadence Motorola repeaters expect
+
 AUTH_DIGEST_LEN = 10
 
 # Default capability bytes for IPSC master (DMRlink safe defaults)

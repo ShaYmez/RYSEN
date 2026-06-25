@@ -52,6 +52,7 @@ class IpscMasterMixin:
             master_id=self._config['IPSC_MASTER_ID'],
             ts_prefer_call_info=self._config.get('TS_PREFER_CALL_INFO', False),
         )
+        self._voice.set_send_callback(self._ipsc_send_voice)
         self._alive_reply = (
             bytes([MASTER_ALIVE_REPLY]) + self._master_id + self._ts_flags + self._ipsc_version
         )
@@ -316,6 +317,10 @@ class IpscMasterMixin:
     def _ipsc_send(self, packet, host, port):
         self.transport.write(packet + self._auth_suffix(packet), (host, port))
 
+    def _ipsc_send_voice(self, packet):
+        for peer in self._ipsc_peers.values():
+            self._ipsc_send(packet, peer['host'], peer['port'])
+
     def ipsc_send_system(self, _packet, _hops=b'', _ber=b'\x00', _rssi=b'\x00',
                          _source_server=b'\x00\x00\x00\x00', _source_rptr=b'\x00\x00\x00\x00'):
         """Bridge outbound DMRD → GROUP_VOICE to registered IPSC peers (Phase 2c)."""
@@ -333,9 +338,9 @@ class IpscMasterMixin:
         if not self._config.get('REPEAT', True):
             return
 
-        gv = self._voice.encode(_packet)
-        if gv is None or not self._ipsc_peers:
+        if not self._ipsc_peers:
             return
 
-        for peer_id, peer in self._ipsc_peers.items():
-            self._ipsc_send(gv, peer['host'], peer['port'])
+        gv = self._voice.handle_outbound(_packet)
+        if gv is not None:
+            self._ipsc_send_voice(gv)

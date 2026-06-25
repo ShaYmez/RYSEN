@@ -85,6 +85,24 @@ class TestIpscOutbound(unittest.TestCase):
         self.assertEqual(outbound[GV_BURST_TYPE_OFF], SLOT2_VOICE)
         self.assertEqual(outbound[31:33], b'\x14\x40')
 
+    def test_handle_outbound_buffers_voice(self):
+        """Voice bursts are jitter-buffered; HEAD is sent immediately."""
+        inbound, peer, src, dst = self._make_head_packet()
+        tr = IpscVoiceTranslator(master_id=self.MASTER_ID)
+        dmrd_head = tr.translate(inbound, 2, VOICE_HEAD)
+        self.assertIsNotNone(tr.handle_outbound(dmrd_head))
+
+        slot_pkt = bytearray([GROUP_VOICE]) + bytearray(51)
+        slot_pkt[1:5] = peer
+        slot_pkt[5] = 0x42
+        slot_pkt[6:9] = src
+        slot_pkt[9:12] = dst
+        slot_pkt[GV_BURST_TYPE_OFF] = SLOT2_VOICE
+        slot_pkt[32] = 0x16
+        dmrd_voice = tr.translate(bytes(slot_pkt), 2, SLOT2_VOICE)
+        self.assertIsNotNone(dmrd_voice)
+        self.assertIsNone(tr.handle_outbound(dmrd_voice))
+
     def test_learn_peer_header(self):
         tr = IpscVoiceTranslator(master_id=self.MASTER_ID)
         sample = bytes.fromhex(
