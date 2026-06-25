@@ -49,6 +49,7 @@ class IpscMasterMixin:
         self._keepalive_watchdog = self._config.get('KEEPALIVE_WATCHDOG', 60)
         self._max_peers = self._config.get('MAX_PEERS', 1)
         self._voice = IpscVoiceTranslator(
+            master_id=self._config['IPSC_MASTER_ID'],
             ts_prefer_call_info=self._config.get('TS_PREFER_CALL_INFO', False),
         )
         self._alive_reply = (
@@ -227,6 +228,8 @@ class IpscMasterMixin:
                            self._system, len(data), host, port)
             return
 
+        self._voice.learn_peer_header(data)
+
         burst_type = data[GV_BURST_TYPE_OFF]
         call_info = data[GV_CALL_INFO_OFF]
         if burst_type in (VOICE_HEAD, VOICE_TERM):
@@ -335,6 +338,4 @@ class IpscMasterMixin:
             return
 
         for peer_id, peer in self._ipsc_peers.items():
-            pkt = bytearray(gv)
-            pkt[1:5] = peer_id
-            self._ipsc_send(bytes(pkt), peer['host'], peer['port'])
+            self._ipsc_send(gv, peer['host'], peer['port'])

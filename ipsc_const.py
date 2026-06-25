@@ -38,7 +38,13 @@ GV_SRC_SUB_OFF    = 6
 GV_DST_GROUP_OFF  = 9
 GV_CALL_INFO_OFF  = 17
 GV_BURST_TYPE_OFF = 30
+GV_PAYLOAD_OFF    = 31
 GV_MIN_LEN        = 31
+GV_HEAD_LEN       = 54   # extended VOICE_HEAD / VOICE_TERM (Motorola / ipsc2hbp)
+GV_VOICE_LEN      = 52   # extended SLOT_VOICE burst
+
+DEFAULT_PEER_CALL_TYPE = b'\x02'
+DEFAULT_PEER_CALL_CTRL = b'\x00\x00\x43\xe2'
 
 AUTH_DIGEST_LEN = 10
 

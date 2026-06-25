@@ -32,7 +32,9 @@ Verified on a Debian VM (SYSTEM-XTEST): repeater registration, ~10s re-registrat
 ### Phase 2c (outbound voice)
 
 - Bridged DMRD → **GROUP_VOICE** via `IpscVoiceTranslator.encode()` and `routerIPSC.ipsc_send_system()`
-- Transmits to all registered IPSC peers on the slot (peer ID rewritten per destination repeater)
+- Motorola extended format (54-byte HEAD/TERM, 52-byte SLOT_VOICE): RTP header, call-control bytes, embedded LC payload (per ipsc2hbp)
+- Outbound bytes 1–4 use **IPSC_MASTER_ID** (not repeater ID); call-control learned from inbound peer packets
+- Transmits to all registered IPSC peers on the slot
 
 ## Not yet implemented
 

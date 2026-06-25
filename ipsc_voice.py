@@ -25,8 +25,10 @@ from ipsc_const import (
     GROUP_VOICE, VOICE_HEAD, VOICE_TERM, SLOT1_VOICE, SLOT2_VOICE,
     TS_CALL_MSK, END_MSK,
     GV_CALL_SEQ_OFF, GV_CALL_INFO_OFF, GV_BURST_TYPE_OFF,
-    GV_SRC_SUB_OFF, GV_DST_GROUP_OFF, GV_MIN_LEN,
-    HBPF_TGID_TS2, HBPF_FRAMETYPE_VOICE, HBPF_FRAMETYPE_VOICESYNC, HBPF_FRAMETYPE_DATASYNC,
+    GV_SRC_SUB_OFF, GV_DST_GROUP_OFF, GV_MIN_LEN, GV_HEAD_LEN, GV_VOICE_LEN,
+    DEFAULT_PEER_CALL_TYPE, DEFAULT_PEER_CALL_CTRL,
+    HBPF_TGID_TS2,
+    HBPF_FRAMETYPE_VOICE, HBPF_FRAMETYPE_VOICESYNC, HBPF_FRAMETYPE_DATASYNC,
 )
 
 _NULL_EMB_LC = bitarray(32, endian='big')
@@ -49,10 +51,79 @@ def _build_embed(pos, emb_lc):
     return EMB[name][:8] + lc_bits + EMB[name][-8:]
 
 
+def _decode_lc_from_dmrd(payload_33):
+    """Extract the 9-byte LC word from a DMRD voice LC header/terminator payload."""
+    frame_bits = bitarray(endian='big')
+    frame_bits.frombytes(payload_33)
+    if len(frame_bits) < 264:
+        frame_bits.extend([0] * (264 - len(frame_bits)))
+    bptc_bits = frame_bits[0:98] + frame_bits[166:264]
+    return bptc.decode_full_lc(bptc_bits).tobytes()
+
+
+def _build_ipsc_voice_payload(lc, burst_type):
+    """Motorola LC payload for VOICE_HEAD / VOICE_TERM (23 bytes after burst type byte)."""
+    if burst_type == VOICE_HEAD:
+        fec = bptc.rs129.lc_header_encode(lc[:9])
+        type_tag = b'\x11'
+    else:
+        fec = bptc.rs129.lc_terminator_encode(lc[:9])
+        type_tag = b'\x12'
+    return (
+        b'\x80'
+        + struct.pack('>H', 10)
+        + b'\x80'
+        + b'\x0a'
+        + struct.pack('>H', 0x60)
+        + lc[:9]
+        + fec
+        + b'\x00' + type_tag + b'\x00\x00'
+    )
+
+
+def _build_slot_voice_payload(ts, pos, ambe_19, emb_lc, lc):
+    """Motorola SLOT_VOICE payload (bytes 30+ in a 52-byte GROUP_VOICE packet)."""
+    slot_burst = SLOT2_VOICE if ts == 2 else SLOT1_VOICE
+    if pos == 0:
+        return bytes([slot_burst]) + b'\x14\x40' + ambe_19
+    if pos == 4:
+        emb_frag = (
+            emb_lc[4].tobytes()
+            if emb_lc and 4 in emb_lc
+            else _NULL_EMB_LC.tobytes()
+        )
+        return (
+            bytes([slot_burst]) + b'\x22\x16' + ambe_19
+            + emb_frag + lc[0:3] + lc[3:6] + lc[6:9] + b'\x14'
+        )
+    if pos == 5:
+        return bytes([slot_burst]) + b'\x19\x06' + ambe_19 + b'\x00\x00\x00\x00\x10'
+    emb_frag = (
+        emb_lc[pos].tobytes()
+        if emb_lc and pos in emb_lc
+        else _NULL_EMB_LC.tobytes()
+    )
+    emb_hdr = EMB[_EMB_BURST_NAMES[pos - 1]][:8].tobytes()[0] & 0xFE
+    return bytes([slot_burst]) + b'\x19\x06' + ambe_19 + emb_frag + bytes([emb_hdr])
+
+
+def _dmrd_frame_position(frame_type, dtype_vseq):
+    if frame_type == HBPF_VOICE_SYNC and dtype_vseq == 0:
+        return 0
+    if dtype_vseq == 4:
+        return 4
+    if dtype_vseq >= 5:
+        return 5
+    return max(dtype_vseq, 1)
+
+
 class IpscVoiceTranslator:
     """Bidirectional IPSC GROUP_VOICE ↔ DMRD for routerHBP / routerIPSC."""
 
-    def __init__(self, ts_prefer_call_info=False):
+    def __init__(self, master_id=0, ts_prefer_call_info=False):
+        self._master_id_b = int(master_id).to_bytes(4, 'big')
+        self._peer_call_type = DEFAULT_PEER_CALL_TYPE
+        self._peer_call_ctrl = DEFAULT_PEER_CALL_CTRL
         self._ts_prefer_call_info = ts_prefer_call_info
         self._out_stream_id = {1: None, 2: None}
         self._out_ipsc_stream_id = {1: None, 2: None}
@@ -60,7 +131,18 @@ class IpscVoiceTranslator:
         self._out_frame_pos = {1: 0, 2: 0}
         self._out_lc = {1: None, 2: None}
         self._out_emb_lc = {1: None, 2: None}
-        self._enc_stream_seq = {}
+        self._enc_stream_call_id = {}
+        self._enc_lc = {}
+        self._enc_emb_lc = {}
+        self._enc_rtp_seq = {}
+        self._enc_rtp_ts = {}
+        self._enc_stream_ctr = 0
+
+    def learn_peer_header(self, data):
+        """Capture call-type / call-control bytes from an inbound GROUP_VOICE packet."""
+        if len(data) >= 17:
+            self._peer_call_type = data[12:13]
+            self._peer_call_ctrl = data[13:17]
 
     def reset(self):
         for ts in (1, 2):
@@ -70,7 +152,11 @@ class IpscVoiceTranslator:
             self._out_emb_lc[ts] = None
             self._out_frame_pos[ts] = 0
         self._out_seq = 0
-        self._enc_stream_seq = {}
+        self._enc_stream_call_id = {}
+        self._enc_lc = {}
+        self._enc_emb_lc = {}
+        self._enc_rtp_seq = {}
+        self._enc_rtp_ts = {}
 
     def translate(self, data, ts, burst_type):
         """
@@ -178,8 +264,52 @@ class IpscVoiceTranslator:
         self._out_emb_lc[ts] = None
         self._out_frame_pos[ts] = 0
 
+    def _build_gv(self, src_sub, dst_group, call_info, rtp_hdr, gv_payload, call_seq):
+        return (
+            bytes([GROUP_VOICE])
+            + self._master_id_b
+            + bytes([call_seq])
+            + src_sub
+            + dst_group
+            + self._peer_call_type
+            + self._peer_call_ctrl
+            + bytes([call_info])
+            + rtp_hdr
+            + gv_payload
+        )
+
+    def _stream_key(self, ts, stream_id):
+        return (ts, stream_id)
+
+    def _call_seq_for_stream(self, key, new_call=False):
+        if new_call or key not in self._enc_stream_call_id:
+            self._enc_stream_ctr = (self._enc_stream_ctr + 1) & 0xFF
+            self._enc_stream_call_id[key] = self._enc_stream_ctr
+        return self._enc_stream_call_id[key]
+
+    def _next_rtp_hdr(self, key, pt, advance_ts=False):
+        seq = self._enc_rtp_seq.get(key, 0)
+        ts_val = self._enc_rtp_ts.get(key, 0)
+        rtp_hdr = (
+            b'\x80' + bytes([pt])
+            + struct.pack('>H', seq & 0xFFFF)
+            + struct.pack('>I', ts_val)
+            + b'\x00\x00\x00\x00'
+        )
+        self._enc_rtp_seq[key] = (seq + 1) & 0xFFFF
+        if advance_ts:
+            self._enc_rtp_ts[key] = (ts_val + 480) & 0xFFFFFFFF
+        return rtp_hdr
+
+    def _clear_encode_stream(self, key):
+        self._enc_stream_call_id.pop(key, None)
+        self._enc_lc.pop(key, None)
+        self._enc_emb_lc.pop(key, None)
+        self._enc_rtp_seq.pop(key, None)
+        self._enc_rtp_ts.pop(key, None)
+
     def encode(self, dmrd):
-        """Convert a bridged DMRD packet into one GROUP_VOICE burst (Phase 2c outbound)."""
+        """Convert a bridged DMRD packet into one Motorola GROUP_VOICE burst."""
         if len(dmrd) < 53 or dmrd[:4] != DMRD:
             return None
 
@@ -188,55 +318,49 @@ class IpscVoiceTranslator:
         frame_type = (flags & 0x30) >> 4
         dtype_vseq = flags & 0x0F
         stream_id = dmrd[16:20]
-        peer_id = dmrd[11:15]
         src_sub = dmrd[5:8]
         dst_group = dmrd[8:11]
         payload = dmrd[20:53]
-        call_seq = self._encode_call_seq(ts, stream_id)
-        voice_extra = b''
+        key = self._stream_key(ts, stream_id)
 
         if frame_type == HBPF_DATA_SYNC and dtype_vseq == HBPF_SLT_VHEAD:
-            burst_type = VOICE_HEAD
+            lc = _decode_lc_from_dmrd(payload)
+            self._enc_lc[key] = lc
+            self._enc_emb_lc[key] = bptc.encode_emblc(lc)
+            call_seq = self._call_seq_for_stream(key, new_call=True)
             call_info = TS_CALL_MSK if ts == 2 else 0x00
-            pkt_len = GV_MIN_LEN
-        elif frame_type == HBPF_DATA_SYNC and dtype_vseq == HBPF_SLT_VTERM:
-            burst_type = VOICE_TERM
+            gv_payload = bytes([VOICE_HEAD]) + _build_ipsc_voice_payload(lc, VOICE_HEAD)
+            rtp_hdr = self._next_rtp_hdr(key, 0xdd)
+            return self._build_gv(src_sub, dst_group, call_info, rtp_hdr, gv_payload, call_seq)
+
+        if frame_type == HBPF_DATA_SYNC and dtype_vseq == HBPF_SLT_VTERM:
+            lc = self._enc_lc.get(key) or _decode_lc_from_dmrd(payload) or (LC_OPT + dst_group + src_sub)
+            call_seq = self._call_seq_for_stream(key)
             call_info = (END_MSK | TS_CALL_MSK) if ts == 2 else END_MSK
-            pkt_len = GV_MIN_LEN
-            self._clear_encode_stream(ts, stream_id)
-        elif frame_type == HBPF_VOICE_SYNC and dtype_vseq == 0:
-            burst_type = SLOT2_VOICE if ts == 2 else SLOT1_VOICE
+            gv_payload = bytes([VOICE_TERM]) + _build_ipsc_voice_payload(lc, VOICE_TERM)
+            rtp_hdr = self._next_rtp_hdr(key, 0x5e)
+            pkt = self._build_gv(src_sub, dst_group, call_info, rtp_hdr, gv_payload, call_seq)
+            self._clear_encode_stream(key)
+            return pkt
+
+        if (frame_type == HBPF_VOICE_SYNC and dtype_vseq == 0) or (
+                frame_type == HBPF_VOICE and dtype_vseq in (1, 2, 3, 4, 5)):
+            lc = self._enc_lc.get(key)
+            if lc is None:
+                lc = LC_OPT + dst_group + src_sub
+                self._enc_lc[key] = lc
+                self._enc_emb_lc[key] = bptc.encode_emblc(lc)
+                self._call_seq_for_stream(key, new_call=True)
+            emb_lc = self._enc_emb_lc.get(key)
+            pos = _dmrd_frame_position(frame_type, dtype_vseq)
+            ambe_19 = self._dmrd_payload_to_ambe(payload)
+            gv_payload = _build_slot_voice_payload(ts, pos, ambe_19, emb_lc, lc)
+            call_seq = self._call_seq_for_stream(key)
             call_info = 0x00
-            voice_extra = self._dmrd_payload_to_ambe(payload)
-            pkt_len = 52
-        elif frame_type == HBPF_VOICE and dtype_vseq in (1, 2, 3, 4):
-            burst_type = SLOT2_VOICE if ts == 2 else SLOT1_VOICE
-            call_info = 0x00
-            voice_extra = self._dmrd_payload_to_ambe(payload)
-            pkt_len = 52
-        else:
-            return None
+            rtp_hdr = self._next_rtp_hdr(key, 0x5d, advance_ts=True)
+            return self._build_gv(src_sub, dst_group, call_info, rtp_hdr, gv_payload, call_seq)
 
-        pkt = bytearray(pkt_len)
-        pkt[0] = GROUP_VOICE
-        pkt[1:5] = peer_id
-        pkt[5] = call_seq
-        pkt[6:9] = src_sub
-        pkt[9:12] = dst_group
-        pkt[17] = call_info
-        pkt[GV_BURST_TYPE_OFF] = burst_type
-        if voice_extra:
-            pkt[33:33 + len(voice_extra)] = voice_extra
-        return bytes(pkt)
-
-    def _encode_call_seq(self, ts, stream_id):
-        key = (ts, stream_id)
-        if key not in self._enc_stream_seq:
-            self._enc_stream_seq[key] = stream_id[0] or 1
-        return self._enc_stream_seq[key]
-
-    def _clear_encode_stream(self, ts, stream_id):
-        self._enc_stream_seq.pop((ts, stream_id), None)
+        return None
 
     def _dmrd_payload_to_ambe(self, payload):
         frame_bits = bitarray(endian='big')
