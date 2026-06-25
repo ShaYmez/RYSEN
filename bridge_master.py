@@ -350,7 +350,7 @@ def augment_bridges_for_masters():
                     _removed, _added)
 
 
-def activate_ua_bridge_source(bridge_name, system, slot, tmout=None):
+def activate_ua_bridge_source(bridge_name, system, slot, tmout=None, peer_id=None):
     """Activate this master's UA slot on an existing bridge (e.g. direct TG 9990 PTT)."""
     if bridge_name not in BRIDGES:
         return False
@@ -370,28 +370,18 @@ def activate_ua_bridge_source(bridge_name, system, slot, tmout=None):
                 _changed = True
                 logger.info('(ROUTER) Bridge %s activated for %s TS%s', bridge_name, system, slot)
             _entry['TIMER'] = time() + _timeout_s
-    _activate_bridge_peer_masters(bridge_name, system, slot, _timeout_s)
+    _activate_linked_ipsc_legs(bridge_name, system, slot, _timeout_s, peer_id)
     return _changed
 
 
-def _activate_bridge_peer_masters(bridge_name, source_system, slot, timeout_s):
-    """Bring peer MASTER/IPSC legs up when a hotspot keys a UA bridge (hotspot → IPSC)."""
-    if bridge_name not in BRIDGES:
-        return
+def _activate_linked_ipsc_legs(bridge_name, source_system, slot, timeout_s, peer_id=None):
+    """Optionally wake linked IPSC slot(s) when a hotspot keys a UA bridge (OPTIONS IPSC=)."""
+    from bridge_helpers import activate_linked_bridge_legs
     _now = time()
-    for _entry in BRIDGES[bridge_name]:
-        _sys = _entry['SYSTEM']
-        if _sys == source_system or _sys not in CONFIG['SYSTEMS']:
-            continue
-        if not is_routing_master(CONFIG['SYSTEMS'][_sys]['MODE']):
-            continue
-        if _entry['TS'] != slot or _entry['TO_TYPE'] == 'NONE':
-            continue
-        if not _entry['ACTIVE']:
-            _entry['ACTIVE'] = True
-            logger.info('(ROUTER) Bridge %s peer leg activated: %s TS%s (source %s)',
-                        bridge_name, _sys, slot, source_system)
-        _entry['TIMER'] = _now + timeout_s
+    for _target in activate_linked_bridge_legs(
+            BRIDGES, CONFIG['SYSTEMS'], bridge_name, source_system, slot, timeout_s, _now, peer_id):
+        logger.info('(ROUTER) Bridge %s linked leg activated: %s TS%s (source %s)',
+                    bridge_name, _target, slot, source_system)
 
 
 #Make a single bridge - used for on-the-fly UA bridges
@@ -418,7 +408,7 @@ def make_single_bridge(_tgid,_sourcesystem,_slot,_tmout):
                 
         if _system[0:3] == 'OBP' and (int_id(_tgid) >= 59 and (int_id(_tgid) < 9990 or int_id(_tgid) > 9999)):
             BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': '','TO_TYPE': 'NONE','OFF': [],'ON': [],'RESET': [], 'TIMER': time()})
-    _activate_bridge_peer_masters(_tgid_s, _sourcesystem, _slot, _tmout * 60)
+    _activate_linked_ipsc_legs(_tgid_s, _sourcesystem, _slot, _tmout * 60)
     # Keep routing index in sync
     _idx_add_bridge(_tgid_s)
 
@@ -1245,7 +1235,7 @@ def options_config():
                                 _peer_options_str = re.sub("\'","",_peer_options_str)
                                 _peer_options_str = re.sub("\"","",_peer_options_str)
                                 
-                                # Parse STICKY option from peer OPTIONS
+                                # Parse STICKY / LINK_IPSC from peer OPTIONS
                                 for x in _peer_options_str.split(";"):
                                     try:
                                         k, v = x.split('=')
@@ -1261,7 +1251,16 @@ def options_config():
                                                              _system, int_id(_peer_id), v)
                                                 continue
                                             logger.info('(OPTIONS) %s - Peer %s set STICKY=%s', _system, int_id(_peer_id), _peer['STICKY'])
-                                            break
+                                        elif k in ('IPSC', 'LINK_IPSC'):
+                                            _link_slot = v.strip()
+                                            if (_link_slot in CONFIG['SYSTEMS']
+                                                    and CONFIG['SYSTEMS'][_link_slot]['MODE'] == 'IPSC'):
+                                                _peer['LINK_IPSC'] = _link_slot
+                                                logger.info('(OPTIONS) %s - Peer %s set LINK_IPSC=%s',
+                                                            _system, int_id(_peer_id), _link_slot)
+                                            else:
+                                                logger.warning('(OPTIONS) %s - Peer %s invalid LINK_IPSC "%s", ignoring',
+                                                             _system, int_id(_peer_id), _link_slot)
                                     except (ValueError, KeyError):
                                         continue
                             except Exception as e:
@@ -1281,6 +1280,17 @@ def options_config():
                             continue
                         _options[k] = v
                     logger.debug('(OPTIONS) Options found for %s',_system)
+
+                    _link_slot = _options.get('IPSC') or _options.get('LINK_IPSC')
+                    if _link_slot:
+                        _link_slot = _link_slot.strip()
+                        if (_link_slot in CONFIG['SYSTEMS']
+                                and CONFIG['SYSTEMS'][_link_slot]['MODE'] == 'IPSC'):
+                            CONFIG['SYSTEMS'][_system]['LINK_IPSC'] = _link_slot
+                            logger.info('(OPTIONS) %s - LINK_IPSC=%s', _system, _link_slot)
+                        else:
+                            logger.warning('(OPTIONS) %s - invalid LINK_IPSC "%s", ignoring',
+                                           _system, _link_slot)
                     
                     if 'DIAL' in _options:
                         _options['DEFAULT_REFLECTOR'] = _options.pop('DIAL')
@@ -2875,7 +2885,7 @@ class routerHBP(HBSYSTEM):
                     logger.info('(%s) Bridge for TG %s does not exist. Creating as User Activated. Timeout %s',self._system, int_id(_dst_id),CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
                     make_single_bridge(_dst_id,self._system,_slot,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
                 elif is_routing_master(CONFIG['SYSTEMS'][self._system]['MODE']) and str(int_id(_dst_id)) in BRIDGES:
-                    activate_ua_bridge_source(str(int_id(_dst_id)), self._system, _slot)
+                    activate_ua_bridge_source(str(int_id(_dst_id)), self._system, _slot, peer_id=_peer_id)
                 
                 # Update SUB_MAP with the TG for this call
                 # This enables sticky TG functionality - subscriber is now associated with this TG

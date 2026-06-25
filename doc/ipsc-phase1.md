@@ -25,7 +25,7 @@ Motorola IP Site Connect (IPSC) support on the **`ipsc`** branch. Field-tested o
 - `make_stat_bridge` / `make_single_reflector` include **IPSC-N** slots (same as `SYSTEM-N`)
 - `augment_bridges_for_masters()` syncs bridges after `GENERATOR` split
 - UA bridge activation and sticky-TG logic apply to IPSC sources
-- **`_activate_bridge_peer_masters()`** — when a hotspot keys a UA bridge, peer MASTER/IPSC legs on the same TG/slot auto-activate (fixes cold-start hotspot → repeater)
+- **Linked IPSC activation** — when a hotspot keys a UA bridge, only an explicitly linked `IPSC-N` leg wakes (`OPTIONS: IPSC=IPSC-198` or `LINK_IPSC=…` on system or peer). IPSC repeaters never auto-wake other legs (restores per-connection isolation).
 
 ### Phase 2c — outbound voice
 
@@ -108,13 +108,13 @@ BRIDGES = {
 }
 ```
 
-Slot names (`SYSTEM-62`, `IPSC-79`) change with proxy assignments — check logs. Alternatively set `TS2_STATIC: 2350` on both `[SYSTEM]` and `[IPSC]` in `rysen.cfg`.
+Slot names (`SYSTEM-62`, `IPSC-79`) change with proxy assignments — check logs. Alternatively set `TS2_STATIC: 2350` on both `[SYSTEM]` and `[IPSC]` in `rysen.cfg`, or hotspot `OPTIONS: IPSC=IPSC-79` to link UA bridges to your repeater only.
 
 ## Soak-test checklist
 
 Before merging `ipsc` → `master`:
 
-- [ ] DroidStar cold PTT (after RYSEN restart) — log shows `peer leg activated: IPSC-N`
+- [ ] DroidStar cold PTT (after RYSEN restart) — with `OPTIONS: IPSC=IPSC-N` on hotspot, log shows `linked leg activated: IPSC-N`
 - [ ] Repeater → hotspot return audio
 - [ ] Long call (~2 min) — no stuck bridge / zombie stream
 - [ ] Second repeater on another `IPSC-N` slot (proxy ID routing)

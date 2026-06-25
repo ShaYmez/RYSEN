@@ -196,7 +196,7 @@ TMS, LRRP, ARS, optional BMS and wireline (`0xB2`). Implement as services above 
 - IPSC bridge report events (`peer registered`, `timed out`)
 - Opcode / per-peer debug stats
 - Integration test for jitter-buffer Twisted timer
-- Unit test for `_activate_bridge_peer_masters`
+- Unit test for linked IPSC UA activation (`tests/test_bridge_isolation.py`)
 - Duplicate `VOICE_HEAD` soak validation
 
 ---
@@ -212,8 +212,8 @@ TMS, LRRP, ARS, optional BMS and wireline (`0xB2`). Implement as services above 
 ## Soak-test log prompts
 
 ```bash
-# Bridge + peer-leg activation
-docker logs systemx -f 2>&1 | grep -E 'peer leg|Bridge 2350|IPSC peer'
+# Bridge + linked IPSC activation (per-connection isolation)
+docker logs systemx -f 2>&1 | grep -E 'linked leg activated|Bridge 2350 activated for|IPSC peer'
 
 # Hotspot → repeater path
 docker logs systemx -f 2>&1 | grep -E 'SYSTEM-[0-9]+.*CALL START|IPSC-[0-9]+.*CALL'

@@ -14,7 +14,7 @@ Motorola IP Site Connect support. Field-tested on SYSTEM-XTEST (GB7NR, TG 2350 T
 - 60 ms jitter-buffered outbound voice delivery (ipsc2hbp model)
 - `learn_peer_header()` — echo repeater call-control bytes on outbound
 - Bridge parity: `augment_bridges_for_masters()`, UA/stat bridges include IPSC slots
-- Auto-activate IPSC peer legs when hotspot keys UA bridge (`_activate_bridge_peer_masters`)
+- Linked IPSC UA activation via `OPTIONS: IPSC=` / `LINK_IPSC=` (per-connection isolation; no blanket peer wake)
 
 ### Configuration
 
