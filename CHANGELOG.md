@@ -28,9 +28,15 @@ Motorola IP Site Connect support. Field-tested on SYSTEM-XTEST (GB7NR, TG 2350 T
 
 ### Known gaps before merge
 
-- IPSC registered peers not visualised on TCP report / monitor dashboards
+- **Phase 2 (roadmap):** IPSC peers not consistently visible on TCP report / FDMR-Monitor — `PEERS` records must match HBP shape; lifecycle `send_config()` not wired. See [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md).
 - Selfcare / `ipsc_proxy_v2_sc` not implemented
 - Sample `AUTH_KEY` must be changed for production
+
+### Planned post-merge (roadmap)
+
+- Phase 3: `PRIVATE_VOICE (0x81)` — reflector / dial-a-tg over IPSC
+- Phase 4: `GROUP_DATA` / `PRIVATE_DATA` — SMS, GPS, UDT
+- Phase 5+: TMS, LRRP, ARS (node-dmr-lib reference)
 
 ### Key commits (reference)
 
