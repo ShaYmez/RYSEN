@@ -162,6 +162,7 @@ def build_config(_config_file):
     CONFIG['ALIASES'] = {}
     CONFIG['SYSTEMS'] = {}
     CONFIG['ALLSTAR'] = {}
+    CONFIG['SELF SERVICE'] = {'ENABLED': False}
 
     try:
         for section in config.sections():
@@ -235,6 +236,17 @@ def build_config(_config_file):
                 
             elif section == 'PROXY':
                 pass
+
+            elif section == 'SELF SERVICE':
+                CONFIG['SELF SERVICE'].update({
+                    'ENABLED': config.getboolean(section, 'ENABLED'),
+                    'DB_HOST': config.get(section, 'DB_HOST'),
+                    'DB_PORT': config.getint(section, 'DB_PORT'),
+                    'DB_USER': config.get(section, 'DB_USER'),
+                    'DB_PASS': config.get(section, 'DB_PASS'),
+                    'DB_NAME': config.get(section, 'DB_NAME'),
+                    'POLL_INTERVAL': config.getint(section, 'POLL_INTERVAL', fallback=5),
+                })
 
             elif config.getboolean(section, 'ENABLED'):
                 if config.get(section, 'MODE') == 'PEER':

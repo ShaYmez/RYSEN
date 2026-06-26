@@ -48,6 +48,7 @@ from hashlib import blake2b
 from twisted.internet.protocol import Factory, Protocol
 from twisted.protocols.basic import NetstringReceiver
 from twisted.internet import reactor, task
+from twisted.internet.defer import inlineCallbacks
 
 # Things we import from the main hblink module
 from hblink import HBSYSTEM, OPENBRIDGE, systems, hblink_handler, reportFactory, REPORT_OPCODES, mk_aliases, acl_check
@@ -60,6 +61,7 @@ from const import *
 from mk_voice import pkt_gen
 from ipsc_master import IpscMasterMixin
 from ipsc_const import is_routing_master
+from selfcare_db import SelfcareDB, find_ipsc_slot_for_radio_id
 from bridge_helpers import iter_routing_master_systems as _iter_routing_master_systems
 # NOTE: 'words' is loaded dynamically via readAMBE() at runtime (see line ~2689)
 #from voice_lib import words
@@ -1220,11 +1222,12 @@ def options_config():
             CONFIG['SYSTEMS'][_system]['_reset'] = False
             continue
         try:
-            if CONFIG['SYSTEMS'][_system]['MODE'] != 'MASTER':
+            _mode = CONFIG['SYSTEMS'][_system]['MODE']
+            if _mode not in ('MASTER', 'IPSC'):
                 continue
             if CONFIG['SYSTEMS'][_system]['ENABLED'] == True:
-                # Process per-peer OPTIONS first to extract STICKY setting
-                if 'PEERS' in CONFIG['SYSTEMS'][_system]:
+                # Process per-peer OPTIONS first (MMDVM hotspots on MASTER only)
+                if _mode == 'MASTER' and 'PEERS' in CONFIG['SYSTEMS'][_system]:
                     for _peer_id in CONFIG['SYSTEMS'][_system]['PEERS']:
                         _peer = CONFIG['SYSTEMS'][_system]['PEERS'][_peer_id]
                         if 'OPTIONS' in _peer and _peer['OPTIONS']:
@@ -1501,6 +1504,40 @@ def options_config():
         except Exception as e:
             logger.exception('(OPTIONS) caught exception: %s',e)
             continue
+
+
+_selfcare_db = None
+
+
+@inlineCallbacks
+def ipsc_selfcare_poll():
+    """Apply selfcare TS1/TS2 options for connected IPSC repeaters (mode = 0)."""
+    ss = CONFIG.get('SELF SERVICE', {})
+    if not ss.get('ENABLED') or _selfcare_db is None:
+        return
+    try:
+        rows = yield _selfcare_db.select_modified_ipsc()
+        if not rows:
+            return
+        for int_id_val, options in rows:
+            if not options:
+                logger.warning('(SELF SERVICE) IPSC int_id %s modified but options empty', int_id_val)
+                continue
+            slot = find_ipsc_slot_for_radio_id(CONFIG['SYSTEMS'], int_id_val)
+            if not slot:
+                logger.warning(
+                    '(SELF SERVICE) IPSC int_id %s modified but no connected IPSC slot',
+                    int_id_val)
+                continue
+            opt_str = (options.decode('utf-8', errors='ignore')
+                       if isinstance(options, bytes) else str(options))
+            CONFIG['SYSTEMS'][slot]['OPTIONS'] = opt_str
+            options_config()
+            yield _selfcare_db.clear_modified(int_id_val)
+            logger.info('(SELF SERVICE) Applied options for IPSC %s on %s: %s',
+                        int_id_val, slot, opt_str)
+    except Exception as err:
+        logger.exception('(SELF SERVICE) poll error: %s', err)
 
 
 class routerOBP(OPENBRIDGE):
@@ -3528,6 +3565,18 @@ if __name__ == '__main__':
     options_task = task.LoopingCall(options_config)
     options = options_task.start(26)
     options.addErrback(loopingErrHandle)
+
+    # IPSC selfcare — poll Clients (mode=0) and apply static TG options on master
+    if CONFIG.get('SELF SERVICE', {}).get('ENABLED'):
+        ss = CONFIG['SELF SERVICE']
+        _selfcare_db = SelfcareDB(
+            ss['DB_HOST'], ss['DB_USER'], ss['DB_PASS'], ss['DB_NAME'], ss['DB_PORT'])
+        CONFIG['_SELF_SERVICE_DB'] = _selfcare_db
+        _selfcare_db.test_db(reactor, logger)
+        ipsc_sc_task = task.LoopingCall(ipsc_selfcare_poll)
+        ipsc_sc = ipsc_sc_task.start(ss.get('POLL_INTERVAL', 5))
+        ipsc_sc.addErrback(loopingErrHandle)
+        logger.info('(SELF SERVICE) IPSC selfcare enabled (poll every %ss)', ss.get('POLL_INTERVAL', 5))
         
     #STAT trimmer - once every 10 mins (roughly - shifted so all timed tasks don't run at once
     if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:

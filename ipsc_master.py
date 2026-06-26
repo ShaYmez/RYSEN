@@ -34,6 +34,7 @@ from ipsc_const import (
 )
 from ipsc_peer_meta import parse_ipsc_peer_status, ipsc_peer_display_fields
 from ipsc_voice import IpscVoiceTranslator
+from selfcare_db import build_ipsc_seed_options
 
 
 class IpscMasterMixin:
@@ -208,6 +209,44 @@ class IpscMasterMixin:
             full_config=self._CONFIG,
             ipsc_status=ipsc_status,
         )
+        self._sync_ipsc_selfcare_register(peer_id, host, is_new)
+
+    def _sync_ipsc_selfcare_register(self, peer_id, host, is_new):
+        ss = self._CONFIG.get('SELF SERVICE', {})
+        if not ss.get('ENABLED'):
+            return
+        db = self._CONFIG.get('_SELF_SERVICE_DB')
+        if db is None:
+            return
+        peer_rec = self._peers.get(peer_id, {})
+        callsign = peer_rec.get('CALLSIGN', b'')
+        if isinstance(callsign, bytes):
+            callsign = callsign.decode('utf-8', errors='ignore').strip()
+        else:
+            callsign = str(callsign).strip()
+        if not callsign:
+            callsign = str(int_id(peer_id))
+        seed = build_ipsc_seed_options(self._config) if is_new else None
+        rid = int(int_id(peer_id))
+        d = db.upsert_ipsc_client(rid, peer_id, callsign, host, seed)
+        d.addErrback(
+            lambda f, _rid=rid: logger.error(
+                '(%s) IPSC selfcare upsert failed for %s: %s',
+                self._system, _rid, f.getErrorMessage()))
+
+    def _sync_ipsc_selfcare_logout(self, peer_id):
+        ss = self._CONFIG.get('SELF SERVICE', {})
+        if not ss.get('ENABLED'):
+            return
+        db = self._CONFIG.get('_SELF_SERVICE_DB')
+        if db is None:
+            return
+        rid = int(int_id(peer_id))
+        d = db.logout_ipsc_client(rid)
+        d.addErrback(
+            lambda f, _rid=rid: logger.error(
+                '(%s) IPSC selfcare logout failed for %s: %s',
+                self._system, _rid, f.getErrorMessage()))
 
     def _touch_ipsc_peer(self, peer_id):
         now = time()
@@ -315,6 +354,8 @@ class IpscMasterMixin:
 
     def _remove_ipsc_peer(self, peer_id):
         had_peer = peer_id in self._ipsc_peers or peer_id in self._peers
+        if peer_id in self._ipsc_peers or peer_id in self._peers:
+            self._sync_ipsc_selfcare_logout(peer_id)
         if peer_id in self._ipsc_peers:
             del self._ipsc_peers[peer_id]
         if peer_id in self._peers:
