@@ -97,7 +97,7 @@ class ProxyDB:
 
     def slct_db(self):
         return self.dbpool.runQuery(
-            "SELECT dmr_id, options FROM Clients WHERE modified = True and logged_in = True")
+            "SELECT dmr_id, options FROM Clients WHERE modified = True AND logged_in = True AND mode > 0")
 
     def slct_opt(self, _peer_id):
         return self.dbpool.runQuery("SELECT options FROM Clients WHERE dmr_id = %s", (_peer_id,))
