@@ -11,7 +11,8 @@ WORKDIR /opt/rysen
 COPY --chown=radio:radio . .
 
 RUN pip install --no-cache-dir -r requirements.txt && \
-    apk del gcc musl-dev mariadb-dev
+    apk del gcc musl-dev mariadb-dev && \
+    apk add --no-cache mariadb-connector-c
 
 USER radio
 
