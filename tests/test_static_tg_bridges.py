@@ -17,6 +17,7 @@ class TestMakeStaticTg(unittest.TestCase):
         self.assertIn(
             'activate_ua_bridge_source(str(_int_dst), self._system, _slot, peer_id=_peer_id)',
             source)
+        self.assertIn("CONFIG['SYSTEMS'][system].get('DEFAULT_UA_TIMER')", source)
 
     def test_options_strips_whitespace_in_static_tg(self):
         with open('bridge_master.py', encoding='utf-8') as fh:

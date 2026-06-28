@@ -359,7 +359,16 @@ def activate_ua_bridge_source(bridge_name, system, slot, tmout=None, peer_id=Non
     if system not in CONFIG['SYSTEMS']:
         return False
     if tmout is None:
-        tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
+        tmout = CONFIG['SYSTEMS'][system].get('DEFAULT_UA_TIMER')
+        if tmout is None:
+            for _entry in BRIDGES[bridge_name]:
+                if _entry['SYSTEM'] == system and _entry['TS'] == slot:
+                    _entry_timeout = _entry.get('TIMEOUT')
+                    if isinstance(_entry_timeout, (int, float)) and _entry_timeout > 0:
+                        tmout = max(1, int(_entry_timeout // 60))
+                    break
+        if tmout is None:
+            tmout = 10
     if bridge_name == '9990':
         tmout = 1
     _timeout_s = tmout * 60
