@@ -43,19 +43,21 @@ class SelfcareDB:
     @inlineCallbacks
     def upsert_ipsc_client(self, int_id, dmr_id, callsign, host, seed_options=None):
         """Register or refresh IPSC repeater row; preserve psswd/options on re-register."""
+        flag_modified = 1 if seed_options else 0
         try:
             yield self.dbpool.runOperation(
                 '''INSERT INTO Clients (
-                    int_id, dmr_id, callsign, host, mode, logged_in, last_seen, options
-                ) VALUES (%s, %s, %s, %s, %s, 1, UNIX_TIMESTAMP(), %s)
+                    int_id, dmr_id, callsign, host, mode, logged_in, last_seen, options, modified
+                ) VALUES (%s, %s, %s, %s, %s, 1, UNIX_TIMESTAMP(), %s, %s)
                 ON DUPLICATE KEY UPDATE
                     callsign = VALUES(callsign),
                     host = VALUES(host),
                     mode = %s,
                     logged_in = 1,
-                    last_seen = UNIX_TIMESTAMP()''',
+                    last_seen = UNIX_TIMESTAMP(),
+                    modified = IF(options IS NOT NULL AND TRIM(options) != '', 1, modified)''',
                 (int_id, dmr_id, callsign, host, IPSC_CLIENT_MODE,
-                 seed_options, IPSC_CLIENT_MODE),
+                 seed_options, flag_modified, IPSC_CLIENT_MODE),
             )
         except Exception as err:
             raise RuntimeError(f'upsert_ipsc_client error: {err}') from err

@@ -469,19 +469,32 @@ def make_default_reflector(reflector,_tmout,system):
         BRIDGES[bridge] = bridgetemp
     _idx_replace_bridge(bridge)
 
-def make_static_tg(tg,ts,_tmout,system):
+def make_static_tg(tg, ts, _tmout, system):
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
-    if str(tg) not in BRIDGES:
-        make_single_bridge(bytes_3(tg),system,ts,_tmout)
+    tg_s = str(tg)
+    tgid_b = bytes_3(tg)
+    static_entry = {
+        'SYSTEM': system, 'TS': ts, 'TGID': tgid_b,
+        'ACTIVE': True, 'TIMEOUT': _tmout * 60, 'TO_TYPE': 'OFF',
+        'OFF': [], 'ON': [tgid_b], 'RESET': [],
+        'TIMER': time() + (_tmout * 60),
+    }
+    if tg_s not in BRIDGES:
+        make_single_bridge(tgid_b, system, ts, _tmout)
     bridgetemp = deque()
-    for bridgesystem in BRIDGES[str(tg)]:
+    matched = False
+    for bridgesystem in BRIDGES[tg_s]:
         if bridgesystem['SYSTEM'] == system and bridgesystem['TS'] == ts:
-            bridgetemp.append({'SYSTEM': system, 'TS': ts, 'TGID': bytes_3(tg),'ACTIVE': True,'TIMEOUT':  _tmout * 60,'TO_TYPE': 'OFF','OFF': [],'ON': [bytes_3(tg),],'RESET': [], 'TIMER': time() + (_tmout * 60)})
+            bridgetemp.append(static_entry)
+            matched = True
         else:
             bridgetemp.append(bridgesystem)
-        
-    BRIDGES[str(tg)] = bridgetemp
-    _idx_replace_bridge(str(tg))
+    if not matched:
+        bridgetemp.append(static_entry)
+        logger.info('(OPTIONS) Added static TG %s TS%s leg for %s (bridge existed without slot)',
+                    tg_s, ts, system)
+    BRIDGES[tg_s] = bridgetemp
+    _idx_replace_bridge(tg_s)
 
 def reset_static_tg(tg,ts,_tmout,system):
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
@@ -1400,14 +1413,14 @@ def options_config():
                         _options['TS2_STATIC'] = False
                         
                     if _options['TS1_STATIC']:
-                        re.sub("\\s","",_options['TS1_STATIC'])
-                        if re.search(r"[^\d,]",_options['TS1_STATIC']):
+                        _options['TS1_STATIC'] = re.sub(r"\s", "", str(_options['TS1_STATIC']))
+                        if re.search(r"[^\d,]", _options['TS1_STATIC']):
                             logger.debug('(OPTIONS) %s - TS1_STATIC contains characters other than numbers and comma, ignoring',_system)
                             continue
                     
                     if _options['TS2_STATIC']:
-                        re.sub("\\s","",_options['TS2_STATIC'])
-                        if re.search(r"[^\d,]",_options['TS2_STATIC']):
+                        _options['TS2_STATIC'] = re.sub(r"\s", "", str(_options['TS2_STATIC']))
+                        if re.search(r"[^\d,]", _options['TS2_STATIC']):
                             logger.debug('(OPTIONS) %s - TS2_STATIC contains characters other than numbers and comma, ignoring',_system)
                             continue
                     
@@ -2123,6 +2136,13 @@ class routerOBP(OPENBRIDGE):
                 if int_id(_dst_id) >= 5 and int_id(_dst_id) != 9 and (str(int_id(_dst_id)) not in BRIDGES):
                     logger.debug('(%s) Bridge for STAT TG %s does not exist. Creating',self._system, int_id(_dst_id))
                     make_stat_bridge(_dst_id)
+
+            # Activate this OBP leg on an existing conference bridge (same as HBP on call start)
+            _int_dst = int_id(_dst_id)
+            if (_int_dst >= 5 and _int_dst != 9 and _int_dst not in (4000, 5000)
+                    and not (_int_dst >= 9991 and _int_dst <= 9999)
+                    and str(_int_dst) in BRIDGES):
+                activate_ua_bridge_source(str(_int_dst), self._system, _slot, peer_id=_peer_id)
             
             # --- OPTIMISED ROUTING: use BRIDGE_IDX for O(1) lookup instead of O(N*M) full scan ---
             _sysIgnore = deque()
