@@ -33,9 +33,15 @@ Major release: Motorola IP Site Connect for SystemX. Field-tested on SYSTEM-XTES
 - Docker compose: `ipsc-proxy` service on port 56002
 - Install path: `/opt/rysen-src`, branch `ipsc` — [doc/install.md](doc/install.md)
 
-### Tests
+### New Features (Phase 3 — ipsc branch)
 
-- `tests/test_ipsc_phase1.py`, `test_ipsc_outbound.py`, `test_ipsc_proxy.py`, `test_ipsc_bridge.py`, `test_ipsc_peers.py`, `test_ipsc_selfcare.py`, `test_static_tg_bridges.py`
+**IPSC private / unit voice (`PRIVATE_VOICE 0x81`)**
+- Inbound `0x81` → unit DMRD (`byte 15 |= 0x40`) → existing `dmrd_received()` path
+- Outbound unit DMRD → `0x81` (TS1 and TS2) with shared jitter-buffer delivery
+- `ipsc_send_system()` no longer drops unit calls
+- `_forward_unit_voice()` bridges private voice to SUB_MAP, hotspot peers, and IPSC
+
+- `tests/test_ipsc_phase1.py`, `test_ipsc_outbound.py`, `test_ipsc_proxy.py`, `test_ipsc_bridge.py`, `test_ipsc_peers.py`, `test_ipsc_selfcare.py`, `test_static_tg_bridges.py`, `test_ipsc_private_voice.py`
 
 ### Remaining before merge (v1.5.0)
 
@@ -46,8 +52,7 @@ Major release: Motorola IP Site Connect for SystemX. Field-tested on SYSTEM-XTES
 
 ### Planned post-merge (v1.6.0 / Phase 3)
 
-- Phase 3: `PRIVATE_VOICE (0x81)` — **unit calls on TS1 and TS2**
-- Phase 3: reflector / dial-a-tg over IPSC (both slots)
+- Phase 3: `PRIVATE_VOICE (0x81)` — **unit calls on TS1 and TS2** (code complete; field test pending)
 - Phase 4: `GROUP_DATA` / `PRIVATE_DATA` — SMS, GPS, UDT
 - Phase 5+: TMS, LRRP, ARS (node-dmr-lib reference)
 

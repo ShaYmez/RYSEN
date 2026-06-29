@@ -2476,6 +2476,56 @@ class routerHBP(HBSYSTEM):
         logger.debug('(%s) UNIT Data Bridged to HBP on slot 1: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
         if CONFIG['REPORTS']['REPORT']:
             systems[_d_system]._report.send_bridgeEvent('UNIT DATA,DATA,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
+
+    def _forward_unit_voice(self, _dst_id, _slot, _bits, _data, dmrpkt, _stream_id, _peer_id):
+        """Bridge unit (private) voice DMRD to SUB_MAP destination, hotspot peer, or IPSC."""
+        _int_dst_id = int_id(_dst_id)
+
+        def _send(_d_system, _d_slot):
+            if _d_system == self._system or _d_system not in systems:
+                return False
+            _send_bits = _bits ^ (1 << 7) if _slot != _d_slot else _bits
+            _tmp_data = b''.join([
+                _data[:15], _send_bits.to_bytes(1, 'big'), _data[16:20], dmrpkt,
+            ])
+            systems[_d_system].send_system(_tmp_data)
+            logger.debug('(%s) UNIT voice bridged to %s slot %s DST %s',
+                         self._system, _d_system, _d_slot, _int_dst_id)
+            return True
+
+        if _dst_id in SUB_MAP:
+            try:
+                _entry = SUB_MAP[_dst_id]
+                _d_system = _entry[0]
+                _d_slot = _entry[1]
+                if _send(_d_system, _d_slot):
+                    return
+            except (TypeError, ValueError, IndexError):
+                pass
+
+        for _d_system in systems:
+            if _d_system == self._system:
+                continue
+            _mode = CONFIG['SYSTEMS'][_d_system].get('MODE')
+            if _mode not in ('MASTER', 'IPSC'):
+                continue
+            _peers = CONFIG['SYSTEMS'][_d_system].get('PEERS') or {}
+            for _to_peer in _peers:
+                if str(int_id(_to_peer))[:7] == str(_int_dst_id)[:7]:
+                    if _send(_d_system, _slot):
+                        return
+
+        if CONFIG['SYSTEMS'][self._system].get('MODE') != 'IPSC':
+            for _d_system in systems:
+                if _d_system == self._system:
+                    continue
+                if CONFIG['SYSTEMS'][_d_system].get('MODE') != 'IPSC':
+                    continue
+                if not CONFIG['SYSTEMS'][_d_system].get('ENABLED'):
+                    continue
+                if CONFIG['SYSTEMS'][_d_system].get('PEERS'):
+                    if _send(_d_system, _slot):
+                        return
             
     def sendDataToOBP(self,_target,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,_hops = b'',_ber = b'\x00', _rssi = b'\x00',_source_server = b'\x00\x00\x00\x00', _source_rptr = b'\x00\x00\x00\x00'):
  #       _sysIgnore = sysIgnore
@@ -2888,6 +2938,13 @@ class routerHBP(HBSYSTEM):
                     speech = pkt_gen(bytes_3(5000), _nine, bytes_4(9), 1, _say)
                     #call speech in a thread as it contains sleep() and hence could block the reactor
                     reactor.callInThread(sendSpeech,self,speech)
+
+            if (not is_dial_service_code(_int_dst_id)
+                    and _int_dst_id not in (8, 9)
+                    and not (_int_dst_id >= 4000 and _int_dst_id <= 5000)
+                    and not (_int_dst_id >= 9991 and _int_dst_id <= 9999)):
+                self._forward_unit_voice(
+                    _dst_id, _slot, _bits, _data, dmrpkt, _stream_id, _peer_id)
 
             # Mark status variables for use later
             self.STATUS[_slot]['RX_PEER']      = _peer_id

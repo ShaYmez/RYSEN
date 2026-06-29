@@ -21,7 +21,7 @@ from dmr_utils3.utils import int_id
 from hblink import HBSYSTEM, logger, acl_check, build_peer_record
 from const import DMRD
 from ipsc_const import (
-    GROUP_VOICE, MASTER_REG_REQ, MASTER_REG_REPLY,
+    GROUP_VOICE, PRIVATE_VOICE, MASTER_REG_REQ, MASTER_REG_REPLY,
     PEER_LIST_REQ, PEER_LIST_REPLY,
     MASTER_ALIVE_REQ, MASTER_ALIVE_REPLY,
     DE_REG_REQ, DE_REG_REPLY, XCMP_XNL,
@@ -118,7 +118,9 @@ class IpscMasterMixin:
         elif opcode == DE_REG_REQ:
             self._on_de_reg_req(data, host, port)
         elif opcode == GROUP_VOICE:
-            self._on_group_voice(data, host, port)
+            self._on_ipsc_voice(data, host, port, private_call=False)
+        elif opcode == PRIVATE_VOICE:
+            self._on_ipsc_voice(data, host, port, private_call=True)
         elif opcode in (MASTER_REG_REPLY, PEER_LIST_REPLY, MASTER_ALIVE_REPLY, DE_REG_REPLY):
             return
         else:
@@ -294,18 +296,20 @@ class IpscMasterMixin:
         self._ipsc_send(self._dereg_reply, host, port)
         self._remove_ipsc_peer(peer_id)
 
-    def _on_group_voice(self, data, host, port):
+    def _on_ipsc_voice(self, data, host, port, private_call=False):
         if not self._ipsc_peers:
             return
         peer_id = data[1:5] if len(data) >= 5 else None
         if peer_id not in self._ipsc_peers:
             return
         if len(data) < GV_MIN_LEN:
-            logger.warning('(%s) GROUP_VOICE too short (%d) from %s:%s',
-                           self._system, len(data), host, port)
+            logger.warning('(%s) %s too short (%d) from %s:%s',
+                           self._system,
+                           'PRIVATE_VOICE' if private_call else 'GROUP_VOICE',
+                           len(data), host, port)
             return
 
-        self._voice.learn_peer_header(data)
+        self._voice.learn_peer_header(data, private_call=private_call)
 
         burst_type = data[GV_BURST_TYPE_OFF]
         call_info = data[GV_CALL_INFO_OFF]
@@ -314,7 +318,7 @@ class IpscMasterMixin:
         else:
             ts = 2 if (burst_type & 0x80) else 1
 
-        dmrd = self._voice.translate(data, ts, burst_type)
+        dmrd = self._voice.translate(data, ts, burst_type, private_call=private_call)
         if dmrd is None:
             return
 
@@ -404,15 +408,13 @@ class IpscMasterMixin:
 
     def ipsc_send_system(self, _packet, _hops=b'', _ber=b'\x00', _rssi=b'\x00',
                          _source_server=b'\x00\x00\x00\x00', _source_rptr=b'\x00\x00\x00\x00'):
-        """Bridge outbound DMRD → GROUP_VOICE to registered IPSC peers (Phase 2c)."""
+        """Bridge outbound DMRD → GROUP_VOICE / PRIVATE_VOICE to registered IPSC peers."""
         if _packet[:4] != DMRD:
             return
         if len(_packet) < 54:
             _packet = b''.join([_packet, _ber, _rssi])
 
         _bits = _packet[15]
-        if _bits & 0x40:
-            return
         if (_bits & 0x23) == 0x23:
             return
 
@@ -422,6 +424,6 @@ class IpscMasterMixin:
         if not self._ipsc_peers:
             return
 
-        gv = self._voice.handle_outbound(_packet)
-        if gv is not None:
-            self._ipsc_send_voice(gv)
+        ipsc_pkt = self._voice.handle_outbound(_packet)
+        if ipsc_pkt is not None:
+            self._ipsc_send_voice(ipsc_pkt)

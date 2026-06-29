@@ -11,6 +11,7 @@
 
 # IPSC opcodes
 GROUP_VOICE        = 0x80
+PRIVATE_VOICE      = 0x81
 MASTER_REG_REQ     = 0x90
 MASTER_REG_REPLY   = 0x91
 PEER_LIST_REQ      = 0x92
@@ -44,7 +45,11 @@ GV_HEAD_LEN       = 54   # extended VOICE_HEAD / VOICE_TERM (Motorola / ipsc2hbp
 GV_VOICE_LEN      = 52   # extended SLOT_VOICE burst
 
 DEFAULT_PEER_CALL_TYPE = b'\x02'
+DEFAULT_PRIVATE_PEER_CALL_TYPE = b'\x01'
 DEFAULT_PEER_CALL_CTRL = b'\x00\x00\x43\xe2'
+
+# DMRD byte 15 — unit (private) call flag (matches hblink / bridge_master)
+HBPF_UNIT_CALL = 0x40
 
 # Outbound voice delivery (ipsc2hbp translate/const.py)
 JITTER_BUFFER_DEPTH = 2      # slots × 60 ms before first voice delivery
@@ -84,6 +89,7 @@ def peer_id_from_packet(data):
 def opcode_name(opcode):
     names = {
         GROUP_VOICE: 'GROUP_VOICE',
+        PRIVATE_VOICE: 'PRIVATE_VOICE',
         MASTER_REG_REQ: 'MASTER_REG_REQ',
         MASTER_REG_REPLY: 'MASTER_REG_REPLY',
         PEER_LIST_REQ: 'PEER_LIST_REQ',

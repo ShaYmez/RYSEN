@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 ###############################################################################
-#   IPSC GROUP_VOICE ↔ internal DMRD translation for RYSEN routing
+#   IPSC GROUP_VOICE / PRIVATE_VOICE ↔ internal DMRD translation for RYSEN routing
 #   Inbound path ported from ipsc2hbp; outbound encode added in Phase 2c
 #
 #   Copyright (C) 2026 Shane Daley, M0VUB
@@ -23,13 +23,13 @@ from dmr_utils3.const import EMB, SLOT_TYPE, BS_VOICE_SYNC, BS_DATA_SYNC
 
 from const import DMRD, LC_OPT, HBPF_SLT_VHEAD, HBPF_SLT_VTERM, HBPF_VOICE, HBPF_VOICE_SYNC, HBPF_DATA_SYNC
 from ipsc_const import (
-    GROUP_VOICE, VOICE_HEAD, VOICE_TERM, SLOT1_VOICE, SLOT2_VOICE,
+    GROUP_VOICE, PRIVATE_VOICE, VOICE_HEAD, VOICE_TERM, SLOT1_VOICE, SLOT2_VOICE,
     TS_CALL_MSK, END_MSK,
     GV_CALL_SEQ_OFF, GV_CALL_INFO_OFF, GV_BURST_TYPE_OFF,
     GV_SRC_SUB_OFF, GV_DST_GROUP_OFF, GV_MIN_LEN, GV_HEAD_LEN, GV_VOICE_LEN,
-    DEFAULT_PEER_CALL_TYPE, DEFAULT_PEER_CALL_CTRL,
+    DEFAULT_PEER_CALL_TYPE, DEFAULT_PRIVATE_PEER_CALL_TYPE, DEFAULT_PEER_CALL_CTRL,
     JITTER_BUFFER_DEPTH, MAX_SYNTH_BURSTS, SLOT_INTERVAL_S,
-    HBPF_TGID_TS2,
+    HBPF_TGID_TS2, HBPF_UNIT_CALL,
     HBPF_FRAMETYPE_VOICE, HBPF_FRAMETYPE_VOICESYNC, HBPF_FRAMETYPE_DATASYNC,
 )
 
@@ -158,11 +158,12 @@ def _dmrd_voice_position(flags):
 
 
 class IpscVoiceTranslator:
-    """Bidirectional IPSC GROUP_VOICE ↔ DMRD for routerHBP / routerIPSC."""
+    """Bidirectional IPSC GROUP_VOICE / PRIVATE_VOICE ↔ DMRD for routerHBP / routerIPSC."""
 
     def __init__(self, master_id=0, ts_prefer_call_info=False):
         self._master_id_b = int(master_id).to_bytes(4, 'big')
         self._peer_call_type = DEFAULT_PEER_CALL_TYPE
+        self._peer_private_call_type = DEFAULT_PRIVATE_PEER_CALL_TYPE
         self._peer_call_ctrl = DEFAULT_PEER_CALL_CTRL
         self._ts_prefer_call_info = ts_prefer_call_info
         self._send_cb = None
@@ -186,16 +187,20 @@ class IpscVoiceTranslator:
         self._del_consec_synth = {1: 0, 2: 0}
         self._del_rtp_seq = {1: 0, 2: 0}
         self._del_rtp_ts = {1: 0, 2: 0}
+        self._del_private = {1: False, 2: False}
         self._del_stream_ctr = 0
 
     def set_send_callback(self, callback):
         """Register callback(bytes) for paced outbound IPSC voice delivery."""
         self._send_cb = callback
 
-    def learn_peer_header(self, data):
-        """Capture call-type / call-control bytes from an inbound GROUP_VOICE packet."""
+    def learn_peer_header(self, data, private_call=False):
+        """Capture call-type / call-control bytes from an inbound voice packet."""
         if len(data) >= 17:
-            self._peer_call_type = data[12:13]
+            if private_call:
+                self._peer_private_call_type = data[12:13]
+            else:
+                self._peer_call_type = data[12:13]
             self._peer_call_ctrl = data[13:17]
 
     def reset(self):
@@ -210,9 +215,10 @@ class IpscVoiceTranslator:
         self._out_seq = 0
         self._init_outbound_delivery_state()
 
-    def translate(self, data, ts, burst_type):
+    def translate(self, data, ts, burst_type, private_call=False):
         """
         Return a complete DMRD packet (55 bytes) or None if the burst should be skipped.
+        private_call: inbound opcode was PRIVATE_VOICE (0x81) — set DMRD unit flag.
         """
         if burst_type not in (VOICE_HEAD, VOICE_TERM):
             ts_ci = 2 if (data[GV_CALL_INFO_OFF] & TS_CALL_MSK) else 1
@@ -291,6 +297,9 @@ class IpscVoiceTranslator:
             flags |= HBPF_FRAMETYPE_VOICESYNC if pos == 0 else (HBPF_FRAMETYPE_VOICE | pos)
             self._out_frame_pos[ts] += 1
 
+        if private_call:
+            flags |= HBPF_UNIT_CALL
+
         dmrd = (
             DMRD
             + bytes([self._out_seq])
@@ -316,19 +325,26 @@ class IpscVoiceTranslator:
         self._out_emb_lc[ts] = None
         self._out_frame_pos[ts] = 0
 
-    def _build_gv(self, src_sub, dst_group, call_info, rtp_hdr, gv_payload, call_seq):
+    def _build_voice(self, opcode, src_sub, dst_id, call_info, rtp_hdr, voice_payload,
+                     call_seq, private_call=False):
+        call_type = (
+            self._peer_private_call_type if private_call else self._peer_call_type
+        )
         return (
-            bytes([GROUP_VOICE])
+            bytes([opcode])
             + self._master_id_b
             + bytes([call_seq])
             + src_sub
-            + dst_group
-            + self._peer_call_type
+            + dst_id
+            + call_type
             + self._peer_call_ctrl
             + bytes([call_info])
             + rtp_hdr
-            + gv_payload
+            + voice_payload
         )
+
+    def _outbound_opcode(self, ts):
+        return PRIVATE_VOICE if self._del_private.get(ts) else GROUP_VOICE
 
     def _next_rtp_hdr(self, ts, pt, advance_ts=False):
         seq = self._del_rtp_seq[ts]
@@ -381,13 +397,14 @@ class IpscVoiceTranslator:
 
         lc = self._del_lc[ts]
         src_sub = lc[6:9]
-        dst_group = lc[3:6]
+        dst_id = lc[3:6]
         call_info = TS_CALL_MSK if ts == 2 else 0x00
         gv_payload = _build_slot_voice_payload(ts, pos, ambe_19, self._del_emb_lc[ts], lc)
         self._del_rtp_ts[ts] = (self._del_rtp_ts[ts] + 480) & 0xFFFFFFFF
         rtp_hdr = self._next_rtp_hdr(ts, 0x5d)
-        pkt = self._build_gv(
-            src_sub, dst_group, call_info, rtp_hdr, gv_payload, self._del_stream_id[ts],
+        pkt = self._build_voice(
+            self._outbound_opcode(ts), src_sub, dst_id, call_info, rtp_hdr, gv_payload,
+            self._del_stream_id[ts], private_call=self._del_private[ts],
         )
         if self._send_cb:
             self._send_cb(pkt)
@@ -401,12 +418,13 @@ class IpscVoiceTranslator:
         if lc is None:
             return
         src_sub = lc[6:9]
-        dst_group = lc[3:6]
+        dst_id = lc[3:6]
         call_info = (TS_CALL_MSK if ts == 2 else 0x00) | END_MSK
         gv_payload = bytes([VOICE_TERM]) + _build_ipsc_voice_payload(lc, VOICE_TERM)
         rtp_hdr = self._next_rtp_hdr(ts, 0x5e)
-        pkt = self._build_gv(
-            src_sub, dst_group, call_info, rtp_hdr, gv_payload, self._del_stream_id[ts],
+        pkt = self._build_voice(
+            self._outbound_opcode(ts), src_sub, dst_id, call_info, rtp_hdr, gv_payload,
+            self._del_stream_id[ts], private_call=self._del_private[ts],
         )
         if self._send_cb:
             self._send_cb(pkt)
@@ -421,6 +439,7 @@ class IpscVoiceTranslator:
         self._del_hbp_stream[ts] = None
         self._del_lc[ts] = None
         self._del_emb_lc[ts] = None
+        self._del_private[ts] = False
 
     def handle_outbound(self, dmrd):
         """
@@ -435,15 +454,17 @@ class IpscVoiceTranslator:
         ts = 2 if (flags & HBPF_TGID_TS2) else 1
         frame_type = flags & 0x30
         dtype = flags & 0x0F
+        private_call = bool(flags & HBPF_UNIT_CALL)
         hbp_stream = dmrd[16:20]
         src_sub = dmrd[5:8]
-        dst_group = dmrd[8:11]
+        dst_id = dmrd[8:11]
         payload = dmrd[20:53]
 
         if frame_type == HBPF_FRAMETYPE_DATASYNC and dtype == HBPF_SLT_VHEAD:
             lc = _decode_lc_from_dmrd(payload)
             self._del_lc[ts] = lc
             self._del_emb_lc[ts] = bptc.encode_emblc(lc)
+            self._del_private[ts] = private_call
             if hbp_stream != self._del_hbp_stream.get(ts):
                 # New HBP stream — fresh IPSC call-seq; do not arm delivery clock here
                 # (ipsc2hbp: first voice burst arms the 120 ms jitter buffer).
@@ -459,19 +480,21 @@ class IpscVoiceTranslator:
             call_info = TS_CALL_MSK if ts == 2 else 0x00
             gv_payload = bytes([VOICE_HEAD]) + _build_ipsc_voice_payload(lc, VOICE_HEAD)
             rtp_hdr = self._next_rtp_hdr(ts, 0xdd)
-            return self._build_gv(
-                src_sub, dst_group, call_info, rtp_hdr, gv_payload, self._del_stream_id[ts],
+            return self._build_voice(
+                self._outbound_opcode(ts), src_sub, dst_id, call_info, rtp_hdr, gv_payload,
+                self._del_stream_id[ts], private_call=private_call,
             )
 
         if frame_type == HBPF_FRAMETYPE_DATASYNC and dtype == HBPF_SLT_VTERM:
-            lc = self._del_lc.get(ts) or _decode_lc_from_dmrd(payload) or (LC_OPT + dst_group + src_sub)
+            lc = self._del_lc.get(ts) or _decode_lc_from_dmrd(payload) or (LC_OPT + dst_id + src_sub)
             self._cancel_delivery_timer(ts)
             self._del_buf[ts].clear()
             call_info = (END_MSK | TS_CALL_MSK) if ts == 2 else END_MSK
             gv_payload = bytes([VOICE_TERM]) + _build_ipsc_voice_payload(lc, VOICE_TERM)
             rtp_hdr = self._next_rtp_hdr(ts, 0x5e)
-            pkt = self._build_gv(
-                src_sub, dst_group, call_info, rtp_hdr, gv_payload, self._del_stream_id[ts],
+            pkt = self._build_voice(
+                self._outbound_opcode(ts), src_sub, dst_id, call_info, rtp_hdr, gv_payload,
+                self._del_stream_id[ts], private_call=self._del_private[ts],
             )
             self._clear_delivery_ts(ts)
             return pkt
@@ -483,9 +506,10 @@ class IpscVoiceTranslator:
                 self._clear_delivery_ts(ts)
 
             if self._del_lc[ts] is None:
-                lc = LC_OPT + dst_group + src_sub
+                lc = LC_OPT + dst_id + src_sub
                 self._del_lc[ts] = lc
                 self._del_emb_lc[ts] = bptc.encode_emblc(lc)
+                self._del_private[ts] = private_call
                 self._del_hbp_stream[ts] = hbp_stream
                 self._del_stream_ctr = (self._del_stream_ctr + 1) & 0xFF
                 self._del_stream_id[ts] = self._del_stream_ctr
@@ -514,37 +538,45 @@ class IpscVoiceTranslator:
         ts = 2 if (flags & HBPF_TGID_TS2) else 1
         frame_type = (flags & 0x30) >> 4
         dtype_vseq = flags & 0x0F
+        private_call = bool(flags & HBPF_UNIT_CALL)
         src_sub = dmrd[5:8]
-        dst_group = dmrd[8:11]
+        dst_id = dmrd[8:11]
         payload = dmrd[20:53]
 
         if frame_type == HBPF_DATA_SYNC and dtype_vseq == HBPF_SLT_VHEAD:
             lc = _decode_lc_from_dmrd(payload)
             self._del_stream_ctr = (self._del_stream_ctr + 1) & 0xFF
             self._del_stream_id[ts] = self._del_stream_ctr
+            self._del_private[ts] = private_call
             call_info = TS_CALL_MSK if ts == 2 else 0x00
             gv_payload = bytes([VOICE_HEAD]) + _build_ipsc_voice_payload(lc, VOICE_HEAD)
             rtp_hdr = self._next_rtp_hdr(ts, 0xdd)
-            return self._build_gv(
-                src_sub, dst_group, call_info, rtp_hdr, gv_payload, self._del_stream_id[ts],
+            opcode = PRIVATE_VOICE if private_call else GROUP_VOICE
+            return self._build_voice(
+                opcode, src_sub, dst_id, call_info, rtp_hdr, gv_payload,
+                self._del_stream_id[ts], private_call=private_call,
             )
 
         if frame_type == HBPF_DATA_SYNC and dtype_vseq == HBPF_SLT_VTERM:
-            lc = _decode_lc_from_dmrd(payload) or (LC_OPT + dst_group + src_sub)
+            lc = _decode_lc_from_dmrd(payload) or (LC_OPT + dst_id + src_sub)
             call_info = (END_MSK | TS_CALL_MSK) if ts == 2 else END_MSK
             gv_payload = bytes([VOICE_TERM]) + _build_ipsc_voice_payload(lc, VOICE_TERM)
             rtp_hdr = self._next_rtp_hdr(ts, 0x5e)
-            return self._build_gv(
-                src_sub, dst_group, call_info, rtp_hdr, gv_payload, self._del_stream_id[ts],
+            opcode = PRIVATE_VOICE if self._del_private.get(ts) else GROUP_VOICE
+            return self._build_voice(
+                opcode, src_sub, dst_id, call_info, rtp_hdr, gv_payload,
+                self._del_stream_id[ts], private_call=self._del_private.get(ts, False),
             )
 
         if (frame_type == HBPF_VOICE_SYNC and dtype_vseq == 0) or (
                 frame_type == HBPF_VOICE and dtype_vseq in (1, 2, 3, 4, 5)):
-            lc = LC_OPT + dst_group + src_sub
+            lc = LC_OPT + dst_id + src_sub
             emb_lc = bptc.encode_emblc(lc)
             if self._del_stream_id[ts] == 0:
                 self._del_stream_ctr = (self._del_stream_ctr + 1) & 0xFF
                 self._del_stream_id[ts] = self._del_stream_ctr
+            if private_call:
+                self._del_private[ts] = True
             pos = _dmrd_voice_position(flags)
             ambe_19 = _extract_ambe_from_dmrd(payload)
             gv_payload = _build_slot_voice_payload(ts, pos, ambe_19, emb_lc, lc)
@@ -553,8 +585,10 @@ class IpscVoiceTranslator:
                 self._del_rtp_ts[ts] = 0
             self._del_rtp_ts[ts] = (self._del_rtp_ts[ts] + 480) & 0xFFFFFFFF
             rtp_hdr = self._next_rtp_hdr(ts, 0x5d)
-            return self._build_gv(
-                src_sub, dst_group, call_info, rtp_hdr, gv_payload, self._del_stream_id[ts],
+            opcode = PRIVATE_VOICE if self._del_private.get(ts) else GROUP_VOICE
+            return self._build_voice(
+                opcode, src_sub, dst_id, call_info, rtp_hdr, gv_payload,
+                self._del_stream_id[ts], private_call=self._del_private.get(ts, False),
             )
 
         return None

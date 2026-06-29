@@ -58,7 +58,7 @@ These rules apply to **every** IPSC phase, including monitor/report work:
 ┌───────────────────────────▼─────────────────────────────┐
 │  IPSC media layer (expand over time)                      │
 │  • GroupVoice   0x80  ↔ group DMRD        [Phase 1 — done]│
-│  • PrivateVoice 0x81  ↔ unit DMRD         [Phase 3 — next]│
+│  • PrivateVoice 0x81  ↔ unit DMRD         [Phase 3 — done]│
 │  • Group/Private Data 0x83/0x84           [Phase 4]       │
 └───────────────────────────┬─────────────────────────────┘
                             │
@@ -86,7 +86,7 @@ Reflector / dial-a-tg: same `#NNNN` machinery as today; IPSC2-style **TG 9 + pri
 | `0x63` | Repeater block | — | 6 (optional) |
 | `0x70` | XCMP / XNL | ignored | — (out of scope for merge) |
 | **`0x80`** | **GROUP_VOICE** | **done** | 1 |
-| **`0x81`** | **PRIVATE_VOICE** | — | **3** |
+| **`0x81`** | **PRIVATE_VOICE** | **done (Phase 3)** | 3 |
 | `0x83` | GROUP_DATA | — | 4 |
 | `0x84` | PRIVATE_DATA | — | 4 |
 | `0x85` | Repeater wake-up | — | 6 |
@@ -276,9 +276,9 @@ Requires MariaDB `selfcare` database and RYSEN-MONITOR stack (not in minimal `do
 
 ---
 
-## Phase 3 — Private voice & unit calls (**next**, after v1.5.0)
+## Phase 3 — Private voice & unit calls (**implemented** — field test pending)
 
-Implement `PRIVATE_VOICE (0x81)` so **unit (private) calls work on both timeslots** — TS1 (slot 1) and TS2 (slot 2). Same DMRD media path as group voice; encode/decode parallel to existing `GROUP_VOICE` work in `ipsc_voice.py`.
+Implement `PRIVATE_VOICE (0x81)` so **unit (private) calls work on both timeslots** — TS1 (slot 1) and TS2 (slot 2).
 
 ### Scope
 
@@ -286,21 +286,22 @@ Implement `PRIVATE_VOICE (0x81)` so **unit (private) calls work on both timeslot
 |------|--------|
 | **TS1 unit calls** | Private voice on slot 1 — repeater ↔ network |
 | **TS2 unit calls** | Private voice on slot 2 — repeater ↔ network |
-| **Inbound** | Decode `0x81` → unit DMRD → `dmrd_received()` |
-| **Outbound** | Remove blanket drop at `ipsc_send_system()` when `_bits & 0x40`; encode to `0x81` |
-| **Reflector** | TG 9 + private call to reflector number (reuse existing `#NNNN` bridge rules) |
+| **Inbound** | Decode `0x81` → unit DMRD (`0x40`) → `dmrd_received()` |
+| **Outbound** | Unit DMRD → `0x81` via `handle_outbound()` / jitter buffer |
+| **Bridge** | `_forward_unit_voice()` — SUB_MAP, hotspot peer, IPSC fallback |
+| **Reflector** | TG 9 + private call (existing `#NNNN` reflector logic unchanged) |
 
 ### Tasks
 
-- [ ] **3.1** Add `PRIVATE_VOICE = 0x81` and related constants to `ipsc_const.py`; extend `opcode_name()`.
-- [ ] **3.2** Decode `0x81` → unit DMRD → `dmrd_received()` (opcode dispatch in `ipsc_master.py`).
-- [ ] **3.3** Encode outbound private voice for **TS1 and TS2**; route unit DMRD (`0x40`) to private encoder in `ipsc_send_system()`.
-- [ ] **3.4** Reuse jitter-buffer / stream state from `ipsc_voice.py` where burst cadence matches group voice.
-- [ ] **3.5** Field test GB7NR: unit call TS1 peer-to-peer; unit call TS2 peer-to-peer; pcap compare with IPSC2 / node-dmr-lib.
-- [ ] **3.6** Field test: TG 9 + private call to reflector on both slots.
-- [ ] **3.7** Tests: `test_ipsc_private_voice.py` — inbound/outbound per slot; reflector bridge with IPSC leg.
+- [x] **3.1** `PRIVATE_VOICE = 0x81` in `ipsc_const.py`; `opcode_name()`.
+- [x] **3.2** Decode `0x81` → unit DMRD in `ipsc_master._on_ipsc_voice()`.
+- [x] **3.3** Encode outbound private voice TS1 + TS2; removed `0x40` drop in `ipsc_send_system()`.
+- [x] **3.4** Reuse jitter-buffer / stream state in `ipsc_voice.py` (`_del_private` per TS).
+- [ ] **3.5** Field test GB7NR: unit call TS1 + TS2; pcap compare.
+- [ ] **3.6** Field test: reflector dial-a-tg on both slots.
+- [x] **3.7** Tests: `tests/test_ipsc_private_voice.py`.
 
-**Branch:** develop on `ipsc` or `ipsc-phase3` after v1.5.0 merge; target **v1.6.0** when unit calls ship.
+**Branch:** `ipsc` — target **v1.6.0** when field-tested (or bundle with v1.5.0 if soak + unit calls pass together).
 
 ---
 
