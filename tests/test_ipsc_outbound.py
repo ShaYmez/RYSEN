@@ -103,6 +103,49 @@ class TestIpscOutbound(unittest.TestCase):
         self.assertIsNotNone(dmrd_voice)
         self.assertIsNone(tr.handle_outbound(dmrd_voice))
 
+    def test_handle_outbound_skips_duplicate_head(self):
+        """pkt_gen-style triple HEAD: only the first becomes an IPSC HEAD."""
+        inbound, peer, src, dst = self._make_head_packet()
+        tr = IpscVoiceTranslator(master_id=self.MASTER_ID)
+        dmrd_head = tr.translate(inbound, 2, VOICE_HEAD)
+        self.assertIsNotNone(tr.handle_outbound(dmrd_head))
+        self.assertIsNone(tr.handle_outbound(dmrd_head))
+
+    def test_term_flushes_buffered_voice(self):
+        """TERM must not discard jitter-buffered AMBE (reflector / canned speech)."""
+        sent = []
+        tr = IpscVoiceTranslator(master_id=self.MASTER_ID)
+        tr.set_send_callback(sent.append)
+
+        inbound, peer, src, dst = self._make_head_packet()
+        dmrd_head = tr.translate(inbound, 2, VOICE_HEAD)
+        tr.handle_outbound(dmrd_head)
+
+        slot_pkt = bytearray([GROUP_VOICE]) + bytearray(51)
+        slot_pkt[1:5] = peer
+        slot_pkt[5] = 0x42
+        slot_pkt[6:9] = src
+        slot_pkt[9:12] = dst
+        slot_pkt[GV_BURST_TYPE_OFF] = SLOT2_VOICE
+        slot_pkt[32] = 0x16
+        dmrd_voice = tr.translate(bytes(slot_pkt), 2, SLOT2_VOICE)
+        tr.handle_outbound(dmrd_voice)
+
+        term_in = bytearray([GROUP_VOICE]) + bytearray(30)
+        term_in[1:5] = peer
+        term_in[5] = 0x42
+        term_in[6:9] = src
+        term_in[9:12] = dst
+        term_in[17] = TS_CALL_MSK
+        term_in[GV_BURST_TYPE_OFF] = VOICE_TERM
+        dmrd_term = tr.translate(bytes(term_in), 2, VOICE_TERM)
+        term_out = tr.handle_outbound(dmrd_term)
+
+        self.assertIsNotNone(term_out)
+        self.assertEqual(term_out[GV_BURST_TYPE_OFF], VOICE_TERM)
+        voice_sent = [p for p in sent if len(p) == GV_VOICE_LEN]
+        self.assertEqual(len(voice_sent), 1)
+
     def test_learn_peer_header(self):
         tr = IpscVoiceTranslator(master_id=self.MASTER_ID)
         sample = bytes.fromhex(

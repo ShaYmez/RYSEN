@@ -413,6 +413,28 @@ class IpscVoiceTranslator:
         self._del_next_slot[ts] += SLOT_INTERVAL_S
         self._arm_delivery_timer(ts)
 
+    def _flush_del_buf(self, ts):
+        """Send all jitter-buffered voice slots immediately (before TERM)."""
+        if self._del_lc[ts] is None:
+            return
+        lc = self._del_lc[ts]
+        src_sub = lc[6:9]
+        dst_id = lc[3:6]
+        call_info = TS_CALL_MSK if ts == 2 else 0x00
+        for pos in sorted(self._del_buf[ts].keys()):
+            ambe_19 = self._del_buf[ts].pop(pos)
+            gv_payload = _build_slot_voice_payload(
+                ts, pos, ambe_19, self._del_emb_lc[ts], lc)
+            self._del_rtp_ts[ts] = (self._del_rtp_ts[ts] + 480) & 0xFFFFFFFF
+            rtp_hdr = self._next_rtp_hdr(ts, 0x5d)
+            pkt = self._build_voice(
+                self._outbound_opcode(ts), src_sub, dst_id, call_info, rtp_hdr, gv_payload,
+                self._del_stream_id[ts], private_call=self._del_private[ts],
+            )
+            if self._send_cb:
+                self._send_cb(pkt)
+        self._del_buf[ts].clear()
+
     def _synthesize_stream_term(self, ts):
         lc = self._del_lc[ts]
         if lc is None:
@@ -461,6 +483,11 @@ class IpscVoiceTranslator:
         payload = dmrd[20:53]
 
         if frame_type == HBPF_FRAMETYPE_DATASYNC and dtype == HBPF_SLT_VHEAD:
+            if (hbp_stream == self._del_hbp_stream.get(ts)
+                    and self._del_lc[ts] is not None
+                    and self._del_stream_id[ts] is not None):
+                # pkt_gen emits 3 HEAD frames; one IPSC HEAD per stream is enough.
+                return None
             lc = _decode_lc_from_dmrd(payload)
             self._del_lc[ts] = lc
             self._del_emb_lc[ts] = bptc.encode_emblc(lc)
@@ -488,7 +515,7 @@ class IpscVoiceTranslator:
         if frame_type == HBPF_FRAMETYPE_DATASYNC and dtype == HBPF_SLT_VTERM:
             lc = self._del_lc.get(ts) or _decode_lc_from_dmrd(payload) or (LC_OPT + dst_id + src_sub)
             self._cancel_delivery_timer(ts)
-            self._del_buf[ts].clear()
+            self._flush_del_buf(ts)
             call_info = (END_MSK | TS_CALL_MSK) if ts == 2 else END_MSK
             gv_payload = bytes([VOICE_TERM]) + _build_ipsc_voice_payload(lc, VOICE_TERM)
             rtp_hdr = self._next_rtp_hdr(ts, 0x5e)
