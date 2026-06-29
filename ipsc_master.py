@@ -146,6 +146,11 @@ class IpscMasterMixin:
         peer_mode = bytes([ipsc_status['mode']]) if ipsc_status else data[5:6]
         is_new = peer_id not in self._ipsc_peers
 
+        _global = self._CONFIG.get('GLOBAL', {})
+        if not acl_check(peer_id, _global.get('REG_ACL', '')):
+            logger.warning('(%s) IPSC registration denied for %s from %s (GLOBAL REG_ACL)',
+                           self._system, peer_id_int, host)
+            return
         if self._config.get('USE_ACL') and not acl_check(peer_id, self._config['REG_ACL']):
             logger.warning('(%s) IPSC registration denied for %s from %s (REG_ACL)',
                            self._system, peer_id_int, host)
@@ -355,6 +360,20 @@ class IpscMasterMixin:
         _frame_type = (_bits & 0x30) >> 4
         _dtype_vseq = (_bits & 0xF)
         _stream_id = _data[16:20]
+
+        if not int_id(_stream_id):
+            logger.warning('(%s) IPSC call dropped — null stream ID from %s',
+                           self._system, int_id(_rf_src))
+            return
+
+        _global = self._CONFIG.get('GLOBAL', {})
+        if _global.get('USE_ACL'):
+            if not acl_check(_rf_src, _global.get('SUB_ACL', '')):
+                return
+            if _call_type == 'group':
+                _tg_acl = _global.get('TG2_ACL', '') if _slot == 2 else _global.get('TG1_ACL', '')
+                if not acl_check(_dst_id, _tg_acl):
+                    return
 
         if self._config.get('USE_ACL') and not acl_check(_rf_src, self._config['SUB_ACL']):
             return

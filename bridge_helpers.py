@@ -104,3 +104,15 @@ def activate_linked_bridge_legs(bridges, config_systems, bridge_name, source_sys
                     activated.append(target)
                 entry['TIMER'] = now + timeout_s
     return activated
+
+
+def reflector_bridge_matches_group_call(bridge, int_dst_id):
+    """# reflector bridges: timer logic applies on dial TG 9 or the linked reflector TG."""
+    if bridge[0:1] != '#':
+        return True
+    if int_dst_id == 9:
+        return True
+    try:
+        return int_dst_id == int(bridge[1:])
+    except (TypeError, ValueError):
+        return False
