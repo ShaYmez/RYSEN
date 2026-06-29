@@ -125,47 +125,45 @@ BRIDGES = {
 
 Slot names (`SYSTEM-62`, `IPSC-79`) change with proxy assignments — check logs. Alternatively set `TS2_STATIC: 2350` on both `[SYSTEM]` and `[IPSC]` in `rysen.cfg`, or hotspot `OPTIONS: IPSC=IPSC-79` to link UA bridges to your repeater only.
 
-## Soak-test checklist (1 week — started 2026-06-24)
+## Soak-test checklist (pre-merge — ~1 day minimum)
 
-**In scope:** group voice and (after `git pull`) unit/private voice field tests for **v1.5.0**.
+**In scope:** group voice, dial-a-tg reflector on IPSC, selfcare, normal traffic.
 
-### Traffic to run during the week
+### Traffic to run
 
 - [ ] **TS1** — PTT on each static TG in selfcare `TS1=` list
 - [ ] **TS2** — PTT on each static TG in selfcare `TS2=` list (e.g. 2350)
-- [ ] Repeater → network audio (inbound GROUP_VOICE)
-- [ ] OBP / hotspot → repeater audio (outbound GROUP_VOICE)
-- [ ] DroidStar cold PTT after RYSEN restart — `OPTIONS: IPSC=IPSC-N`; log shows `linked leg activated`
-- [ ] Repeater → hotspot return audio
-- [ ] Long call (~2 min) — no stuck bridge / zombie stream
-- [ ] Repeater power-cycle — registration + selfcare static TGs re-applied
-- [ ] RYSEN restart mid-week — repeater re-registers; voice still works
-- [ ] Dashboard shows GB7NR on Linked Systems throughout
+- [ ] Repeater → network / network → repeater (group voice)
+- [ ] **Dial-a-tg on IPSC** — 5000 status, 4000, link TG (e.g. 2350); confirm voice after PTT release + ~1s
+- [ ] **RelinkTime** — selfcare `RelinkTime=` maps to UA timer (IPSC2 convention); timeout disconnect voice
+- [ ] DroidStar / hotspot → IPSC with `LINK_IPSC=`
+- [ ] Repeater power-cycle + RYSEN restart once
+
+### Dial-a-tg reflector (done — GB7NR 2026-06)
+
+- [x] **TS2** — private call 5000 / 4000 / link TG; PRIVATE_VOICE reply as called ID
+- [x] VTERM + 1s timing; monotonic call_seq / rtp_seq
+- [x] Hotspot path unchanged (GROUP TG 9)
+
+### Not in 1.5.0
+
+- [ ] Unit-to-unit private call subscriber → subscriber (Phase 4 — routing not built yet)
+- [ ] SMS / GPS (Phase 5)
 
 ### One-off checks
 
-- [ ] Auth failure with wrong key (test repeater rejected)
-- [ ] `tcpdump` during hotspot TX: HEAD ~54 B, voice ~52 B at ~60 ms spacing
 - [ ] `report_receiver.py` — IPSC slot + bridge legs (roadmap 2.5–2.6)
-
-### Phase 3 field test (v1.5.0 gate)
-
-- [ ] **TS1** — private call repeater ↔ network
-- [ ] **TS2** — private call repeater ↔ network
-- [ ] Hotspot → repeater private call (if applicable)
-- [ ] `tcpdump`: outbound packets use opcode **0x81** during unit call
+- [ ] Log review: no recurring tracebacks
 
 ## Pre-merge work (v1.5.0 release gate)
 
 See [ipsc-roadmap.md](ipsc-roadmap.md) for the full checklist. Remaining:
 
-- **Soak test** — **1-week soak in progress** (from 2026-06-24)
-- **Phase 3 field test** — unit calls TS1 + TS2 (code on `ipsc`; part of **v1.5.0**)
-- **Final verify** — `report_receiver.py` + dashboard spot-check (roadmap 2.5–2.6)
+- **Soak test** — pre-merge normal traffic (~1 day minimum)
 - **Production `AUTH_KEY`** — rotate off sample defaults
 - **Merge `ipsc` → `master`** — bump to **RYSEN 1.5.0**, publish Docker image
 
-**Done:** monitor reporting, RYSEN-MONITOR 1.5.0 dashboard/selfcare, IPSC static TG selfcare.
+**Done:** group voice, monitor, selfcare, Phase 3 wire layer, **IPSC dial-a-tg reflector** (field-tested).
 
 ## Tests
 
@@ -175,7 +173,7 @@ python -m unittest tests.test_ipsc_phase1 tests.test_ipsc_outbound tests.test_ip
 
 ## Branch status
 
-Development on **`ipsc`** — single milestone release **v1.5.0** (group voice, selfcare, monitor, unit calls). Soak + Phase 3 field test in progress.
+Development on **`ipsc`** — single milestone release **v1.5.0** (group voice, selfcare, monitor, private voice wire layer, **dial-a-tg reflector on IPSC**). Pre-merge soak in progress. Unit-to-unit routing planned as **Phase 4** after merge.
 
 Protocol constants and voice translation derived from [ipsc2hbp](https://github.com/n0mjs710/ipsc2hbp) (GPLv3).
 

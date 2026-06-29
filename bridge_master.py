@@ -459,7 +459,18 @@ def is_invalid_dial_reflector(reflector):
 
 
 def is_reflector_private_destination(int_dst_id):
-    """Private-call dial-a-tg targets handled locally (never unit-voice bridged outward)."""
+    """Private-call dial-a-tg targets handled locally (never unit-voice bridged outward).
+
+    Today this is intentionally broad (any ID >= 5 except 8/9) so dial-a-tg private
+    calls never leak to _forward_unit_voice(). That blocks unit-to-unit routing for
+    normal subscriber IDs — see roadmap Phase 4.
+
+    DMR numbering on SystemX (convention, not strict CPS):
+      ≤5 digits — talkgroups (dial-a-tg link targets, max 99999)
+      6 digits  — repeater radio IDs
+      7 digits  — individual subscribers (and some 7-digit hotspots without SSID)
+      9 digits  — hotspots with SSID suffix (intended; not always enforced in field)
+    """
     if int_dst_id in (4000, 5000):
         return True
     if int_dst_id >= 9991 and int_dst_id <= 9999:
@@ -1380,6 +1391,7 @@ def options_config():
                     if 'StartRef' in _options:
                         _options['DEFAULT_REFLECTOR'] = _options.pop('StartRef')
                     if 'RelinkTime' in _options:
+                        # IPSC2 / DMR+ selfcare name for UA relink timer (minutes)
                         _options['DEFAULT_UA_TIMER'] = _options.pop('RelinkTime')
                     if 'TS1_1' in _options:
                         _options['TS1_STATIC'] = _options.pop('TS1_1')

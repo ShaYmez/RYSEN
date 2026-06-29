@@ -32,7 +32,18 @@ The **`ipsc`** branch is the **1.5.0 milestone**; merge to `master` sets `versio
 - Inbound `0x81` → unit DMRD (`byte 15 |= 0x40`) → existing `dmrd_received()` path
 - Outbound unit DMRD → `0x81` on **TS1 and TS2** with shared jitter-buffer delivery
 - `ipsc_send_system()` no longer drops unit calls
-- `_forward_unit_voice()` bridges private voice to SUB_MAP, hotspot peers, and IPSC
+- `_forward_unit_voice()` hook for cross-system private voice (routing policy — unit-to-unit in Phase 4)
+
+**IPSC dial-a-tg reflector (field-tested GB7NR / SYSTEM-XTEST, 2026-06)**
+- Private-call announcements on IPSC: PRIVATE_VOICE reply **as called ID** (5000, 4000, link TG)
+- VTERM + 1s delay; monotonic call_seq / RTP seq; RelinkTime / `DEFAULT_UA_TIMER` timeout
+- Timeout disconnect voice via private prompt (not GROUP TG 9)
+- Hotspot reflector path unchanged (`sendSpeech` on TG 9)
+
+**IPSC / HBP parity polish**
+- GLOBAL + system ACL on IPSC inbound; peer cleanup on IPSC timeout
+- Unit-data routing includes IPSC peers; reflector timer reset on linked-TG activity
+- `sendVoicePacket()` uses correct system reference (HBP reflector speech fix)
 
 ### Configuration
 
@@ -47,16 +58,15 @@ The **`ipsc`** branch is the **1.5.0 milestone**; merge to `master` sets `versio
 
 ### Remaining before merge (v1.5.0)
 
-- Multi-day soak test (field) — **1-week soak started 2026-06-24**
-- Phase 3 field test — unit/private voice on **TS1 and TS2** (code on `ipsc`; verify on GB7NR)
-- Final `report_receiver` / dashboard spot-check (roadmap 2.5–2.6)
+- Pre-merge soak (~1 day normal traffic: group voice + dial-a-tg reflector)
 - Rotate production `AUTH_KEY` off sample defaults
 - Merge `ipsc` → `master`; set `version.txt` to **1.5.0**; publish Docker image
 
 ### Planned after 1.5.0 (future releases)
 
-- Phase 4: `GROUP_DATA` / `PRIVATE_DATA` — SMS, GPS, UDT
-- Phase 5+: TMS, LRRP, ARS (node-dmr-lib reference)
+- **Phase 4:** Unit-to-unit private voice routing (subscriber ID → subscriber ID; narrow dial-a-tg classifier)
+- **Phase 5:** `GROUP_DATA` / `PRIVATE_DATA` — SMS, GPS, UDT (deferred; not before merge)
+- Phase 6+: TMS, LRRP, ARS (node-dmr-lib reference)
 
 ---
 
