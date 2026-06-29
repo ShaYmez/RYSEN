@@ -463,9 +463,9 @@ class IpscMasterMixin:
         Hotspots use GROUP on TG9; Moto repeaters answer the private call instead.
         """
         with self._reflector_speech_lock:
-            sleep(1)
             self._sync_reflector_voice_headers()
-            self._reflector_voice._init_outbound_delivery_state()
+            self._reflector_voice.begin_reflector_encode_session()
+            start_seq = self._reflector_voice._del_stream_ctr
             sent = 0
             while True:
                 try:
@@ -476,8 +476,10 @@ class IpscMasterMixin:
                 if blockingCallFromThread(reactor, self._ipsc_send_reflector_dmrd, pkt):
                     sent += 1
             if sent:
-                logger.info('(%s) IPSC reflector speech: %s packets sent on TS%s',
-                            self._system, sent, ts)
+                logger.info(
+                    '(%s) IPSC reflector speech: %s packets sent on TS%s (call_seq %s..%s)',
+                    self._system, sent, ts, start_seq + 1,
+                    self._reflector_voice._del_stream_ctr)
             else:
                 logger.warning('(%s) IPSC reflector speech: nothing sent (peers=%s)',
                                self._system, len(self._ipsc_peers))

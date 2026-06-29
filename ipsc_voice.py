@@ -190,6 +190,24 @@ class IpscVoiceTranslator:
         self._del_private = {1: False, 2: False}
         self._del_stream_ctr = 0
 
+    def begin_reflector_encode_session(self):
+        """
+        Prepare for a new canned reflector speech stream.
+        Clears per-call encode state but keeps monotonic IPSC call_seq / RTP
+        (repeaters reject duplicate call_seq if reset to 1 every announcement).
+        """
+        for ts in (1, 2):
+            self._cancel_delivery_timer(ts)
+            self._del_buf[ts].clear()
+            self._del_next_slot[ts] = 0.0
+            self._del_burst_pos[ts] = 0
+            self._del_consec_synth[ts] = 0
+            self._del_hbp_stream[ts] = None
+            self._del_lc[ts] = None
+            self._del_emb_lc[ts] = None
+            self._del_private[ts] = False
+            self._del_stream_id[ts] = 0
+
     def set_send_callback(self, callback):
         """Register callback(bytes) for paced outbound IPSC voice delivery."""
         self._send_cb = callback

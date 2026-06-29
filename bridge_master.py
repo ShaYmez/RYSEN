@@ -2498,6 +2498,8 @@ class routerHBP(HBSYSTEM):
             return
         if self.STATUS[slot].get('RX_STREAM_ID') != stream_id:
             return
+        if self.STATUS[slot].get('RX_TYPE') == HBPF_SLT_VTERM:
+            return
         _say = self._build_reflector_announce_say(int_dst_id, slot, lang)
         if _say:
             logger.info('(%s) IPSC reflector speech fallback (private call to %s)',
@@ -2507,7 +2509,7 @@ class routerHBP(HBSYSTEM):
     def _schedule_reflector_fallback(self, int_dst_id, rf_src, peer_id, slot, stream_id, lang):
         self._cancel_reflector_fallback(slot)
         self.STATUS[slot]['_reflect_fallback'] = reactor.callLater(
-            2.0, self._reflector_fallback_cb,
+            3.0, self._reflector_fallback_cb,
             int_dst_id, rf_src, peer_id, slot, stream_id, lang)
 
     def _build_reflector_announce_say(self, int_dst_id, slot, lang):

@@ -179,6 +179,15 @@ class TestIpscOutbound(unittest.TestCase):
         self.assertEqual(out1[6:9], bytes_3(5000))
         self.assertEqual(out1[9:12], caller)
 
+    def test_begin_reflector_encode_session_keeps_call_seq(self):
+        tr = IpscVoiceTranslator(master_id=self.MASTER_ID)
+        tr._del_stream_ctr = 5
+        tr._del_rtp_seq[2] = 100
+        tr.begin_reflector_encode_session()
+        self.assertEqual(tr._del_stream_ctr, 5)
+        self.assertEqual(tr._del_rtp_seq[2], 100)
+        self.assertEqual(tr._del_stream_id[2], 0)
+
     def test_learn_peer_header(self):
         tr = IpscVoiceTranslator(master_id=self.MASTER_ID)
         sample = bytes.fromhex(
