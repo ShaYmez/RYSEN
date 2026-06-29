@@ -1,7 +1,7 @@
 ## RYSEN DMRMaster+ Master Stack ##
 ### A fork of the HBlink3 / FreeDMR project ###
 
-### Stable Ver 1.4.1 ###
+### Stable Ver 1.4.1 (`master`) · IPSC branch → v1.5.0 ###
 
 RYSEN DMRMaster+ - Software to build and scale DMR Master server software. Thanks to all thats credited in code, testing and develpment of this software. This software is completly open source and is derived from the orginal fork of HBlink3 / FreeDMR. Developed in PYTHON. A number of developers have contributed to the fork and I thought the time is right to develop this version of the code completly out in the open.. as it should be. No private forks..Open Source for people to freely develop.
 
@@ -38,7 +38,7 @@ docker build . -t rysen-local:latest
 
 ```
 
-On the **ipsc** branch, the recommended test install clones to `/opt/rysen-src` and uses `docker compose build` — see [doc/install.md](doc/install.md). Motorola IPSC repeater support (registration, voice bridging, `ipsc-proxy` on 56002) is documented in [doc/ipsc-phase1.md](doc/ipsc-phase1.md); pre-merge work in [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md).
+On the **ipsc** branch, the recommended test install clones to `/opt/rysen-src` and uses `docker compose build` — see [doc/install.md](doc/install.md). Motorola IPSC (registration, bidirectional voice, `ipsc-proxy` on 56002, repeater selfcare) is documented in [doc/ipsc-phase1.md](doc/ipsc-phase1.md). Dashboard companion [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR) **v1.5.0** is on `master`; RYSEN **1.5.0** merge checklist: [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md).
 
 Or use a prebuilt one on Docker Hub: `shaymez/rysen:latest` (built from **master** on push).
 

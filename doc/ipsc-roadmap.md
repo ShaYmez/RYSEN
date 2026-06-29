@@ -1,8 +1,24 @@
-# IPSC branch — roadmap & merge criteria
+# RYSEN IPSC — roadmap & v1.5.0 release
 
-This document tracks work on the **`ipsc`** branch: what is done, what blocks merge to **`master`**, and how later features (private call, reflector, SMS, GPS) are phased without duplicating bridge logic.
+This document tracks work on the **`ipsc`** branch: what is done, what remains before merge to **`master`** as **version 1.5.0**, and how later features (private call, reflector, SMS, GPS) are phased without duplicating bridge logic.
 
 Field-test reference: [ipsc-phase1.md](ipsc-phase1.md). Protocol research: [node-dmr-lib](https://github.com/rick51231/node-dmr-lib) (MIT; opcode and packet layouts beyond group voice).
+
+**Companion release:** [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR) **v1.5.0** is merged to `master` — IPSC repeater display on Linked Systems, multi-static selfcare UI, radio-ID login. RYSEN **1.5.0** on `master` is the matching server release.
+
+---
+
+## Milestone summary (2026-06)
+
+| Area | Status |
+|------|--------|
+| IPSC group voice (in + out) | **Done** — field-tested GB7NR |
+| `ipsc-proxy` on 56002 | **Done** |
+| Bridge parity + linked IPSC UA activation | **Done** |
+| Monitor peer reporting (HBP-shaped `PEERS`) | **Done** (RYSEN 2.1–2.3) |
+| Dashboard IPSC + selfcare | **Done** ([RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR) 1.5.0) |
+| IPSC repeater selfcare (static TS1/TS2) | **Done** (`selfcare_db.py`, `ipsc_selfcare_poll`) |
+| Merge `ipsc` → `master` + **RYSEN 1.5.0** | **Pending** — soak + ops checklist below |
 
 ---
 
@@ -30,13 +46,14 @@ These rules apply to **every** IPSC phase, including monitor/report work:
 ┌───────────────────────────▼─────────────────────────────┐
 │  IPSC media layer (expand over time)                      │
 │  • GroupVoice   0x80  ↔ group DMRD        [Phase 1 — done]│
-│  • PrivateVoice 0x81  ↔ unit DMRD         [Phase 3]       │
+│  • PrivateVoice 0x81  ↔ unit DMRD         [Phase 3 — next]│
 │  • Group/Private Data 0x83/0x84           [Phase 4]       │
 └───────────────────────────┬─────────────────────────────┘
                             │
 ┌───────────────────────────▼─────────────────────────────┐
 │  ipsc_master — opcode dispatch, peer lifecycle, auth      │
 │  CONFIG['SYSTEMS'][slot]['PEERS'] ← report / monitor      │
+│  selfcare_db ← MariaDB Clients (mode=0)                   │
 └───────────────────────────┬─────────────────────────────┘
                             │
 ┌───────────────────────────▼─────────────────────────────┐
@@ -72,22 +89,25 @@ Higher-level services (TMS, LRRP, ARS, BMS) follow node-dmr-lib `DMRServices` �
 
 ## Phase overview
 
-| Phase | Goal | Merge blocker? |
-|-------|------|----------------|
-| **0** | Soak + ops (auth, CHANGELOG) | Partial |
+| Phase | Goal | Status |
+|-------|------|--------|
+| **0** | Soak + ops (auth, CHANGELOG) | In progress |
 | **1** | Group voice + proxy + bridge | **Done** |
-| **2** | **Monitor / report consistency** | **Yes — before merge** |
+| **2** | Monitor / report + dashboard | **Done** (server + [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR)) |
+| **2d** | IPSC repeater selfcare (static TS1/TS2) | **Done** |
+| **—** | **Merge → `master` as v1.5.0** | **Next gate** |
 | **3** | Private voice + reflector / dial-a-tg | Post-merge |
 | **4** | Group & private data (SMS, GPS, UDT) | Post-merge |
 | **5** | TMS / LRRP / ARS / wireline | Post-merge |
 | **6** | Ops polish (timeouts, report events) | Ongoing |
 
 ```
-Now ──────────────► Merge (v1.5.0)
-  │  Phase 0 soak
-  │  Phase 2 monitor/report
+Done ─────────────► Merge gate (RYSEN v1.5.0)
+  │  Phase 0 soak (field)
+  │  Final report_receiver / dashboard spot-check
+  │  Production AUTH_KEY
   │
-Merge ─────────────► master
+Merge ─────────────► master @ 1.5.0
   ├── Phase 3 private voice / reflector
   ├── Phase 4 SMS / GPS data
   └── Phase 5+ services & hardening
@@ -95,54 +115,48 @@ Merge ─────────────► master
 
 ---
 
-## Merge criteria
+## v1.5.0 merge criteria
 
 | Area | Status | Notes |
 |------|--------|-------|
 | Repeater registration + keepalive | Done | GB7NR on 56002 + auth |
 | Inbound voice (repeater → network) | Done | TG 2350 TS2 |
 | Outbound voice (network → repeater) | Done | Extended GROUP_VOICE + 60 ms jitter buffer |
-| Hotspot → IPSC UA bridge | Done | Peer-leg auto-activate (`4384b6c`) |
+| Hotspot → IPSC UA bridge | Done | Peer-leg auto-activate + `LINK_IPSC=` |
 | Docker / `ipsc-proxy` install | Done | See [install.md](install.md) |
-| Unit tests (protocol / voice / bridge) | Done | `tests/test_ipsc_*.py` |
+| Unit tests (protocol / voice / bridge / selfcare) | Done | `tests/test_ipsc_*.py` |
+| Monitor peer reporting (2.1–2.3) | Done | `build_peer_record()`, lifecycle `send_config()` |
+| Dashboard IPSC + selfcare UI | Done | RYSEN-MONITOR 1.5.0 on `master` |
+| IPSC selfcare (MariaDB `Clients` mode=0) | Done | Register upsert, poll `modified=1`, static TG apply |
 | Soak test (multi-day field use) | In progress | — |
-| **Monitor / report (Phase 2)** | **In progress** | 2.1–2.3 done; verify FDMR-Monitor (2.5–2.6) |
-| Selfcare proxy | Not planned for merge | Optional later |
+| Final VM verify (2.5–2.6) | Recommended | `report_receiver.py` + live dashboard |
 | Production auth defaults | Ops | Rotate `AUTH_KEY` off sample |
-| CHANGELOG / version on merge | Pending | 1.5.0 entry when merging |
+| **Merge + version bump** | Pending | `version.txt` → **1.5.0**, CHANGELOG, Docker Hub |
 
 ---
 
-## Phase 2 — Monitor & report (pre-merge)
+## Phase 2 — Monitor & report (**done**)
 
-RYSEN reports to TCP clients (FDMR-Monitor and similar) via `reportFactory.send_config()` (pickled `CONFIG['SYSTEMS']`) and `send_bridge()`.
+RYSEN reports to TCP clients via `reportFactory.send_config()` (pickled `CONFIG['SYSTEMS']`) and `send_bridge()`.
 
-### Current behaviour
+### RYSEN (server)
 
-- **HBP masters** (`MODE: MASTER`): peers live in `CONFIG['SYSTEMS'][name]['PEERS']` with a full, stable field set (`IP`, `PORT`, string `RADIO_ID`, `CONNECTION`, …). Dashboards render them.
-- **IPSC masters** (`MODE: IPSC`): `routerIPSC` sets `self._peers` to the same `CONFIG['SYSTEMS'][slot]['PEERS']` dict. `_register_hbp_peer()` writes a **minimal** record (missing `IP`/`PORT`, `RADIO_ID` as bytes not string). `_ipsc_peers` holds IPSC-specific `last_ka` / `mode` that never reach the report payload.
-- **Periodic loop** (`bridge_master.config_reports`) only logs systems with non-empty `PEERS`; it does not push config on IPSC peer lifecycle events.
-- **Bridge reports** already include `IPSC-N` legs via `augment_bridges_for_masters()` — verify dashboards show them.
-
-### Phase 2 tasks
-
-**RYSEN (required for merge)**
-
-- [x] **2.1** Add `build_peer_record()` shared helper in `hblink.py`; use from `_register_hbp_peer()`.
+- [x] **2.1** `build_peer_record()` shared helper in `hblink.py`; use from `_register_hbp_peer()`.
 - [x] **2.2** Mirror `_ipsc_peers` fields into `PEERS` (`LAST_KA` → `LAST_PING`, `PROTOCOL`, `IPSC_MODE`).
-- [x] **2.3** Call `_report.send_config()` on IPSC reg, re-reg, timeout (`_remove_ipsc_peer`), and de-reg.
-- [ ] **2.4** Align `ident()` / `options_config()` where safe: either treat `is_routing_master('IPSC')` like `MASTER` for peer iteration, or document explicit exclusions.
-- [ ] **2.5** Verify with `report_receiver.py` (CONFIG) and live FDMR-Monitor: `IPSC-N` slot shows GB7NR when registered.
-- [ ] **2.6** Verify bridge report shows `IPSC-N` on active conference bridges.
-- [ ] **2.7** Document final `PEERS` field contract in this file (table below).
-- [x] **2.8** Unit test: IPSC registration populates `CONFIG['SYSTEMS'][slot]['PEERS']` with HBP-shaped keys (`tests/test_ipsc_peers.py`).
+- [x] **2.3** `_report.send_config()` on IPSC reg, re-reg, timeout, de-reg.
+- [ ] **2.4** Align `ident()` / `options_config()` where safe (optional; document exclusions if deferred).
+- [ ] **2.5** Final verify: `report_receiver.py` — `IPSC-N` slot shows repeater when registered.
+- [ ] **2.6** Final verify: bridge report shows `IPSC-N` on active conference bridges.
+- [x] **2.7** `PEERS` field contract documented (table below).
+- [x] **2.8** Unit tests (`tests/test_ipsc_peers.py`).
 
-**Monitor UI (external repos — coordinate)**
+### Monitor UI ([RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR) 1.5.0)
 
-- [ ] **2.9** Render `MODE: IPSC` systems in peer panels (same as master).
-- [ ] **2.10** Optional IPSC label / last-seen from `LAST_PING` or `LAST_KA`.
+- [x] **2.9** Render `MODE: IPSC` systems in peer panels (Linked Systems / Repeaters).
+- [x] **2.10** IPSC metadata display (callsign, Motorola software/hardware, live TS activity).
+- [x] Selfcare dashboard — multi-static TS1/TS2, radio-ID login (IPSC `mode=0`).
 
-**Files:** `ipsc_master.py`, `hblink.py` (shared peer record helper), `bridge_master.py` (`config_reports`), `tests/test_ipsc_*.py`.
+**Files:** `ipsc_master.py`, `hblink.py`, `bridge_master.py`, `selfcare_db.py`, `tests/test_ipsc_*.py`.
 
 ### Target `PEERS` record (IPSC)
 
@@ -168,7 +182,22 @@ Registration layout follows [node-dmr-lib](https://github.com/rick51231/node-dmr
 
 ---
 
-## Phase 3 — Private voice & reflector (post-merge)
+## Phase 2d — IPSC repeater selfcare (**done**)
+
+Static TS1/TS2 talkgroups for Motorola repeaters via MariaDB `Clients` (`mode = 0`), coordinated with [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR) selfcare UI.
+
+- [x] **`selfcare_db.py`** — upsert on IPSC register, logout on de-register, `modified` flag on re-register when options exist
+- [x] **`ipsc_selfcare_poll()`** — periodic poll; `options_config()` on connected IPSC slot
+- [x] **`[SELF SERVICE]`** config section in `config.py` / sample cfgs
+- [x] **Hotspot proxy isolation** — `proxy_db.py` polls `mode > 0` only (MMDVM selfcare unchanged)
+- [x] **Tests** — `tests/test_ipsc_selfcare.py`, `tests/test_static_tg_bridges.py`
+- [x] **Field test** — GB7NR multi-static TS1/TS2, reconnect re-apply
+
+Requires MariaDB `selfcare` database and RYSEN-MONITOR stack (not in minimal `docker-compose.yml`; see SYSTEM-XTEST / RYSEN-Installer).
+
+---
+
+## Phase 3 — Private voice & reflector (**next**, post-merge)
 
 - [ ] **3.1** Add `PRIVATE_VOICE = 0x81` and related constants to `ipsc_const.py`; extend `opcode_name()`.
 - [ ] **3.2** Decode `0x81` → unit DMRD → `dmrd_received()` (reflector handler on TG 9 + PC).
@@ -208,10 +237,10 @@ TMS, LRRP, ARS, optional BMS and wireline (`0xB2`). Implement as services above 
 
 ---
 
-## Not in scope (initial merge)
+## Not in scope (v1.5.0)
 
 - XCMP/XNL repeater management (`0x70`)
-- `ipsc_proxy_v2_sc` selfcare — see [ipsc-phase1.md](ipsc-phase1.md)
+- `ipsc_proxy_v2_sc` standalone selfcare proxy (superseded by integrated `selfcare_db` + RYSEN-MONITOR)
 - CPS remote programming (`0xE0`–`0xE1`)
 
 ---
@@ -225,10 +254,13 @@ docker logs systemx -f 2>&1 | grep -E 'linked leg activated|Bridge 2350 activate
 # Hotspot → repeater path
 docker logs systemx -f 2>&1 | grep -E 'SYSTEM-[0-9]+.*CALL START|IPSC-[0-9]+.*CALL'
 
+# Selfcare apply
+docker logs systemx -f 2>&1 | grep -E 'SELF SERVICE|Applied options for IPSC'
+
 # Outbound to repeater
 tcpdump -ni any -c 30 'host <repeater-ip> and udp port 56002'
 
-# Report peer visibility (after Phase 2)
+# Report peer visibility
 python3 report_receiver.py -c <rysen-host> <report-port>
 ```
 
@@ -240,22 +272,25 @@ python3 report_receiver.py -c <rysen-host> <report-port>
 |-----|---------|
 | [ipsc-phase1.md](ipsc-phase1.md) | Feature + field-test reference |
 | [install.md](install.md) | Docker install for `ipsc` branch |
-| [CHANGELOG.md](../CHANGELOG.md) | Unreleased `ipsc` section until merge |
+| [CHANGELOG.md](../CHANGELOG.md) | Unreleased → **1.5.0** on merge |
 
 ---
 
-## Master checklist
+## v1.5.0 release checklist
 
-**Pre-merge**
+**Pre-merge (`ipsc` branch)**
 
-- [ ] Soak test complete (group voice, bridge, hotspot → IPSC)
-- [ ] Phase 2: IPSC peers visible in FDMR-Monitor / `report_receiver`
-- [x] Phase 2: HBP-shaped `PEERS` records + lifecycle `send_config()` (2.1–2.3)
-- [ ] Bridge dashboard shows `IPSC-N` legs
+- [ ] Soak test complete (group voice, bridge, hotspot → IPSC, selfcare reconnect)
+- [ ] Phase 2.5–2.6 spot-check on VM (`report_receiver` + dashboard)
+- [x] Phase 2 server: HBP-shaped `PEERS` + lifecycle `send_config()`
+- [x] Phase 2d: IPSC selfcare + static TG bridges
+- [x] RYSEN-MONITOR 1.5.0 merged (dashboard + selfcare UI)
 - [ ] Rotate production `AUTH_KEY`
-- [ ] Merge `ipsc` → `master`, CHANGELOG 1.5.0
+- [ ] Merge `ipsc` → `master`
+- [ ] Set `version.txt` to **1.5.0**; finalise CHANGELOG date
+- [ ] Rebuild/publish `shaymez/rysen:latest`; update installer to `master` + `docker compose pull`
 
-**Post-merge**
+**Post-merge (v1.5.1+ / Phase 3 branch)**
 
 - [ ] Phase 3: `PRIVATE_VOICE` / reflector over IPSC
 - [ ] Phase 4: SMS / GPS data paths

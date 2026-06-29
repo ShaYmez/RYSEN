@@ -41,7 +41,7 @@ Get the file: [rysen.cfg](https://github.com/ShaYmez/RYSEN/blob/ipsc/docker-conf
 
 place the rysen.cfg file in this directory.
 
-For IPSC, the docker install starts **rysen** and **ipsc-proxy** (public UDP **56002** CPS Master port; backends `IPSC-0`…`IPSC-199` on `56003`–`56202`). Enable IPSC auth in CPS and match `AUTH_KEY` in `rysen.cfg`. See [ipsc-phase1.md](ipsc-phase1.md), [ipsc-roadmap.md](ipsc-roadmap.md) (pre-merge checklist), [IPSC-SAMPLE.cfg](../docker-configs/config/IPSC-SAMPLE.cfg), and [ipsc-proxy-SAMPLE.cfg](../docker-configs/config/ipsc-proxy-SAMPLE.cfg).
+For IPSC, the docker install starts **rysen** and **ipsc-proxy** (public UDP **56002** CPS Master port; backends `IPSC-0`…`IPSC-199` on `56003`–`56202`). Enable IPSC auth in CPS and match `AUTH_KEY` in `rysen.cfg`. IPSC repeater selfcare and the dashboard require [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR) (v1.5.0+) and MariaDB — see monitor repo docs; minimal compose here is RYSEN + proxy only. See [ipsc-phase1.md](ipsc-phase1.md), [ipsc-roadmap.md](ipsc-roadmap.md) (v1.5.0 release checklist), [IPSC-SAMPLE.cfg](../docker-configs/config/IPSC-SAMPLE.cfg), and [ipsc-proxy-SAMPLE.cfg](../docker-configs/config/ipsc-proxy-SAMPLE.cfg).
 
 ## Make rules file
 
@@ -130,13 +130,15 @@ This flushes the connection tracking table for NAT. Without this, you might not 
 
 For more docker commands go [here](Docker%20Commands%20Cheat%20Sheet)
 
-## After merge to master
+## After merge to master (RYSEN v1.5.0)
 
-When IPSC testing is complete and changes are merged to **master**:
+When soak testing is complete and `ipsc` is merged to **master** as **version 1.5.0**:
 
-1. In `docker-compose_install.sh`, set `RYSEN_REPO_BASE` and `RYSEN_GIT_BRANCH` to `master`, replace git clone + `docker compose build` with `docker compose pull`.
-2. In `docker-compose.yml`, replace the `rysen` `build:` block with `image: shaymez/rysen:latest`.
-3. Push to master — GitHub Actions publishes `shaymez/rysen:latest` with IPSC included.
+1. Set `version.txt` to `1.5.0` and finalise [CHANGELOG.md](../CHANGELOG.md).
+2. In `docker-compose_install.sh`, set `RYSEN_REPO_BASE` and `RYSEN_GIT_BRANCH` to `master`, replace git clone + `docker compose build` with `docker compose pull`.
+3. In `docker-compose.yml`, replace the `rysen` `build:` block with `image: shaymez/rysen:latest`.
+4. Push to master — GitHub Actions publishes `shaymez/rysen:latest` with IPSC + selfcare included.
+5. Pair with [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR) **v1.5.0** for dashboard and selfcare UI.
 
 ## Postrequisites
 

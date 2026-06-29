@@ -35,6 +35,19 @@ Motorola IP Site Connect (IPSC) support on the **`ipsc`** branch. Field-tested o
 - Outbound bytes 1–4 use **`IPSC_MASTER_ID`** (not repeater ID); call-control learned from inbound peer packets via `learn_peer_header()`
 - Paced voice sent through `_ipsc_send_voice` callback (Twisted `callLater` timer)
 
+### Phase 2d — monitor reporting
+
+- `build_peer_record()` — HBP-compatible `PEERS` dicts for IPSC (`PROTOCOL`, string `RADIO_ID`, `IP`/`PORT`)
+- Lifecycle `send_config()` on register, re-register, timeout, de-register
+- Dashboard: [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR) **v1.5.0** — IPSC repeaters on Linked Systems, live TS activity
+
+### Phase 2e — IPSC repeater selfcare
+
+- `[SELF SERVICE]` + `selfcare_db.py` — MariaDB `Clients` (`mode = 0`)
+- Register upsert / de-register logout; poll `modified = 1` → `options_config()` static TS1/TS2
+- Multi-static TG strings (`TS1=235,23426,116;TS2=2350,2351,2352;`) via RYSEN-MONITOR selfcare UI
+- Reconnect re-applies options when stored in DB
+
 ### Field test summary (2026-06, SYSTEM-XTEST)
 
 | Path | Result |
@@ -44,6 +57,8 @@ Motorola IP Site Connect (IPSC) support on the **`ipsc`** branch. Field-tested o
 | DroidStar → hotspot proxy → `SYSTEM-N` → IPSC → GB7NR | OK (voice + RF key) |
 | BlueDV → OBP → bridge → repeater | OK |
 | Outbound tcpdump to repeater (~60 ms voice cadence) | OK |
+| IPSC selfcare multi-static TS1/TS2 + reconnect | OK |
+| RYSEN-MONITOR dashboard IPSC + selfcare | OK (monitor v1.5.0) |
 
 Test subscriber: M0VUB (2345875). Repeater: GB7NR (235287). TG 2350 TS2.
 
@@ -121,25 +136,26 @@ Before merging `ipsc` → `master`:
 - [ ] Auth failure with wrong key (repeater rejected)
 - [ ] `tcpdump` during hotspot TX: HEAD 64 B, then ~62 B voice at ~60 ms spacing
 
-## Pre-merge work (not yet done)
+## Pre-merge work (v1.5.0 release gate)
 
-See [ipsc-roadmap.md](ipsc-roadmap.md) for the full list. Highlights:
+See [ipsc-roadmap.md](ipsc-roadmap.md) for the full checklist. Remaining:
 
-- **Monitor dashboards** — IPSC `PEERS` records are HBP-shaped with alias callsign and protocol metadata; RYMonv3 display polish still pending (see roadmap 2.9–2.10)
-- **Selfcare / `ipsc_proxy_v2_sc`**
-- **CHANGELOG / version bump** on merge to `master`
-- **Production `AUTH_KEY`** rotation off sample defaults
-- **Docker Hub** image rebuild from `master` after merge
+- **Soak test** — multi-day field use (group voice, hotspot → IPSC, selfcare reconnect)
+- **Final verify** — `report_receiver.py` + dashboard spot-check (roadmap 2.5–2.6)
+- **Production `AUTH_KEY`** — rotate off sample defaults
+- **Merge `ipsc` → `master`** — bump to **RYSEN 1.5.0**, publish Docker image
+
+**Done:** monitor reporting, RYSEN-MONITOR 1.5.0 dashboard/selfcare, IPSC static TG selfcare.
 
 ## Tests
 
 ```bash
-python -m unittest tests.test_ipsc_phase1 tests.test_ipsc_outbound tests.test_ipsc_proxy tests.test_ipsc_bridge -v
+python -m unittest tests.test_ipsc_phase1 tests.test_ipsc_outbound tests.test_ipsc_proxy tests.test_ipsc_bridge tests.test_ipsc_peers tests.test_ipsc_selfcare tests.test_static_tg_bridges -v
 ```
 
 ## Branch status
 
-Development and field testing on **`ipsc`** — **not merged to `master`**. Soak testing in progress.
+Development on **`ipsc`** — targets **v1.5.0** merge to `master`. Feature-complete for group voice + selfcare; soak testing in progress.
 
 Protocol constants and voice translation derived from [ipsc2hbp](https://github.com/n0mjs710/ipsc2hbp) (GPLv3).
 
@@ -151,4 +167,5 @@ Protocol constants and voice translation derived from [ipsc2hbp](https://github.
 | `ipsc_voice.py` | `IpscVoiceTranslator` — inbound translate + outbound jitter buffer |
 | `ipsc_const.py` | Opcodes, packet lengths, timing constants |
 | `ipsc_proxy.py` | Public 56002 front-end |
-| `bridge_master.py` | `routerIPSC`, bridge peer-leg activation |
+| `selfcare_db.py` | IPSC repeater `Clients` DB + static TG options |
+| `bridge_master.py` | `routerIPSC`, `ipsc_selfcare_poll()`, bridge peer-leg activation |

@@ -1,8 +1,10 @@
 # RYSEN DMRMaster+ Changelog
 
-## Unreleased — `ipsc` branch (pre-merge)
+## Unreleased — `ipsc` branch → **Version 1.5.0** (on merge to `master`)
 
-Motorola IP Site Connect support. Field-tested on SYSTEM-XTEST (GB7NR, TG 2350 TS2, DroidStar + OpenBridge). **Not merged to `master` yet** — see [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md) for merge blockers (monitor dashboards, soak test).
+Major release: Motorola IP Site Connect for SystemX. Field-tested on SYSTEM-XTEST (GB7NR, TG 2350 TS2, DroidStar + OpenBridge, multi-static selfcare). Companion dashboard: [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR) **v1.5.0** (merged to `master`).
+
+**Not merged to `master` yet** — see [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md) for the v1.5.0 release checklist.
 
 ### New Features
 
@@ -16,32 +18,37 @@ Motorola IP Site Connect support. Field-tested on SYSTEM-XTEST (GB7NR, TG 2350 T
 - Bridge parity: `augment_bridges_for_masters()`, UA/stat bridges include IPSC slots
 - Linked IPSC UA activation via `OPTIONS: IPSC=` / `LINK_IPSC=` (per-connection isolation; no blanket peer wake)
 - IPSC peer monitor fields: `peer_ids.json` callsign alias + protocol metadata from registration ([node-dmr-lib](https://github.com/rick51231/node-dmr-lib) layout)
+- HBP-shaped `PEERS` records + lifecycle `send_config()` for FDMR-Monitor / RYSEN-MONITOR
+
+**IPSC repeater selfcare**
+- `[SELF SERVICE]` — MariaDB `Clients` table (`mode = 0`) upsert on register, logout on de-register
+- `ipsc_selfcare_poll()` — apply `TS1_STATIC` / `TS2_STATIC` from dashboard when `modified = 1`
+- Re-register re-applies stored options (`modified` set when options non-empty)
+- Hotspot proxy poll excludes IPSC rows (`proxy_db.py`: `mode > 0` only)
 
 ### Configuration
 
 - `[IPSC]` stanza in `rysen.cfg` / `IPSC-SAMPLE.cfg` (`IPSC_MASTER_ID`, `AUTH_KEY`, `GENERATOR`, etc.)
+- `[SELF SERVICE]` for MariaDB selfcare DB (optional; requires RYSEN-MONITOR stack)
 - Docker compose: `ipsc-proxy` service on port 56002
 - Install path: `/opt/rysen-src`, branch `ipsc` — [doc/install.md](doc/install.md)
 
 ### Tests
 
-- `tests/test_ipsc_phase1.py`, `test_ipsc_outbound.py`, `test_ipsc_proxy.py`, `test_ipsc_bridge.py`, `test_ipsc_peers.py`
+- `tests/test_ipsc_phase1.py`, `test_ipsc_outbound.py`, `test_ipsc_proxy.py`, `test_ipsc_bridge.py`, `test_ipsc_peers.py`, `test_ipsc_selfcare.py`, `test_static_tg_bridges.py`
 
-### Known gaps before merge
+### Remaining before merge (v1.5.0)
 
-- **Phase 2 (roadmap):** IPSC `PEERS` records now HBP-shaped; `send_config()` on peer lifecycle (2.1–2.3). FDMR-Monitor field verification still pending — see [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md).
-- Selfcare / `ipsc_proxy_v2_sc` not implemented
-- Sample `AUTH_KEY` must be changed for production
+- Multi-day soak test (field)
+- Final `report_receiver` / dashboard spot-check (roadmap 2.5–2.6)
+- Rotate production `AUTH_KEY` off sample defaults
+- Merge `ipsc` → `master`; bump `version.txt` to **1.5.0**; publish Docker image
 
-### Planned post-merge (roadmap)
+### Planned post-merge (v1.5.1+ / Phase 3)
 
 - Phase 3: `PRIVATE_VOICE (0x81)` — reflector / dial-a-tg over IPSC
 - Phase 4: `GROUP_DATA` / `PRIVATE_DATA` — SMS, GPS, UDT
 - Phase 5+: TMS, LRRP, ARS (node-dmr-lib reference)
-
-### Key commits (reference)
-
-- Phase 2c outbound voice, extended packet format, jitter buffer, bridge peer-leg fix
 
 ---
 

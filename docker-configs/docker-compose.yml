@@ -3,9 +3,10 @@
 #   Edited by (C) 2022 Shane Daley, M0VUB <support@gb7nr.co.uk>
 #   Further Developed (C) 2026 by Shane Daley, M0VUB <shane@freestar.network>
 #
-#   ipsc branch: builds rysen from /opt/rysen-src (see docker-compose_install.sh).
+#   ipsc branch → v1.5.0: builds rysen from /opt/rysen-src (see docker-compose_install.sh).
 #   MERGE to master: replace rysen build block with image: shaymez/rysen:latest
 #   and use docker compose pull in the installer instead of git clone + build.
+#   Pair dashboard with RYSEN-MONITOR v1.5.0 (https://github.com/ShaYmez/RYSEN-MONITOR).
 ###############################################################################
 
 services:
