@@ -63,7 +63,12 @@ from ipsc_master import IpscMasterMixin
 from ipsc_const import is_routing_master
 from selfcare_db import SelfcareDB, find_ipsc_slot_for_radio_id
 from bridge_helpers import iter_routing_master_systems as _iter_routing_master_systems
-from bridge_helpers import reflector_bridge_matches_group_call
+from bridge_helpers import (
+    reflector_bridge_matches_group_call,
+    bridge_transmission_matches_rule,
+    reflector_single_mode_wrong_tg,
+    touch_reflector_ua_timers,
+)
 # NOTE: 'words' is loaded dynamically via readAMBE() at runtime (see line ~2689)
 #from voice_lib import words
 
@@ -2355,6 +2360,10 @@ class routerHBP(HBSYSTEM):
 
     def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,sysIgnore,_source_server, _ber, _rssi, _source_rptr):
         _sysIgnore = sysIgnore
+        if (_call_type == 'group' and _frame_type == HBPF_DATA_SYNC
+                and _dtype_vseq == HBPF_SLT_VTERM):
+            touch_reflector_ua_timers(
+                BRIDGES, _bridge, int_id(_dst_id), _dst_id, _slot, pkt_time)
         for _target in BRIDGES[_bridge]:
             #if _target['SYSTEM'] != self._system or (_target['SYSTEM'] == self._system and _target['TS'] != _slot):
             if _target['SYSTEM'] != self._system and _target['ACTIVE']:
@@ -3002,7 +3011,10 @@ class routerHBP(HBSYSTEM):
                                 _dehash_bridge = _bridge[1:]
                                 if _system['SYSTEM'] == self._system:
                                     # TGID matches a rule source, reset its timer
-                                    if _slot == _system['TS'] and _dst_id == _system['TGID'] and ((_system['TO_TYPE'] == 'ON' and (_system['ACTIVE'] == True)) or (_system['TO_TYPE'] == 'OFF' and _system['ACTIVE'] == False)):
+                                    if (bridge_transmission_matches_rule(
+                                            _bridge, _int_dst_id, _dst_id, _slot, _system)
+                                            and ((_system['TO_TYPE'] == 'ON' and (_system['ACTIVE'] == True))
+                                                 or (_system['TO_TYPE'] == 'OFF' and _system['ACTIVE'] == False))):
                                         _system['TIMER'] = pkt_time + _system['TIMEOUT']
                                         logger.info('(%s) [B] Transmission match for Reflector: %s. Reset timeout to %s', self._system, _bridge, _system['TIMER'])
                             
@@ -3018,8 +3030,11 @@ class routerHBP(HBSYSTEM):
                                         if _system['TO_TYPE'] == 'OFF':
                                             _system['TIMER'] = pkt_time
                                             logger.info('(%s) [D] Reflector: %s has an "OFF" timer and set to "ON": timeout timer cancelled', self._system, _bridge)
-                                # Reset the timer for the rule
-                                if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON':
+                                # Reset the timer for the rule (linked private call only)
+                                if (_system['SYSTEM'] == self._system
+                                        and not is_dial_service_code(_int_dst_id)
+                                        and _int_dst_id == int(_dehash_bridge)
+                                        and _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON'):
                                     _system['TIMER'] = pkt_time + _system['TIMEOUT']
                                     logger.info('(%s) [E] Reflector: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
 
@@ -3317,7 +3332,10 @@ class routerHBP(HBSYSTEM):
                         if _system['SYSTEM'] == self._system:
 
                             # TGID matches a rule source, reset its timer
-                            if _slot == _system['TS'] and _dst_id == _system['TGID'] and ((_system['TO_TYPE'] == 'ON' and (_system['ACTIVE'] == True)) or (_system['TO_TYPE'] == 'OFF' and _system['ACTIVE'] == False)):
+                            if (bridge_transmission_matches_rule(
+                                    _bridge, _int_dst_id, _dst_id, _slot, _system)
+                                    and ((_system['TO_TYPE'] == 'ON' and (_system['ACTIVE'] == True))
+                                         or (_system['TO_TYPE'] == 'OFF' and _system['ACTIVE'] == False))):
                                 _system['TIMER'] = pkt_time + _system['TIMEOUT']
                                 logger.info('(%s) [1] Transmission match for Bridge: %s. Reset timeout to %s', self._system, _bridge, _system['TIMER'])
 
@@ -3344,11 +3362,15 @@ class routerHBP(HBSYSTEM):
                             # TO_TYPE NONE bridges (e.g. parrot rules) must not be cleared here —
                             # dial-a-tg PTT on TG 9 would otherwise deactivate bridge 9990 (9 != 9990).
                             if (is_routing_master(CONFIG['SYSTEMS'][self._system]['MODE']) and CONFIG['SYSTEMS'][self._system]['SINGLE_MODE']) == True and _system['TO_TYPE'] != 'NONE':
-                                if (_dst_id in _system['OFF']  or _dst_id in _system['RESET'] or _dst_id != _system['TGID']) and _slot == _system['TS']:
+                                if (_dst_id in _system['OFF'] or _dst_id in _system['RESET']
+                                        or reflector_single_mode_wrong_tg(
+                                            _int_dst_id, _dst_id, _bridge, _system)) and _slot == _system['TS']:
                                 #if (_dst_id in _system['OFF']  or _dst_id in _system['RESET']) and _slot == _system['TS']:
                                     # Set the matching rule as ACTIVE
                                     #Single TG mode
-                                    if _dst_id in _system['OFF'] or _dst_id != _system['TGID']:
+                                    if (_dst_id in _system['OFF']
+                                            or reflector_single_mode_wrong_tg(
+                                                _int_dst_id, _dst_id, _bridge, _system)):
                                     #if _dst_id in _system['OFF']:
                                         if _system['ACTIVE'] == True:
                                             _system['ACTIVE'] = False

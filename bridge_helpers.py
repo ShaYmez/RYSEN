@@ -116,3 +116,62 @@ def reflector_bridge_matches_group_call(bridge, int_dst_id):
         return int_dst_id == int(bridge[1:])
     except (TypeError, ValueError):
         return False
+
+
+def reflector_bridge_linked_int(bridge):
+    if bridge[0:1] != '#':
+        return None
+    try:
+        return int(bridge[1:])
+    except (TypeError, ValueError):
+        return None
+
+
+def reflector_bridge_uses_linked_tg(bridge, int_dst_id, dst_id_bytes, on_list):
+    """Group traffic on the linked reflector TG (not dial-a-tg channel 9)."""
+    if bridge[0:1] != '#':
+        return False
+    if int_dst_id == 9:
+        return False
+    linked = reflector_bridge_linked_int(bridge)
+    if linked is not None and int_dst_id == linked:
+        return True
+    return dst_id_bytes in (on_list or [])
+
+
+def bridge_transmission_matches_rule(bridge, int_dst_id, dst_id_bytes, slot, entry):
+    """Bridge rule source match: entry TGID, or linked reflector TG for # bridges."""
+    if slot != entry['TS']:
+        return False
+    if dst_id_bytes == entry['TGID']:
+        return True
+    return reflector_bridge_uses_linked_tg(bridge, int_dst_id, dst_id_bytes, entry.get('ON'))
+
+
+def reflector_single_mode_wrong_tg(int_dst_id, dst_id_bytes, bridge, entry):
+    """SINGLE_MODE 'wrong TG' deactivation — exclude linked reflector TG activity."""
+    if dst_id_bytes == entry['TGID']:
+        return False
+    if reflector_bridge_uses_linked_tg(bridge, int_dst_id, dst_id_bytes, entry.get('ON')):
+        return False
+    return True
+
+
+def touch_reflector_ua_timers(bridges, bridge, int_dst_id, dst_id_bytes, slot, pkt_time):
+    """Reset UA timers on active dial-a-tg links when the linked TG is in use (any bridge leg)."""
+    if bridge not in bridges:
+        return
+    if not reflector_bridge_matches_group_call(bridge, int_dst_id):
+        return
+    if bridge[0:1] == '#' and int_dst_id == 9:
+        return
+    for entry in bridges[bridge]:
+        if entry['TS'] != slot:
+            continue
+        if not entry.get('ACTIVE') or entry.get('TO_TYPE') != 'ON':
+            continue
+        timeout = entry.get('TIMEOUT')
+        if not timeout:
+            continue
+        if reflector_bridge_uses_linked_tg(bridge, int_dst_id, dst_id_bytes, entry.get('ON')):
+            entry['TIMER'] = pkt_time + timeout
