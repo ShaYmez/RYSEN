@@ -18,7 +18,19 @@ Field-test reference: [ipsc-phase1.md](ipsc-phase1.md). Protocol research: [node
 | Monitor peer reporting (HBP-shaped `PEERS`) | **Done** (RYSEN 2.1–2.3) |
 | Dashboard IPSC + selfcare | **Done** ([RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR) 1.5.0) |
 | IPSC repeater selfcare (static TS1/TS2) | **Done** (`selfcare_db.py`, `ipsc_selfcare_poll`) |
-| Merge `ipsc` → `master` + **RYSEN 1.5.0** | **Pending** — soak + ops checklist below |
+| Merge `ipsc` → `master` + **RYSEN 1.5.0** | **Pending** — 1-week soak (from 2026-06-24) |
+
+---
+
+## Current schedule
+
+| Window | Work | Outcome |
+|--------|------|---------|
+| **2026-06-24 → ~2026-07-01** | **Phase 0 — 1-week soak** | Group voice, bridges, selfcare, monitor — live on GB7NR / SYSTEM-XTEST |
+| **After soak passes** | **v1.5.0 merge** | `ipsc` → `master`, Docker publish, `AUTH_KEY` rotation |
+| **Post-merge** | **Phase 3 — unit (private) voice** | `PRIVATE_VOICE (0x81)` on **TS1 and TS2** — repeater ↔ network private calls |
+
+**Note:** Unit/private calls over IPSC are **not implemented yet**. During soak, only **group voice** paths are in scope. Any private-call PTT on the repeater will not route through RYSEN until Phase 3.
 
 ---
 
@@ -91,24 +103,28 @@ Higher-level services (TMS, LRRP, ARS, BMS) follow node-dmr-lib `DMRServices` �
 
 | Phase | Goal | Status |
 |-------|------|--------|
-| **0** | Soak + ops (auth, CHANGELOG) | In progress |
+| **0** | Soak + ops (auth, CHANGELOG) | **In progress** — 1-week soak from 2026-06-24 |
 | **1** | Group voice + proxy + bridge | **Done** |
 | **2** | Monitor / report + dashboard | **Done** (server + [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR)) |
 | **2d** | IPSC repeater selfcare (static TS1/TS2) | **Done** |
-| **—** | **Merge → `master` as v1.5.0** | **Next gate** |
-| **3** | Private voice + reflector / dial-a-tg | Post-merge |
+| **—** | **Merge → `master` as v1.5.0** | After soak (~2026-07-01) |
+| **3** | Private voice — **TS1 + TS2** unit calls | After v1.5.0 merge |
 | **4** | Group & private data (SMS, GPS, UDT) | Post-merge |
 | **5** | TMS / LRRP / ARS / wireline | Post-merge |
 | **6** | Ops polish (timeouts, report events) | Ongoing |
 
 ```
-Done ─────────────► Merge gate (RYSEN v1.5.0)
-  │  Phase 0 soak (field)
-  │  Final report_receiver / dashboard spot-check
-  │  Production AUTH_KEY
+Now (soak week) ──► ~2026-07-01
+  │  Group voice TS1 + TS2, static TGs, hotspot → IPSC, OBP
+  │  Repeater / RYSEN restarts, selfcare reconnect
+  │  Monitor + report_receiver spot-check
   │
-Merge ─────────────► master @ 1.5.0
-  ├── Phase 3 private voice / reflector
+Soak pass ─────────► Merge master @ 1.5.0
+  │
+Post-merge ────────► Phase 3: PRIVATE_VOICE (0x81)
+                     • TS1 unit calls (slot 1)
+                     • TS2 unit calls (slot 2)
+                     • reflector / dial-a-tg (TG 9 + PC)
   ├── Phase 4 SMS / GPS data
   └── Phase 5+ services & hardening
 ```
@@ -128,10 +144,73 @@ Merge ─────────────► master @ 1.5.0
 | Monitor peer reporting (2.1–2.3) | Done | `build_peer_record()`, lifecycle `send_config()` |
 | Dashboard IPSC + selfcare UI | Done | RYSEN-MONITOR 1.5.0 on `master` |
 | IPSC selfcare (MariaDB `Clients` mode=0) | Done | Register upsert, poll `modified=1`, static TG apply |
-| Soak test (multi-day field use) | In progress | — |
+| Soak test (1-week field use) | **In progress** | Started 2026-06-24; ends ~2026-07-01 |
 | Final VM verify (2.5–2.6) | Recommended | `report_receiver.py` + live dashboard |
 | Production auth defaults | Ops | Rotate `AUTH_KEY` off sample |
 | **Merge + version bump** | Pending | `version.txt` → **1.5.0**, CHANGELOG, Docker Hub |
+
+---
+
+## Phase 0 — 1-week soak (in progress)
+
+**Goal:** Prove group-voice stability under real use before **v1.5.0** merge. Run normal traffic on GB7NR; do not change `rysen.cfg` or rules mid-week unless fixing a blocker.
+
+### In scope (group voice)
+
+| Path | Exercise |
+|------|----------|
+| Repeater → network | PTT on static TGs on **TS1** and **TS2** |
+| Network → repeater | OBP / hotspot → IPSC outbound audio |
+| Hotspot → repeater | DroidStar via proxy + `LINK_IPSC=` / `OPTIONS: IPSC=` |
+| Selfcare | Change static TG list in dashboard; power-cycle repeater; confirm re-apply |
+| Monitor | Linked Systems shows GB7NR; bridge legs show `IPSC-N` when active |
+| Resilience | `docker compose restart rysen` once mid-week; repeater power-cycle once |
+
+### Out of scope until Phase 3
+
+- **Unit / private voice** (`PRIVATE_VOICE 0x81`) — inbound may arrive as DMRD but outbound is dropped in `ipsc_send_system()` today
+- Reflector dial-a-tg over IPSC (needs Phase 3)
+- SMS / GPS data (Phase 4)
+
+### Daily quick check (~2 min)
+
+```bash
+docker logs systemx --since 24h 2>&1 | grep -cE 'CALL START|CALL END'
+docker logs systemx --since 24h 2>&1 | grep -iE 'error|exception|traceback' | tail -5
+docker logs systemx --since 24h 2>&1 | grep -E 'de-register|timed out|KEEPALIVE' | tail -5
+```
+
+### End-of-week pass criteria
+
+- [ ] No unexplained repeater drop-outs (register stays up except planned restarts)
+- [ ] Group voice works both directions on **TS1** and **TS2** static TGs
+- [ ] Hotspot → IPSC path still works after RYSEN restart
+- [ ] Selfcare static TGs survive repeater power-cycle
+- [ ] No stuck bridges after long calls (~2 min PTT)
+- [ ] Dashboard + `report_receiver.py` show IPSC peer and active bridges
+- [ ] Log review: no recurring tracebacks in `rysen.log`
+
+### Soak log prompts
+
+```bash
+# Bridge + linked IPSC activation (per-connection isolation)
+docker logs systemx -f 2>&1 | grep -E 'linked leg activated|Bridge .* activated for|IPSC peer'
+
+# Hotspot → repeater path
+docker logs systemx -f 2>&1 | grep -E 'SYSTEM-[0-9]+.*CALL START|IPSC-[0-9]+.*CALL'
+
+# Selfcare apply
+docker logs systemx -f 2>&1 | grep -E 'SELF SERVICE|Applied options for IPSC'
+
+# TS1 vs TS2 — confirm slot in CALL lines
+docker logs systemx -f 2>&1 | grep -E 'CALL START.*TS [12]'
+
+# Outbound to repeater
+tcpdump -ni any -c 30 'host <repeater-ip> and udp port 56002'
+
+# Report peer visibility
+python3 report_receiver.py -c <rysen-host> <report-port>
+```
 
 ---
 
@@ -197,14 +276,31 @@ Requires MariaDB `selfcare` database and RYSEN-MONITOR stack (not in minimal `do
 
 ---
 
-## Phase 3 — Private voice & reflector (**next**, post-merge)
+## Phase 3 — Private voice & unit calls (**next**, after v1.5.0)
+
+Implement `PRIVATE_VOICE (0x81)` so **unit (private) calls work on both timeslots** — TS1 (slot 1) and TS2 (slot 2). Same DMRD media path as group voice; encode/decode parallel to existing `GROUP_VOICE` work in `ipsc_voice.py`.
+
+### Scope
+
+| Item | Detail |
+|------|--------|
+| **TS1 unit calls** | Private voice on slot 1 — repeater ↔ network |
+| **TS2 unit calls** | Private voice on slot 2 — repeater ↔ network |
+| **Inbound** | Decode `0x81` → unit DMRD → `dmrd_received()` |
+| **Outbound** | Remove blanket drop at `ipsc_send_system()` when `_bits & 0x40`; encode to `0x81` |
+| **Reflector** | TG 9 + private call to reflector number (reuse existing `#NNNN` bridge rules) |
+
+### Tasks
 
 - [ ] **3.1** Add `PRIVATE_VOICE = 0x81` and related constants to `ipsc_const.py`; extend `opcode_name()`.
-- [ ] **3.2** Decode `0x81` → unit DMRD → `dmrd_received()` (reflector handler on TG 9 + PC).
-- [ ] **3.3** Encode outbound private voice; remove blanket unit-call drop in `ipsc_send_system()` (route `0x40` to private encoder).
+- [ ] **3.2** Decode `0x81` → unit DMRD → `dmrd_received()` (opcode dispatch in `ipsc_master.py`).
+- [ ] **3.3** Encode outbound private voice for **TS1 and TS2**; route unit DMRD (`0x40`) to private encoder in `ipsc_send_system()`.
 - [ ] **3.4** Reuse jitter-buffer / stream state from `ipsc_voice.py` where burst cadence matches group voice.
-- [ ] **3.5** Field test: TG 9 + private call to reflector on GB7NR; pcap compare with IPSC2.
-- [ ] **3.6** Tests: `test_ipsc_private_voice.py`, reflector bridge with IPSC leg.
+- [ ] **3.5** Field test GB7NR: unit call TS1 peer-to-peer; unit call TS2 peer-to-peer; pcap compare with IPSC2 / node-dmr-lib.
+- [ ] **3.6** Field test: TG 9 + private call to reflector on both slots.
+- [ ] **3.7** Tests: `test_ipsc_private_voice.py` — inbound/outbound per slot; reflector bridge with IPSC leg.
+
+**Branch:** develop on `ipsc` or `ipsc-phase3` after v1.5.0 merge; target **v1.6.0** when unit calls ship.
 
 ---
 
@@ -247,21 +343,12 @@ TMS, LRRP, ARS, optional BMS and wireline (`0xB2`). Implement as services above 
 
 ## Soak-test log prompts
 
+See **Phase 0** section above for the full 1-week soak plan and pass criteria.
+
+Quick reference:
+
 ```bash
-# Bridge + linked IPSC activation (per-connection isolation)
-docker logs systemx -f 2>&1 | grep -E 'linked leg activated|Bridge 2350 activated for|IPSC peer'
-
-# Hotspot → repeater path
-docker logs systemx -f 2>&1 | grep -E 'SYSTEM-[0-9]+.*CALL START|IPSC-[0-9]+.*CALL'
-
-# Selfcare apply
-docker logs systemx -f 2>&1 | grep -E 'SELF SERVICE|Applied options for IPSC'
-
-# Outbound to repeater
-tcpdump -ni any -c 30 'host <repeater-ip> and udp port 56002'
-
-# Report peer visibility
-python3 report_receiver.py -c <rysen-host> <report-port>
+docker logs systemx -f 2>&1 | grep -E 'CALL START|SELF SERVICE|linked leg activated'
 ```
 
 ---
@@ -278,9 +365,9 @@ python3 report_receiver.py -c <rysen-host> <report-port>
 
 ## v1.5.0 release checklist
 
-**Pre-merge (`ipsc` branch)**
+**Pre-merge (`ipsc` branch)** — soak ends ~**2026-07-01**
 
-- [ ] Soak test complete (group voice, bridge, hotspot → IPSC, selfcare reconnect)
+- [ ] **1-week soak complete** (group voice TS1+TS2, hotspot → IPSC, selfcare reconnect) — started 2026-06-24
 - [ ] Phase 2.5–2.6 spot-check on VM (`report_receiver` + dashboard)
 - [x] Phase 2 server: HBP-shaped `PEERS` + lifecycle `send_config()`
 - [x] Phase 2d: IPSC selfcare + static TG bridges
@@ -290,9 +377,10 @@ python3 report_receiver.py -c <rysen-host> <report-port>
 - [ ] Set `version.txt` to **1.5.0**; finalise CHANGELOG date
 - [ ] Rebuild/publish `shaymez/rysen:latest`; update installer to `master` + `docker compose pull`
 
-**Post-merge (v1.5.1+ / Phase 3 branch)**
+**Post-merge (Phase 3 → v1.6.0)**
 
-- [ ] Phase 3: `PRIVATE_VOICE` / reflector over IPSC
+- [ ] Phase 3: `PRIVATE_VOICE` — unit calls on **TS1 and TS2**
+- [ ] Phase 3: reflector / dial-a-tg over IPSC (both slots)
 - [ ] Phase 4: SMS / GPS data paths
 - [ ] Phase 5: TMS / LRRP / ARS as required
 - [ ] Phase 6: timeouts, report events, hardening

@@ -39,14 +39,15 @@ Major release: Motorola IP Site Connect for SystemX. Field-tested on SYSTEM-XTES
 
 ### Remaining before merge (v1.5.0)
 
-- Multi-day soak test (field)
+- Multi-day soak test (field) — **1-week soak started 2026-06-24**
 - Final `report_receiver` / dashboard spot-check (roadmap 2.5–2.6)
 - Rotate production `AUTH_KEY` off sample defaults
 - Merge `ipsc` → `master`; bump `version.txt` to **1.5.0**; publish Docker image
 
-### Planned post-merge (v1.5.1+ / Phase 3)
+### Planned post-merge (v1.6.0 / Phase 3)
 
-- Phase 3: `PRIVATE_VOICE (0x81)` — reflector / dial-a-tg over IPSC
+- Phase 3: `PRIVATE_VOICE (0x81)` — **unit calls on TS1 and TS2**
+- Phase 3: reflector / dial-a-tg over IPSC (both slots)
 - Phase 4: `GROUP_DATA` / `PRIVATE_DATA` — SMS, GPS, UDT
 - Phase 5+: TMS, LRRP, ARS (node-dmr-lib reference)
 

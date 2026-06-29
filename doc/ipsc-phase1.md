@@ -125,22 +125,39 @@ BRIDGES = {
 
 Slot names (`SYSTEM-62`, `IPSC-79`) change with proxy assignments — check logs. Alternatively set `TS2_STATIC: 2350` on both `[SYSTEM]` and `[IPSC]` in `rysen.cfg`, or hotspot `OPTIONS: IPSC=IPSC-79` to link UA bridges to your repeater only.
 
-## Soak-test checklist
+## Soak-test checklist (1 week — started 2026-06-24)
 
-Before merging `ipsc` → `master`:
+**In scope:** group voice only. Unit/private calls come in **Phase 3** after v1.5.0 merge.
 
-- [ ] DroidStar cold PTT (after RYSEN restart) — with `OPTIONS: IPSC=IPSC-N` on hotspot, log shows `linked leg activated: IPSC-N`
+### Traffic to run during the week
+
+- [ ] **TS1** — PTT on each static TG in selfcare `TS1=` list
+- [ ] **TS2** — PTT on each static TG in selfcare `TS2=` list (e.g. 2350)
+- [ ] Repeater → network audio (inbound GROUP_VOICE)
+- [ ] OBP / hotspot → repeater audio (outbound GROUP_VOICE)
+- [ ] DroidStar cold PTT after RYSEN restart — `OPTIONS: IPSC=IPSC-N`; log shows `linked leg activated`
 - [ ] Repeater → hotspot return audio
 - [ ] Long call (~2 min) — no stuck bridge / zombie stream
-- [ ] Second repeater on another `IPSC-N` slot (proxy ID routing)
-- [ ] Auth failure with wrong key (repeater rejected)
-- [ ] `tcpdump` during hotspot TX: HEAD 64 B, then ~62 B voice at ~60 ms spacing
+- [ ] Repeater power-cycle — registration + selfcare static TGs re-applied
+- [ ] RYSEN restart mid-week — repeater re-registers; voice still works
+- [ ] Dashboard shows GB7NR on Linked Systems throughout
+
+### One-off checks
+
+- [ ] Auth failure with wrong key (test repeater rejected)
+- [ ] `tcpdump` during hotspot TX: HEAD ~54 B, voice ~52 B at ~60 ms spacing
+- [ ] `report_receiver.py` — IPSC slot + bridge legs (roadmap 2.5–2.6)
+
+### Not expected this week
+
+- [ ] Unit/private voice through IPSC (Phase 3 — TS1 and TS2)
 
 ## Pre-merge work (v1.5.0 release gate)
 
 See [ipsc-roadmap.md](ipsc-roadmap.md) for the full checklist. Remaining:
 
-- **Soak test** — multi-day field use (group voice, hotspot → IPSC, selfcare reconnect)
+- **Soak test** — **1-week soak in progress** (from 2026-06-24); group voice TS1+TS2
+- **After soak** — merge **v1.5.0**, then **Phase 3** unit calls on TS1 and TS2
 - **Final verify** — `report_receiver.py` + dashboard spot-check (roadmap 2.5–2.6)
 - **Production `AUTH_KEY`** — rotate off sample defaults
 - **Merge `ipsc` → `master`** — bump to **RYSEN 1.5.0**, publish Docker image
