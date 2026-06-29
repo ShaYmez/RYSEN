@@ -185,7 +185,7 @@ class TestIpscOutbound(unittest.TestCase):
         tr._del_rtp_seq[2] = 100
         tr.begin_reflector_encode_session()
         self.assertEqual(tr._del_stream_ctr, 5)
-        self.assertEqual(tr._del_rtp_seq[2], 100)
+        self.assertEqual(tr._del_rtp_seq[2], 0)
         self.assertEqual(tr._del_stream_id[2], 0)
 
     def test_learn_peer_header(self):
