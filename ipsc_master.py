@@ -468,8 +468,11 @@ class IpscMasterMixin:
     def ipsc_reflector_speech(self, speech, ts=2, peer_id=None, generation=0):
         """
         Play dial-a-tg prompts on IPSC as PRIVATE_VOICE back to the caller.
-        Hotspots use GROUP on TG9; Moto repeaters answer the private call instead.
+        Waits 1s after PTT release (VTERM) before transmitting — same as HBP sendSpeech.
         """
+        if generation != self._reflector_speech_gen:
+            return
+        sleep(1)
         if generation != self._reflector_speech_gen:
             return
         self._sync_reflector_voice_headers()

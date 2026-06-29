@@ -2495,9 +2495,6 @@ class routerHBP(HBSYSTEM):
 
     def _cancel_reflector_timers(self, slot):
         self._cancel_reflector_fallback(slot)
-        timer = self.STATUS[slot].pop('_reflect_early', None)
-        if timer is not None and timer.active():
-            timer.cancel()
 
     def _reflector_fallback_cb(self, int_dst_id, rf_src, peer_id, slot, stream_id, lang):
         if self.STATUS[slot].get('_reflect_announced') == stream_id:
@@ -2506,37 +2503,15 @@ class routerHBP(HBSYSTEM):
             return
         _say = self._build_reflector_announce_say(int_dst_id, slot, lang)
         if _say:
-            logger.info('(%s) IPSC reflector speech fallback (private call to %s)',
-                        self._system, int_dst_id)
-            self._play_reflector_announcement(_say, rf_src, peer_id, slot, stream_id)
-
-    def _reflector_early_cb(self, int_dst_id, rf_src, peer_id, slot, stream_id, lang):
-        if self.STATUS[slot].get('_reflect_announced') == stream_id:
-            return
-        if self.STATUS[slot].get('RX_STREAM_ID') != stream_id:
-            return
-        _say = self._build_reflector_announce_say(int_dst_id, slot, lang)
-        if _say:
-            logger.info('(%s) IPSC reflector early announce (private call to %s)',
+            logger.info('(%s) IPSC reflector speech fallback (no VTERM, private call to %s)',
                         self._system, int_dst_id)
             self._play_reflector_announcement(_say, rf_src, peer_id, slot, stream_id)
 
     def _schedule_reflector_fallback(self, int_dst_id, rf_src, peer_id, slot, stream_id, lang):
         self._cancel_reflector_fallback(slot)
         self.STATUS[slot]['_reflect_fallback'] = reactor.callLater(
-            4.0, self._reflector_fallback_cb,
+            6.0, self._reflector_fallback_cb,
             int_dst_id, rf_src, peer_id, slot, stream_id, lang)
-
-    def _schedule_reflector_early(self, int_dst_id, rf_src, peer_id, slot, stream_id, lang):
-        self._cancel_reflector_early(slot)
-        self.STATUS[slot]['_reflect_early'] = reactor.callLater(
-            1.2, self._reflector_early_cb,
-            int_dst_id, rf_src, peer_id, slot, stream_id, lang)
-
-    def _cancel_reflector_early(self, slot):
-        timer = self.STATUS[slot].pop('_reflect_early', None)
-        if timer is not None and timer.active():
-            timer.cancel()
 
     def _build_reflector_announce_say(self, int_dst_id, slot, lang):
         """Build AMBE phrase list for dial-a-tg private-call announcements."""
@@ -3016,8 +2991,6 @@ class routerHBP(HBSYSTEM):
 
                 if (CONFIG['SYSTEMS'][self._system]['MODE'] == 'IPSC'
                         and is_reflector_private_destination(_int_dst_id)):
-                    self._schedule_reflector_early(
-                        _int_dst_id, _rf_src, _peer_id, _slot, _stream_id, _lang)
                     self._schedule_reflector_fallback(
                         _int_dst_id, _rf_src, _peer_id, _slot, _stream_id, _lang)
             
@@ -3025,6 +2998,7 @@ class routerHBP(HBSYSTEM):
             if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
                 _say = self._build_reflector_announce_say(_int_dst_id, _slot, _lang)
                 if _say:
+                    logger.info('(%s) IPSC reflector: PTT released, speech in 1s', self._system)
                     self._play_reflector_announcement(_say, _rf_src, _peer_id, _slot, _stream_id)
 
             if (not is_reflector_private_destination(_int_dst_id)
