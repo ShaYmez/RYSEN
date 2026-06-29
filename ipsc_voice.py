@@ -566,11 +566,16 @@ class IpscVoiceTranslator:
         frame_type = (flags & 0x30) >> 4
         dtype_vseq = flags & 0x0F
         private_call = bool(flags & HBPF_UNIT_CALL)
+        hbp_stream = dmrd[16:20]
         src_sub = dmrd[5:8]
         dst_id = dmrd[8:11]
         payload = dmrd[20:53]
 
         if frame_type == HBPF_DATA_SYNC and dtype_vseq == HBPF_SLT_VHEAD:
+            if (self._del_hbp_stream.get(ts) == hbp_stream
+                    and self._del_stream_id[ts]):
+                return None
+            self._del_hbp_stream[ts] = hbp_stream
             lc = _decode_lc_from_dmrd(payload)
             self._del_stream_ctr = (self._del_stream_ctr + 1) & 0xFF
             self._del_stream_id[ts] = self._del_stream_ctr

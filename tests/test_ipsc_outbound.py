@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 import unittest
 
+from dmr_utils3.utils import bytes_3
+from mk_voice import pkt_gen
+from voice_lib import words
+
 from ipsc_const import (
-    GROUP_VOICE, VOICE_HEAD, VOICE_TERM, SLOT2_VOICE, TS_CALL_MSK,
+    GROUP_VOICE, PRIVATE_VOICE, VOICE_HEAD, VOICE_TERM, SLOT2_VOICE, TS_CALL_MSK,
+    HBPF_UNIT_CALL,
     GV_BURST_TYPE_OFF, GV_HEAD_LEN, GV_VOICE_LEN,
 )
 from ipsc_voice import IpscVoiceTranslator
@@ -145,6 +150,34 @@ class TestIpscOutbound(unittest.TestCase):
         self.assertEqual(term_out[GV_BURST_TYPE_OFF], VOICE_TERM)
         voice_sent = [p for p in sent if len(p) == GV_VOICE_LEN]
         self.assertEqual(len(voice_sent), 1)
+
+    def test_pkt_gen_private_call_flag(self):
+        caller = bytes_3(2348831)
+        speech = pkt_gen(bytes_3(5000), caller, b'\x00\x03\x96\x77', 1,
+                         [words['silence']], private_call=True)
+        head = next(speech)
+        self.assertTrue(head[15] & HBPF_UNIT_CALL)
+
+    def test_encode_reflector_private_speech(self):
+        caller = bytes_3(2348831)
+        speech = pkt_gen(bytes_3(5000), caller, b'\x00\x03\x96\x77', 1,
+                         [words['silence']], private_call=True)
+        tr = IpscVoiceTranslator(master_id=self.MASTER_ID)
+        sample = bytes.fromhex(
+            '81' + '00039717' + '14' + '23cb93' + '00092e'
+            + '0200002e39' + '20'
+            + '80ddc618226cc7f700000000'
+            + '01'
+        )
+        tr.learn_peer_header(sample, private_call=True)
+        head = next(speech)
+        out1 = tr.encode(head)
+        out2 = tr.encode(head)
+        self.assertIsNotNone(out1)
+        self.assertIsNone(out2)
+        self.assertEqual(out1[0], PRIVATE_VOICE)
+        self.assertEqual(out1[6:9], bytes_3(5000))
+        self.assertEqual(out1[9:12], caller)
 
     def test_learn_peer_header(self):
         tr = IpscVoiceTranslator(master_id=self.MASTER_ID)

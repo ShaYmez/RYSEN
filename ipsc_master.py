@@ -14,7 +14,10 @@ import socket
 import struct
 from collections import deque
 from hashlib import sha1
-from time import time
+from time import sleep, time
+
+from twisted.internet import reactor
+from twisted.internet.threads import blockingCallFromThread
 
 from dmr_utils3.utils import int_id
 
@@ -427,3 +430,41 @@ class IpscMasterMixin:
         ipsc_pkt = self._voice.handle_outbound(_packet)
         if ipsc_pkt is not None:
             self._ipsc_send_voice(ipsc_pkt)
+
+    def _ipsc_send_reflector_dmrd(self, dmrd):
+        """Encode and send one pre-paced reflector DMRD (bypasses jitter buffer)."""
+        if dmrd[:4] != DMRD or len(dmrd) < 53:
+            return False
+        if not self._config.get('REPEAT', True) or not self._ipsc_peers:
+            return False
+        _bits = dmrd[15]
+        if (_bits & 0x23) == 0x23:
+            return False
+        ipsc_pkt = self._voice.encode(dmrd)
+        if ipsc_pkt is None:
+            return False
+        self._ipsc_send_voice(ipsc_pkt)
+        return True
+
+    def ipsc_reflector_speech(self, speech, ts=2):
+        """
+        Play dial-a-tg prompts on IPSC as PRIVATE_VOICE back to the caller.
+        Hotspots use GROUP on TG9; Moto repeaters answer the private call instead.
+        """
+        sleep(1)
+        self._voice._init_outbound_delivery_state()
+        sent = 0
+        while True:
+            try:
+                pkt = next(speech)
+            except StopIteration:
+                break
+            sleep(0.058)
+            if blockingCallFromThread(reactor, self._ipsc_send_reflector_dmrd, pkt):
+                sent += 1
+        if sent:
+            logger.info('(%s) IPSC reflector speech: %s packets sent on TS%s',
+                        self._system, sent, ts)
+        else:
+            logger.warning('(%s) IPSC reflector speech: nothing sent (peers=%s)',
+                           self._system, len(self._ipsc_peers))

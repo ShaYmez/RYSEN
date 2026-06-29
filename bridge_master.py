@@ -2935,9 +2935,12 @@ class routerHBP(HBSYSTEM):
                         _say.append(words[_lang][num])
      
                 if _say:
-                    speech = pkt_gen(bytes_3(5000), _nine, bytes_4(9), 1, _say)
-                    #call speech in a thread as it contains sleep() and hence could block the reactor
-                    reactor.callInThread(sendSpeech,self,speech)
+                    if CONFIG['SYSTEMS'][self._system]['MODE'] == 'IPSC':
+                        speech = pkt_gen(bytes_3(5000), _rf_src, _peer_id, 1, _say, private_call=True)
+                        reactor.callInThread(self.ipsc_reflector_speech, speech, _slot)
+                    else:
+                        speech = pkt_gen(bytes_3(5000), _nine, bytes_4(9), 1, _say)
+                        reactor.callInThread(sendSpeech, self, speech)
 
             if (not is_dial_service_code(_int_dst_id)
                     and _int_dst_id not in (8, 9)
