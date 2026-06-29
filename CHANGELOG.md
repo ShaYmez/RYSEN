@@ -41,6 +41,8 @@ Major release: Motorola IP Site Connect for SystemX. Field-tested on SYSTEM-XTES
 - `ipsc_send_system()` no longer drops unit calls
 - `_forward_unit_voice()` bridges private voice to SUB_MAP, hotspot peers, and IPSC
 
+### Tests
+
 - `tests/test_ipsc_phase1.py`, `test_ipsc_outbound.py`, `test_ipsc_proxy.py`, `test_ipsc_bridge.py`, `test_ipsc_peers.py`, `test_ipsc_selfcare.py`, `test_static_tg_bridges.py`, `test_ipsc_private_voice.py`
 
 ### Remaining before merge (v1.5.0)
