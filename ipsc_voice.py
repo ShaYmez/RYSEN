@@ -193,8 +193,8 @@ class IpscVoiceTranslator:
     def begin_reflector_encode_session(self):
         """
         Prepare for a new canned reflector speech stream.
-        Clears per-call encode state but keeps monotonic IPSC call_seq / RTP
-        (repeaters reject duplicate call_seq if reset to 1 every announcement).
+        Clears per-call encode state but keeps monotonic IPSC call_seq and RTP
+        sequence (repeaters reject duplicate seq if reset every announcement).
         """
         for ts in (1, 2):
             self._cancel_delivery_timer(ts)
@@ -207,7 +207,6 @@ class IpscVoiceTranslator:
             self._del_emb_lc[ts] = None
             self._del_private[ts] = False
             self._del_stream_id[ts] = 0
-            self._del_rtp_seq[ts] = 0
             self._del_rtp_ts[ts] = 0
 
     def set_send_callback(self, callback):
@@ -600,6 +599,7 @@ class IpscVoiceTranslator:
             self._del_stream_ctr = (self._del_stream_ctr + 1) & 0xFF
             self._del_stream_id[ts] = self._del_stream_ctr
             self._del_private[ts] = private_call
+            self._del_rtp_ts[ts] = 0
             call_info = TS_CALL_MSK if ts == 2 else 0x00
             gv_payload = bytes([VOICE_HEAD]) + _build_ipsc_voice_payload(lc, VOICE_HEAD)
             rtp_hdr = self._next_rtp_hdr(ts, 0xdd)
@@ -615,10 +615,12 @@ class IpscVoiceTranslator:
             gv_payload = bytes([VOICE_TERM]) + _build_ipsc_voice_payload(lc, VOICE_TERM)
             rtp_hdr = self._next_rtp_hdr(ts, 0x5e)
             opcode = PRIVATE_VOICE if self._del_private.get(ts) else GROUP_VOICE
-            return self._build_voice(
+            pkt = self._build_voice(
                 opcode, src_sub, dst_id, call_info, rtp_hdr, gv_payload,
                 self._del_stream_id[ts], private_call=self._del_private.get(ts, False),
             )
+            self._clear_delivery_ts(ts)
+            return pkt
 
         if (frame_type == HBPF_VOICE_SYNC and dtype_vseq == 0) or (
                 frame_type == HBPF_VOICE and dtype_vseq in (1, 2, 3, 4, 5)):

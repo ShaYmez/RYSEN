@@ -2505,7 +2505,8 @@ class routerHBP(HBSYSTEM):
         if _say:
             logger.info('(%s) IPSC reflector speech fallback (no VTERM, private call to %s)',
                         self._system, int_dst_id)
-            self._play_reflector_announcement(_say, rf_src, peer_id, slot, stream_id)
+            self._play_reflector_announcement(
+                _say, rf_src, peer_id, slot, stream_id, int_dst_id)
 
     def _schedule_reflector_fallback(self, int_dst_id, rf_src, peer_id, slot, stream_id, lang):
         self._cancel_reflector_fallback(slot)
@@ -2591,7 +2592,8 @@ class routerHBP(HBSYSTEM):
 
         return _say if len(_say) > 1 else None
 
-    def _play_reflector_announcement(self, _say, rf_src, peer_id, slot, stream_id):
+    def _play_reflector_announcement(self, _say, rf_src, peer_id, slot, stream_id,
+                                     int_dst_id=None):
         if not _say:
             return
         if self.STATUS[slot].get('_reflect_announced') == stream_id:
@@ -2601,8 +2603,12 @@ class routerHBP(HBSYSTEM):
         if CONFIG['SYSTEMS'][self._system]['MODE'] == 'IPSC':
             self._reflector_speech_gen = getattr(self, '_reflector_speech_gen', 0) + 1
             _gen = self._reflector_speech_gen
-            speech = pkt_gen(bytes_3(5000), rf_src, peer_id, 1, _say, private_call=True)
-            reactor.callInThread(self.ipsc_reflector_speech, speech, slot, peer_id, _gen)
+            # Moto repeaters expect the reply from the ID that was private-called.
+            reply_as = bytes_3(int_dst_id if int_dst_id is not None else 5000)
+            hbp_slot = 1 if slot == 2 else 0
+            speech = pkt_gen(reply_as, rf_src, peer_id, hbp_slot, _say, private_call=True)
+            reactor.callInThread(
+                self.ipsc_reflector_speech, speech, slot, peer_id, _gen, int_dst_id)
         else:
             speech = pkt_gen(bytes_3(5000), bytes_3(9), bytes_4(9), 1, _say)
             reactor.callInThread(sendSpeech, self, speech)
@@ -2999,7 +3005,8 @@ class routerHBP(HBSYSTEM):
                 _say = self._build_reflector_announce_say(_int_dst_id, _slot, _lang)
                 if _say:
                     logger.info('(%s) IPSC reflector: PTT released, speech in 1s', self._system)
-                    self._play_reflector_announcement(_say, _rf_src, _peer_id, _slot, _stream_id)
+                    self._play_reflector_announcement(
+                        _say, _rf_src, _peer_id, _slot, _stream_id, _int_dst_id)
 
             if (not is_reflector_private_destination(_int_dst_id)
                     and _int_dst_id not in (8, 9)):

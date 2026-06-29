@@ -318,6 +318,8 @@ class IpscMasterMixin:
             return
 
         self._voice.learn_peer_header(data, private_call=private_call)
+        if private_call:
+            self._reflector_voice.learn_peer_header(data, private_call=True)
 
         burst_type = data[GV_BURST_TYPE_OFF]
         call_info = data[GV_CALL_INFO_OFF]
@@ -465,7 +467,8 @@ class IpscMasterMixin:
         self._ipsc_send_voice_to_peer(ipsc_pkt, peer_id)
         return True
 
-    def ipsc_reflector_speech(self, speech, ts=2, peer_id=None, generation=0):
+    def ipsc_reflector_speech(self, speech, ts=2, peer_id=None, generation=0,
+                              reply_as_id=None):
         """
         Play dial-a-tg prompts on IPSC as PRIVATE_VOICE back to the caller.
         Waits 1s after PTT release (VTERM) before transmitting — same as HBP sendSpeech.
@@ -478,6 +481,7 @@ class IpscMasterMixin:
         self._sync_reflector_voice_headers()
         self._reflector_voice.begin_reflector_encode_session()
         start_seq = self._reflector_voice._del_stream_ctr
+        start_rtp = self._reflector_voice._del_rtp_seq.get(ts, 0)
         sent = 0
         while True:
             if generation != self._reflector_speech_gen:
@@ -493,10 +497,15 @@ class IpscMasterMixin:
         if generation != self._reflector_speech_gen:
             return
         if sent:
+            end_rtp = self._reflector_voice._del_rtp_seq.get(ts, start_rtp)
             logger.info(
-                '(%s) IPSC reflector speech: %s packets sent on TS%s to peer %s (call_seq %s..%s)',
-                self._system, sent, ts, int_id(peer_id) if peer_id else '?',
-                start_seq + 1, self._reflector_voice._del_stream_ctr)
+                '(%s) IPSC reflector speech: %s packets as %s on TS%s to peer %s '
+                '(call_seq %s..%s, rtp_seq %s..%s)',
+                self._system, sent,
+                reply_as_id if reply_as_id is not None else 5000,
+                ts, int_id(peer_id) if peer_id else '?',
+                start_seq + 1, self._reflector_voice._del_stream_ctr,
+                start_rtp, end_rtp)
         else:
             logger.warning('(%s) IPSC reflector speech: nothing sent (peers=%s)',
                            self._system, len(self._ipsc_peers))
