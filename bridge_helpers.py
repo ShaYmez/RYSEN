@@ -157,21 +157,27 @@ def reflector_single_mode_wrong_tg(int_dst_id, dst_id_bytes, bridge, entry):
     return True
 
 
-def touch_reflector_ua_timers(bridges, bridge, int_dst_id, dst_id_bytes, slot, pkt_time):
-    """Reset UA timers on active dial-a-tg links when the linked TG is in use (any bridge leg)."""
-    if bridge not in bridges:
-        return
-    if not reflector_bridge_matches_group_call(bridge, int_dst_id):
-        return
-    if bridge[0:1] == '#' and int_dst_id == 9:
-        return
-    for entry in bridges[bridge]:
-        if entry['TS'] != slot:
-            continue
-        if not entry.get('ACTIVE') or entry.get('TO_TYPE') != 'ON':
-            continue
-        timeout = entry.get('TIMEOUT')
-        if not timeout:
-            continue
-        if reflector_bridge_uses_linked_tg(bridge, int_dst_id, dst_id_bytes, entry.get('ON')):
-            entry['TIMER'] = pkt_time + timeout
+def set_reflector_link_owner(entry, rf_src, peer_id):
+    """Record who owns an active dial-a-tg link (timer resets only on their PTT)."""
+    entry['LINKER'] = rf_src
+    entry['LINKER_PEER'] = peer_id
+
+
+def clear_reflector_link_owner(entry):
+    entry.pop('LINKER', None)
+    entry.pop('LINKER_PEER', None)
+
+
+def reflector_timer_reset_allowed(bridge, entry, rf_src, peer_id):
+    """Dial-a-tg UA timer extends only for the subscriber who linked, not network RX."""
+    if bridge[0:1] != '#':
+        return True
+    linker = entry.get('LINKER')
+    if linker is None:
+        return False
+    if rf_src != linker:
+        return False
+    linker_peer = entry.get('LINKER_PEER')
+    if linker_peer is not None and peer_id != linker_peer:
+        return False
+    return True

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import time
 import unittest
 
 from dmr_utils3.utils import bytes_3
@@ -8,7 +7,8 @@ from bridge_helpers import (
     reflector_bridge_matches_group_call,
     bridge_transmission_matches_rule,
     reflector_single_mode_wrong_tg,
-    touch_reflector_ua_timers,
+    reflector_timer_reset_allowed,
+    set_reflector_link_owner,
 )
 
 
@@ -34,7 +34,6 @@ class TestReflectorTimeoutHelpers(unittest.TestCase):
         }
         self.assertTrue(
             bridge_transmission_matches_rule('#2350', 2350, bytes_3(2350), 2, entry))
-        # Dial channel matches entry TGID (9) — separate from linked-TG activity
         self.assertTrue(
             bridge_transmission_matches_rule('#2350', 9, bytes_3(9), 2, entry))
 
@@ -45,22 +44,35 @@ class TestReflectorTimeoutHelpers(unittest.TestCase):
         self.assertTrue(
             reflector_single_mode_wrong_tg(3100, bytes_3(3100), '#2350', entry))
 
-    def test_touch_reflector_timers_on_bridged_traffic(self):
-        now = time.time()
-        bridges = {
-            '#2350': [{
-                'SYSTEM': 'SYSTEM-0',
-                'TS': 2,
-                'TGID': bytes_3(9),
-                'ACTIVE': True,
-                'TO_TYPE': 'ON',
-                'TIMEOUT': 600,
-                'TIMER': now,
-                'ON': [bytes_3(2350)],
-            }],
+    def test_timer_reset_only_for_link_owner(self):
+        entry = {
+            'TS': 2,
+            'TGID': bytes_3(9),
+            'ON': [bytes_3(2350)],
         }
-        touch_reflector_ua_timers(bridges, '#2350', 2350, bytes_3(2350), 2, now + 1)
-        self.assertEqual(bridges['#2350'][0]['TIMER'], now + 1 + 600)
+        owner = bytes_3(2348831)
+        other = bytes_3(2345875)
+        peer = bytes_3(1234567)
+        set_reflector_link_owner(entry, owner, peer)
+
+        self.assertTrue(
+            reflector_timer_reset_allowed('#2350', entry, owner, peer))
+        self.assertFalse(
+            reflector_timer_reset_allowed('#2350', entry, other, peer))
+        self.assertFalse(
+            reflector_timer_reset_allowed('#2350', entry, owner, bytes_3(9999999)))
+
+    def test_timer_reset_without_linker_denied(self):
+        entry = {'TS': 2, 'TGID': bytes_3(9), 'ON': [bytes_3(2350)]}
+        self.assertFalse(
+            reflector_timer_reset_allowed(
+                '#2350', entry, bytes_3(2348831), bytes_3(1234567)))
+
+    def test_normal_bridge_timer_reset_not_restricted(self):
+        entry = {'TS': 2, 'TGID': bytes_3(2350), 'ON': [bytes_3(2350)]}
+        self.assertTrue(
+            reflector_timer_reset_allowed(
+                '2350', entry, bytes_3(9999999), bytes_3(1234567)))
 
 
 if __name__ == '__main__':

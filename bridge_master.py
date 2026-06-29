@@ -67,7 +67,9 @@ from bridge_helpers import (
     reflector_bridge_matches_group_call,
     bridge_transmission_matches_rule,
     reflector_single_mode_wrong_tg,
-    touch_reflector_ua_timers,
+    reflector_timer_reset_allowed,
+    set_reflector_link_owner,
+    clear_reflector_link_owner,
 )
 # NOTE: 'words' is loaded dynamically via readAMBE() at runtime (see line ~2689)
 #from voice_lib import words
@@ -653,6 +655,7 @@ def reset_dynamic_reflectors(system):
             if _sys['ACTIVE']:
                 _sys['ACTIVE'] = False
                 _sys['TIMER'] = time()
+                clear_reflector_link_owner(_sys)
                 _changed = True
                 logger.info('(REFLECTOR) Cleared dynamic dial-a-tg link %s for %s', _bridge, system)
     if _changed:
@@ -671,6 +674,7 @@ def disconnect_dial_reflectors(system):
             if _sys['ACTIVE']:
                 _sys['ACTIVE'] = False
                 _sys['TIMER'] = time()
+                clear_reflector_link_owner(_sys)
                 _changed = True
                 logger.info('(REFLECTOR) Disconnect (4000): deactivated %s for %s', _bridge, system)
     if _changed:
@@ -855,6 +859,8 @@ def rule_timer_loop():
                     elif _system['TIMER'] < _now:
                         # Normal timeout behavior when sticky TG not active
                         _system['ACTIVE'] = False
+                        if _bridge[0:1] == '#':
+                            clear_reflector_link_owner(_system)
                         _timeout_min = int(_system['TIMEOUT'] // 60) if _system['TIMEOUT'] else 0
                         logger.info(
                             '(ROUTER) Conference Bridge TIMEOUT (%s min): DEACTIVATE System: %s, Bridge: %s, TS: %s, TGID: %s',
@@ -2360,10 +2366,6 @@ class routerHBP(HBSYSTEM):
 
     def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,sysIgnore,_source_server, _ber, _rssi, _source_rptr):
         _sysIgnore = sysIgnore
-        if (_call_type == 'group' and _frame_type == HBPF_DATA_SYNC
-                and _dtype_vseq == HBPF_SLT_VTERM):
-            touch_reflector_ua_timers(
-                BRIDGES, _bridge, int_id(_dst_id), _dst_id, _slot, pkt_time)
         for _target in BRIDGES[_bridge]:
             #if _target['SYSTEM'] != self._system or (_target['SYSTEM'] == self._system and _target['TS'] != _slot):
             if _target['SYSTEM'] != self._system and _target['ACTIVE']:
@@ -3013,6 +3015,8 @@ class routerHBP(HBSYSTEM):
                                     # TGID matches a rule source, reset its timer
                                     if (bridge_transmission_matches_rule(
                                             _bridge, _int_dst_id, _dst_id, _slot, _system)
+                                            and reflector_timer_reset_allowed(
+                                                _bridge, _system, _rf_src, _peer_id)
                                             and ((_system['TO_TYPE'] == 'ON' and (_system['ACTIVE'] == True))
                                                  or (_system['TO_TYPE'] == 'OFF' and _system['ACTIVE'] == False))):
                                         _system['TIMER'] = pkt_time + _system['TIMEOUT']
@@ -3025,6 +3029,7 @@ class routerHBP(HBSYSTEM):
                                     if _system['ACTIVE'] == False:
                                         _system['ACTIVE'] = True
                                         _system['TIMER'] = pkt_time + _system['TIMEOUT']
+                                        set_reflector_link_owner(_system, _rf_src, _peer_id)
                                         logger.info('(%s) [C] Reflector: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
                                         # Cancel the timer if we've enabled an "OFF" type timeout
                                         if _system['TO_TYPE'] == 'OFF':
@@ -3046,6 +3051,7 @@ class routerHBP(HBSYSTEM):
                                         if _dst_id in _system['OFF'] or _int_dst_id != int(_dehash_bridge) :
                                             if _system['ACTIVE'] == True:
                                                 _system['ACTIVE'] = False
+                                                clear_reflector_link_owner(_system)
                                                 logger.info('(%s) [F] Reflector: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
                                                 # Cancel the timer if we've enabled an "ON" type timeout
                                                 if _system['TO_TYPE'] == 'ON':
@@ -3334,6 +3340,8 @@ class routerHBP(HBSYSTEM):
                             # TGID matches a rule source, reset its timer
                             if (bridge_transmission_matches_rule(
                                     _bridge, _int_dst_id, _dst_id, _slot, _system)
+                                    and reflector_timer_reset_allowed(
+                                        _bridge, _system, _rf_src, _peer_id)
                                     and ((_system['TO_TYPE'] == 'ON' and (_system['ACTIVE'] == True))
                                          or (_system['TO_TYPE'] == 'OFF' and _system['ACTIVE'] == False))):
                                 _system['TIMER'] = pkt_time + _system['TIMEOUT']
@@ -3347,13 +3355,17 @@ class routerHBP(HBSYSTEM):
                                     if _system['ACTIVE'] == False:
                                         _system['ACTIVE'] = True
                                         _system['TIMER'] = pkt_time + _system['TIMEOUT']
+                                        if _bridge[0:1] == '#':
+                                            set_reflector_link_owner(_system, _rf_src, _peer_id)
                                         logger.info('(%s) [2] Bridge: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
                                         # Cancel the timer if we've enabled an "OFF" type timeout
                                         if _system['TO_TYPE'] == 'OFF':
                                             _system['TIMER'] = pkt_time
                                             logger.info('(%s) [3] Bridge: %s set to "OFF" with an on timer rule: timeout timer cancelled', self._system, _bridge)
-                                # Reset the timer for the rule
-                                if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON':
+                                # Reset the timer for the rule (link owner PTT only on # reflectors)
+                                if (_system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON'
+                                        and reflector_timer_reset_allowed(
+                                            _bridge, _system, _rf_src, _peer_id)):
                                     _system['TIMER'] = pkt_time + _system['TIMEOUT']
                                     logger.info('(%s) [4] Bridge: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
 
@@ -3374,6 +3386,8 @@ class routerHBP(HBSYSTEM):
                                     #if _dst_id in _system['OFF']:
                                         if _system['ACTIVE'] == True:
                                             _system['ACTIVE'] = False
+                                            if _bridge[0:1] == '#':
+                                                clear_reflector_link_owner(_system)
                                             logger.info('(%s) [5] Bridge: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
                                             # Cancel the timer if we've enabled an "ON" type timeout
                                             if _system['TO_TYPE'] == 'ON':
