@@ -459,6 +459,17 @@ def is_invalid_dial_reflector(reflector):
         return False
 
 
+def is_reflector_private_destination(int_dst_id):
+    """Private-call dial-a-tg targets handled locally (never unit-voice bridged outward)."""
+    if int_dst_id in (4000, 5000):
+        return True
+    if int_dst_id >= 9991 and int_dst_id <= 9999:
+        return True
+    if int_dst_id >= 5 and int_dst_id not in (8, 9) and int_dst_id <= 999999:
+        return True
+    return False
+
+
 def make_default_reflector(reflector,_tmout,system):
     if is_invalid_dial_reflector(reflector):
         logger.warning('(REFLECTOR) Ignoring invalid default reflector %s for %s', reflector, system)
@@ -2477,6 +2488,117 @@ class routerHBP(HBSYSTEM):
         if CONFIG['REPORTS']['REPORT']:
             systems[_d_system]._report.send_bridgeEvent('UNIT DATA,DATA,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
 
+    def _cancel_reflector_fallback(self, slot):
+        timer = self.STATUS[slot].pop('_reflect_fallback', None)
+        if timer is not None and timer.active():
+            timer.cancel()
+
+    def _reflector_fallback_cb(self, int_dst_id, rf_src, peer_id, slot, stream_id, lang):
+        if self.STATUS[slot].get('_reflect_announced') == stream_id:
+            return
+        if self.STATUS[slot].get('RX_STREAM_ID') != stream_id:
+            return
+        _say = self._build_reflector_announce_say(int_dst_id, slot, lang)
+        if _say:
+            logger.info('(%s) IPSC reflector speech fallback (private call to %s)',
+                        self._system, int_dst_id)
+            self._play_reflector_announcement(_say, rf_src, peer_id, slot, stream_id)
+
+    def _schedule_reflector_fallback(self, int_dst_id, rf_src, peer_id, slot, stream_id, lang):
+        self._cancel_reflector_fallback(slot)
+        self.STATUS[slot]['_reflect_fallback'] = reactor.callLater(
+            2.0, self._reflector_fallback_cb,
+            int_dst_id, rf_src, peer_id, slot, stream_id, lang)
+
+    def _build_reflector_announce_say(self, int_dst_id, slot, lang):
+        """Build AMBE phrase list for dial-a-tg private-call announcements."""
+        _say = [words[lang]['silence']]
+
+        if int_dst_id < 8 or int_dst_id == 9:
+            logger.info('(%s) Reflector: voice called - TG <  8 or 9 - "busy""', self._system)
+            _say.append(words[lang]['busy'])
+            _say.append(words[lang]['silence'])
+            self.STATUS[slot]['_stopTgAnnounce'] = True
+
+        if CONFIG['ALLSTAR']['ENABLED'] and int_dst_id == 8:
+            logger.info('(%s) Reflector: voice called - TG 8 AllStar"', self._system)
+            _say.append(words[lang]['all-star-link-mode'])
+            _say.append(words[lang]['silence'])
+            self.STATUS[slot]['_stopTgAnnounce'] = True
+            self.STATUS[slot]['_allStarMode'] = True
+            reactor.callLater(30, self._reset_allstar_mode, slot)
+        elif not CONFIG['ALLSTAR']['ENABLED'] and int_dst_id == 8:
+            logger.info('(%s) Reflector: TG 8 AllStar not enabled"', self._system)
+            _say.append(words[lang]['busy'])
+            _say.append(words[lang]['silence'])
+            self.STATUS[slot]['_stopTgAnnounce'] = True
+
+        if int_dst_id == 4000:
+            logger.info('(%s) Reflector: voice called - 4000 "not linked"', self._system)
+            _say.append(words[lang]['notlinked'])
+            _say.append(words[lang]['silence'])
+
+        elif int_dst_id == 5000:
+            _active = False
+            for _bridge in BRIDGES:
+                if _bridge[0:1] != '#' or is_dial_service_code(_bridge[1:]):
+                    continue
+                for _system in BRIDGES[_bridge]:
+                    _dehash_bridge = _bridge[1:]
+                    if _system['SYSTEM'] == self._system and slot == _system['TS']:
+                        if _system['ACTIVE'] == True:
+                            logger.info('(%s) Reflector: voice called - 5000 status - "linked to %s"',
+                                        self._system, _dehash_bridge)
+                            _say.append(words[lang]['silence'])
+                            _say.append(words[lang]['linkedto'])
+                            _say.append(words[lang]['silence'])
+                            _say.append(words[lang]['to'])
+                            _say.append(words[lang]['silence'])
+                            _say.append(words[lang]['silence'])
+                            for num in str(_dehash_bridge):
+                                _say.append(words[lang][num])
+                            _active = True
+                            break
+            if _active == False:
+                logger.info('(%s) Reflector: voice called - 5000 status - "not linked"', self._system)
+                _say.append(words[lang]['notlinked'])
+
+        elif int_dst_id >= 9991 and int_dst_id <= 9999:
+            self.STATUS[slot]['_stopTgAnnounce'] = True
+            reactor.callInThread(playFileOnRequest, self, int_dst_id)
+            return None
+
+        elif not self.STATUS[slot]['_stopTgAnnounce']:
+            logger.info('(%s) Reflector: voice called (linking)  "linked to %s"', self._system, int_dst_id)
+            _say.append(words[lang]['silence'])
+            _say.append(words[lang]['linkedto'])
+            _say.append(words[lang]['silence'])
+            _say.append(words[lang]['to'])
+            _say.append(words[lang]['silence'])
+            _say.append(words[lang]['silence'])
+            for num in str(int_dst_id):
+                _say.append(words[lang][num])
+
+        return _say if len(_say) > 1 else None
+
+    def _play_reflector_announcement(self, _say, rf_src, peer_id, slot, stream_id):
+        if not _say:
+            return
+        if self.STATUS[slot].get('_reflect_announced') == stream_id:
+            return
+        self.STATUS[slot]['_reflect_announced'] = stream_id
+        self._cancel_reflector_fallback(slot)
+        if CONFIG['SYSTEMS'][self._system]['MODE'] == 'IPSC':
+            speech = pkt_gen(bytes_3(5000), rf_src, peer_id, 1, _say, private_call=True)
+            reactor.callInThread(self.ipsc_reflector_speech, speech, slot)
+        else:
+            speech = pkt_gen(bytes_3(5000), bytes_3(9), bytes_4(9), 1, _say)
+            reactor.callInThread(sendSpeech, self, speech)
+
+    def _reset_allstar_mode(self, slot):
+        self.STATUS[slot]['_allStarMode'] = False
+        logger.info('(%s) Reset all star mode -> dial mode', self._system)
+
     def _forward_unit_voice(self, _dst_id, _slot, _bits, _data, dmrpkt, _stream_id, _peer_id):
         """Bridge unit (private) voice DMRD to SUB_MAP destination, hotspot peer, or IPSC."""
         _int_dst_id = int_id(_dst_id)
@@ -2789,6 +2911,8 @@ class routerHBP(HBSYSTEM):
                 self.STATUS[_slot]['crcs'] = set()
                 
                 self.STATUS[_slot]['_stopTgAnnounce'] = False
+                self.STATUS[_slot]['_reflect_announced'] = None
+                self._cancel_reflector_fallback(_slot)
                 
                 logger.info('(%s) Reflector: Private call from %s to %s',self._system, int_id(_rf_src), _int_dst_id)
                 if _int_dst_id == 4000:
@@ -2852,100 +2976,20 @@ class routerHBP(HBSYSTEM):
                                             _system['TIMER'] = pkt_time
                                             logger.info('(%s) [I] Reflector: %s has ON timer and set to "OFF": timeout timer cancelled', self._system, _bridge)
                         deactivate_other_dynamic_reflectors(self._system, _bridgename, _slot)
+
+                if (CONFIG['SYSTEMS'][self._system]['MODE'] == 'IPSC'
+                        and is_reflector_private_destination(_int_dst_id)):
+                    self._schedule_reflector_fallback(
+                        _int_dst_id, _rf_src, _peer_id, _slot, _stream_id, _lang)
             
             
             if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
-                
-                _say = [words[_lang]['silence']]
-
-                if _int_dst_id < 8 or _int_dst_id == 9 :
-                    logger.info('(%s) Reflector: voice called - TG <  8 or 9 - "busy""', self._system)
-                    _say.append(words[_lang]['busy'])
-                    _say.append(words[_lang]['silence'])
-                    self.STATUS[_slot]['_stopTgAnnounce'] = True
-                    
-                #AllStar mode switch
-                if CONFIG['ALLSTAR']['ENABLED'] and _int_dst_id == 8:
-                    logger.info('(%s) Reflector: voice called - TG 8 AllStar"', self._system)
-                    _say.append(words[_lang]['all-star-link-mode'])
-                    _say.append(words[_lang]['silence'])
-                    self.STATUS[_slot]['_stopTgAnnounce'] = True
-                    self.STATUS[_slot]['_allStarMode'] = True
-                    reactor.callLater(30,resetallStarMode)
-                elif not CONFIG['ALLSTAR']['ENABLED'] and _int_dst_id == 8:
-                    logger.info('(%s) Reflector: TG 8 AllStar not enabled"', self._system)
-                    _say.append(words[_lang]['busy'])
-                    _say.append(words[_lang]['silence'])
-                    self.STATUS[_slot]['_stopTgAnnounce'] = True
-                    
-                    
-                
-                #If disconnection called
-                if _int_dst_id == 4000:
-                    logger.info('(%s) Reflector: voice called - 4000 "not linked"', self._system)
-                    _say.append(words[_lang]['notlinked'])
-                    _say.append(words[_lang]['silence'])
-                 
-                 #If status called
-                elif _int_dst_id == 5000:
-                    _active = False
-                    for _bridge in BRIDGES:
-                        if _bridge[0:1] != '#' or is_dial_service_code(_bridge[1:]):
-                            continue
-                        for _system in BRIDGES[_bridge]:
-                            _dehash_bridge = _bridge[1:]
-                            if _system['SYSTEM'] == self._system and _slot == _system['TS']:
-                                    if _system['ACTIVE'] == True:
-                                        logger.info('(%s) Reflector: voice called - 5000 status - "linked to %s"', self._system,_dehash_bridge)
-                                        _say.append(words[_lang]['silence'])
-                                        _say.append(words[_lang]['linkedto'])
-                                        _say.append(words[_lang]['silence'])
-                                        _say.append(words[_lang]['to'])
-                                        _say.append(words[_lang]['silence'])
-                                        _say.append(words[_lang]['silence']) 
-                                        
-                                        for num in str(_dehash_bridge):
-                                            _say.append(words[_lang][num])
-                                        
-                                        _active = True
-                                        break
-                        
-                    if _active == False:
-                        logger.info('(%s) Reflector: voice called - 5000 status - "not linked"', self._system)
-                        _say.append(words[_lang]['notlinked'])
-                
-                #Information services
-                elif _int_dst_id >= 9991 and _int_dst_id <= 9999:
-                    self.STATUS[_slot]['_stopTgAnnounce'] = True
-                    reactor.callInThread(playFileOnRequest,self,_int_dst_id)
-                    #playFileOnRequest(self,_int_dst_id)
-                    
-                
-                #Speak what TG was requested to link
-                elif not self.STATUS[_slot]['_stopTgAnnounce']:
-                    logger.info('(%s) Reflector: voice called (linking)  "linked to %s"', self._system,_int_dst_id)
-                    _say.append(words[_lang]['silence'])
-                    _say.append(words[_lang]['linkedto'])
-                    _say.append(words[_lang]['silence'])
-                    _say.append(words[_lang]['to'])
-                    _say.append(words[_lang]['silence'])
-                    _say.append(words[_lang]['silence'])
-                    
-                    for num in str(_int_dst_id):
-                        _say.append(words[_lang][num])
-     
+                _say = self._build_reflector_announce_say(_int_dst_id, _slot, _lang)
                 if _say:
-                    if CONFIG['SYSTEMS'][self._system]['MODE'] == 'IPSC':
-                        speech = pkt_gen(bytes_3(5000), _rf_src, _peer_id, 1, _say, private_call=True)
-                        reactor.callInThread(self.ipsc_reflector_speech, speech, _slot)
-                    else:
-                        speech = pkt_gen(bytes_3(5000), _nine, bytes_4(9), 1, _say)
-                        reactor.callInThread(sendSpeech, self, speech)
+                    self._play_reflector_announcement(_say, _rf_src, _peer_id, _slot, _stream_id)
 
-            if (not is_dial_service_code(_int_dst_id)
-                    and _int_dst_id not in (8, 9)
-                    and not (_int_dst_id >= 4000 and _int_dst_id <= 5000)
-                    and not (_int_dst_id >= 9991 and _int_dst_id <= 9999)):
+            if (not is_reflector_private_destination(_int_dst_id)
+                    and _int_dst_id not in (8, 9)):
                 self._forward_unit_voice(
                     _dst_id, _slot, _bits, _data, dmrpkt, _stream_id, _peer_id)
 

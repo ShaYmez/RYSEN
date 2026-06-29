@@ -12,6 +12,7 @@
 import hmac as hmac_mod
 import socket
 import struct
+import threading
 from collections import deque
 from hashlib import sha1
 from time import sleep, time
@@ -57,6 +58,11 @@ class IpscMasterMixin:
             master_id=self._config['IPSC_MASTER_ID'],
             ts_prefer_call_info=self._config.get('TS_PREFER_CALL_INFO', False),
         )
+        self._reflector_voice = IpscVoiceTranslator(
+            master_id=self._config['IPSC_MASTER_ID'],
+            ts_prefer_call_info=self._config.get('TS_PREFER_CALL_INFO', False),
+        )
+        self._reflector_speech_lock = threading.Lock()
         self._voice.set_send_callback(self._ipsc_send_voice)
         self._alive_reply = (
             bytes([MASTER_ALIVE_REPLY]) + self._master_id + self._ts_flags + self._ipsc_version
@@ -431,6 +437,11 @@ class IpscMasterMixin:
         if ipsc_pkt is not None:
             self._ipsc_send_voice(ipsc_pkt)
 
+    def _sync_reflector_voice_headers(self):
+        self._reflector_voice._peer_call_type = self._voice._peer_call_type
+        self._reflector_voice._peer_private_call_type = self._voice._peer_private_call_type
+        self._reflector_voice._peer_call_ctrl = self._voice._peer_call_ctrl
+
     def _ipsc_send_reflector_dmrd(self, dmrd):
         """Encode and send one pre-paced reflector DMRD (bypasses jitter buffer)."""
         if dmrd[:4] != DMRD or len(dmrd) < 53:
@@ -440,7 +451,7 @@ class IpscMasterMixin:
         _bits = dmrd[15]
         if (_bits & 0x23) == 0x23:
             return False
-        ipsc_pkt = self._voice.encode(dmrd)
+        ipsc_pkt = self._reflector_voice.encode(dmrd)
         if ipsc_pkt is None:
             return False
         self._ipsc_send_voice(ipsc_pkt)
@@ -451,20 +462,22 @@ class IpscMasterMixin:
         Play dial-a-tg prompts on IPSC as PRIVATE_VOICE back to the caller.
         Hotspots use GROUP on TG9; Moto repeaters answer the private call instead.
         """
-        sleep(1)
-        self._voice._init_outbound_delivery_state()
-        sent = 0
-        while True:
-            try:
-                pkt = next(speech)
-            except StopIteration:
-                break
-            sleep(0.058)
-            if blockingCallFromThread(reactor, self._ipsc_send_reflector_dmrd, pkt):
-                sent += 1
-        if sent:
-            logger.info('(%s) IPSC reflector speech: %s packets sent on TS%s',
-                        self._system, sent, ts)
-        else:
-            logger.warning('(%s) IPSC reflector speech: nothing sent (peers=%s)',
-                           self._system, len(self._ipsc_peers))
+        with self._reflector_speech_lock:
+            sleep(1)
+            self._sync_reflector_voice_headers()
+            self._reflector_voice._init_outbound_delivery_state()
+            sent = 0
+            while True:
+                try:
+                    pkt = next(speech)
+                except StopIteration:
+                    break
+                sleep(0.058)
+                if blockingCallFromThread(reactor, self._ipsc_send_reflector_dmrd, pkt):
+                    sent += 1
+            if sent:
+                logger.info('(%s) IPSC reflector speech: %s packets sent on TS%s',
+                            self._system, sent, ts)
+            else:
+                logger.warning('(%s) IPSC reflector speech: nothing sent (peers=%s)',
+                               self._system, len(self._ipsc_peers))
