@@ -2,7 +2,9 @@
 
 ## Unreleased — `ipsc` branch → **Version 1.5.0** (on merge to `master`)
 
-Major release: Motorola IP Site Connect for SystemX. Field-tested on SYSTEM-XTEST (GB7NR, TG 2350 TS2, DroidStar + OpenBridge, multi-static selfcare). Companion dashboard: [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR) **v1.5.0** (merged to `master`).
+Major release: Motorola IP Site Connect for SystemX — group voice, selfcare, monitor integration, and private/unit voice (Phase 3). Field-tested on SYSTEM-XTEST (GB7NR). Companion dashboard: [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR) **v1.5.0** (merged to `master`).
+
+The **`ipsc`** branch is the **1.5.0 milestone**; merge to `master` sets `version.txt` to **1.5.0** (no separate version for Phase 3).
 
 **Not merged to `master` yet** — see [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md) for the v1.5.0 release checklist.
 
@@ -26,20 +28,18 @@ Major release: Motorola IP Site Connect for SystemX. Field-tested on SYSTEM-XTES
 - Re-register re-applies stored options (`modified` set when options non-empty)
 - Hotspot proxy poll excludes IPSC rows (`proxy_db.py`: `mode > 0` only)
 
+**IPSC private / unit voice (`PRIVATE_VOICE 0x81`) — Phase 3, included in 1.5.0**
+- Inbound `0x81` → unit DMRD (`byte 15 |= 0x40`) → existing `dmrd_received()` path
+- Outbound unit DMRD → `0x81` on **TS1 and TS2** with shared jitter-buffer delivery
+- `ipsc_send_system()` no longer drops unit calls
+- `_forward_unit_voice()` bridges private voice to SUB_MAP, hotspot peers, and IPSC
+
 ### Configuration
 
 - `[IPSC]` stanza in `rysen.cfg` / `IPSC-SAMPLE.cfg` (`IPSC_MASTER_ID`, `AUTH_KEY`, `GENERATOR`, etc.)
 - `[SELF SERVICE]` for MariaDB selfcare DB (optional; requires RYSEN-MONITOR stack)
 - Docker compose: `ipsc-proxy` service on port 56002
 - Install path: `/opt/rysen-src`, branch `ipsc` — [doc/install.md](doc/install.md)
-
-### New Features (Phase 3 — ipsc branch)
-
-**IPSC private / unit voice (`PRIVATE_VOICE 0x81`)**
-- Inbound `0x81` → unit DMRD (`byte 15 |= 0x40`) → existing `dmrd_received()` path
-- Outbound unit DMRD → `0x81` (TS1 and TS2) with shared jitter-buffer delivery
-- `ipsc_send_system()` no longer drops unit calls
-- `_forward_unit_voice()` bridges private voice to SUB_MAP, hotspot peers, and IPSC
 
 ### Tests
 
@@ -48,13 +48,13 @@ Major release: Motorola IP Site Connect for SystemX. Field-tested on SYSTEM-XTES
 ### Remaining before merge (v1.5.0)
 
 - Multi-day soak test (field) — **1-week soak started 2026-06-24**
+- Phase 3 field test — unit/private voice on **TS1 and TS2** (code on `ipsc`; verify on GB7NR)
 - Final `report_receiver` / dashboard spot-check (roadmap 2.5–2.6)
 - Rotate production `AUTH_KEY` off sample defaults
-- Merge `ipsc` → `master`; bump `version.txt` to **1.5.0**; publish Docker image
+- Merge `ipsc` → `master`; set `version.txt` to **1.5.0**; publish Docker image
 
-### Planned post-merge (v1.6.0 / Phase 3)
+### Planned after 1.5.0 (future releases)
 
-- Phase 3: `PRIVATE_VOICE (0x81)` — **unit calls on TS1 and TS2** (code complete; field test pending)
 - Phase 4: `GROUP_DATA` / `PRIVATE_DATA` — SMS, GPS, UDT
 - Phase 5+: TMS, LRRP, ARS (node-dmr-lib reference)
 

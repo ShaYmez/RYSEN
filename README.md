@@ -38,7 +38,7 @@ docker build . -t rysen-local:latest
 
 ```
 
-On the **ipsc** branch, the recommended test install clones to `/opt/rysen-src` and uses `docker compose build` — see [doc/install.md](doc/install.md). Motorola IPSC (registration, bidirectional voice, `ipsc-proxy` on 56002, repeater selfcare) is documented in [doc/ipsc-phase1.md](doc/ipsc-phase1.md). Dashboard companion [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR) **v1.5.0** is on `master`; RYSEN **1.5.0** merge checklist: [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md).
+On the **ipsc** branch, the recommended test install clones to `/opt/rysen-src` and uses `docker compose build` — see [doc/install.md](doc/install.md). The **`ipsc`** branch is the **v1.5.0 milestone** (IPSC group + private voice, selfcare, `ipsc-proxy` on 56002). Merge checklist: [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md). Dashboard: [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR) **v1.5.0**.
 
 Or use a prebuilt one on Docker Hub: `shaymez/rysen:latest` (built from **master** on push).
 

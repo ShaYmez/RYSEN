@@ -127,7 +127,7 @@ Slot names (`SYSTEM-62`, `IPSC-79`) change with proxy assignments — check logs
 
 ## Soak-test checklist (1 week — started 2026-06-24)
 
-**In scope:** group voice only. Unit/private calls come in **Phase 3** after v1.5.0 merge.
+**In scope:** group voice and (after `git pull`) unit/private voice field tests for **v1.5.0**.
 
 ### Traffic to run during the week
 
@@ -148,16 +148,19 @@ Slot names (`SYSTEM-62`, `IPSC-79`) change with proxy assignments — check logs
 - [ ] `tcpdump` during hotspot TX: HEAD ~54 B, voice ~52 B at ~60 ms spacing
 - [ ] `report_receiver.py` — IPSC slot + bridge legs (roadmap 2.5–2.6)
 
-### Not expected this week
+### Phase 3 field test (v1.5.0 gate)
 
-- [ ] Unit/private voice through IPSC (Phase 3 — TS1 and TS2)
+- [ ] **TS1** — private call repeater ↔ network
+- [ ] **TS2** — private call repeater ↔ network
+- [ ] Hotspot → repeater private call (if applicable)
+- [ ] `tcpdump`: outbound packets use opcode **0x81** during unit call
 
 ## Pre-merge work (v1.5.0 release gate)
 
 See [ipsc-roadmap.md](ipsc-roadmap.md) for the full checklist. Remaining:
 
-- **Soak test** — **1-week soak in progress** (from 2026-06-24); group voice TS1+TS2
-- **After soak** — merge **v1.5.0**, then **Phase 3** unit calls on TS1 and TS2
+- **Soak test** — **1-week soak in progress** (from 2026-06-24)
+- **Phase 3 field test** — unit calls TS1 + TS2 (code on `ipsc`; part of **v1.5.0**)
 - **Final verify** — `report_receiver.py` + dashboard spot-check (roadmap 2.5–2.6)
 - **Production `AUTH_KEY`** — rotate off sample defaults
 - **Merge `ipsc` → `master`** — bump to **RYSEN 1.5.0**, publish Docker image
@@ -172,7 +175,7 @@ python -m unittest tests.test_ipsc_phase1 tests.test_ipsc_outbound tests.test_ip
 
 ## Branch status
 
-Development on **`ipsc`** — targets **v1.5.0** merge to `master`. Feature-complete for group voice + selfcare; soak testing in progress.
+Development on **`ipsc`** — single milestone release **v1.5.0** (group voice, selfcare, monitor, unit calls). Soak + Phase 3 field test in progress.
 
 Protocol constants and voice translation derived from [ipsc2hbp](https://github.com/n0mjs710/ipsc2hbp) (GPLv3).
 
