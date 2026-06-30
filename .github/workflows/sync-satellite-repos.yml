@@ -1,62 +1,62 @@
-name: Sync satellite proxy repos
-
-# Notify publish-only satellite repos to pull proxy sources from this branch.
-# Requires repository secret SATELLITE_DISPATCH_TOKEN (PAT with repo scope).
-
-on:
-  push:
-    branches:
-      - ipsc
-      - master
-    paths:
-      - ipsc_proxy.py
-      - ipsc_const.py
-      - ipsc-proxy-SAMPLE.cfg
-      - tests/test_ipsc_proxy.py
-      # When RYSEN-SP-SELFCARE uses the same sync model, add:
-      # - hotspot_proxy_v2_sc.py
-      # - proxy_db.py
-      # - hotspot_proxy_v2_sc-SAMPLE.cfg
-  workflow_dispatch:
-    inputs:
-      target:
-        description: Satellite repo to refresh
-        type: choice
-        options:
-          - ipsc
-          - selfcare
-          - all
-        default: ipsc
-
-jobs:
-  dispatch-sp-ipsc:
-    if: >-
-      github.event_name == 'push' ||
-      (github.event_name == 'workflow_dispatch' &&
-       (inputs.target == 'ipsc' || inputs.target == 'all'))
-    runs-on: ubuntu-latest
-    steps:
-      - name: Trigger RYSEN-SP-IPSC sync
-        uses: peter-evans/repository-dispatch@v3
-        with:
-          token: ${{ secrets.SATELLITE_DISPATCH_TOKEN }}
-          repository: ShaYmez/RYSEN-SP-IPSC
-          event-type: rysen-ipsc-updated
-          client-payload: |
-            {"ref": "${{ github.ref_name }}", "sha": "${{ github.sha }}"}
-
-  # dispatch-sp-selfcare:
-  #   if: >-
-  #     github.event_name == 'push' ||
-  #     (github.event_name == 'workflow_dispatch' &&
-  #      (inputs.target == 'selfcare' || inputs.target == 'all'))
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Trigger RYSEN-SP-SELFCARE sync
-  #       uses: peter-evans/repository-dispatch@v3
-  #       with:
-  #         token: ${{ secrets.SATELLITE_DISPATCH_TOKEN }}
-  #         repository: ShaYmez/RYSEN-SP-SELFCARE
-  #         event-type: rysen-selfcare-updated
-  #         client-payload: |
-  #           {"ref": "${{ github.ref_name }}", "sha": "${{ github.sha }}"}
+name: Sync satellite proxy repos
+
+# Notify publish-only satellite repos to pull proxy sources from this branch.
+# Requires repository secret SATELLITE_DISPATCH_TOKEN (PAT with repo scope).
+
+on:
+  push:
+    branches:
+      - ipsc
+      - master
+    paths:
+      - ipsc_proxy.py
+      - ipsc_const.py
+      - ipsc-proxy-SAMPLE.cfg
+      - tests/test_ipsc_proxy.py
+      - hotspot_proxy_v2_sc.py
+      - proxy_db.py
+      - hotspot_proxy_v2_sc-SAMPLE.cfg
+      - tests/test_hotspot_proxy.py
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Satellite repo to refresh
+        type: choice
+        options:
+          - ipsc
+          - selfcare
+          - all
+        default: all
+
+jobs:
+  dispatch-sp-ipsc:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' &&
+       (inputs.target == 'ipsc' || inputs.target == 'all'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger RYSEN-SP-IPSC sync
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.SATELLITE_DISPATCH_TOKEN }}
+          repository: ShaYmez/RYSEN-SP-IPSC
+          event-type: rysen-ipsc-updated
+          client-payload: |
+            {"ref": "${{ github.ref_name }}", "sha": "${{ github.sha }}"}
+
+  dispatch-sp-selfcare:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' &&
+       (inputs.target == 'selfcare' || inputs.target == 'all'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger RYSEN-SP-SELFCARE sync
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.SATELLITE_DISPATCH_TOKEN }}
+          repository: ShaYmez/RYSEN-SP-SELFCARE
+          event-type: rysen-selfcare-updated
+          client-payload: |
+            {"ref": "${{ github.ref_name }}", "sha": "${{ github.sha }}"}
