@@ -3,7 +3,107 @@
 
 import re
 
+from dmr_utils3.utils import bytes_3
 from ipsc_const import is_routing_master
+
+DIAL_A_TG = 9
+DIAL_A_TG_BYTES = bytes_3(DIAL_A_TG)
+_DIAL_SERVICE_CODES = frozenset([DIAL_A_TG, 4000, 5000])
+
+
+def is_dial_service_code(reflector):
+    """TGs reserved for dial-a-tg signalling (channel, disconnect, status) — not link targets."""
+    try:
+        return int(reflector) in _DIAL_SERVICE_CODES
+    except (TypeError, ValueError):
+        return False
+
+
+def is_invalid_dial_reflector(reflector):
+    """Reflector 9 is the dial-a-tg relay channel, not a linkable reflector."""
+    try:
+        return int(reflector) == DIAL_A_TG
+    except (TypeError, ValueError):
+        return False
+
+
+def build_bridge_index(bridges):
+    """Map (system, ts, tgid_bytes) -> set(bridge_names). Matches BRIDGE_IDX layout."""
+    index = {}
+    for bridge_name, entries in bridges.items():
+        for entry in entries:
+            key = (entry['SYSTEM'], entry['TS'], entry['TGID'])
+            index.setdefault(key, set()).add(bridge_name)
+    return index
+
+
+def collect_group_route_bridges(bridges, bridge_idx, system, slot, dst_id_bytes):
+    """Bridge names that would invoke to_target for one inbound group RX (routerHBP path)."""
+    lookup_key = (system, slot, dst_id_bytes)
+    candidates = bridge_idx.get(lookup_key)
+    if candidates is None:
+        candidates = set()
+        for bridge_name, entries in bridges.items():
+            for entry in entries:
+                if (entry['SYSTEM'] == system and entry['TGID'] == dst_id_bytes
+                        and entry['TS'] == slot and entry.get('ACTIVE')):
+                    candidates.add(bridge_name)
+    routed = []
+    for orig_bridge in candidates:
+        if orig_bridge not in bridges:
+            continue
+        for entry in bridges[orig_bridge]:
+            if (entry['SYSTEM'] == system and entry['TGID'] == dst_id_bytes
+                    and entry['TS'] == slot and entry.get('ACTIVE')):
+                routed.append(orig_bridge)
+                paired = (orig_bridge[1:] if orig_bridge.startswith('#')
+                          else ''.join(['#', orig_bridge]))
+                if paired in bridges and paired not in routed:
+                    routed.append(paired)
+                break
+    return routed
+
+
+def to_target_forward_systems(bridge_entries, source_system):
+    """Destination systems that would receive traffic from to_target (ACTIVE legs only)."""
+    return [
+        entry['SYSTEM']
+        for entry in bridge_entries
+        if entry['SYSTEM'] != source_system and entry.get('ACTIVE')
+    ]
+
+
+def private_call_may_create_reflector(int_dst_id, bridges):
+    """True when a private call would invoke make_single_reflector (routerHBP private path)."""
+    if int_dst_id < 5 or int_dst_id in (8, 9) or int_dst_id > 999999:
+        return False
+    if 4000 <= int_dst_id <= 5000:
+        return False
+    if 9991 <= int_dst_id <= 9999:
+        return False
+    return f'#{int_dst_id}' not in bridges
+
+
+def sanitize_dial_reflectors_for_system(bridges, system):
+    """Deactivate service-code # reflectors for one MASTER. Returns True if state changed."""
+    changed = False
+    for bridge_name in bridges:
+        if bridge_name[0:1] != '#':
+            continue
+        for entry in bridges[bridge_name]:
+            if entry['SYSTEM'] != system:
+                continue
+            if is_dial_service_code(bridge_name[1:]):
+                if entry.get('ACTIVE'):
+                    entry['ACTIVE'] = False
+                    changed = True
+                if entry.get('ON'):
+                    entry['ON'] = []
+                    changed = True
+            elif DIAL_A_TG_BYTES in entry.get('ON', []):
+                entry['ON'] = [x for x in entry['ON'] if x != DIAL_A_TG_BYTES]
+                changed = True
+    return changed
 
 _IPSC_LINK_KEYS = frozenset(['IPSC', 'LINK_IPSC'])
 

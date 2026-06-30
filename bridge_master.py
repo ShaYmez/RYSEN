@@ -64,6 +64,10 @@ from ipsc_const import is_routing_master
 from selfcare_db import SelfcareDB, find_ipsc_slot_for_radio_id
 from bridge_helpers import iter_routing_master_systems as _iter_routing_master_systems
 from bridge_helpers import (
+    DIAL_A_TG,
+    DIAL_A_TG_BYTES,
+    is_dial_service_code,
+    is_invalid_dial_reflector,
     reflector_bridge_matches_group_call,
     bridge_transmission_matches_rule,
     reflector_single_mode_wrong_tg,
@@ -445,25 +449,8 @@ def make_stat_bridge(_tgid):
     _idx_add_bridge(_tgid_s)
         
 
-_DIAL_A_TG = 9
-_DIAL_A_TG_BYTES = bytes_3(9)
-_DIAL_SERVICE_CODES = frozenset([9, 4000, 5000])
-
-
-def is_dial_service_code(reflector):
-    """TGs reserved for dial-a-tg signalling (channel, disconnect, status) — not link targets."""
-    try:
-        return int(reflector) in _DIAL_SERVICE_CODES
-    except (TypeError, ValueError):
-        return False
-
-
-def is_invalid_dial_reflector(reflector):
-    """Reflector 9 is the dial-a-tg relay channel, not a linkable reflector."""
-    try:
-        return int(reflector) == _DIAL_A_TG
-    except (TypeError, ValueError):
-        return False
+_DIAL_A_TG = DIAL_A_TG
+_DIAL_A_TG_BYTES = DIAL_A_TG_BYTES
 
 
 def is_reflector_private_destination(int_dst_id):
