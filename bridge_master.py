@@ -1705,12 +1705,10 @@ class routerOBP(OPENBRIDGE):
 
                         }
                         # Generate LCs (full and EMB) for the TX stream
-                        try:
-                            dst_lc = b''.join([self.STATUS[_stream_id]['LC'][0:3], _target['TGID'], _rf_src])
-                        except Exception:
-                            logger.exception('(to_target) caught exception')
-                            _target_status[_stream_id]['LAST'] = pkt_time
-                            return
+                        _src_lc = LC_OPT
+                        if _stream_id in self.STATUS and 'LC' in self.STATUS[_stream_id]:
+                            _src_lc = self.STATUS[_stream_id]['LC'][0:3]
+                        dst_lc = b''.join([_src_lc, _target['TGID'], _rf_src])
                         _target_status[_stream_id]['H_LC'] = bptc.encode_header_lc(dst_lc)
                         _target_status[_stream_id]['T_LC'] = bptc.encode_terminator_lc(dst_lc)
                         _target_status[_stream_id]['EMB_LC'] = bptc.encode_emblc(dst_lc)
@@ -1732,9 +1730,21 @@ class routerOBP(OPENBRIDGE):
                     # if _dst_id != rule['DST_GROUP']:
                     dmrbits = bitarray(endian='big')
                     dmrbits.frombytes(dmrpkt)
+                    if 'H_LC' not in _target_status.get(_stream_id, {}):
+                        _src_lc = LC_OPT
+                        if _stream_id in self.STATUS and 'LC' in self.STATUS[_stream_id]:
+                            _src_lc = self.STATUS[_stream_id]['LC'][0:3]
+                        _dst_lc = b''.join([_src_lc, _target['TGID'], _rf_src])
+                        _target_status[_stream_id]['H_LC'] = bptc.encode_header_lc(_dst_lc)
+                        _target_status[_stream_id]['T_LC'] = bptc.encode_terminator_lc(_dst_lc)
+                        _target_status[_stream_id]['EMB_LC'] = bptc.encode_emblc(_dst_lc)
                     # Create a voice header packet (FULL LC)
                     if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
-                        dmrbits = _target_status[_stream_id]['H_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['H_LC'][98:197]
+                        try:
+                            dmrbits = _target_status[_stream_id]['H_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['H_LC'][98:197]
+                        except KeyError:
+                            logger.debug('(%s) KeyError - H_LC, skipping', self._system)
+                            continue
                     # Create a voice terminator packet (FULL LC)
                     elif _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
                         try:
