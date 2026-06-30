@@ -15,6 +15,7 @@ Motorola IP Site Connect (IPSC) support on the **`ipsc`** branch. Field-tested o
 
 ### Phase 2a — docker / proxy
 
+- Docker image: [RYSEN-SP-IPSC](https://github.com/ShaYmez/RYSEN-SP-IPSC) (`shaymez/rysen-sp-ipsc:latest`) — proxy code synced from this repo; develop here only. See [satellite-proxy-repos.md](satellite-proxy-repos.md).
 - **`ipsc_proxy.py`** — public UDP **56002** (CPS Master port) → backend slots
 - **`GENERATOR: 200`** on `[IPSC]` with `PORT: 56003` (backends `56003`–`56202` on compose network)
 - Proxy routes by repeater radio ID; master replies by backend source port
