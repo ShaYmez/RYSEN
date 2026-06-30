@@ -1,5 +1,5 @@
 ###############################################################################
-# RYSEN + IPSC proxy + hotspot selfcare + MariaDB + RYSEN-MONITOR — full stack
+# RYSEN v1.5.0 — docker compose stack (rysen + mariadb + monitor + satellite proxies)
 # Host config: /etc/rysen (rysen.cfg, ipsc-proxy.cfg, proxy.cfg, rules.py, json/)
 #   systemx      172.16.238.10  (rysen — build from /opt/rysen-src on ipsc branch)
 #   mariadb      172.16.238.11
