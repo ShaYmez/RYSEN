@@ -127,7 +127,7 @@ chown -R 54000:54000 /var/log/rysen
 
 echo "Build and start RYSEN + IPSC proxy (hotspot proxy optional via --profile hotspot)..."
 cd /etc/rysen
-docker compose build rysen ipsc-proxy
+docker compose build rysen
 docker compose up -d rysen ipsc-proxy
 docker container logs systemx
 docker container logs ipsc-proxy

@@ -35,14 +35,9 @@ services:
         read_only: "true"
     ipsc-proxy:
         container_name: ipsc-proxy
-        build:
-            context: /opt/rysen-src
-            dockerfile: Dockerfile
-        image: rysen-local:latest
-        entrypoint: ["python", "/opt/rysen/ipsc_proxy.py"]
-        command: ["-c", "/etc/rysen/ipsc-proxy.cfg"]
+        image: shaymez/rysen-sp-ipsc:latest
         volumes:
-            - '/etc/rysen/ipsc-proxy.cfg:/etc/rysen/ipsc-proxy.cfg'
+            - '/etc/rysen/ipsc-proxy.cfg:/opt/rysen-sp-ipsc/ipsc-proxy.cfg'
         ports:
             - '56002:56002/udp'
         restart: "unless-stopped"
@@ -56,11 +51,11 @@ services:
         container_name: proxy
         profiles:
             - hotspot
+        image: 'shaymez/rysen-sp-selfcare:latest'
         volumes:
-            - '/etc/rysen/proxy.cfg:/opt/rysen-sp/proxy.cfg'
+            - '/etc/rysen/proxy.cfg:/opt/rysen-sp-selfcare/proxy.cfg'
         ports:
             - '62031:62031/udp'
-        image: 'shaymez/rysen-sp:latest'
         restart: "unless-stopped"
         depends_on:
             - 'rysen'
