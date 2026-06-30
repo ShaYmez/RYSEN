@@ -421,7 +421,7 @@ def make_single_bridge(_tgid,_sourcesystem,_slot,_tmout):
     if _tgid_s == '9990':
         _tmout = 1
     BRIDGES[_tgid_s] = []
-    for _system in _iter_routing_master_systems():
+    for _system in iter_routing_master_systems():
         if _system == _sourcesystem:
             if _slot == 1:
                 BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time() + (_tmout * 60)})
