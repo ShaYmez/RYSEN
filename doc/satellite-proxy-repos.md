@@ -30,7 +30,7 @@ Publish-only repos build slim Docker images; **all proxy development stays in RY
 | **RYSEN-SP** | **`RYSEN_SYNC_REF`** = `ipsc` (→ `master` after merge) | `DOCKER_USERNAME`, `DOCKER_PASSWORD` |
 | **RYSEN-SP-SELFCARE** | **`RYSEN_SYNC_REF`** = `ipsc` (→ `master` after merge) | `DOCKER_USERNAME`, `DOCKER_PASSWORD` |
 
-Push-triggered sync always uses the branch that was pushed. Scheduled/manual sync uses **`RYSEN_SYNC_REF`** when no ref is passed.
+Push-triggered sync always uses the branch that was pushed. Manual sync uses **`RYSEN_SYNC_REF`** (or the workflow input) when no ref is passed.
 
 ## IPSC synced paths
 
