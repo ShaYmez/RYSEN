@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 ###############################################################################
 #   Motorola IPSC protocol constants (derived from DMRlink / ipsc2hbp)
-#   Copyright (C) 2026 Shane Daley, M0VUB
+#   Copyright (C) 2026 Shane Daley, M0VUB <shane@freestar.network>
 #
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by

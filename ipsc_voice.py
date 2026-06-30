@@ -3,7 +3,7 @@
 #   IPSC GROUP_VOICE / PRIVATE_VOICE ↔ internal DMRD translation for RYSEN routing
 #   Inbound path ported from ipsc2hbp; outbound encode added in Phase 2c
 #
-#   Copyright (C) 2026 Shane Daley, M0VUB
+#   Copyright (C) 2026 Shane Daley, M0VUB <shane@freestar.network>
 #
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by

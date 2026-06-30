@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 ###############################################################################
 #   Motorola IPSC UDP proxy — single public port to many backend IPSC masters
-#   Copyright (C) 2026 Shane Daley, M0VUB
+#   Copyright (C) 2026 Shane Daley, M0VUB <shane@freestar.network>
 #
 #   Modelled on hotspot_proxy_v2.py (Simon G7RZU). Routes by repeater radio ID
 #   (bytes 1:5) and by backend source port for master replies without peer ID.
@@ -177,6 +177,7 @@ def _load_config(config_file):
 
 if __name__ == '__main__':
     setproctitle(os.path.basename(__file__))
+    print('(IPSC) Copyright (c) 2026 Shane Daley, M0VUB <shane@freestar.network>')
     os.chdir(os.path.dirname(os.path.realpath(sys.argv[0])))
 
     parser = argparse.ArgumentParser(description='Motorola IPSC UDP proxy')

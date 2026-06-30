@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""IPSC peer metadata helpers (registration packet layout per node-dmr-lib)."""
+###############################################################################
+#   IPSC peer metadata helpers (registration packet layout per node-dmr-lib)
+#   Copyright (C) 2026 Shane Daley, M0VUB <shane@freestar.network>
+#
+#   This program is free software; you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation; either version 3 of the License, or
+#   (at your option) any later version.
+###############################################################################
 
 from dmr_utils3.utils import int_id
 

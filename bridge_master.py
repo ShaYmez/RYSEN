@@ -3,6 +3,7 @@
 ###############################################################################
 # Copyright (C) 2020 Simon Adlem, G7RZU <g7rzu@gb7fr.org.uk>  
 # Copyright (C) 2016-2019 Cortney T. Buffington, N0MJS <n0mjs@me.com>
+# Copyright (C) 2024-2026 Shane Daley, M0VUB <shane@freestar.network> (IPSC / SystemX)
 #
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -3455,7 +3456,8 @@ class routerHBP(HBSYSTEM):
             self.STATUS[_slot]['crcs'].add(_pkt_crc)
 
 #
-# Motorola IPSC master (MODE: IPSC) — Phase 1
+# Motorola IPSC master (MODE: IPSC) — Copyright (C) 2026 Shane Daley, M0VUB
+# See ipsc_master.py, ipsc_voice.py
 #
 class routerIPSC(IpscMasterMixin, routerHBP):
 
@@ -3589,6 +3591,11 @@ if __name__ == '__main__':
     
     CONFIG = config.build_config(cli_args.CONFIG_FILE)
 
+    _ipsc_enabled = any(
+        CONFIG['SYSTEMS'][s].get('ENABLED') and CONFIG['SYSTEMS'][s].get('MODE') == 'IPSC'
+        for s in CONFIG['SYSTEMS']
+    )
+
     # Ensure we have a path for the rules file, if one wasn't specified, then use the default (top of file)
     if not cli_args.RULES_FILE:
         cli_args.RULES_FILE = os.path.dirname(os.path.abspath(__file__))+'/rules.py'
@@ -3599,6 +3606,8 @@ if __name__ == '__main__':
     logger = log.config_logging(CONFIG['LOGGER'])
     logger.info('\n\nCopyright (c) 2020, 2021, 2022 Simon G7RZU simon@gb7fr.org.uk')
     logger.info('Copyright (c) 2013, 2014, 2015, 2016, 2018, 2019\n\tThe Regents of the K0USY Group. All rights reserved.\n')
+    if _ipsc_enabled:
+        logger.info('(IPSC) Copyright (c) 2026 Shane Daley, M0VUB <shane@freestar.network>')
     logger.debug('(GLOBAL) Logging system started, anything from here on gets logged')
 
         

@@ -9,6 +9,8 @@ from selfcare_db import (
 )
 from ipsc_master import IpscMasterMixin
 from ipsc_const import MASTER_REG_REQ
+from config import acl_build
+import const
 
 
 PEER_ID = (235287).to_bytes(4, 'big')
@@ -67,10 +69,11 @@ class _StubIpscSelfcare(IpscMasterMixin):
             'SELF SERVICE': {'ENABLED': selfcare_enabled},
             '_SELF_SERVICE_DB': MagicMock(),
             '_PEER_IDS': {235287: 'GB7NR'},
+            'GLOBAL': {'REG_ACL': acl_build('PERMIT:ALL', const.PEER_MAX)},
         }
         self._config = {
             'USE_ACL': False,
-            'REG_ACL': (True, []),
+            'REG_ACL': acl_build('PERMIT:ALL', const.PEER_MAX),
             'MAX_PEERS': 1,
             'IPSC_MASTER_ID': 9999999,
             'AUTH_ENABLED': False,

@@ -6,6 +6,8 @@ from time import time
 from hblink import build_peer_record
 from ipsc_master import IpscMasterMixin
 from ipsc_const import MASTER_REG_REQ, MASTER_ALIVE_REQ, DE_REG_REQ
+from config import acl_build
+import const
 
 
 PEER_ID = (235287).to_bytes(4, 'big')  # GB7NR
@@ -44,10 +46,13 @@ class _StubIpsc(IpscMasterMixin):
         self._system = 'IPSC-0'
         self._peers = {}
         self._ipsc_peers = {}
-        self._CONFIG = {'_PEER_IDS': {235287: 'GB7NR'}}
+        self._CONFIG = {
+            '_PEER_IDS': {235287: 'GB7NR'},
+            'GLOBAL': {'REG_ACL': acl_build('PERMIT:ALL', const.PEER_MAX)},
+        }
         self._config = {
             'USE_ACL': False,
-            'REG_ACL': (True, []),
+            'REG_ACL': acl_build('PERMIT:ALL', const.PEER_MAX),
             'MAX_PEERS': 1,
             'IPSC_MASTER_ID': 235287,
             'AUTH_ENABLED': False,

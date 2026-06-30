@@ -3,7 +3,7 @@
 #   IPSC repeater selfcare — Clients table access (mode = 0)
 #   Pattern mirrors proxy/proxy_db.py; no schema migration required.
 #
-#   Copyright (C) 2026 Shane Daley, M0VUB
+#   Copyright (C) 2026 Shane Daley, M0VUB <shane@freestar.network>
 #
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
