@@ -63,6 +63,7 @@ services:
             app_net:
               ipv4_address: 172.16.238.20
         read_only: "true"
+    # Full stack (rysen + mariadb + monitor + both proxies): docker-compose-stack.yml
 networks:
   app_net:
     driver: bridge

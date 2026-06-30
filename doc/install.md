@@ -102,16 +102,48 @@ Optional hotspot proxy (not required for IPSC):
 
 `docker compose down`
 
-## Update rysen (ipsc branch — rebuild from source)
+## Full stack (test / production VM with monitor + MariaDB)
+
+Template: [docker-compose-stack.yml](../docker-configs/docker-compose-stack.yml) — `rysen` + `ipsc-proxy` + `proxy` (selfcare) + `mariadb` + `monitor`. Copy to `/etc/rysen/docker-compose.yml` and **keep your existing** `rysen.cfg`, `ipsc-proxy.cfg`, `proxy.cfg`, MariaDB data under `/etc/rysen/mysql`, and monitor config.
+
+Satellite images (pulled, not built locally):
+
+- `shaymez/rysen-sp-ipsc:latest` — config mount `/opt/rysen-sp-ipsc/ipsc-proxy.cfg`
+- `shaymez/rysen-sp-selfcare:latest` — config mount `/opt/rysen-sp-selfcare/proxy.cfg`
+
+## Update stack (ipsc branch — rebuild rysen/monitor, pull proxies)
+
+Does **not** overwrite `/etc/rysen/*.cfg` or `mysql/`:
 
 ```bash
 cd /opt/rysen-src && git pull
-cp docker-configs/config/rysen.cfg /etc/rysen/rysen.cfg
-cp docker-configs/config/ipsc-proxy-SAMPLE.cfg /etc/rysen/ipsc-proxy.cfg
+cp docker-configs/docker-compose-stack.yml /etc/rysen/docker-compose.yml
+# Edit compose if needed: MariaDB env, monitor path — keep your existing secrets
+
+cd /etc/rysen
+docker compose down
+docker compose pull ipsc-proxy proxy
+docker compose build rysen monitor
+docker compose up -d
+conntrack -F
+docker compose ps
+```
+
+Remove stale images only (optional, does not touch `/etc/rysen`):
+
+```bash
+docker rmi rysen-local:latest 2>/dev/null || true
+docker image prune -f
+```
+
+## Update rysen only (minimal compose — no monitor)
+
+```bash
+cd /opt/rysen-src && git pull
 cp docker-configs/docker-compose.yml /etc/rysen/docker-compose.yml
 cd /etc/rysen
-docker compose config --services    # should list: rysen, ipsc-proxy, proxy
-docker compose build rysen ipsc-proxy
+docker compose build rysen
+docker compose pull ipsc-proxy
 docker compose up -d rysen ipsc-proxy
 conntrack -F
 ```
