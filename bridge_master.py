@@ -387,6 +387,7 @@ def activate_ua_bridge_source(bridge_name, system, slot, tmout=None, peer_id=Non
         tmout = 1
     _timeout_s = tmout * 60
     _changed = False
+    _ua_refreshed = False
     for _entry in BRIDGES[bridge_name]:
         if (_entry['SYSTEM'] == system and _entry['TS'] == slot
                 and _entry['TO_TYPE'] != 'NONE'):
@@ -395,7 +396,11 @@ def activate_ua_bridge_source(bridge_name, system, slot, tmout=None, peer_id=Non
                 _changed = True
                 logger.info('(ROUTER) Bridge %s activated for %s TS%s', bridge_name, system, slot)
             _entry['TIMER'] = time() + _timeout_s
+            if _entry.get('TO_TYPE') == 'ON':
+                _ua_refreshed = True
     _activate_linked_ipsc_legs(bridge_name, system, slot, _timeout_s, peer_id)
+    if _changed or _ua_refreshed:
+        notify_bridge_table_updated()
     return _changed
 
 
@@ -434,6 +439,7 @@ def make_single_bridge(_tgid,_sourcesystem,_slot,_tmout):
     _activate_linked_ipsc_legs(_tgid_s, _sourcesystem, _slot, _tmout * 60)
     # Keep routing index in sync
     _idx_add_bridge(_tgid_s)
+    notify_bridge_table_updated()
 
 #Make static bridge - used for on-the-fly relay bridges
 def make_stat_bridge(_tgid):
@@ -759,7 +765,10 @@ def clear_subscriber_on_disconnect(system, subscriber_id, peer_id):
 
 
 def notify_bridge_table_updated():
-    """Push fresh bridge table (incl. TIMER) to RYSEN-MONITOR after dial-a-tg timer changes."""
+    """Push fresh bridge table (incl. TIMER) to RYSEN-MONITOR (BRIDGE_SND).
+
+    Used after dial-a-tg timer changes and dynamic UA bridge create/activate.
+    """
     if not CONFIG.get('REPORTS', {}).get('REPORT'):
         return
     _server = globals().get('report_server')
@@ -3375,6 +3384,8 @@ class routerHBP(HBSYSTEM):
                                         if _bridge[0:1] == '#':
                                             set_reflector_link_owner(_system, _rf_src, _peer_id)
                                         logger.info('(%s) [2] Bridge: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
+                                        if _system['TO_TYPE'] == 'ON':
+                                            notify_bridge_table_updated()
                                         # Cancel the timer if we've enabled an "OFF" type timeout
                                         if _system['TO_TYPE'] == 'OFF':
                                             _system['TIMER'] = pkt_time
