@@ -181,3 +181,48 @@ def reflector_timer_reset_allowed(bridge, entry, rf_src, peer_id):
     if linker_peer is not None and peer_id != linker_peer:
         return False
     return True
+
+
+def dial_reflector_user_activity_counts(int_dst_id, bridge, group_call=False):
+    """Return True when this TX is dial-a-tg user activity that should extend the link timer."""
+    if int_dst_id == 4000:
+        return False
+    linked = reflector_bridge_linked_int(bridge)
+    if group_call:
+        return int_dst_id == 9 or (linked is not None and int_dst_id == linked)
+    if int_dst_id == 5000:
+        return True
+    if linked is not None and int_dst_id == linked:
+        return True
+    return False
+
+
+def reset_dial_reflector_timers_on_user_activity(bridges, system, rf_src, peer_id, slot,
+                                                 pkt_time, int_dst_id, group_call=False):
+    """
+    Extend UA timer when the link owner uses dial-a-tg (TG 9 group/private, status 5000,
+    or private/group on the linked reflector TG). Does not reset on network RX.
+    """
+    if int_dst_id == 4000:
+        return []
+    reset_bridges = []
+    for bridge, entries in bridges.items():
+        if bridge[0:1] != '#':
+            continue
+        if not dial_reflector_user_activity_counts(int_dst_id, bridge, group_call=group_call):
+            continue
+        for entry in entries:
+            if entry.get('SYSTEM') != system or entry.get('TS') != slot:
+                continue
+            if not entry.get('ACTIVE') or entry.get('TO_TYPE') != 'ON':
+                continue
+            timeout = entry.get('TIMEOUT')
+            if not timeout:
+                continue
+            if entry.get('LINKER') is None:
+                set_reflector_link_owner(entry, rf_src, peer_id)
+            if not reflector_timer_reset_allowed(bridge, entry, rf_src, peer_id):
+                continue
+            entry['TIMER'] = pkt_time + timeout
+            reset_bridges.append(bridge)
+    return reset_bridges

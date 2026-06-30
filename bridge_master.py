@@ -70,6 +70,7 @@ from bridge_helpers import (
     reflector_timer_reset_allowed,
     set_reflector_link_owner,
     clear_reflector_link_owner,
+    reset_dial_reflector_timers_on_user_activity,
 )
 # NOTE: 'words' is loaded dynamically via readAMBE() at runtime (see line ~2689)
 #from voice_lib import words
@@ -767,6 +768,19 @@ def clear_subscriber_on_disconnect(system, subscriber_id, peer_id):
             logger.info('(SUBSCRIBER) Cleared sticky TG for subscriber %s on disconnect', int_id(subscriber_id))
     except (TypeError, IndexError):
         pass
+
+
+def notify_bridge_table_updated():
+    """Push fresh bridge table (incl. TIMER) to RYSEN-MONITOR after dial-a-tg timer changes."""
+    if not CONFIG.get('REPORTS', {}).get('REPORT'):
+        return
+    _server = globals().get('report_server')
+    if _server is None:
+        return
+    try:
+        _server.send_bridge()
+    except Exception as exc:
+        logger.debug('(REPORT) send_bridge after dial-a-tg timer reset failed: %s', exc)
 
 
 # Run this every minute for rule timer updates
@@ -3074,6 +3088,13 @@ class routerHBP(HBSYSTEM):
             
             
             if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
+                _reset = reset_dial_reflector_timers_on_user_activity(
+                    BRIDGES, self._system, _rf_src, _peer_id, _slot, pkt_time,
+                    _int_dst_id, group_call=False)
+                for _rb in _reset:
+                    logger.info('(%s) [P] Dial-a-tg timer reset on private call end: %s', self._system, _rb)
+                if _reset:
+                    notify_bridge_table_updated()
                 _say = self._build_reflector_announce_say(_int_dst_id, _slot, _lang)
                 if _say:
                     logger.info('(%s) IPSC reflector: PTT released, speech in 1s', self._system)
@@ -3331,6 +3352,14 @@ class routerHBP(HBSYSTEM):
                 #
 
                 # Iterate the rules dictionary
+                _reset = reset_dial_reflector_timers_on_user_activity(
+                    BRIDGES, self._system, _rf_src, _peer_id, _slot, pkt_time,
+                    _int_dst_id, group_call=True)
+                for _rb in _reset:
+                    logger.info('(%s) [G9] Dial-a-tg timer reset on group call end: %s', self._system, _rb)
+                if _reset:
+                    notify_bridge_table_updated()
+
                 for _bridge in BRIDGES:
                     if not _reflector_bridge_matches_group_call(_bridge, _int_dst_id):
                         continue
