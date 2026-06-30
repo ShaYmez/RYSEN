@@ -135,7 +135,7 @@ Soak pass ─► merge master @ 1.5.0
 | SMS / GPS data | **Not in 1.5.0** | Phase 5 |
 | Pre-merge soak | **In progress** | Normal traffic ~1 day |
 | Production auth defaults | Ops | Rotate `AUTH_KEY` |
-| **Merge + version bump** | Pending | `version.txt` → **1.5.0** |
+| **Merge + version bump** | Done on `ipsc` | `version.txt` **1.5.0**; merge to `master` pending |
 
 ---
 

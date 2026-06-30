@@ -1,7 +1,7 @@
 ## RYSEN DMRMaster+ Master Stack ##
 ### A fork of the HBlink3 / FreeDMR project ###
 
-### Stable Ver 1.4.1 (`master`) · IPSC branch → v1.5.0 ###
+### Version 1.5.0 (`ipsc` branch — merge to `master` pending) ###
 
 RYSEN DMRMaster+ - Software to build and scale DMR Master server software. Thanks to all thats credited in code, testing and develpment of this software. This software is completly open source and is derived from the orginal fork of HBlink3 / FreeDMR. Developed in PYTHON. A number of developers have contributed to the fork and I thought the time is right to develop this version of the code completly out in the open.. as it should be. No private forks..Open Source for people to freely develop.
 

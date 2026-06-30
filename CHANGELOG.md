@@ -1,12 +1,12 @@
 # RYSEN DMRMaster+ Changelog
 
-## Unreleased — `ipsc` branch → **Version 1.5.0** (on merge to `master`)
+## Version 1.5.0 (2026-06-30)
 
-Major release: Motorola IP Site Connect for SystemX — group voice, selfcare, monitor integration, and private/unit voice (Phase 3). Field-tested on SYSTEM-XTEST (GB7NR). Companion dashboard: [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR) **v1.5.0** (merged to `master`).
+Major release: Motorola IP Site Connect for SystemX — group voice, selfcare, monitor integration, and private/unit voice (Phase 3). Field-tested on SYSTEM-XTEST (GB7NR). Companion dashboard: [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR) **v1.5.0**.
 
-The **`ipsc`** branch is the **1.5.0 milestone**; merge to `master` sets `version.txt` to **1.5.0** (no separate version for Phase 3).
+The **`ipsc`** branch carries **1.5.0**; merge to `master` publishes `shaymez/rysen:latest` and satellite proxy images.
 
-**Not merged to `master` yet** — see [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md) for the v1.5.0 release checklist.
+See [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md) for merge checklist.
 
 ### New Features
 
@@ -56,11 +56,11 @@ The **`ipsc`** branch is the **1.5.0 milestone**; merge to `master` sets `versio
 
 - `tests/test_ipsc_phase1.py`, `test_ipsc_outbound.py`, `test_ipsc_proxy.py`, `test_ipsc_bridge.py`, `test_ipsc_peers.py`, `test_ipsc_selfcare.py`, `test_static_tg_bridges.py`, `test_ipsc_private_voice.py`
 
-### Remaining before merge (v1.5.0)
+### Remaining before merge to `master`
 
 - Pre-merge soak (~1 day normal traffic: group voice + dial-a-tg reflector)
 - Rotate production `AUTH_KEY` off sample defaults
-- Merge `ipsc` → `master`; set `version.txt` to **1.5.0**; publish Docker image
+- Merge `ipsc` → `master`; publish Docker image
 
 ### Planned after 1.5.0 (future releases)
 
