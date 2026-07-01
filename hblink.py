@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# RYSEN DMRMaster+ Version 1.4.0
+# RYSEN DMRMaster+ Version 1.5.0
 ###############################################################################
 #   Copyright (C) 2016-2019 Cortney T. Buffington, N0MJS <n0mjs@me.com>
 #
@@ -45,7 +45,10 @@ from twisted.internet import reactor, task
 import log
 import config
 from const import *
-from dmr_utils3.utils import int_id, bytes_4, mk_id_dict
+from dmr_utils3.utils import int_id, bytes_3, bytes_4, get_alias, mk_id_dict
+from ipsc_peer_meta import (
+    lookup_peer_alias, callsign_bytes, parse_ipsc_peer_status, ipsc_peer_display_fields,
+)
 
 # Imports for the reporting server
 import pickle
@@ -114,6 +117,71 @@ def acl_check(_id, _acl):
         if entry[0] <= id <= entry[1]:
             return _acl[0]
     return not _acl[0]
+
+
+def build_peer_record(peer_id, host, port, *, protocol='HBP', connection='YES',
+                      peer_mode=None, existing=None, now=None, full_config=None,
+                      ipsc_status=None):
+    """Build a HBP-compatible CONFIG['SYSTEMS'][slot]['PEERS'] entry.
+
+    Used by IPSC registration and available for HBP login paths so monitors
+    (FDMR-Monitor, report_receiver) see a consistent peer shape.
+    """
+    if now is None:
+        now = time()
+    radio_id = str(int_id(peer_id))
+    callsign = callsign_bytes(None, peer_id)
+    if existing and existing.get('CALLSIGN'):
+        existing_cs = existing['CALLSIGN']
+        if isinstance(existing_cs, bytes):
+            existing_cs = existing_cs.decode('utf-8', errors='ignore').rstrip()
+        if existing_cs and existing_cs != radio_id:
+            callsign = callsign_bytes(existing_cs, peer_id)
+
+    alias = lookup_peer_alias(full_config, peer_id) if full_config else None
+    if alias:
+        callsign = callsign_bytes(alias, peer_id)
+
+    record = {
+        'CONNECTION': connection,
+        'CONNECTED': existing['CONNECTED'] if existing else now,
+        'PINGS_RECEIVED': existing.get('PINGS_RECEIVED', 0) if existing else 0,
+        'LAST_PING': now,
+        'SOCKADDR': (host, port),
+        'IP': host,
+        'PORT': port,
+        'RADIO_ID': radio_id,
+        'CALLSIGN': callsign,
+        'RX_FREQ': existing.get('RX_FREQ', '') if existing else '',
+        'TX_FREQ': existing.get('TX_FREQ', '') if existing else '',
+        'TX_POWER': existing.get('TX_POWER', '') if existing else '',
+        'COLORCODE': existing.get('COLORCODE', '') if existing else '',
+        'LATITUDE': existing.get('LATITUDE', '') if existing else '',
+        'LONGITUDE': existing.get('LONGITUDE', '') if existing else '',
+        'HEIGHT': existing.get('HEIGHT', '') if existing else '',
+        'LOCATION': existing.get('LOCATION', '') if existing else '',
+        'DESCRIPTION': existing.get('DESCRIPTION', '') if existing else '',
+        'SLOTS': existing.get('SLOTS', '') if existing else '',
+        'URL': existing.get('URL', '') if existing else '',
+        'SOFTWARE_ID': existing.get('SOFTWARE_ID', '') if existing else '',
+        'PACKAGE_ID': existing.get('PACKAGE_ID', '') if existing else '',
+        'PROTOCOL': protocol,
+    }
+    if peer_mode is not None:
+        if isinstance(peer_mode, (bytes, bytearray)):
+            record['IPSC_MODE'] = peer_mode[0] if peer_mode else 0
+        else:
+            record['IPSC_MODE'] = int(peer_mode)
+
+    if protocol == 'IPSC' and ipsc_status:
+        display = ipsc_peer_display_fields(
+            ipsc_status['mode'], ipsc_status['flags'], ipsc_status['protocol'])
+        for key, value in display.items():
+            if key.startswith('IPSC_'):
+                record[key] = value
+            elif value and (not existing or not existing.get(key)):
+                record[key] = value
+    return record
 
 
 #************************************************

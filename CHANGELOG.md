@@ -1,5 +1,75 @@
 # RYSEN DMRMaster+ Changelog
 
+## Version 1.5.0 (2026-06-30)
+
+Major release: Motorola IP Site Connect for SystemX — group voice, selfcare, monitor integration, and private/unit voice (Phase 3). Field-tested on SYSTEM-XTEST (GB7NR). Companion dashboard: [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR) **v1.5.0**.
+
+The **`ipsc`** branch carries **1.5.0**; merge to `master` publishes `shaymez/rysen:latest` and satellite proxy images.
+
+See [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md) for merge checklist.
+
+### New Features
+
+**IPSC master (`MODE: IPSC`)**
+- Registration, keepalives, peer list, de-register with optional HMAC auth
+- `ipsc_proxy.py` — CPS Master UDP **56002** front-end to `IPSC-0`…`N` backends
+- Inbound GROUP_VOICE → standard `dmrd_received()` bridge routing
+- Outbound DMRD → Motorola extended GROUP_VOICE (54/52-byte packets, RTP + embedded LC)
+- 60 ms jitter-buffered outbound voice delivery (ipsc2hbp model)
+- `learn_peer_header()` — echo repeater call-control bytes on outbound
+- Bridge parity: `augment_bridges_for_masters()`, UA/stat bridges include IPSC slots
+- Linked IPSC UA activation via `OPTIONS: IPSC=` / `LINK_IPSC=` (per-connection isolation; no blanket peer wake)
+- IPSC peer monitor fields: `peer_ids.json` callsign alias + protocol metadata from registration ([node-dmr-lib](https://github.com/rick51231/node-dmr-lib) layout)
+- HBP-shaped `PEERS` records + lifecycle `send_config()` for FDMR-Monitor / RYSEN-MONITOR
+
+**IPSC repeater selfcare**
+- `[SELF SERVICE]` — MariaDB `Clients` table (`mode = 0`) upsert on register, logout on de-register
+- `ipsc_selfcare_poll()` — apply `TS1_STATIC` / `TS2_STATIC` from dashboard when `modified = 1`
+- Re-register re-applies stored options (`modified` set when options non-empty)
+- Hotspot proxy poll excludes IPSC rows (`proxy_db.py`: `mode > 0` only)
+
+**IPSC private / unit voice (`PRIVATE_VOICE 0x81`) — Phase 3, included in 1.5.0**
+- Inbound `0x81` → unit DMRD (`byte 15 |= 0x40`) → existing `dmrd_received()` path
+- Outbound unit DMRD → `0x81` on **TS1 and TS2** with shared jitter-buffer delivery
+- `ipsc_send_system()` no longer drops unit calls
+- `_forward_unit_voice()` hook for cross-system private voice (routing policy — unit-to-unit in Phase 4)
+
+**IPSC dial-a-tg reflector (field-tested GB7NR / SYSTEM-XTEST, 2026-06)**
+- Private-call announcements on IPSC: PRIVATE_VOICE reply **as called ID** (5000, 4000, link TG)
+- VTERM + 1s delay; monotonic call_seq / RTP seq; RelinkTime / `DEFAULT_UA_TIMER` timeout
+- Timeout disconnect voice via private prompt (not GROUP TG 9)
+- Hotspot reflector path unchanged (`sendSpeech` on TG 9)
+
+**IPSC / HBP parity polish**
+- GLOBAL + system ACL on IPSC inbound; peer cleanup on IPSC timeout
+- Unit-data routing includes IPSC peers; reflector timer reset on linked-TG activity
+- `sendVoicePacket()` uses correct system reference (HBP reflector speech fix)
+
+### Configuration
+
+- `[IPSC]` stanza in `rysen.cfg` / `IPSC-SAMPLE.cfg` (`IPSC_MASTER_ID`, `AUTH_KEY`, `GENERATOR`, etc.)
+- `[SELF SERVICE]` for MariaDB selfcare DB (optional; requires RYSEN-MONITOR stack)
+- Docker compose: `ipsc-proxy` service on port 56002
+- Install path: `/opt/rysen-src`, branch `ipsc` — [doc/install.md](doc/install.md)
+
+### Tests
+
+- `tests/test_ipsc_phase1.py`, `test_ipsc_outbound.py`, `test_ipsc_proxy.py`, `test_ipsc_bridge.py`, `test_ipsc_peers.py`, `test_ipsc_selfcare.py`, `test_static_tg_bridges.py`, `test_ipsc_private_voice.py`
+
+### Remaining before merge to `master`
+
+- Pre-merge soak (~1 day normal traffic: group voice + dial-a-tg reflector)
+- Rotate production `AUTH_KEY` off sample defaults
+- Merge `ipsc` → `master`; publish Docker image
+
+### Planned after 1.5.0 (future releases)
+
+- **Phase 4:** Unit-to-unit private voice routing (subscriber ID → subscriber ID; narrow dial-a-tg classifier)
+- **Phase 5:** `GROUP_DATA` / `PRIVATE_DATA` — SMS, GPS, UDT (deferred; not before merge)
+- Phase 6+: TMS, LRRP, ARS (node-dmr-lib reference)
+
+---
+
 ## Version 1.4.1 (2026-06-09)
 
 ### Performance Improvements

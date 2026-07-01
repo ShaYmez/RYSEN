@@ -1,0 +1,12 @@
+.git
+.github
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.pytest_cache
+doc/
+tests/
+docker-configs/
+*.md
+.env
+.env.*

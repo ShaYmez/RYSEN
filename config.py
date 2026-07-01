@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# RYSEN DMRMaster+ Version 1.4.0
+# RYSEN DMRMaster+ Version 1.5.0
 ###############################################################################
 #   Copyright (C) 2016-2018 Cortney T. Buffington, N0MJS <n0mjs@me.com>
 #
@@ -57,7 +57,7 @@ def process_acls(_config):
     # System level ACLs
     for system in _config['SYSTEMS']:
         # Registration ACLs (which make no sense for peer systems)
-        if _config['SYSTEMS'][system]['MODE'] == 'MASTER':
+        if _config['SYSTEMS'][system]['MODE'] in ('MASTER', 'IPSC'):
             _config['SYSTEMS'][system]['REG_ACL'] = acl_build(_config['SYSTEMS'][system]['REG_ACL'], const.PEER_MAX)
 
         # Subscriber and TGID ACLs (valid for all system types)
@@ -116,6 +116,39 @@ def IsIPv6Address(ip):
         pass
         return False   
 
+def _parse_csv_ints(value):
+    if not value or not str(value).strip():
+        return []
+    return [int(x.strip()) for x in str(value).split(',') if x.strip()]
+
+
+def _parse_csv_strings(value):
+    if not value or not str(value).strip():
+        return []
+    return [x.strip() for x in str(value).split(',') if x.strip()]
+
+
+def _parse_ipsc_auth_key(hexstr):
+    if not hexstr or not str(hexstr).strip():
+        return b''
+    raw = str(hexstr).strip().replace(' ', '')
+    if len(raw) > 40:
+        raw = raw[:40]
+    return bytes.fromhex(raw.zfill(40))
+
+
+def _parse_ipsc_version(hexstr):
+    from ipsc_const import IPSC_VER
+    if not hexstr or not str(hexstr).strip():
+        return IPSC_VER
+    raw = str(hexstr).strip().replace(' ', '')
+    if len(raw) != 8:
+        return IPSC_VER
+    try:
+        return bytes.fromhex(raw)
+    except ValueError:
+        return IPSC_VER
+
 def build_config(_config_file):
     config = configparser.ConfigParser()
 
@@ -129,6 +162,7 @@ def build_config(_config_file):
     CONFIG['ALIASES'] = {}
     CONFIG['SYSTEMS'] = {}
     CONFIG['ALLSTAR'] = {}
+    CONFIG['SELF SERVICE'] = {'ENABLED': False}
 
     try:
         for section in config.sections():
@@ -202,6 +236,17 @@ def build_config(_config_file):
                 
             elif section == 'PROXY':
                 pass
+
+            elif section == 'SELF SERVICE':
+                CONFIG['SELF SERVICE'].update({
+                    'ENABLED': config.getboolean(section, 'ENABLED'),
+                    'DB_HOST': config.get(section, 'DB_HOST'),
+                    'DB_PORT': config.getint(section, 'DB_PORT'),
+                    'DB_USER': config.get(section, 'DB_USER'),
+                    'DB_PASS': config.get(section, 'DB_PASS'),
+                    'DB_NAME': config.get(section, 'DB_NAME'),
+                    'POLL_INTERVAL': config.getint(section, 'POLL_INTERVAL', fallback=5),
+                })
 
             elif config.getboolean(section, 'ENABLED'):
                 if config.get(section, 'MODE') == 'PEER':
@@ -329,6 +374,44 @@ def build_config(_config_file):
                     }})
                     CONFIG['SYSTEMS'][section].update({'PEERS': {}})
                     
+                elif config.get(section, 'MODE') == 'IPSC':
+                    CONFIG['SYSTEMS'].update({section: {
+                        'MODE': config.get(section, 'MODE'),
+                        'ENABLED': config.getboolean(section, 'ENABLED'),
+                        'REPEAT': config.getboolean(section, 'REPEAT'),
+                        'MAX_PEERS': config.getint(section, 'MAX_PEERS'),
+                        'IP': config.get(section, 'IP'),
+                        'PORT': config.getint(section, 'PORT'),
+                        'GROUP_HANGTIME': config.getint(section, 'GROUP_HANGTIME'),
+                        'USE_ACL': config.getboolean(section, 'USE_ACL'),
+                        'REG_ACL': config.get(section, 'REG_ACL'),
+                        'SUB_ACL': config.get(section, 'SUB_ACL'),
+                        'TG1_ACL': config.get(section, 'TGID_TS1_ACL'),
+                        'TG2_ACL': config.get(section, 'TGID_TS2_ACL'),
+                        'DEFAULT_UA_TIMER': config.getint(section, 'DEFAULT_UA_TIMER'),
+                        'SINGLE_MODE': config.getboolean(section, 'SINGLE_MODE'),
+                        'VOICE_IDENT': config.getboolean(section, 'VOICE_IDENT'),
+                        'TS1_STATIC': config.get(section, 'TS1_STATIC'),
+                        'TS2_STATIC': config.get(section, 'TS2_STATIC'),
+                        'DEFAULT_REFLECTOR': config.getint(section, 'DEFAULT_REFLECTOR'),
+                        'STICKY_TG': config.getboolean(section, 'STICKY_TG'),
+                        'OPTIONS': '',
+                        'GENERATOR': config.getint(section, 'GENERATOR'),
+                        'ANNOUNCEMENT_LANGUAGE': config.get(section, 'ANNOUNCEMENT_LANGUAGE'),
+                        'ALLOW_UNREG_ID': config.getboolean(section, 'ALLOW_UNREG_ID'),
+                        'PROXY_CONTROL': config.getboolean(section, 'PROXY_CONTROL'),
+                        'OVERRIDE_IDENT_TG': config.get(section, 'OVERRIDE_IDENT_TG'),
+                        'IPSC_MASTER_ID': config.getint(section, 'IPSC_MASTER_ID'),
+                        'AUTH_ENABLED': config.getboolean(section, 'AUTH_ENABLED'),
+                        'AUTH_KEY': _parse_ipsc_auth_key(config.get(section, 'AUTH_KEY', fallback='')),
+                        'KEEPALIVE_WATCHDOG': config.getint(section, 'KEEPALIVE_WATCHDOG', fallback=60),
+                        'TS_PREFER_CALL_INFO': config.getboolean(section, 'TS_PREFER_CALL_INFO', fallback=False),
+                        'IPSC_VERSION': _parse_ipsc_version(config.get(section, 'IPSC_VERSION', fallback='')),
+                        'ALLOWED_PEER_IDS': _parse_csv_ints(config.get(section, 'ALLOWED_PEER_IDS', fallback='')),
+                        'ALLOWED_PEER_IPS': _parse_csv_strings(config.get(section, 'ALLOWED_PEER_IPS', fallback='')),
+                    }})
+                    CONFIG['SYSTEMS'][section].update({'PEERS': {}})
+
                 elif config.get(section, 'MODE') == 'OPENBRIDGE':
                     CONFIG['SYSTEMS'].update({section: {
                         'MODE': config.get(section, 'MODE'),
