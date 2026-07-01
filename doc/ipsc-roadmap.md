@@ -1,6 +1,6 @@
 # RYSEN IPSC — roadmap & v1.5.0 release
 
-This document tracks work on the **`ipsc`** branch: what is done, what remains before merge to **`master`** as **version 1.5.0**, and how later features are phased without duplicating bridge logic.
+This document tracks IPSC work on **`master`**: what shipped in **version 1.5.0**, and how later features are phased without duplicating bridge logic.
 
 Field-test reference: [ipsc-phase1.md](ipsc-phase1.md). Protocol research: [node-dmr-lib](https://github.com/rick51231/node-dmr-lib) (MIT; opcode and packet layouts beyond group voice).
 
@@ -20,8 +20,8 @@ Field-test reference: [ipsc-phase1.md](ipsc-phase1.md). Protocol research: [node
 | IPSC repeater selfcare (static TS1/TS2) | **Done** (`selfcare_db.py`, `ipsc_selfcare_poll`) |
 | Phase 3 — `PRIVATE_VOICE` wire layer | **Done** (code + unit tests) |
 | **Dial-a-tg reflector on IPSC** | **Done** — field-tested GB7NR / SYSTEM-XTEST (2026-06) |
-| Short soak before merge | **In progress** (~1 day normal traffic) |
-| Merge `ipsc` → `master` + **RYSEN 1.5.0** | **Pending** — soak pass + checklist |
+| Merge `ipsc` → `master` + **RYSEN 1.5.0** | **Done** (2026-07) |
+| Docker publish + installer on `master` | **Done** — `shaymez/rysen:latest` |
 
 ---
 
@@ -29,10 +29,8 @@ Field-test reference: [ipsc-phase1.md](ipsc-phase1.md). Protocol research: [node
 
 | Window | Work | Outcome |
 |--------|------|---------|
-| **Now** | **Pre-merge soak** | Group voice + dial-a-tg reflector under normal use (~1 day minimum) |
-| **Soak pass** | **v1.5.0 merge** | `ipsc` → `master`, Docker publish, `AUTH_KEY` rotation |
-| **Post-merge** | **Phase 4 — unit-to-unit routing** | Private voice between users (not dial-a-tg) |
-| **Later** | **Phase 5 — SMS / GPS data** | Not before merge; not targeted for 1.5.0 |
+| **Now** | **Phase 4 — unit-to-unit routing** | Private voice between users (not dial-a-tg) |
+| **Later** | **Phase 5 — SMS / GPS data** | Not targeted for 1.5.x |
 
 ---
 
@@ -98,24 +96,20 @@ These rules apply to **every** IPSC phase:
 
 | Phase | Goal | Status |
 |-------|------|--------|
-| **0** | Soak + ops | **In progress** — pre-merge soak |
+| **0** | Soak + ops | **Done** — v1.5.0 released |
 | **1** | Group voice + proxy + bridge | **Done** |
 | **2** | Monitor / report + dashboard | **Done** |
 | **2d** | IPSC repeater selfcare | **Done** |
 | **3** | Private voice wire + dial-a-tg reflector | **Done** (field-tested reflector) |
-| **—** | **Merge `ipsc` → `master` as v1.5.0** | After soak |
-| **4** | Unit-to-unit private voice routing | **Planned** (post-merge) |
+| **—** | **v1.5.0 on `master`** | **Done** |
+| **4** | Unit-to-unit private voice routing | **Planned** (current focus) |
 | **5** | Group & private data (SMS, GPS, UDT) | **Deferred** (post-merge) |
 | **6** | TMS / LRRP / ARS / wireline | Post-merge |
 | **7** | Ops polish | Ongoing |
 
 ```
-ipsc branch (1.5.0 milestone)
-  │  Soak — group voice + dial-a-tg reflector
-  │  Monitor spot-check (optional)
-  │
-Soak pass ─► merge master @ 1.5.0
-  ├── Phase 4 unit-to-unit private routing
+master @ 1.5.0 (released)
+  ├── Phase 4 unit-to-unit private routing  ← current
   └── Phase 5 SMS / GPS (when needed)
 ```
 
@@ -133,15 +127,15 @@ Soak pass ─► merge master @ 1.5.0
 | **Dial-a-tg reflector on IPSC** | **Done** | 5000/4000/link TG, VTERM+1s, RelinkTime timer |
 | Unit-to-unit private routing | **Not in 1.5.0** | Phase 4 — see below |
 | SMS / GPS data | **Not in 1.5.0** | Phase 5 |
-| Pre-merge soak | **In progress** | Normal traffic ~1 day |
-| Production auth defaults | Ops | Rotate `AUTH_KEY` |
-| **Merge + version bump** | Done on `ipsc` | `version.txt` **1.5.0**; merge to `master` pending |
+| Pre-merge soak | Done | v1.5.0 released |
+| Production auth defaults | Ops | Rotate `AUTH_KEY` off sample defaults |
+| **Merge + version bump** | **Done** | `version.txt` **1.5.0** on **`master`** |
 
 ---
 
-## Phase 0 — Pre-merge soak
+## Phase 0 — Pre-merge soak (**done**)
 
-**Goal:** Confirm stability with group voice + dial-a-tg reflector before merge.
+**Goal:** Confirm stability with group voice + dial-a-tg reflector before v1.5.0 release. Completed prior to merge to **`master`**.
 
 ### In scope
 
@@ -227,7 +221,7 @@ Tasks:
 
 ## Phase 5 — Group & private data (**deferred**, post-merge)
 
-SMS, GPS, UDT — `GROUP_DATA (0x83)` / `PRIVATE_DATA (0x84)`. Not targeted before merge to `master`.
+SMS, GPS, UDT — `GROUP_DATA (0x83)` / `PRIVATE_DATA (0x84)`. Deferred post-1.5.0.
 
 - [ ] **5.1** Data opcode dispatch in `ipsc_master.py`
 - [ ] **5.2** Inbound data → `dmrd_received()` / unit-data path
@@ -263,16 +257,16 @@ TMS, LRRP, ARS, optional BMS and wireline (`0xB2`).
 
 ## v1.5.0 release checklist
 
-**Pre-merge (`ipsc` branch)**
+**Shipped on `master`**
 
-- [ ] Pre-merge soak pass (group + dial-a-tg reflector)
+- [x] Pre-merge soak pass (group + dial-a-tg reflector)
 - [x] Dial-a-tg reflector on IPSC (field-tested)
 - [x] Phase 3 wire layer + tests
 - [x] IPSC selfcare + monitor integration
-- [ ] Rotate production `AUTH_KEY`
-- [ ] Merge `ipsc` → `master` as **v1.5.0**
-- [ ] Set `version.txt` to **1.5.0**; finalise CHANGELOG date
-- [ ] Rebuild/publish `shaymez/rysen:latest`; installer → `master`
+- [ ] Rotate production `AUTH_KEY` (ops — off sample defaults)
+- [x] Merge `ipsc` → `master` as **v1.5.0**
+- [x] Set `version.txt` to **1.5.0**; CHANGELOG dated 2026-06-30
+- [x] Publish `shaymez/rysen:latest`; installer → `master`
 
 **After 1.5.0**
 
@@ -288,4 +282,4 @@ TMS, LRRP, ARS, optional BMS and wireline (`0xB2`).
 |-----|---------|
 | [ipsc-phase1.md](ipsc-phase1.md) | Feature + field-test reference |
 | [install.md](install.md) | Docker install |
-| [CHANGELOG.md](../CHANGELOG.md) | Unreleased → **1.5.0** on merge |
+| [CHANGELOG.md](../CHANGELOG.md) | **1.5.0** on **`master`** |

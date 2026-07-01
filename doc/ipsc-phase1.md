@@ -1,6 +1,6 @@
 # Motorola IPSC in RYSEN
 
-Motorola IP Site Connect (IPSC) support on the **`ipsc`** branch. Field-tested on SYSTEM-XTEST (2026-06) with GB7NR (DR3000), DroidStar hotspot, and BlueDV/OpenBridge.
+Motorola IP Site Connect (IPSC) support in RYSEN **v1.5.0** on **`master`**. Field-tested on SYSTEM-XTEST (2026-06) with GB7NR (DR3000), DroidStar hotspot, and BlueDV/OpenBridge.
 
 ## What works
 

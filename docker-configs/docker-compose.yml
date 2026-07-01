@@ -3,9 +3,7 @@
 #   Edited by (C) 2022 Shane Daley, M0VUB <support@gb7nr.co.uk>
 #   Further Developed (C) 2026 by Shane Daley, M0VUB <shane@freestar.network>
 #
-#   ipsc branch → v1.5.0: builds rysen from /opt/rysen-src (see docker-compose_install.sh).
-#   MERGE to master: replace rysen build block with image: shaymez/rysen:latest
-#   and use docker compose pull in the installer instead of git clone + build.
+#   RYSEN v1.5.0 on master — pulls shaymez/rysen:latest (see docker-compose_install.sh).
 #   Pair dashboard with RYSEN-MONITOR v1.5.0 (https://github.com/ShaYmez/RYSEN-MONITOR).
 ###############################################################################
 
@@ -14,10 +12,7 @@ services:
         container_name: systemx
         cpu_shares: 1024
         mem_reservation: 600m
-        build:
-            context: /opt/rysen-src
-            dockerfile: Dockerfile
-        image: rysen-local:latest
+        image: shaymez/rysen:latest
         volumes:
             - '/etc/rysen/rysen.cfg:/opt/rysen/rysen.cfg'
             - '/var/log/rysen/:/opt/rysen/log/'

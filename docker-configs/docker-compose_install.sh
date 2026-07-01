@@ -18,17 +18,11 @@
 #   Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 ###############################################################################
 #
-# ipsc branch: clones source and builds the rysen image locally (no Docker Hub).
-# MERGE to master: set RYSEN_GIT_BRANCH and RYSEN_REPO_BASE to master, remove
-# git clone + docker compose build; use docker compose pull for rysen instead.
+# master branch: pulls shaymez/rysen:latest and satellite proxy images.
 
 set -euo pipefail
 
-# MERGE: change both to master
-RYSEN_REPO_BASE="https://raw.githubusercontent.com/ShaYmez/RYSEN/refs/heads/ipsc"
-RYSEN_GIT_BRANCH="ipsc"
-RYSEN_GIT_REPO="https://github.com/ShaYmez/RYSEN.git"
-RYSEN_SRC="/opt/rysen-src"
+RYSEN_REPO_BASE="https://raw.githubusercontent.com/ShaYmez/RYSEN/refs/heads/master"
 
 if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
     echo "This installer must be run as root."
@@ -43,7 +37,7 @@ echo "Installing required packages..."
 echo "Install Docker Community Edition and Compose V2 plugin..."
 apt-get -y remove docker docker-engine docker.io || true
 apt-get -y update
-apt-get -y install ca-certificates curl gnupg git
+apt-get -y install ca-certificates curl gnupg
 
 install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
@@ -96,12 +90,8 @@ curl -fsSL "${RYSEN_REPO_BASE}/docker-configs/config/ipsc-proxy-SAMPLE.cfg" -o /
 echo "Get proxy.cfg (optional hotspot profile)..."
 curl -fsSL "${RYSEN_REPO_BASE}/docker-configs/config/proxy-SAMPLE.cfg" -o /etc/rysen/proxy.cfg
 
-echo "Clone RYSEN source (${RYSEN_GIT_BRANCH}) for local image build..."
-rm -rf "${RYSEN_SRC}"
-git clone -b "${RYSEN_GIT_BRANCH}" --depth 1 "${RYSEN_GIT_REPO}" "${RYSEN_SRC}"
-
-echo "Install compose file from clone..."
-cp "${RYSEN_SRC}/docker-configs/docker-compose.yml" /etc/rysen/docker-compose.yml
+echo "Get docker-compose.yml ..."
+curl -fsSL "${RYSEN_REPO_BASE}/docker-configs/docker-compose.yml" -o /etc/rysen/docker-compose.yml
 
 echo "Set perms on config directory..."
 chmod -R 755 /etc/rysen
@@ -125,9 +115,9 @@ touch /var/log/rysen/rysen.log
 chmod -R 755 /var/log/rysen
 chown -R 54000:54000 /var/log/rysen
 
-echo "Build and start RYSEN + IPSC proxy (hotspot proxy optional via --profile hotspot)..."
+echo "Pull and start RYSEN + IPSC proxy (hotspot proxy optional via --profile hotspot)..."
 cd /etc/rysen
-docker compose build rysen
+docker compose pull rysen ipsc-proxy
 docker compose up -d rysen ipsc-proxy
 docker container logs systemx
 docker container logs ipsc-proxy
@@ -137,5 +127,5 @@ echo "IPSC: proxy on UDP 56002 (CPS Master port), backends 56003-56202."
 echo "CPS: Master UDP 56002, IPSC auth on, key must match AUTH_KEY in rysen.cfg [IPSC]."
 echo "Open inbound UDP 56002 on the host firewall. See doc/ipsc-phase1.md."
 echo "To enable hotspot proxy: docker compose --profile hotspot up -d"
-echo "To rebuild after git pull: cd ${RYSEN_SRC} && git pull && cd /etc/rysen && docker compose build rysen && docker compose up -d rysen"
+echo "To update: cd /etc/rysen && docker compose pull && docker compose up -d"
 echo "Setup complete!"

@@ -6,7 +6,6 @@ name: Sync satellite proxy repos
 on:
   push:
     branches:
-      - ipsc
       - master
     paths:
       - ipsc_proxy.py

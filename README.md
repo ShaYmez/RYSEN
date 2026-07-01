@@ -1,7 +1,7 @@
 ## RYSEN DMRMaster+ Master Stack ##
 ### A fork of the HBlink3 / FreeDMR project ###
 
-### Version 1.5.0 (`ipsc` branch — merge to `master` pending) ###
+### Version 1.5.0 (master) ###
 
 RYSEN DMRMaster+ - Software to build and scale DMR Master server software. Thanks to all thats credited in code, testing and develpment of this software. This software is completly open source and is derived from the orginal fork of HBlink3 / FreeDMR. Developed in PYTHON. A number of developers have contributed to the fork and I thought the time is right to develop this version of the code completly out in the open.. as it should be. No private forks..Open Source for people to freely develop.
 
@@ -38,9 +38,7 @@ docker build . -t rysen-local:latest
 
 ```
 
-On the **ipsc** branch, the recommended test install clones to `/opt/rysen-src` and uses `docker compose build` — see [doc/install.md](doc/install.md). The **`ipsc`** branch is the **v1.5.0 milestone** (IPSC group + private voice, selfcare, `ipsc-proxy` on 56002). Merge checklist: [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md). Dashboard: [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR) **v1.5.0**.
-
-Or use a prebuilt one on Docker Hub: `shaymez/rysen:latest` (built from **master** on push).
+The recommended install pulls **`shaymez/rysen:latest`** from Docker Hub — see [doc/install.md](doc/install.md). **v1.5.0** on **master** adds IPSC group + private voice, selfcare, and `ipsc-proxy` on 56002. Roadmap: [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md). Dashboard: [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR) **v1.5.0**.
 
 Wake up your container
 
