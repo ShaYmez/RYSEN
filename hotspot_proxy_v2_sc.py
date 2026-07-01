@@ -418,18 +418,6 @@ if __name__ == '__main__':
     if 'FDPROXY_LISTENPORT' in os.environ:
         ListenPort = os.environ['FDPROXY_LISTENPORT']
 
-    # Docker compose .env overrides (rysen.cfg remains source of truth on host)
-    if os.environ.get('DB_HOST'):
-        db_server = os.environ['DB_HOST']
-    if os.environ.get('DB_USER'):
-        db_username = os.environ['DB_USER']
-    if os.environ.get('DB_PASS'):
-        db_password = os.environ['DB_PASS']
-    if os.environ.get('DB_NAME'):
-        db_name = os.environ['DB_NAME']
-    if os.environ.get('DB_PORT'):
-        db_port = int(os.environ['DB_PORT'])
-
     for port in range(DestportStart,DestPortEnd+1,1):
         CONNTRACK[port] = False
 
