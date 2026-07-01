@@ -11,11 +11,13 @@
 #   proxy        172.16.238.20  shaymez/rysen-sp-selfcare:latest
 #   ipsc-proxy   172.16.238.30  shaymez/rysen-sp-ipsc:latest
 #
-# Deploy on an existing VM (does not touch *.cfg or mysql/ data):
-#   curl -fsSL https://raw.githubusercontent.com/ShaYmez/RYSEN/refs/heads/master/docker-configs/docker-compose-stack.yml \
-#     -o /etc/rysen/docker-compose.yml
-#   Edit DB placeholders below to match rysen.cfg [SELF SERVICE] DB_PASS (and existing MariaDB volume).
+# Deploy on an existing VM (does not touch rysen.cfg / mysql/ data):
+#   curl -fsSL .../docker-compose-stack.yml -o /etc/rysen/docker-compose.yml
+#   curl -fsSL .../sync-selfcare-env.sh | bash   # writes .env from rysen.cfg [SELF SERVICE]
 #   cd /etc/rysen && docker compose pull && docker compose up -d && conntrack -F
+#
+# DB credentials: rysen.cfg [SELF SERVICE] is the source of truth. sync-selfcare-env.sh
+# generates /etc/rysen/.env for mariadb + proxy compose env (and syncs proxy.cfg DB keys).
 ###############################################################################
 
 services:
@@ -63,11 +65,10 @@ services:
     ports:
       - "8306:3306"
     environment:
-      # Must match existing /etc/rysen/mysql init and rysen.cfg [SELF SERVICE] DB_PASS
-      - MYSQL_ROOT_PASSWORD=CHANGE_ME_ROOT
-      - MYSQL_DATABASE=selfcare
-      - MYSQL_USER=selfcare
-      - MYSQL_PASSWORD=CHANGE_ME_SELFCARE
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=${DB_NAME}
+      - MYSQL_USER=${DB_USER}
+      - MYSQL_PASSWORD=${DB_PASS}
     networks:
       app_net:
         ipv4_address: 172.16.238.11
@@ -104,11 +105,11 @@ services:
       - mariadb
       - rysen
     environment:
-      - DB_HOST=mariadb
-      - DB_PORT=3306
-      - DB_USER=selfcare
-      - DB_PASS=CHANGE_ME_SELFCARE
-      - DB_NAME=selfcare
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DB_NAME=${DB_NAME}
     networks:
       app_net:
         ipv4_address: 172.16.238.20

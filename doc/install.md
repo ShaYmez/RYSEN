@@ -107,12 +107,18 @@ Satellite images (pulled, not built locally):
 
 ## Update stack (master — pull all images)
 
-Does **not** overwrite `/etc/rysen/*.cfg` or `mysql/`:
+Does **not** overwrite `rysen.cfg` or `mysql/` data. DB credentials come from **`rysen.cfg` `[SELF SERVICE]`**:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ShaYmez/RYSEN/refs/heads/master/docker-configs/docker-compose-stack.yml \
   -o /etc/rysen/docker-compose.yml
-# Edit DB placeholders in compose to match rysen.cfg [SELF SERVICE] DB_PASS (existing MariaDB volume)
+
+curl -fsSL https://raw.githubusercontent.com/ShaYmez/RYSEN/refs/heads/master/docker-configs/sync-selfcare-env.sh \
+  -o /tmp/sync-selfcare-env.sh
+curl -fsSL https://raw.githubusercontent.com/ShaYmez/RYSEN/refs/heads/master/docker-configs/sync_selfcare_env.py \
+  -o /tmp/sync_selfcare_env.py
+bash /tmp/sync-selfcare-env.sh
+# Writes /etc/rysen/.env and syncs proxy.cfg [SELF SERVICE] from rysen.cfg
 
 cd /etc/rysen
 docker compose down
@@ -121,6 +127,8 @@ docker compose up -d
 conntrack -F
 docker compose ps
 ```
+
+Set `ENABLED: True` in `rysen.cfg` `[SELF SERVICE]` for IPSC repeater selfcare. Optional `DB_ROOT_PASS` in that section sets MariaDB root on **first** install; existing `mysql/` volumes keep the prior root password from `.env`.
 
 Remove stale images only (optional, does not touch `/etc/rysen`):
 
