@@ -48,6 +48,7 @@ Motorola IP Site Connect (IPSC) support in RYSEN **v1.5.0** on **`master`**. Fie
 - Register upsert / de-register logout; poll `modified = 1` → `options_config()` static TS1/TS2
 - Multi-static TG strings (`TS1=235,23426,116;TS2=2350,2351,2352;`) via RYSEN-MONITOR selfcare UI
 - Reconnect re-applies options when stored in DB
+- Full-stack Docker: DB credentials must match across `rysen.cfg`, `proxy.cfg`, and `docker-compose.yml` — see [install.md](install.md#selfcare-database-credentials-full-stack)
 
 ### Field test summary (2026-06, SYSTEM-XTEST)
 

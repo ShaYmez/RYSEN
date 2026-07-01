@@ -105,6 +105,62 @@ Satellite images (pulled, not built locally):
 - `shaymez/rysen-sp-ipsc:latest` — config mount `/opt/rysen-sp-ipsc/ipsc-proxy.cfg`
 - `shaymez/rysen-sp-selfcare:latest` — config mount `/opt/rysen-sp-selfcare/proxy.cfg`
 
+## Selfcare database credentials (full stack)
+
+The production stack template ([docker-compose-stack.yml](../docker-configs/docker-compose-stack.yml)) ships with **`CHANGE_ME_*` placeholders** for MariaDB. You must set these manually to match your deployment. There is no automatic sync from `rysen.cfg` — keep the values aligned yourself when you install or change passwords.
+
+### Where credentials live
+
+| File | Read by | Relevant keys |
+|------|---------|---------------|
+| `/etc/rysen/rysen.cfg` `[SELF SERVICE]` | **rysen** (IPSC repeater selfcare) | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`, `ENABLED` |
+| `/etc/rysen/proxy.cfg` `[SELF SERVICE]` | **proxy** (hotspot selfcare) | `server`, `port`, `username`, `password`, `db_name`, `use_selfservice` |
+| `/etc/rysen/docker-compose.yml` | **mariadb** + **proxy** containers | `MYSQL_*` and `DB_*` environment variables |
+
+On the compose network, `DB_HOST` / `server` should be **`mariadb`** (the compose service name), not `127.0.0.1`.
+
+### Compose placeholders to edit
+
+After copying the stack template to `/etc/rysen/docker-compose.yml`, set:
+
+| Placeholder in compose | Set to |
+|------------------------|--------|
+| `CHANGE_ME_SELFCARE` | Same as `DB_PASS` in `rysen.cfg` and `password` in `proxy.cfg` (mariadb `MYSQL_PASSWORD` and proxy `DB_PASS`) |
+| `CHANGE_ME_ROOT` | MariaDB root password used when `/etc/rysen/mysql` was first created |
+
+Also confirm `MYSQL_DATABASE` / `MYSQL_USER` / `DB_NAME` / `DB_USER` match `DB_NAME` and `DB_USER` in `rysen.cfg` (default: `selfcare`).
+
+### Enable selfcare
+
+In `rysen.cfg`:
+
+```
+[SELF SERVICE]
+ENABLED: True
+```
+
+In `proxy.cfg` (if using the selfcare hotspot proxy):
+
+```
+[SELF SERVICE]
+USE_SELFSERVICE = True
+```
+
+### Existing MariaDB data
+
+If `/etc/rysen/mysql` already exists from a prior install, the database users and passwords are **already defined** in that volume. Set compose env vars to those existing values — do not change `MYSQL_*` to something new unless you intend to re-init MariaDB (which would wipe selfcare data).
+
+`MYSQL_ROOT_PASSWORD` only applies on **first** container init. On an existing volume it should still match the root password from the original install so the linuxserver MariaDB image behaves correctly.
+
+### Upgrading the stack compose file
+
+Downloading a fresh `docker-compose-stack.yml` **overwrites** `/etc/rysen/docker-compose.yml` and resets DB placeholders. Either:
+
+1. Edit the placeholders again after download, or  
+2. Copy your `mariadb` / `proxy` `environment:` block from the old compose file before replacing it.
+
+This does **not** modify `rysen.cfg`, `proxy.cfg`, or `mysql/` — only the compose file.
+
 ## Update stack (master — pull all images)
 
 Does **not** overwrite `/etc/rysen/*.cfg` or `mysql/`:
@@ -112,7 +168,7 @@ Does **not** overwrite `/etc/rysen/*.cfg` or `mysql/`:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ShaYmez/RYSEN/refs/heads/master/docker-configs/docker-compose-stack.yml \
   -o /etc/rysen/docker-compose.yml
-# Edit DB placeholders in compose to match rysen.cfg [SELF SERVICE] DB_PASS (existing MariaDB volume)
+# Re-apply DB credentials — see "Selfcare database credentials" above
 
 cd /etc/rysen
 docker compose down

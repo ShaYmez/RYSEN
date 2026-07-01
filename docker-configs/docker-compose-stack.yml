@@ -11,10 +11,9 @@
 #   proxy        172.16.238.20  shaymez/rysen-sp-selfcare:latest
 #   ipsc-proxy   172.16.238.30  shaymez/rysen-sp-ipsc:latest
 #
-# Deploy on an existing VM (does not touch *.cfg or mysql/ data):
-#   curl -fsSL https://raw.githubusercontent.com/ShaYmez/RYSEN/refs/heads/master/docker-configs/docker-compose-stack.yml \
-#     -o /etc/rysen/docker-compose.yml
-#   Edit DB placeholders below to match rysen.cfg [SELF SERVICE] DB_PASS (and existing MariaDB volume).
+# Deploy on an existing VM (does not touch rysen.cfg / proxy.cfg / mysql/):
+#   curl -fsSL .../docker-compose-stack.yml -o /etc/rysen/docker-compose.yml
+#   Set CHANGE_ME_* DB placeholders — see doc/install.md "Selfcare database credentials"
 #   cd /etc/rysen && docker compose pull && docker compose up -d && conntrack -F
 ###############################################################################
 
