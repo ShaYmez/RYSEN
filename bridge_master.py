@@ -62,7 +62,11 @@ from const import *
 from mk_voice import pkt_gen
 from ipsc_master import IpscMasterMixin
 from ipsc_const import is_routing_master
-from selfcare_db import SelfcareDB, find_ipsc_slot_for_radio_id
+from selfcare_db import (
+    SelfcareDB,
+    find_hotspot_master_peer,
+    find_ipsc_slot_for_radio_id,
+)
 from bridge_helpers import iter_routing_master_systems as _iter_routing_master_systems
 from bridge_helpers import (
     DIAL_A_TG,
@@ -1694,6 +1698,38 @@ def ipsc_selfcare_poll():
                         int_id_val, slot, opt_str)
     except Exception as err:
         logger.exception('(SELF SERVICE) poll error: %s', err)
+
+
+@inlineCallbacks
+def hotspot_selfcare_disc_poll():
+    """Apply DISC=1 from MariaDB for hotspots without waiting for proxy RPTO."""
+    ss = CONFIG.get('SELF SERVICE', {})
+    if not ss.get('ENABLED') or _selfcare_db is None:
+        return
+    try:
+        rows = yield _selfcare_db.select_hotspot_disc_pending()
+        if not rows:
+            return
+        for int_id_val, options in rows:
+            opt_str = (options.decode('utf-8', errors='ignore')
+                       if isinstance(options, bytes) else str(options))
+            if not opt_str or not selfcare_disconnect_requested(opt_str):
+                continue
+            system, peer_id = find_hotspot_master_peer(CONFIG['SYSTEMS'], int_id_val)
+            if not system:
+                logger.warning(
+                    '(SELF SERVICE) Hotspot int_id %s DISC=1 but no connected master peer',
+                    int_id_val)
+                continue
+            remaining, had_disc = apply_selfcare_options(system, peer_id, opt_str)
+            if remaining:
+                CONFIG['SYSTEMS'][system]['OPTIONS'] = remaining
+                options_config()
+            yield _selfcare_db.clear_modified_client(int_id_val)
+            logger.info('(SELF SERVICE) Hotspot disconnect applied for int_id %s on %s',
+                        int_id_val, system)
+    except Exception as err:
+        logger.exception('(SELF SERVICE) hotspot disc poll error: %s', err)
 
 
 class routerOBP(OPENBRIDGE):
@@ -3939,6 +3975,11 @@ if __name__ == '__main__':
         ipsc_sc = ipsc_sc_task.start(ss.get('POLL_INTERVAL', 5))
         ipsc_sc.addErrback(loopingErrHandle)
         logger.info('(SELF SERVICE) IPSC selfcare enabled (poll every %ss)', ss.get('POLL_INTERVAL', 5))
+        hs_disc_task = task.LoopingCall(hotspot_selfcare_disc_poll)
+        hs_disc = hs_disc_task.start(ss.get('DISC_POLL_INTERVAL', 2))
+        hs_disc.addErrback(loopingErrHandle)
+        logger.info('(SELF SERVICE) Hotspot DISC=1 poll every %ss',
+                    ss.get('DISC_POLL_INTERVAL', 2))
         
     #STAT trimmer - once every 10 mins (roughly - shifted so all timed tasks don't run at once
     if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:

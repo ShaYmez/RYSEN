@@ -14,7 +14,18 @@
 from twisted.enterprise import adbapi
 from twisted.internet.defer import inlineCallbacks
 
+from dmr_utils3.utils import int_id
+
 IPSC_CLIENT_MODE = 0
+
+
+def _peer_radio_id_str(radio_id_value):
+    if radio_id_value is None:
+        return None
+    try:
+        return str(int_id(radio_id_value))
+    except (TypeError, ValueError):
+        return str(radio_id_value)
 
 
 class SelfcareDB:
@@ -78,6 +89,14 @@ class SelfcareDB:
             (IPSC_CLIENT_MODE,),
         )
 
+    def select_hotspot_disc_pending(self):
+        """Hotspot rows waiting for DISC=1 disconnect (selfcare button)."""
+        return self.dbpool.runQuery(
+            'SELECT int_id, options FROM Clients '
+            'WHERE modified = 1 AND logged_in = 1 AND mode > 0 '
+            "AND options LIKE '%DISC=1%'",
+        )
+
     @inlineCallbacks
     def clear_modified(self, int_id):
         try:
@@ -87,6 +106,16 @@ class SelfcareDB:
             )
         except Exception as err:
             raise RuntimeError(f'clear_modified error: {err}') from err
+
+    @inlineCallbacks
+    def clear_modified_client(self, int_id):
+        try:
+            yield self.dbpool.runOperation(
+                'UPDATE Clients SET modified = 0 WHERE int_id = %s',
+                (int_id,),
+            )
+        except Exception as err:
+            raise RuntimeError(f'clear_modified_client error: {err}') from err
 
 
 def build_ipsc_seed_options(system_cfg):
@@ -112,6 +141,23 @@ def find_ipsc_slot_for_radio_id(config_systems, radio_id):
         if syscfg.get('MODE') != 'IPSC' or not syscfg.get('ENABLED'):
             continue
         for peer in syscfg.get('PEERS', {}).values():
-            if str(peer.get('RADIO_ID')) == target:
+            if _peer_radio_id_str(peer.get('RADIO_ID')) == target:
                 return slot
     return None
+
+
+def find_hotspot_master_peer(config_systems, radio_id):
+    """Return (MASTER system name, peer_id) for a logged-in hotspot radio ID."""
+    target = str(radio_id)
+    for system, syscfg in config_systems.items():
+        if syscfg.get('MODE') != 'MASTER' or not syscfg.get('ENABLED'):
+            continue
+        for peer_id, peer in (syscfg.get('PEERS') or {}).items():
+            if peer.get('CONNECTION') != 'YES':
+                continue
+            try:
+                if _peer_radio_id_str(peer.get('RADIO_ID')) == target:
+                    return system, peer_id
+            except (TypeError, ValueError):
+                continue
+    return None, None

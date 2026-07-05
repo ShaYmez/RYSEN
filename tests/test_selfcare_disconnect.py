@@ -8,6 +8,8 @@ from bridge_helpers import (
     selfcare_disconnect_requested,
     strip_disc_from_options,
 )
+from dmr_utils3.utils import bytes_3, int_id
+from selfcare_db import find_hotspot_master_peer
 from tests.test_bridge_isolation import _sample_bridge, _sample_config
 
 
@@ -44,6 +46,43 @@ class TestDeactivateLinkedIpscBridgeLegs(unittest.TestCase):
             bridges, _sample_config(), 'SYSTEM-5')
         self.assertFalse(changed)
         self.assertTrue(bridges['2350'][1]['ACTIVE'])
+
+
+class TestFindHotspotMasterPeer(unittest.TestCase):
+
+    def test_finds_connected_hotspot_peer(self):
+        radio_id = 235287
+        peer_id = bytes_3(radio_id)
+        cfg = {
+            'MASTER-1': {
+                'MODE': 'MASTER',
+                'ENABLED': True,
+                'PEERS': {
+                    peer_id: {
+                        'RADIO_ID': peer_id,
+                        'CONNECTION': 'YES',
+                    },
+                },
+            },
+        }
+        system, found_peer = find_hotspot_master_peer(cfg, radio_id)
+        self.assertEqual(system, 'MASTER-1')
+        self.assertEqual(found_peer, peer_id)
+
+    def test_skips_offline_peer(self):
+        cfg = {
+            'MASTER-1': {
+                'MODE': 'MASTER',
+                'ENABLED': True,
+                'PEERS': {
+                    b'\x00\x23\x45\x01': {
+                        'RADIO_ID': b'\x00\x23\x45\x01',
+                        'CONNECTION': 'NO',
+                    },
+                },
+            },
+        }
+        self.assertEqual(find_hotspot_master_peer(cfg, 234554801), (None, None))
 
 
 if __name__ == '__main__':
