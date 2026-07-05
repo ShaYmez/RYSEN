@@ -1228,8 +1228,17 @@ class HBSYSTEM(DatagramProtocol):
                 _this_peer = self._peers[_peer_id]
                 _this_peer['OPTIONS'] = _data[8:]
                 self.send_peer(_peer_id, b''.join([RPTACK, _peer_id]))
+                _opt_str = (_this_peer['OPTIONS'].decode()
+                            if isinstance(_this_peer['OPTIONS'], bytes)
+                            else str(_this_peer['OPTIONS']))
                 logger.info('(%s) Peer %s has sent options %s', self._system, _this_peer['CALLSIGN'], _this_peer['OPTIONS'])
-                self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = _this_peer['OPTIONS'].decode()
+                from bridge_master import apply_selfcare_options
+                _remaining, _had_disc = apply_selfcare_options(self._system, _peer_id, _opt_str)
+                if _had_disc:
+                    if _remaining:
+                        self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = _remaining
+                else:
+                    self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = _opt_str
             else:
                 self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                 logger.info('(%s) Options from Radio ID that is not logged: %s', self._system, int_id(_peer_id))

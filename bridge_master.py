@@ -76,6 +76,9 @@ from bridge_helpers import (
     set_reflector_link_owner,
     clear_reflector_link_owner,
     reset_dial_reflector_timers_on_user_activity,
+    selfcare_disconnect_requested,
+    strip_disc_from_options,
+    deactivate_linked_ipsc_bridge_legs,
 )
 # NOTE: 'words' is loaded dynamically via readAMBE() at runtime (see line ~2689)
 #from voice_lib import words
@@ -674,6 +677,50 @@ def disconnect_dial_reflectors(system):
                 logger.info('(REFLECTOR) Disconnect (4000): deactivated %s for %s', _bridge, system)
     if _changed:
         rebuild_bridge_index()
+
+
+def deactivate_user_activated_bridges(system):
+    """Deactivate numeric user-activated bridge legs (TO_TYPE ON) for one routing system."""
+    _changed = False
+    for _bridge in BRIDGES:
+        if _bridge[0:1] == '#':
+            continue
+        for _sys in BRIDGES[_bridge]:
+            if (_sys['SYSTEM'] == system and _sys['ACTIVE']
+                    and _sys['TO_TYPE'] == 'ON'):
+                _sys['ACTIVE'] = False
+                _sys['TIMER'] = time()
+                _changed = True
+                logger.info('(UA) Selfcare disconnect: deactivated bridge %s for %s',
+                            _bridge, system)
+    if _changed:
+        rebuild_bridge_index()
+
+
+def selfcare_disconnect(source_system, peer_id=None):
+    """Drop dial-a-tg reflector and user-activated talkgroup links for one subscriber."""
+    disconnect_dial_reflectors(source_system)
+    deactivate_user_activated_bridges(source_system)
+    if deactivate_linked_ipsc_bridge_legs(
+            BRIDGES, CONFIG['SYSTEMS'], source_system, peer_id):
+        rebuild_bridge_index()
+    if peer_id:
+        clear_sub_map_for_peer(peer_id)
+    else:
+        clear_sub_map_for_system(source_system)
+    notify_bridge_table_updated()
+    logger.info('(SELF SERVICE) Dynamic links cleared for %s (peer %s)',
+                source_system, int_id(peer_id) if peer_id else 'n/a')
+
+
+def apply_selfcare_options(source_system, peer_id, options_str):
+    """Process DISC=1 immediately; return remaining OPTIONS text (without DISC)."""
+    _had_disc = selfcare_disconnect_requested(options_str)
+    if _had_disc:
+        selfcare_disconnect(source_system, peer_id)
+    if _had_disc:
+        return strip_disc_from_options(options_str), True
+    return options_str, False
 
 
 def sanitize_dial_reflectors(system):
@@ -1631,8 +1678,17 @@ def ipsc_selfcare_poll():
                 continue
             opt_str = (options.decode('utf-8', errors='ignore')
                        if isinstance(options, bytes) else str(options))
+            peer_id = None
+            for _pid, _peer in CONFIG['SYSTEMS'][slot].get('PEERS', {}).items():
+                if str(int_id(_peer.get('RADIO_ID'))) == str(int_id_val):
+                    peer_id = _pid
+                    break
             CONFIG['SYSTEMS'][slot]['OPTIONS'] = opt_str
-            options_config()
+            remaining, had_disc = apply_selfcare_options(slot, peer_id, opt_str)
+            if remaining:
+                CONFIG['SYSTEMS'][slot]['OPTIONS'] = remaining
+            if remaining or not had_disc:
+                options_config()
             yield _selfcare_db.clear_modified(int_id_val)
             logger.info('(SELF SERVICE) Applied options for IPSC %s on %s: %s',
                         int_id_val, slot, opt_str)

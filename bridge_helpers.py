@@ -2,6 +2,7 @@
 """Shared bridge routing helpers (no Twisted / heavy imports)."""
 
 import re
+import time
 
 from dmr_utils3.utils import bytes_3
 from ipsc_const import is_routing_master
@@ -106,6 +107,7 @@ def sanitize_dial_reflectors_for_system(bridges, system):
     return changed
 
 _IPSC_LINK_KEYS = frozenset(['IPSC', 'LINK_IPSC'])
+_SELFCARE_DISC_TRUTHY = frozenset(('1', 'true', 'yes'))
 
 
 def iter_routing_master_systems(config_systems):
@@ -181,6 +183,73 @@ def linked_ipsc_slots(config_systems, source_system, peer_id=None):
             linked.add(peer_parsed)
 
     return tuple(sorted(linked))
+
+
+def selfcare_disconnect_requested(options_value):
+    """Return True when selfcare sent DISC=1 in an OPTIONS string."""
+    text = _normalize_options_str(options_value)
+    if not text:
+        return False
+    for part in text.split(';'):
+        try:
+            key, value = part.split('=', 1)
+        except ValueError:
+            continue
+        if key.strip() == 'DISC' and value.strip().lower() in _SELFCARE_DISC_TRUTHY:
+            return True
+    return False
+
+
+def strip_disc_from_options(options_value):
+    """Remove DISC= from an OPTIONS string (one-shot selfcare disconnect flag)."""
+    text = _normalize_options_str(options_value)
+    if not text:
+        return ''
+    kept = []
+    for part in text.split(';'):
+        if not part.strip():
+            continue
+        try:
+            key, value = part.split('=', 1)
+        except ValueError:
+            continue
+        if key.strip() == 'DISC':
+            continue
+        kept.append(f'{key.strip()}={value.strip()}')
+    if not kept:
+        return ''
+    return ';'.join(kept) + ';'
+
+
+def deactivate_linked_ipsc_bridge_legs(bridges, config_systems, source_system, peer_id=None):
+    """Deactivate linked IPSC legs on bridges that are active for source_system."""
+    if config_systems.get(source_system, {}).get('MODE') == 'IPSC':
+        return False
+    linked = linked_ipsc_slots(config_systems, source_system, peer_id)
+    if not linked:
+        return False
+    linked_set = set(linked)
+    changed = False
+    now = time.time()
+    for bridge_name, entries in bridges.items():
+        source_dynamic = any(
+            entry['SYSTEM'] == source_system and entry.get('ACTIVE')
+            and entry.get('TO_TYPE') == 'ON'
+            for entry in entries)
+        source_reflector = (
+            bridge_name[0:1] == '#'
+            and any(entry['SYSTEM'] == source_system and entry.get('ACTIVE') for entry in entries))
+        if not source_dynamic and not source_reflector:
+            continue
+        for entry in entries:
+            if entry['SYSTEM'] not in linked_set or not entry.get('ACTIVE'):
+                continue
+            entry['ACTIVE'] = False
+            entry['TIMER'] = now
+            if bridge_name[0:1] == '#':
+                clear_reflector_link_owner(entry)
+            changed = True
+    return changed
 
 
 def activate_linked_bridge_legs(bridges, config_systems, bridge_name, source_system,
