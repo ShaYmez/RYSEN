@@ -38,6 +38,17 @@ def build_bridge_index(bridges):
     return index
 
 
+def paired_group_route_bridge(orig_bridge, bridges, dst_id_bytes):
+    """Return the numeric/# pair only on dial-a-tg (TG 9), not on direct talkgroup keys."""
+    if dst_id_bytes != DIAL_A_TG_BYTES:
+        return None
+    paired = (orig_bridge[1:] if orig_bridge.startswith('#')
+              else ''.join(['#', orig_bridge]))
+    if paired in bridges:
+        return paired
+    return None
+
+
 def collect_group_route_bridges(bridges, bridge_idx, system, slot, dst_id_bytes):
     """Bridge names that would invoke to_target for one inbound group RX (routerHBP path)."""
     lookup_key = (system, slot, dst_id_bytes)
@@ -57,9 +68,8 @@ def collect_group_route_bridges(bridges, bridge_idx, system, slot, dst_id_bytes)
             if (entry['SYSTEM'] == system and entry['TGID'] == dst_id_bytes
                     and entry['TS'] == slot and entry.get('ACTIVE')):
                 routed.append(orig_bridge)
-                paired = (orig_bridge[1:] if orig_bridge.startswith('#')
-                          else ''.join(['#', orig_bridge]))
-                if paired in bridges and paired not in routed:
+                paired = paired_group_route_bridge(orig_bridge, bridges, dst_id_bytes)
+                if paired and paired not in routed:
                     routed.append(paired)
                 break
     return routed
@@ -358,7 +368,7 @@ def dial_reflector_user_activity_counts(int_dst_id, bridge, group_call=False):
         return False
     linked = reflector_bridge_linked_int(bridge)
     if group_call:
-        return int_dst_id == 9 or (linked is not None and int_dst_id == linked)
+        return int_dst_id == 9
     if int_dst_id == 5000:
         return True
     if linked is not None and int_dst_id == linked:

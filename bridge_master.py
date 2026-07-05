@@ -83,6 +83,7 @@ from bridge_helpers import (
     selfcare_disconnect_requested,
     strip_disc_from_options,
     deactivate_linked_ipsc_bridge_legs,
+    paired_group_route_bridge,
 )
 # NOTE: 'words' is loaded dynamically via readAMBE() at runtime (see line ~2689)
 #from voice_lib import words
@@ -3409,8 +3410,9 @@ class routerHBP(HBSYSTEM):
                     for _system in BRIDGES[_bridge]:
                         if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
                             _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi, _source_rptr)
-                            _paired_bridge = _bridge[1:] if _bridge[0:1] == '#' else ''.join(['#', _bridge])
-                            if _paired_bridge in BRIDGES:
+                            _paired_bridge = paired_group_route_bridge(
+                                _bridge, BRIDGES, _dst_id)
+                            if _paired_bridge:
                                 _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_paired_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi,_source_rptr)
             else:
                 _ROUTE_STATS['index_hits'] += 1
@@ -3423,9 +3425,10 @@ class routerHBP(HBSYSTEM):
                     for _system in BRIDGES[_orig_bridge]:
                         if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
                             _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_orig_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi, _source_rptr)
-                            # Also route to paired reflector/TG bridge if it exists
-                            _paired_bridge = _orig_bridge[1:] if _orig_bridge[0:1] == '#' else ''.join(['#', _orig_bridge])
-                            if _paired_bridge in BRIDGES:
+                            # Also route to paired reflector/TG bridge on dial-a-tg (TG 9) only
+                            _paired_bridge = paired_group_route_bridge(
+                                _orig_bridge, BRIDGES, _dst_id)
+                            if _paired_bridge:
                                 _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_paired_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi,_source_rptr)
             _log_route_stats()
 
@@ -3476,8 +3479,8 @@ class routerHBP(HBSYSTEM):
                                 logger.info('(%s) [1] Transmission match for Bridge: %s. Reset timeout to %s', self._system, _bridge, _system['TIMER'])
 
                             # TGID matches an ACTIVATION trigger
-                            # Dial-a-tg reflectors link via private call only, not group PTT on TG 9
-                            if not (_bridge[0:1] == '#' and _int_dst_id == _DIAL_A_TG) and (_dst_id in _system['ON'] or _dst_id in _system['RESET']) and _slot == _system['TS']:
+                            # Dial-a-tg # reflectors link via private call only — not group PTT
+                            if (_bridge[0:1] != '#' and (_dst_id in _system['ON'] or _dst_id in _system['RESET']) and _slot == _system['TS']):
                                 # Set the matching rule as ACTIVE
                                 if _dst_id in _system['ON']:
                                     if _system['ACTIVE'] == False:

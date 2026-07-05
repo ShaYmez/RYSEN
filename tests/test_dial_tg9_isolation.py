@@ -171,6 +171,23 @@ class TestGroupTg9RoutingIsolation(unittest.TestCase):
             bridges, idx, 'SYSTEM-5', 2, bytes_3(DIAL_A_TG))
         self.assertEqual(set(routed), {'#2350', '2350'})
 
+    def test_numeric_talkgroup_does_not_pair_to_reflector(self):
+        """Direct group key on 23426 must not route via #23426 dial reflector."""
+        bridges = _reflector_bridge(23426, 'SYSTEM-5', source_active=False)
+        bridges['23426'] = [{
+            'SYSTEM': 'SYSTEM-5',
+            'TS': 2,
+            'TGID': bytes_3(23426),
+            'ACTIVE': True,
+            'TO_TYPE': 'ON',
+            'ON': [bytes_3(23426)],
+        }]
+        idx = build_bridge_index(bridges)
+        routed = collect_group_route_bridges(
+            bridges, idx, 'SYSTEM-5', 2, bytes_3(23426))
+        self.assertEqual(routed, ['23426'])
+        self.assertNotIn('#23426', routed)
+
 
 if __name__ == '__main__':
     unittest.main()
