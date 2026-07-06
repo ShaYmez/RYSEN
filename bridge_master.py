@@ -66,6 +66,7 @@ from selfcare_db import (
     SelfcareDB,
     find_hotspot_master_peer,
     find_ipsc_slot_for_radio_id,
+    find_ipsc_peer_for_radio_id,
 )
 from bridge_helpers import iter_routing_master_systems as _iter_routing_master_systems
 from bridge_helpers import (
@@ -1682,17 +1683,12 @@ def ipsc_selfcare_poll():
                     int_id_val)
                 yield _selfcare_db.clear_modified(int_id_val)
                 continue
-            slot = find_ipsc_slot_for_radio_id(CONFIG['SYSTEMS'], int_id_val)
+            slot, peer_id = find_ipsc_peer_for_radio_id(CONFIG['SYSTEMS'], int_id_val)
             if not slot:
                 logger.warning(
                     '(SELF SERVICE) IPSC int_id %s modified but no connected IPSC slot',
                     int_id_val)
                 continue
-            peer_id = None
-            for _pid, _peer in CONFIG['SYSTEMS'][slot].get('PEERS', {}).items():
-                if str(int_id(_peer.get('RADIO_ID'))) == str(int_id_val):
-                    peer_id = _pid
-                    break
             CONFIG['SYSTEMS'][slot]['OPTIONS'] = opt_str
             remaining, had_disc = apply_selfcare_options(slot, peer_id, opt_str)
             if remaining:

@@ -60,6 +60,21 @@ class TestSelfcareHelpers(unittest.TestCase):
         }
         self.assertEqual(find_ipsc_slot_for_radio_id(systems, 235287), 'IPSC-0')
 
+    def test_find_ipsc_peer_for_radio_id(self):
+        systems = {
+            'IPSC-0': {
+                'MODE': 'IPSC',
+                'ENABLED': True,
+                'PEERS': {
+                    PEER_ID: {'RADIO_ID': '235287', 'CONNECTION': 'YES'},
+                },
+            },
+        }
+        from selfcare_db import find_ipsc_peer_for_radio_id
+        slot, peer_id = find_ipsc_peer_for_radio_id(systems, 235287)
+        self.assertEqual(slot, 'IPSC-0')
+        self.assertEqual(peer_id, PEER_ID)
+
     def test_find_ipsc_slot_skips_disabled(self):
         systems = {
             'IPSC-0': {

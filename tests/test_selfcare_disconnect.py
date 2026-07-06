@@ -109,7 +109,8 @@ class TestHotspotProxyDiscSkip(unittest.TestCase):
         with open('hotspot_proxy_v2_sc.py', encoding='utf-8') as fh:
             source = fh.read()
         self.assertIn("if 'DISC=1' in options:", source)
-        self.assertIn('continue', source)
+        self.assertIn('Disc request sent for:', source)
+        self.assertNotIn("if 'DISC=1' in options:\n                    continue", source)
 
 
 if __name__ == '__main__':

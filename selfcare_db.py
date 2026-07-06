@@ -84,10 +84,28 @@ class SelfcareDB:
 
     def select_modified_ipsc(self):
         return self.dbpool.runQuery(
-            'SELECT int_id, options FROM Clients '
-            'WHERE modified = 1 AND logged_in = 1 AND mode = %s',
+            'SELECT int_id, options FROM Clients WHERE modified = 1 AND mode = %s',
             (IPSC_CLIENT_MODE,),
         )
+
+    @inlineCallbacks
+    def touch_ipsc_seen(self, int_id, host=None):
+        """Keep IPSC Clients row marked online while repeater is connected."""
+        try:
+            if host:
+                yield self.dbpool.runOperation(
+                    'UPDATE Clients SET logged_in = 1, last_seen = UNIX_TIMESTAMP(), '
+                    'host = %s WHERE int_id = %s AND mode = %s',
+                    (host, int_id, IPSC_CLIENT_MODE),
+                )
+            else:
+                yield self.dbpool.runOperation(
+                    'UPDATE Clients SET logged_in = 1, last_seen = UNIX_TIMESTAMP() '
+                    'WHERE int_id = %s AND mode = %s',
+                    (int_id, IPSC_CLIENT_MODE),
+                )
+        except Exception as err:
+            raise RuntimeError(f'touch_ipsc_seen error: {err}') from err
 
     def select_hotspot_disc_pending(self):
         """Hotspot rows waiting for DISC=1 disconnect (selfcare button)."""
@@ -136,6 +154,12 @@ def build_ipsc_seed_options(system_cfg):
 
 def find_ipsc_slot_for_radio_id(config_systems, radio_id):
     """Return IPSC-N slot name where connected peer RADIO_ID matches radio_id."""
+    slot, _peer_id = find_ipsc_peer_for_radio_id(config_systems, radio_id)
+    return slot
+
+
+def find_ipsc_peer_for_radio_id(config_systems, radio_id):
+    """Return (IPSC-N slot, peer_id) for a connected IPSC repeater radio ID."""
     target = str(radio_id)
     for slot, syscfg in config_systems.items():
         if syscfg.get('MODE') != 'IPSC' or not syscfg.get('ENABLED'):
@@ -144,13 +168,13 @@ def find_ipsc_slot_for_radio_id(config_systems, radio_id):
             if peer.get('CONNECTION') not in (None, 'YES'):
                 continue
             if _peer_radio_id_str(peer.get('RADIO_ID')) == target:
-                return slot
+                return slot, peer_id
             try:
                 if str(int_id(peer_id)) == target:
-                    return slot
+                    return slot, peer_id
             except (TypeError, ValueError):
                 continue
-    return None
+    return None, None
 
 
 def find_hotspot_master_peer(config_systems, radio_id):

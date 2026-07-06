@@ -295,7 +295,22 @@ class IpscMasterMixin:
         self._touch_ipsc_peer(peer_id)
         if peer_id in self._peers:
             self._peers[peer_id]['PINGS_RECEIVED'] = self._peers[peer_id].get('PINGS_RECEIVED', 0) + 1
+        self._sync_ipsc_selfcare_seen(peer_id, host)
         self._ipsc_send(self._alive_reply, host, port)
+
+    def _sync_ipsc_selfcare_seen(self, peer_id, host):
+        ss = self._CONFIG.get('SELF SERVICE', {})
+        if not ss.get('ENABLED'):
+            return
+        db = self._CONFIG.get('_SELF_SERVICE_DB')
+        if db is None:
+            return
+        rid = int(int_id(peer_id))
+        d = db.touch_ipsc_seen(rid, host)
+        d.addErrback(
+            lambda f, _rid=rid: logger.error(
+                '(%s) IPSC selfcare touch failed for %s: %s',
+                self._system, _rid, f.getErrorMessage()))
 
     def _on_peer_list_req(self, host, port):
         if not any(p['host'] == host for p in self._ipsc_peers.values()):
