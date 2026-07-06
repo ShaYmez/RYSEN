@@ -48,6 +48,18 @@ class TestSelfcareHelpers(unittest.TestCase):
         self.assertEqual(find_ipsc_slot_for_radio_id(systems, 235287), 'IPSC-0')
         self.assertIsNone(find_ipsc_slot_for_radio_id(systems, 999999))
 
+    def test_find_ipsc_slot_matches_peer_id_when_radio_id_missing(self):
+        systems = {
+            'IPSC-0': {
+                'MODE': 'IPSC',
+                'ENABLED': True,
+                'PEERS': {
+                    PEER_ID: {'CONNECTION': 'YES'},
+                },
+            },
+        }
+        self.assertEqual(find_ipsc_slot_for_radio_id(systems, 235287), 'IPSC-0')
+
     def test_find_ipsc_slot_skips_disabled(self):
         systems = {
             'IPSC-0': {

@@ -293,6 +293,9 @@ class Proxy(DatagramProtocol):
                 _peer_id, options = item
                 if _peer_id not in self.peerTrack or not options:
                     continue
+                # DISC=1 is applied server-side by RYSEN — do not clear modified here
+                if 'DISC=1' in options:
+                    continue
                 self.db_proxy.updt_tbl('rst_mod', _peer_id)
                 bytes_pkt = b''.join((b'RPTO', _peer_id, options.encode()))
                 self.transport.write(bytes_pkt, (self.master, self.peerTrack[_peer_id]['dport']))

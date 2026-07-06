@@ -84,7 +84,8 @@ class SelfcareDB:
 
     def select_modified_ipsc(self):
         return self.dbpool.runQuery(
-            'SELECT int_id, options FROM Clients WHERE modified = 1 AND mode = %s',
+            'SELECT int_id, options FROM Clients '
+            'WHERE modified = 1 AND logged_in = 1 AND mode = %s',
             (IPSC_CLIENT_MODE,),
         )
 
@@ -139,9 +140,16 @@ def find_ipsc_slot_for_radio_id(config_systems, radio_id):
     for slot, syscfg in config_systems.items():
         if syscfg.get('MODE') != 'IPSC' or not syscfg.get('ENABLED'):
             continue
-        for peer in syscfg.get('PEERS', {}).values():
+        for peer_id, peer in syscfg.get('PEERS', {}).items():
+            if peer.get('CONNECTION') not in (None, 'YES'):
+                continue
             if _peer_radio_id_str(peer.get('RADIO_ID')) == target:
                 return slot
+            try:
+                if str(int_id(peer_id)) == target:
+                    return slot
+            except (TypeError, ValueError):
+                continue
     return None
 
 
@@ -154,8 +162,10 @@ def find_hotspot_master_peer(config_systems, radio_id):
         for peer_id, peer in (syscfg.get('PEERS') or {}).items():
             if peer.get('CONNECTION') != 'YES':
                 continue
+            if _peer_radio_id_str(peer.get('RADIO_ID')) == target:
+                return system, peer_id
             try:
-                if _peer_radio_id_str(peer.get('RADIO_ID')) == target:
+                if str(int_id(peer_id)) == target:
                     return system, peer_id
             except (TypeError, ValueError):
                 continue

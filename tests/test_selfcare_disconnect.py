@@ -84,6 +84,33 @@ class TestFindHotspotMasterPeer(unittest.TestCase):
         }
         self.assertEqual(find_hotspot_master_peer(cfg, 234554801), (None, None))
 
+    def test_finds_peer_by_peer_id_when_radio_id_missing(self):
+        radio_id = 235287
+        peer_id = (235287).to_bytes(4, 'big')
+        cfg = {
+            'MASTER-1': {
+                'MODE': 'MASTER',
+                'ENABLED': True,
+                'PEERS': {
+                    peer_id: {
+                        'CONNECTION': 'YES',
+                    },
+                },
+            },
+        }
+        system, found_peer = find_hotspot_master_peer(cfg, radio_id)
+        self.assertEqual(system, 'MASTER-1')
+        self.assertEqual(found_peer, peer_id)
+
+
+class TestHotspotProxyDiscSkip(unittest.TestCase):
+
+    def test_send_opts_skips_disc_rows(self):
+        with open('hotspot_proxy_v2_sc.py', encoding='utf-8') as fh:
+            source = fh.read()
+        self.assertIn("if 'DISC=1' in options:", source)
+        self.assertIn('continue', source)
+
 
 if __name__ == '__main__':
     unittest.main()

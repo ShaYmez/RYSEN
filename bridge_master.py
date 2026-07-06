@@ -1432,6 +1432,8 @@ def options_config():
                         except ValueError:
                             #logger.debug('(OPTIONS) Value error %s ignoring %s %s',_system,k,v)
                             continue
+                        if k == 'DISC':
+                            continue
                         _options[k] = v
                     logger.debug('(OPTIONS) Options found for %s',_system)
 
@@ -1734,7 +1736,13 @@ def hotspot_selfcare_disc_poll():
             remaining, had_disc = apply_selfcare_options(system, peer_id, opt_str)
             if remaining:
                 CONFIG['SYSTEMS'][system]['OPTIONS'] = remaining
-                options_config()
+                try:
+                    options_config()
+                except Exception:
+                    logger.exception(
+                        '(SELF SERVICE) options_config failed after hotspot DISC for %s',
+                        int_id_val)
+                    continue
             yield _selfcare_db.clear_modified_client(int_id_val)
             logger.info('(SELF SERVICE) Hotspot disconnect applied for int_id %s on %s',
                         int_id_val, system)
