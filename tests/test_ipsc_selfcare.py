@@ -134,10 +134,10 @@ class TestIpscSelfcareHooks(unittest.TestCase):
         second_call = stub._CONFIG['_SELF_SERVICE_DB'].upsert_ipsc_client.call_args_list[1]
         self.assertIsNone(second_call[0][4])
 
-    def test_upsert_sql_flags_modified_on_reconnect(self):
+    def test_upsert_sql_does_not_reflag_modified_on_reconnect(self):
         with open('selfcare_db.py', encoding='utf-8') as fh:
             source = fh.read()
-        self.assertIn('modified = IF(options IS NOT NULL AND TRIM(options)', source)
+        self.assertNotIn('modified = IF(options IS NOT NULL AND TRIM(options)', source)
         self.assertIn('flag_modified = 1 if seed_options else 0', source)
 
 

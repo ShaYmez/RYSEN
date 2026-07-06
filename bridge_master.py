@@ -1672,8 +1672,13 @@ def ipsc_selfcare_poll():
         if not rows:
             return
         for int_id_val, options in rows:
-            if not options:
-                logger.warning('(SELF SERVICE) IPSC int_id %s modified but options empty', int_id_val)
+            opt_str = (options.decode('utf-8', errors='ignore')
+                       if isinstance(options, bytes) else str(options))
+            if not opt_str or not opt_str.strip():
+                logger.warning(
+                    '(SELF SERVICE) IPSC int_id %s modified but options empty — clearing flag',
+                    int_id_val)
+                yield _selfcare_db.clear_modified(int_id_val)
                 continue
             slot = find_ipsc_slot_for_radio_id(CONFIG['SYSTEMS'], int_id_val)
             if not slot:
@@ -1681,8 +1686,6 @@ def ipsc_selfcare_poll():
                     '(SELF SERVICE) IPSC int_id %s modified but no connected IPSC slot',
                     int_id_val)
                 continue
-            opt_str = (options.decode('utf-8', errors='ignore')
-                       if isinstance(options, bytes) else str(options))
             peer_id = None
             for _pid, _peer in CONFIG['SYSTEMS'][slot].get('PEERS', {}).items():
                 if str(int_id(_peer.get('RADIO_ID'))) == str(int_id_val):
@@ -1692,8 +1695,14 @@ def ipsc_selfcare_poll():
             remaining, had_disc = apply_selfcare_options(slot, peer_id, opt_str)
             if remaining:
                 CONFIG['SYSTEMS'][slot]['OPTIONS'] = remaining
-            if remaining or not had_disc:
-                options_config()
+            try:
+                if remaining or not had_disc:
+                    options_config()
+            except Exception:
+                logger.exception(
+                    '(SELF SERVICE) options_config failed for IPSC %s on %s',
+                    int_id_val, slot)
+                continue
             yield _selfcare_db.clear_modified(int_id_val)
             logger.info('(SELF SERVICE) Applied options for IPSC %s on %s: %s',
                         int_id_val, slot, opt_str)

@@ -65,8 +65,7 @@ class SelfcareDB:
                     host = VALUES(host),
                     mode = %s,
                     logged_in = 1,
-                    last_seen = UNIX_TIMESTAMP(),
-                    modified = IF(options IS NOT NULL AND TRIM(options) != '', 1, modified)''',
+                    last_seen = UNIX_TIMESTAMP()''',
                 (int_id, dmr_id, callsign, host, IPSC_CLIENT_MODE,
                  seed_options, flag_modified, IPSC_CLIENT_MODE),
             )
