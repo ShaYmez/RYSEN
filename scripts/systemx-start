@@ -1,5 +1,5 @@
 #!/bin/bash
-# Version 1.5.0
+# Version 1.5.1
 # SYSTEM-X FORMERLY RYSEN MASTER+ (HBlink3) A FORK OF THE FREEDMR / HBLINK PROJECT
 # This script written by Shane Daley M0VUB. The script gracefully shutsdown services while services are cleaned and logs are truncated.
 # We can also add items in this script for future use like updates or further log trims.

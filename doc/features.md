@@ -1,11 +1,12 @@
 # RYSEN Features
 
-Version history and feature reference for RYSEN DMRMaster+ (SystemX). Current release: **1.5.0** on `master`.
+Version history and feature reference for RYSEN DMRMaster+ (SystemX). Current release: **1.5.1** on `master`.
 
 Maintained by **Shane Daley M0VUB** (aka **ShaYmez**) — primary RYSEN / SystemX development since v1.3.9. Lineage: HBlink3 (N0MJS) → FreeDMR (G7RZU) → RYSEN.
 
 | Version | Date | Summary |
 |---------|------|---------|
+| 1.5.1 | 2026-07-07 | Selfcare fixes, documentation overhaul, legacy cleanup |
 | 1.5.0 | 2026-06-30 | Motorola IPSC, selfcare, private voice, dial-a-tg on IPSC |
 | 1.4.1 | 2026-06-09 | Bridge routing index, proxy stability, diagnostics |
 | 1.4.0 | 2026-01-10 | Sticky talkgroups (Brandmeister-style) |
@@ -116,13 +117,14 @@ Full reference: [ipsc.md](ipsc.md). Roadmap for future phases: [ipsc-roadmap.md]
 
 ---
 
-## Since v1.5.0 (unreleased)
+## v1.5.1 — Selfcare fixes and documentation
 
 | Feature | Detail |
 |---------|--------|
 | `DISC=1` disconnect | Dashboard-triggered hotspot/IPSC disconnect |
 | Selfcare apply fixes | Race conditions and stuck "applying" state resolved |
 | Dial reflector fix | Numeric TGs no longer paired with dial reflectors on group calls |
+| Documentation | Full doc overhaul; legacy install artifacts removed |
 
 ---
 

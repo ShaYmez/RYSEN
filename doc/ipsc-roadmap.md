@@ -14,7 +14,7 @@ Protocol research: [node-dmr-lib](https://github.com/rick51231/node-dmr-lib). OP
 | **7** | Ops polish | Ongoing |
 
 ```
-master @ 1.5.0 (released)
+master @ 1.5.1 (released)
   ├── Phase 4 unit-to-unit private routing  ← current
   └── Phase 5 SMS / GPS (when needed)
 ```

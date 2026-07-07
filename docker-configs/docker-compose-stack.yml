@@ -1,5 +1,5 @@
 ###############################################################################
-# RYSEN v1.5.0 — production stack (rysen + mariadb + monitor + satellite proxies)
+# RYSEN v1.5.1 — production stack (rysen + mariadb + monitor + satellite proxies)
 #
 # Host config (unchanged by this file — mount only):
 #   /etc/rysen/rysen.cfg, ipsc-proxy.cfg, proxy.cfg, rules.py, json/, mysql/

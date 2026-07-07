@@ -238,13 +238,21 @@ Options=TS1_1=23426;TIMER=10;STICKY=1
 
 ---
 
-## Unreleased
+## Version 1.5.1 (2026-07-07)
 
-### Selfcare disconnect and apply fixes (post-1.5.0)
+Selfcare reliability fixes, documentation overhaul, and legacy install cleanup.
+
+### Bug fixes
 
 - **DISC=1 remote disconnect** — dashboard/selfcare can disconnect a hotspot or IPSC repeater; applied immediately on RPTO receipt and via MariaDB poll
 - **IPSC selfcare apply** — fix races where settings stuck on "applying"; reconnect delivery regressions fixed
 - **Dial reflector** — stop pairing numeric talkgroups with dial reflectors on group calls
+
+### Documentation and maintenance
+
+- Full doc overhaul: features, architecture, options, selfcare guides
+- Remove legacy install artifacts (hdstack, systemd-scripts, obsolete docker-configs)
+- Move ops scripts to `scripts/`; update credits for Shane Daley M0VUB (ShaYmez)
 
 See [doc/selfcare.md](doc/selfcare.md) and [doc/options.md](doc/options.md).
 
