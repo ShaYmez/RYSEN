@@ -1,6 +1,8 @@
 # Motorola IPSC in RYSEN
 
-Motorola IP Site Connect (IPSC) support in RYSEN **v1.5.0** on **`master`**. Field-tested on SYSTEM-XTEST (2026-06) with GB7NR (DR3000), DroidStar hotspot, and BlueDV/OpenBridge.
+Motorola IP Site Connect (IPSC) support shipped in RYSEN **v1.5.0** on **`master`**. Field-tested on SYSTEM-XTEST (2026-06) with GB7NR (DR3000), DroidStar hotspot, and BlueDV/OpenBridge.
+
+Future work: [ipsc-roadmap.md](ipsc-roadmap.md). OPTIONS syntax (`LINK_IPSC`, `RelinkTime`): [options.md](options.md).
 
 ## What works
 
@@ -48,7 +50,7 @@ Motorola IP Site Connect (IPSC) support in RYSEN **v1.5.0** on **`master`**. Fie
 - Register upsert / de-register logout; poll `modified = 1` → `options_config()` static TS1/TS2
 - Multi-static TG strings (`TS1=235,23426,116;TS2=2350,2351,2352;`) via RYSEN-MONITOR selfcare UI
 - Reconnect re-applies options when stored in DB
-- Full-stack Docker: DB credentials must match across `rysen.cfg`, `proxy.cfg`, and `docker-compose.yml` — see [install.md](install.md#selfcare-database-credentials-full-stack)
+- Full-stack Docker: DB credentials — see [selfcare.md](selfcare.md) and [install.md](install.md#selfcare-database-credentials-full-stack)
 
 ### Field test summary (2026-06, SYSTEM-XTEST)
 
@@ -125,57 +127,23 @@ BRIDGES = {
 }
 ```
 
-Slot names (`SYSTEM-62`, `IPSC-79`) change with proxy assignments — check logs. Alternatively set `TS2_STATIC: 2350` on both `[SYSTEM]` and `[IPSC]` in `rysen.cfg`, or hotspot `OPTIONS: IPSC=IPSC-79` to link UA bridges to your repeater only.
+Slot names (`SYSTEM-62`, `IPSC-79`) change with proxy assignments — check logs. Alternatively set `TS2_STATIC: 2350` on both `[SYSTEM]` and `[IPSC]` in `rysen.cfg`, or hotspot `OPTIONS: IPSC=IPSC-79` to link UA bridges to your repeater only. See [options.md](options.md).
 
-## Soak-test checklist (pre-merge — ~1 day minimum)
+### Phase 3 — private voice and dial-a-tg reflector (v1.5.0)
 
-**In scope:** group voice, dial-a-tg reflector on IPSC, selfcare, normal traffic.
+- Inbound `PRIVATE_VOICE (0x81)` → unit DMRD → standard routing
+- Outbound unit DMRD → `0x81` on TS1 and TS2 with jitter-buffer delivery
+- **Dial-a-tg on IPSC** — private call to 4000/5000/link TG; announcements reply as called ID (field-tested GB7NR 2026-06)
+- VTERM + 1s delay; `RelinkTime` / `DEFAULT_UA_TIMER` timeout with private disconnect prompt
+- Hotspot dial-a-tg path unchanged (GROUP TG 9 via `sendSpeech`)
 
-### Traffic to run
-
-- [ ] **TS1** — PTT on each static TG in selfcare `TS1=` list
-- [ ] **TS2** — PTT on each static TG in selfcare `TS2=` list (e.g. 2350)
-- [ ] Repeater → network / network → repeater (group voice)
-- [ ] **Dial-a-tg on IPSC** — 5000 status, 4000, link TG (e.g. 2350); confirm voice after PTT release + ~1s
-- [ ] **RelinkTime** — selfcare `RelinkTime=` maps to UA timer (IPSC2 convention); timeout disconnect voice
-- [ ] DroidStar / hotspot → IPSC with `LINK_IPSC=`
-- [ ] Repeater power-cycle + RYSEN restart once
-
-### Dial-a-tg reflector (done — GB7NR 2026-06)
-
-- [x] **TS2** — private call 5000 / 4000 / link TG; PRIVATE_VOICE reply as called ID
-- [x] VTERM + 1s timing; monotonic call_seq / rtp_seq
-- [x] Hotspot path unchanged (GROUP TG 9)
-
-### Not in 1.5.0
-
-- [ ] Unit-to-unit private call subscriber → subscriber (Phase 4 — routing not built yet)
-- [ ] SMS / GPS (Phase 5)
-
-### One-off checks
-
-- [ ] `report_receiver.py` — IPSC slot + bridge legs (roadmap 2.5–2.6)
-- [ ] Log review: no recurring tracebacks
-
-## Pre-merge work (v1.5.0 release gate)
-
-See [ipsc-roadmap.md](ipsc-roadmap.md) for the full checklist. Remaining:
-
-- **Soak test** — pre-merge normal traffic (~1 day minimum)
-- **Production `AUTH_KEY`** — rotate off sample defaults
-- **Merge `ipsc` → `master`** — bump to **RYSEN 1.5.0**, publish Docker image
-
-**Done:** group voice, monitor, selfcare, Phase 3 wire layer, **IPSC dial-a-tg reflector** (field-tested).
+**Not in 1.5.0:** unit-to-unit subscriber routing (Phase 4), SMS/GPS (Phase 5) — see [ipsc-roadmap.md](ipsc-roadmap.md).
 
 ## Tests
 
 ```bash
-python -m unittest tests.test_ipsc_phase1 tests.test_ipsc_outbound tests.test_ipsc_proxy tests.test_ipsc_bridge tests.test_ipsc_peers tests.test_ipsc_selfcare tests.test_static_tg_bridges -v
+python -m unittest tests.test_ipsc_phase1 tests.test_ipsc_outbound tests.test_ipsc_proxy tests.test_ipsc_bridge tests.test_ipsc_peers tests.test_ipsc_selfcare tests.test_static_tg_bridges tests.test_ipsc_private_voice -v
 ```
-
-## Branch status
-
-Development on **`ipsc`** — single milestone release **v1.5.0** (group voice, selfcare, monitor, private voice wire layer, **dial-a-tg reflector on IPSC**). Pre-merge soak in progress. Unit-to-unit routing planned as **Phase 4** after merge.
 
 Protocol constants and voice translation derived from [ipsc2hbp](https://github.com/n0mjs710/ipsc2hbp) (GPLv3).
 

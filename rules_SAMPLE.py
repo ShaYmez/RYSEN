@@ -1,8 +1,8 @@
 '''
 THIS EXAMPLE WILL NOT WORK AS IT IS - YOU MUST SPECIFY YOUR OWN VALUES!!!
 
-In RYSEN, the rules file should be *empty* unless you have static routing required. Please see the 
-documentation for more details.
+In RYSEN, the rules file should be *empty* unless you have static routing required. See
+[doc/features.md](doc/features.md) and [RYSEN-SAMPLE-commented.cfg](RYSEN-SAMPLE-commented.cfg).
 
 This file is organized around the "Conference Bridges" that you wish to use. If you're a c-Bridge
 person, think of these as "bridge groups". You might also liken them to a "reflector". If a particular

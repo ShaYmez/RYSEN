@@ -18,6 +18,8 @@
 #   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #   GNU General Public License for more details.
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 # Main MENU system.....
 while : ; do
 menuopt=$(whiptail --title "RYSEN Master+ | SYSTEM-X Control" --menu "Select option by using the up and down arrows on your keyboard. Once selected by press enter:" 23 56 13 \
@@ -45,15 +47,15 @@ fi
 # Action
 case $menuopt in
 1)
-/usr/local/sbin/systemx-restart ;;
+"$SCRIPT_DIR/systemx-restart" ;;
 2)
-/usr/local/sbin/systemx-stop ;;
+"$SCRIPT_DIR/systemx-stop" ;;
 3)
-/usr/local/sbin/systemx-start ;;
+"$SCRIPT_DIR/systemx-start" ;;
 4)
-/usr/local/sbin/systemx-flush ;;
+"$SCRIPT_DIR/systemx-flush" ;;
 5)
-/usr/local/sbin/systemx-soft-flush ;;
+"$SCRIPT_DIR/systemx-soft-flush" ;;
 6)
 sudo nano /etc/rysen/rysen.cfg ;;
 7)
@@ -63,7 +65,7 @@ sudo nano /etc/rysen/proxy.cfg ;;
 9)
 sudo nano /etc/rysen/fdmr-mon.cfg ;;
 10)
-/usr/local/sbin/systemx-update ;;
+"$SCRIPT_DIR/systemx-update" ;;
 11)
 echo "No updates" && sleep 2 ;;
 12)

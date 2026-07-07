@@ -1,21 +1,54 @@
-# HotSpot Proxy V2 #
+# Hotspot Proxy V2
 
-The Hotspot Proxy is a protocol-aware UDP proxy for Homebrew Protocol that can distribute connections arriving on a single UDP port to a range of UDP ports on the backend server. It is used to support a single port for clients to connect to but still work with the one port, one system model originally designed into HBLink. 
+The hotspot proxy is a protocol-aware UDP proxy for Homebrew Protocol (HBP). It accepts connections on a single public UDP port and distributes them to a range of backend master ports — one port per `SYSTEM-N` slot.
 
-The proxy uses the DMR ID embedded in every HBP packet to track the connection.
+Included in the Docker image; satellite images also available — see [satellite-proxy-repos.md](satellite-proxy-repos.md).
 
-The proxy is included in the Docker image, so there's no need to set this up manually of you use Docker.  
+## Deployment options
 
-Using the proxy is simple. 
+| Image | Selfcare | Config file |
+|-------|----------|-------------|
+| `shaymez/rysen` (optional profile) | No | `proxy.cfg` |
+| `shaymez/rysen-sp:latest` | No | `proxy-SAMPLE.cfg` |
+| `shaymez/rysen-sp-selfcare:latest` | Yes (MariaDB) | `proxy-SAMPLE.cfg` |
 
-First you need to create a number of entries for your hotspots to use, with sequential port numbers. Please see the GENERATOR config file
-option for this.
+Docker minimal install enables hotspot proxy optionally:
 
-In the file hotspot_proxy_v2.py, you will find, towards the bottom, some configuration options. Edit these to suit your system. 
+```bash
+docker compose --profile hotspot up -d
+```
 
-*run the proxy:*
+## Configuration
 
-`python3 ./hotspot_proxy_v2.py`
+Config is loaded via **`-c`** flag, not embedded in the Python file.
 
-*Credits:*
-Simon G7RZU
+Sample configs:
+- [hotspot_proxy_v2-SAMPLE.cfg](../hotspot_proxy_v2-SAMPLE.cfg)
+- [docker-configs/config/proxy-SAMPLE.cfg](../docker-configs/config/proxy-SAMPLE.cfg)
+
+Key settings: listen port, `DESTPORTSTART`/`DESTPORTEND` (backend range matching `GENERATOR` slots in `rysen.cfg`), logging.
+
+## Running manually
+
+```bash
+python3 hotspot_proxy_v2.py -c proxy.cfg
+```
+
+Selfcare variant:
+
+```bash
+python3 hotspot_proxy_v2_sc.py -c proxy.cfg
+```
+
+## How it works
+
+The proxy reads the DMR ID from each HBP packet to track which backend port owns each hotspot connection. When a hotspot sends its first packet to the public port, the proxy assigns an available backend port and forwards all subsequent traffic there.
+
+## Related docs
+
+- [architecture.md](architecture.md) — proxy in the stack
+- [install.md](install.md) — Docker install
+- [selfcare.md](selfcare.md) — selfcare proxy variant
+- [options.md](options.md) — hotspot OPTIONS strings
+
+Credits: Simon G7RZU (original proxy); Shane Daley M0VUB aka ShaYmez (RYSEN maintenance and selfcare variant).

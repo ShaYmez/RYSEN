@@ -6,7 +6,7 @@ Major release: Motorola IP Site Connect for SystemX — group voice, selfcare, m
 
 Released on **`master`** — `shaymez/rysen:latest` and satellite proxy images are published on push.
 
-See [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md) for post-1.5.0 phases.
+See [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md) for post-1.5.0 phases. Feature reference: [doc/ipsc.md](doc/ipsc.md).
 
 ### New Features
 
@@ -117,7 +117,7 @@ See [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md) for post-1.5.0 phases.
 **Files Modified**
 - `bridge_master.py` - Routing index, hot-path lookup optimisation, timer optimisation, report payload safety, route stats, reactor lag diagnostics.
 - `hblink.py` - Duplicate login/config packet handling and safer default OPTIONS restore logic.
-- `hdstack/hotspot_proxy_v2.py` - Proxy cleanup, port allocation, defensive packet parsing, and stats fixes.
+- `hotspot_proxy_v2.py` - Proxy cleanup, port allocation, defensive packet parsing, and stats fixes.
 - `tools/validate_bridge_index.py` - New offline validation/smoke-test tool for bridge index correctness.
 
 ### Backwards Compatibility
@@ -183,7 +183,7 @@ See [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md) for post-1.5.0 phases.
 - config.py - STICKY_TG parameter for MASTER systems
 - RYSEN-SAMPLE.cfg - Example configuration with documentation
 - RYSEN-SAMPLE-commented.cfg - Detailed sticky TG comments
-- hdstack/*.cfg - Updated sample configs
+- Sample configs updated (`RYSEN-SAMPLE.cfg`, `docker-configs/config/rysen.cfg`)
 - docker-configs/config/rysen.cfg - Docker config updated
 - loro.cfg - Parrot system configuration
 
@@ -238,6 +238,32 @@ Options=TS1_1=23426;TIMER=10;STICKY=1
 
 ---
 
+## Unreleased
+
+### Selfcare disconnect and apply fixes (post-1.5.0)
+
+- **DISC=1 remote disconnect** — dashboard/selfcare can disconnect a hotspot or IPSC repeater; applied immediately on RPTO receipt and via MariaDB poll
+- **IPSC selfcare apply** — fix races where settings stuck on "applying"; reconnect delivery regressions fixed
+- **Dial reflector** — stop pairing numeric talkgroups with dial reflectors on group calls
+
+See [doc/selfcare.md](doc/selfcare.md) and [doc/options.md](doc/options.md).
+
+---
+
 ## Version 1.3.9r3 (2024-12-08)
 
-Previous release.
+Baseline SystemX release before the 1.4.x performance and sticky-TG work. Inherited from the HBlink3 / FreeDMR lineage with RYSEN branding.
+
+### Platform (carried forward)
+
+- **HBP MASTER / PEER** — Homebrew Protocol master and peer modes with `GENERATOR` slot expansion (`SYSTEM-N`)
+- **OpenBridge (OBP)** — Brandmeister / IPSC2 interconnect
+- **Bridges** — `rules.py` conference bridges, dial-a-tg reflectors (`#NNNN`), UA/stat bridges
+- **Hotspot proxy** — UDP port multiplexing (`hotspot_proxy_v2.py`)
+- **ACLs** — Global and per-system subscriber, peer, and talkgroup access control
+- **SUB_MAP** — Per-subscriber routing state
+- **Voice announcements** — Multi-language prompts (`Audio/`)
+- **Reporting** — TCP socket for FDMR-Monitor / dashboard (`[REPORTS]`)
+- **Docker install** — `docker-configs/docker-compose_install.sh` and `shaymez/rysen` image path
+
+See [doc/features.md](doc/features.md) for the full version history from 1.3.9r3 onward.

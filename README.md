@@ -1,61 +1,67 @@
-## RYSEN DMRMaster+ Master Stack ##
-### A fork of the HBlink3 / FreeDMR project ###
+# RYSEN DMRMaster+
 
-### Version 1.5.0 (master) ###
+Open-source DMR master server software (SystemX). A public fork of HBlink3 / FreeDMR, developed in Python (Twisted). **Version 1.5.0** on `master`.
 
-RYSEN DMRMaster+ - Software to build and scale DMR Master server software. Thanks to all thats credited in code, testing and develpment of this software. This software is completly open source and is derived from the orginal fork of HBlink3 / FreeDMR. Developed in PYTHON. A number of developers have contributed to the fork and I thought the time is right to develop this version of the code completly out in the open.. as it should be. No private forks..Open Source for people to freely develop.
+## Quick start
 
-The base code is written by Cortney Buffington N0MJS and further develped by Simon G7RZU, Eric, K7EEL, Shane M0VUB & others.
-
-Project under development!
-
-More to come as development continues as a fork. - codename: RYSEN
-
-**PROPERTY:**  
-This work represents the author's interpretation of the HomeBrew Repeater Protocol, based on the 2015-07-26 documents from DMRplus, "IPSC Protocol Specs for homebrew DMR repeater" as written by Jonathan Naylor, G4KLX; Hans Barthen, DL5DI; Torsten Shultze, DG1HT, also licenced under Creative Commons BY-NC-SA license.
-This has been further develeped under Simon Adlem; G7RZU as the FreeDMR fork and then further develped for SystemX by Shane Daley; M0VUB under codename RYSEN.
-
-**WARRANTY**
-None. The owners of this work make absolutely no warranty, express or implied. Use this software at your own risk.
-
-**PRE-REQUISITE KNOWLEDGE:**  
-This document assumes the reader is familiar with Linux/UNIX, the Python programming language and DMR.  
-
-**Using docker version**
-
-Docker file included for own image build
-To work with provided docker setup you will need:
-* A private repository with your configuration files (all .cfg files in repo will be copyed to the application root directory on start up)
-* A service user able to read your private repository (or be brave and publish your configuration, or be really brave and give your username and password to the docker)
-* A server with docker installed
-* Follow this simple steps:
-
-Build your own image from source (from the repository root):
+Docker is the recommended install path:
 
 ```bash
-
-docker build . -t rysen-local:latest
-
+curl https://raw.githubusercontent.com/ShaYmez/RYSEN/refs/heads/master/docker-configs/docker-compose_install.sh | bash
 ```
 
-The recommended install pulls **`shaymez/rysen:latest`** from Docker Hub — see [doc/install.md](doc/install.md). **v1.5.0** on **master** adds IPSC group + private voice, selfcare, and `ipsc-proxy` on 56002. Roadmap: [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md). Dashboard: [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR) **v1.5.0**.
+Must be run as **root** on Debian 10+, Pi OS, or recent Ubuntu. See [doc/install.md](doc/install.md) for manual steps, full stack (monitor + MariaDB), and upgrades.
 
-Wake up your container
+## What RYSEN does
 
-```bash
-touch /var/log/rysen.log
-chown 54000 -R /var/log/rysen.log
- run -v /var/log/rysen/rysen.log:/var/log/rysen/rysen.log -e GIT_USER=$USER -e GIT_PASSWORD=$PASSWORD -e GIT_REPO=$URL_TO_REPO_WITHOUT_HTTPS://  -p 54000:54000  shaymez/rysen:latest
- ```
+- **HBP master** — Hotspots and repeaters on Homebrew Protocol
+- **OpenBridge** — Interconnect to Brandmeister / IPSC2
+- **Bridges** — Talkgroup routing, dial-a-tg reflectors, static TGs
+- **Hotspot proxy** — Single UDP port for many hotspots
+- **Motorola IPSC** — IP Site Connect repeaters (v1.5.0)
+- **Selfcare** — Dashboard-driven static TG and settings via MariaDB
+- **Reporting** — TCP feed for [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR)
 
-**MORE DOCUMENTATION TO COME**
+## Documentation
 
-***0x49 DE N0MJS***
+| Doc | Description |
+|-----|-------------|
+| [doc/install.md](doc/install.md) | Docker install, compose, upgrades |
+| [doc/features.md](doc/features.md) | Versioned feature catalog |
+| [doc/architecture.md](doc/architecture.md) | Stack overview and components |
+| [doc/options.md](doc/options.md) | OPTIONS= syntax (TIMER, RelinkTime, DMR+ aliases) |
+| [doc/selfcare.md](doc/selfcare.md) | MariaDB selfcare for hotspots and IPSC |
+| [doc/ipsc.md](doc/ipsc.md) | Motorola IPSC reference (CPS, config, field tests) |
+| [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md) | IPSC future phases |
+| [doc/hotspot-proxy-v2.md](doc/hotspot-proxy-v2.md) | Hotspot UDP proxy |
+| [doc/why-docker.md](doc/why-docker.md) | Why Docker is recommended |
+| [doc/satellite-proxy-repos.md](doc/satellite-proxy-repos.md) | Satellite proxy image workflow |
+| [CHANGELOG.md](CHANGELOG.md) | Release notes |
 
-Copyright (C) 2016-2020 Cortney T. Buffington, N0MJS n0mjs@me.com
+Sample configs: [RYSEN-SAMPLE-commented.cfg](RYSEN-SAMPLE-commented.cfg), [docker-configs/config/rysen.cfg](docker-configs/config/rysen.cfg).
 
-This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 3 of the License, or (at your option) any later version.
+## Related projects
 
-This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+- [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR) — Dashboard (v1.5.0+)
+- [RYSEN-Installer](https://github.com/shaymez/RYSEN-Installer) — Full SystemX suite with menus
+- Docker images: `shaymez/rysen:latest`, `shaymez/rysen-sp-ipsc:latest`, `shaymez/rysen-sp-selfcare:latest`
 
-You should have received a copy of the GNU General Public License along with this program; if not, write to the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+## Docker image
+
+CI builds and publishes `shaymez/rysen:latest` from the root [Dockerfile](Dockerfile) on push to `master`.
+
+## Credits
+
+**Lineage**
+- **HBlink3** — Cortney Buffington N0MJS
+- **FreeDMR** — Simon Adlem G7RZU
+
+**RYSEN / SystemX** — **Shane Daley M0VUB** (aka **ShaYmez**), primary development 2024–present: Motorola IPSC, selfcare, Docker deployment, bridge routing, and field-tested SystemX stack.
+
+Additional contributors: Eric K7EEL and others credited in source file headers.
+
+**Property:** Implementation of the HomeBrew Repeater Protocol and related DMR protocols. See file headers and [LICENSE.txt](LICENSE.txt) (GPLv3).
+
+**Warranty:** None. Use at your own risk.
+
+Copyright (C) 2016–2026 Cortney T. Buffington, N0MJS; 2024–2026 Shane Daley M0VUB (ShaYmez); and contributors.

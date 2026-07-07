@@ -1,15 +1,15 @@
-# \*\*The current recommended way of installing RYSEN Master+ is in docker. \*\*
+# The current recommended way of installing RYSEN Master+ is in Docker
 
 Docker is the fastest way to having a running system, complete with proxy and echo, ready to serve repeaters and hotspots. The Docker image can be run on any system that can run Linux docker containers. We recommend Debian 11.
 
-Not convinced? Read [Why Docker?](https://github.com/ShaYmez/RYSEN/blob/master/doc/why-docker.md)
+Not convinced? Read [why-docker.md](why-docker.md)
 
 # Quick Start
 
 For a one-shot install on a Debian or Debian-based system, paste this into the terminal of a running debian-like Linux system. This will install RYSEN Master+ only. For the RYSEN Master+ Suite scroll down to the bottom.
 
 *Important!*
-Must be root!! for this install to work correctly! Sudo is for amateurs!
+Must be root for this install to work correctly.
 
 `curl https://raw.githubusercontent.com/ShaYmez/RYSEN/refs/heads/master/docker-configs/docker-compose_install.sh | bash`
 
@@ -41,7 +41,7 @@ Get the file: [rysen.cfg](https://github.com/ShaYmez/RYSEN/blob/master/docker-co
 
 place the rysen.cfg file in this directory.
 
-For IPSC, the docker install starts **rysen** and **ipsc-proxy** (public UDP **56002** CPS Master port; backends `IPSC-0`…`IPSC-199` on `56003`–`56202`). Enable IPSC auth in CPS and match `AUTH_KEY` in `rysen.cfg`. IPSC repeater selfcare and the dashboard require [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR) (v1.5.0+) and MariaDB — see monitor repo docs; minimal compose here is RYSEN + proxy only. See [ipsc-phase1.md](ipsc-phase1.md), [ipsc-roadmap.md](ipsc-roadmap.md), [IPSC-SAMPLE.cfg](../docker-configs/config/IPSC-SAMPLE.cfg), and [ipsc-proxy-SAMPLE.cfg](../docker-configs/config/ipsc-proxy-SAMPLE.cfg).
+For IPSC, the docker install starts **rysen** and **ipsc-proxy** (public UDP **56002** CPS Master port; backends `IPSC-0`…`IPSC-199` on `56003`–`56202`). Enable IPSC auth in CPS and match `AUTH_KEY` in `rysen.cfg`. IPSC repeater selfcare and the dashboard require [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR) (v1.5.0+) and MariaDB — see [selfcare.md](selfcare.md); minimal compose here is RYSEN + proxy only. See [ipsc.md](ipsc.md), [ipsc-roadmap.md](ipsc-roadmap.md), [IPSC-SAMPLE.cfg](../docker-configs/config/IPSC-SAMPLE.cfg), and [ipsc-proxy-SAMPLE.cfg](../docker-configs/config/ipsc-proxy-SAMPLE.cfg).
 
 ## Make rules file
 
@@ -207,13 +207,31 @@ If `ipsc-proxy` is missing from `docker compose config --services`, check for a 
 
 This flushes the connection tracking table for NAT. Without this, you might not see traffic for a while.
 
-For more docker commands go [here](Docker%20Commands%20Cheat%20Sheet)
+Common commands after config changes:
 
-## Postrequisites
+```bash
+cd /etc/rysen
+docker compose restart
+conntrack -F
+docker compose logs -f rysen
+```
 
-### RYSEN Master+ Suite (SYSTEMX)
-You can however add the RYSEN Master+ suite, Dashboard, Whiptail menus and additional software to make a fully fletched DMR Master Server if you wish by executing our official installer [here](https://github.com/shaymez/RYSEN-Installer)
+## Post-install
+
+### RYSEN Master+ Suite (SystemX)
+
+For the full SystemX suite with Whiptail menus and additional services, use the official installer: [RYSEN-Installer](https://github.com/shaymez/RYSEN-Installer)
+
+Optional ops scripts are in the repo [scripts/](../scripts/) directory.
+
+## Documentation
+
+- [features.md](features.md) — feature catalog
+- [architecture.md](architecture.md) — stack overview
+- [options.md](options.md) — OPTIONS= syntax
+- [selfcare.md](selfcare.md) — MariaDB selfcare
+- [hotspot-proxy-v2.md](hotspot-proxy-v2.md) — hotspot proxy
 
 *Credits:*
-Simon G7RZU (original installer),
-Shane Daley M0VUB (Compose V2 refactor, IPSC docker updates)
+Simon G7RZU (original Docker installer),
+Shane Daley M0VUB aka ShaYmez (RYSEN / SystemX — IPSC, selfcare, Docker stack, bridge routing, primary development since v1.3.9)
