@@ -79,6 +79,10 @@ class TestPrivateCallReflectorNine(unittest.TestCase):
     def test_private_to_reflector_still_allowed(self):
         self.assertTrue(private_call_may_create_reflector(2350, {}))
 
+    def test_private_to_subscriber_may_not_create_reflector(self):
+        self.assertFalse(private_call_may_create_reflector(2348831, {}))
+        self.assertFalse(private_call_may_create_reflector(235287, {}))
+
 
 class TestSanitizeReflectorNine(unittest.TestCase):
 

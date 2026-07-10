@@ -10,6 +10,8 @@ from ipsc_const import is_routing_master
 DIAL_A_TG = 9
 DIAL_A_TG_BYTES = bytes_3(DIAL_A_TG)
 _DIAL_SERVICE_CODES = frozenset([DIAL_A_TG, 4000, 5000])
+_DIAL_A_TG_LINK_MAX = 99999
+_DIAL_A_TG_ANNOUNCE_CODES = frozenset(range(9991, 10000))
 
 
 def is_dial_service_code(reflector):
@@ -84,13 +86,43 @@ def to_target_forward_systems(bridge_entries, source_system):
     ]
 
 
+def is_dial_a_tg_link_target(int_dst_id):
+    """≤5-digit talkgroup used as a dial-a-tg link target (not repeater/subscriber ID)."""
+    if int_dst_id < 5 or int_dst_id in (8, 9):
+        return False
+    if int_dst_id > _DIAL_A_TG_LINK_MAX:
+        return False
+    if is_dial_service_code(int_dst_id):
+        return False
+    if int_dst_id in _DIAL_A_TG_ANNOUNCE_CODES:
+        return False
+    return True
+
+
+def is_reflector_private_destination(int_dst_id):
+    """Private-call destinations handled by dial-a-tg reflector (not unit-voice forward).
+
+    SystemX DMR numbering (convention):
+      ≤5 digits — talkgroups / dial-a-tg link targets (max 99999)
+      6 digits  — repeater radio IDs → unit forward
+      7+ digits — individual subscribers / hotspots → unit forward
+
+    IDs 8 and 9 are reserved (AllStar / dial-a-tg channel) — neither reflector nor forward.
+    """
+    if int_dst_id in (8, 9):
+        return False
+    if is_dial_service_code(int_dst_id):
+        return True
+    if int_dst_id in _DIAL_A_TG_ANNOUNCE_CODES:
+        return True
+    return is_dial_a_tg_link_target(int_dst_id)
+
+
 def private_call_may_create_reflector(int_dst_id, bridges):
     """True when a private call would invoke make_single_reflector (routerHBP private path)."""
-    if int_dst_id < 5 or int_dst_id in (8, 9) or int_dst_id > 999999:
+    if not is_dial_a_tg_link_target(int_dst_id):
         return False
-    if 4000 <= int_dst_id <= 5000:
-        return False
-    if 9991 <= int_dst_id <= 9999:
+    if is_dial_service_code(int_dst_id):
         return False
     return f'#{int_dst_id}' not in bridges
 

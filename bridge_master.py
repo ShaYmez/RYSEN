@@ -73,7 +73,10 @@ from bridge_helpers import (
     DIAL_A_TG,
     DIAL_A_TG_BYTES,
     is_dial_service_code,
+    is_dial_a_tg_link_target,
     is_invalid_dial_reflector,
+    is_reflector_private_destination,
+    private_call_may_create_reflector,
     reflector_bridge_matches_group_call,
     bridge_transmission_matches_rule,
     reflector_single_mode_wrong_tg,
@@ -467,28 +470,6 @@ def make_stat_bridge(_tgid):
 
 _DIAL_A_TG = DIAL_A_TG
 _DIAL_A_TG_BYTES = DIAL_A_TG_BYTES
-
-
-def is_reflector_private_destination(int_dst_id):
-    """Private-call dial-a-tg targets handled locally (never unit-voice bridged outward).
-
-    Today this is intentionally broad (any ID >= 5 except 8/9) so dial-a-tg private
-    calls never leak to _forward_unit_voice(). That blocks unit-to-unit routing for
-    normal subscriber IDs — see roadmap Phase 4.
-
-    DMR numbering on SystemX (convention, not strict CPS):
-      ≤5 digits — talkgroups (dial-a-tg link targets, max 99999)
-      6 digits  — repeater radio IDs
-      7 digits  — individual subscribers (and some 7-digit hotspots without SSID)
-      9 digits  — hotspots with SSID suffix (intended; not always enforced in field)
-    """
-    if int_dst_id in (4000, 5000):
-        return True
-    if int_dst_id >= 9991 and int_dst_id <= 9999:
-        return True
-    if int_dst_id >= 5 and int_dst_id not in (8, 9) and int_dst_id <= 999999:
-        return True
-    return False
 
 
 def _reflector_bridge_matches_group_call(bridge, int_dst_id):
@@ -2833,6 +2814,8 @@ class routerHBP(HBSYSTEM):
             _mode = CONFIG['SYSTEMS'][_d_system].get('MODE')
             if _mode not in ('MASTER', 'IPSC'):
                 continue
+            if not CONFIG['SYSTEMS'][_d_system].get('ENABLED'):
+                continue
             _peers = CONFIG['SYSTEMS'][_d_system].get('PEERS') or {}
             for _to_peer in _peers:
                 if str(int_id(_to_peer))[:7] == str(_int_dst_id)[:7]:
@@ -3125,14 +3108,13 @@ class routerHBP(HBSYSTEM):
                 if _int_dst_id == 4000:
                     disconnect_dial_reflectors(self._system)
                     clear_subscriber_on_disconnect(self._system, _rf_src, _peer_id)
-                if _int_dst_id >= 5 and _int_dst_id != 8  and _int_dst_id != 9 and _int_dst_id <= 999999:
+                if is_reflector_private_destination(_int_dst_id):
                     _bridgename = ''.join(['#',str(_int_dst_id)])
-                    if _bridgename not in BRIDGES and not (_int_dst_id >= 4000 and _int_dst_id <= 5000) and not (_int_dst_id >=9991 and _int_dst_id <= 9999):
-                            logger.info('(%s) [A] Reflector for TG %s does not exist. Creating as User Activated. Timeout: %s',self._system, _int_dst_id,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
-                            make_single_reflector(_dst_id,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'],self._system)
-                    
-                    if (_int_dst_id > 5 and _int_dst_id != 9 and not is_dial_service_code(_int_dst_id)
-                            and not (_int_dst_id >=9991 and _int_dst_id <= 9999)):
+                    if private_call_may_create_reflector(_int_dst_id, BRIDGES):
+                        logger.info('(%s) [A] Reflector for TG %s does not exist. Creating as User Activated. Timeout: %s',self._system, _int_dst_id,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
+                        make_single_reflector(_dst_id,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'],self._system)
+
+                    if is_dial_a_tg_link_target(_int_dst_id):
                         for _bridge in BRIDGES:
                             if _bridge[0:1] != '#':
                                 continue
@@ -3200,7 +3182,9 @@ class routerHBP(HBSYSTEM):
                         _int_dst_id, _rf_src, _peer_id, _slot, _stream_id, _lang)
             
             
-            if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
+            if (is_reflector_private_destination(_int_dst_id)
+                    and (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM)
+                    and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM)):
                 _reset = reset_dial_reflector_timers_on_user_activity(
                     BRIDGES, self._system, _rf_src, _peer_id, _slot, pkt_time,
                     _int_dst_id, group_call=False)
