@@ -69,6 +69,12 @@ from selfcare_db import (
     find_ipsc_peer_for_radio_id,
 )
 from bridge_helpers import iter_routing_master_systems as _iter_routing_master_systems
+from bridge_unit_delivery import (
+    deliver_unit_voice,
+    resolve_unit_destination_local,
+    seed_sub_map_for_peer,
+    unit_voice_stream_active_elsewhere,
+)
 from bridge_helpers import (
     DIAL_A_TG,
     DIAL_A_TG_BYTES,
@@ -2127,19 +2133,18 @@ class routerOBP(OPENBRIDGE):
                 except (TypeError, ValueError):
                     logger.warning('(%s) Invalid SUB_MAP entry for destination %s', self._system, int_id(_dst_id))
                 else:
-                    _dst_slot  = systems[_d_system].STATUS[_d_slot]
-                    logger.info('(%s) SUB_MAP matched, System: %s Slot: %s, Time: %s',self._system, _d_system,_d_slot,_d_time)
-                    #If slot is idle for RX and TX
-                if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):                
-                #rewrite slot if required
-                    if _slot != _d_slot:
-                        _tmp_bits = _bits ^ 1 << 7
-                    else: 
-                        _tmp_bits = _bits                        
-                    self.sendDataToHBP(_d_system,_d_slot,_dst_id,_tmp_bits,_data,dmrpkt,_rf_src,_stream_id,_peer_id)
-                        
-                else:
-                    logger.debug('(%s) UNIT Data not bridged to HBP on slot 1 - target busy: %s DST_ID: %s',self._system,_d_system,_int_dst_id)
+                    _dst_slot = systems[_d_system].STATUS[_d_slot]
+                    logger.info('(%s) SUB_MAP matched, System: %s Slot: %s, Time: %s', self._system, _d_system, _d_slot, _d_time)
+                    if ((_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM)
+                            and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM)
+                            and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME'])):
+                        if _slot != _d_slot:
+                            _tmp_bits = _bits ^ 1 << 7
+                        else:
+                            _tmp_bits = _bits
+                        self.sendDataToHBP(_d_system, _d_slot, _dst_id, _tmp_bits, _data, dmrpkt, _rf_src, _stream_id, _peer_id)
+                    else:
+                        logger.debug('(%s) UNIT Data not bridged to HBP on slot 1 - target busy: %s DST_ID: %s', self._system, _d_system, _int_dst_id)
       
             else:                
                 #If destination ID is logged in as a hotspot or IPSC repeater
@@ -2459,7 +2464,6 @@ class routerHBP(HBSYSTEM):
                 if (_peer_id in self._peers
                         and self._peers[_peer_id]['CONNECTION'] == 'YES'
                         and self._peers[_peer_id]['SOCKADDR'] == _sockaddr):
-                    clear_sub_map_for_system(self._system)
                     clear_sub_map_for_peer(_peer_id)
             elif len(_data) >= 8:
                 _peer_id = _data[4:8]
@@ -2468,9 +2472,14 @@ class routerHBP(HBSYSTEM):
                         and self._peers[_peer_id]['SOCKADDR'] == _sockaddr):
                     reset_dynamic_reflectors(self._system)
                     sanitize_dial_reflectors(self._system)
-                    clear_sub_map_for_system(self._system)
                     clear_sub_map_for_peer(_peer_id)
         HBSYSTEM.master_datagramReceived(self, _data, _sockaddr)
+        if _command == RPTC and _data[:5] != RPTCL and len(_data) >= 8:
+            _peer_id = _data[4:8]
+            if (_peer_id in self._peers
+                    and self._peers[_peer_id]['CONNECTION'] == 'YES'
+                    and self._peers[_peer_id]['SOCKADDR'] == _sockaddr):
+                seed_sub_map_for_peer(SUB_MAP, self._system, _peer_id)
 
     def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,sysIgnore,_source_server, _ber, _rssi, _source_rptr):
         _sysIgnore = sysIgnore
@@ -2783,60 +2792,36 @@ class routerHBP(HBSYSTEM):
         logger.info('(%s) Reset all star mode -> dial mode', self._system)
 
     def _forward_unit_voice(self, _dst_id, _slot, _bits, _data, dmrpkt, _stream_id, _peer_id):
-        """Bridge unit (private) voice DMRD to SUB_MAP destination, hotspot peer, or IPSC."""
+        """Bridge unit (private) voice DMRD to resolved destination (BM-parity targeted delivery)."""
         _int_dst_id = int_id(_dst_id)
+        _source_mode = CONFIG['SYSTEMS'][self._system].get('MODE')
 
-        def _send(_d_system, _d_slot):
-            if _d_system == self._system or _d_system not in systems:
-                return False
-            _send_bits = _bits ^ (1 << 7) if _slot != _d_slot else _bits
-            _tmp_data = b''.join([
-                _data[:15], _send_bits.to_bytes(1, 'big'), _data[16:20], dmrpkt,
-            ])
-            systems[_d_system].send_system(_tmp_data)
-            logger.debug('(%s) UNIT voice bridged to %s slot %s DST %s',
-                         self._system, _d_system, _d_slot, _int_dst_id)
-            return True
+        if unit_voice_stream_active_elsewhere(_stream_id, _dst_id, self._system, systems, CONFIG):
+            logger.debug('(%s) UNIT voice loop control — stream %s already active elsewhere',
+                         self._system, int_id(_stream_id))
+            return
 
-        if _dst_id in SUB_MAP:
-            try:
-                _entry = SUB_MAP[_dst_id]
-                _d_system = _entry[0]
-                _d_slot = _entry[1]
-                if _send(_d_system, _d_slot):
-                    return
-            except (TypeError, ValueError, IndexError):
-                pass
+        dest = resolve_unit_destination_local(
+            _dst_id, config=CONFIG, sub_map=SUB_MAP, systems=systems,
+            source_system=self._system, source_mode=_source_mode,
+            source_peer_id=_peer_id,
+        )
+        if dest is None:
+            return
 
-        for _d_system in systems:
-            if _d_system == self._system:
-                continue
-            _mode = CONFIG['SYSTEMS'][_d_system].get('MODE')
-            if _mode not in ('MASTER', 'IPSC'):
-                continue
-            if not CONFIG['SYSTEMS'][_d_system].get('ENABLED'):
-                continue
-            _peers = CONFIG['SYSTEMS'][_d_system].get('PEERS') or {}
-            for _to_peer in _peers:
-                if str(int_id(_to_peer))[:7] == str(_int_dst_id)[:7]:
-                    if _send(_d_system, _slot):
-                        return
+        _d_slot_status = systems[dest.system].STATUS.get(dest.slot)
+        if _d_slot_status and (_d_slot_status.get('RX_TYPE') != HBPF_SLT_VTERM
+                               or _d_slot_status.get('TX_TYPE') != HBPF_SLT_VTERM):
+            logger.info('(%s) UNIT voice forward to %s slot %s DST %s (destination busy)',
+                        self._system, dest.system, dest.slot, _int_dst_id)
 
-        if CONFIG['SYSTEMS'][self._system].get('MODE') != 'IPSC':
-            for _d_system in systems:
-                if _d_system == self._system:
-                    continue
-                if CONFIG['SYSTEMS'][_d_system].get('MODE') != 'IPSC':
-                    continue
-                if not CONFIG['SYSTEMS'][_d_system].get('ENABLED'):
-                    continue
-                _peers = CONFIG['SYSTEMS'][_d_system].get('PEERS') or {}
-                for _to_peer in _peers:
-                    _int_peer = int_id(_to_peer)
-                    if (_int_peer == _int_dst_id
-                            or str(_int_peer)[:7] == str(_int_dst_id)[:7]):
-                        if _send(_d_system, _slot):
-                            return
+        if deliver_unit_voice(
+                dest, systems=systems, config=CONFIG, source_system=self._system,
+                slot=_slot, bits=_bits, data=_data, dmrpkt=dmrpkt,
+                source_peer_id=_peer_id):
+            logger.info('(%s) UNIT voice bridged to %s slot %s DST %s via %s peer %s',
+                        self._system, dest.system, dest.slot, _int_dst_id,
+                        dest.source, int_id(dest.peer_id))
             
     def sendDataToOBP(self,_target,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,_hops = b'',_ber = b'\x00', _rssi = b'\x00',_source_server = b'\x00\x00\x00\x00', _source_rptr = b'\x00\x00\x00\x00'):
  #       _sysIgnore = sysIgnore
@@ -3103,12 +3088,13 @@ class routerHBP(HBSYSTEM):
                 self.STATUS[_slot]['_stopTgAnnounce'] = False
                 self.STATUS[_slot]['_reflect_announced'] = None
                 self._cancel_reflector_timers(_slot)
-                
-                logger.info('(%s) Reflector: Private call from %s to %s',self._system, int_id(_rf_src), _int_dst_id)
+
                 if _int_dst_id == 4000:
+                    logger.info('(%s) Reflector: Private call from %s to %s', self._system, int_id(_rf_src), _int_dst_id)
                     disconnect_dial_reflectors(self._system)
                     clear_subscriber_on_disconnect(self._system, _rf_src, _peer_id)
                 if is_reflector_private_destination(_int_dst_id):
+                    logger.info('(%s) Reflector: Private call from %s to %s', self._system, int_id(_rf_src), _int_dst_id)
                     _bridgename = ''.join(['#',str(_int_dst_id)])
                     if private_call_may_create_reflector(_int_dst_id, BRIDGES):
                         logger.info('(%s) [A] Reflector for TG %s does not exist. Creating as User Activated. Timeout: %s',self._system, _int_dst_id,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
@@ -3200,6 +3186,7 @@ class routerHBP(HBSYSTEM):
 
             if (not is_reflector_private_destination(_int_dst_id)
                     and _int_dst_id not in (8, 9)):
+                logger.info('(%s) UNIT voice forward from %s to %s', self._system, int_id(_rf_src), _int_dst_id)
                 self._forward_unit_voice(
                     _dst_id, _slot, _bits, _data, dmrpkt, _stream_id, _peer_id)
 

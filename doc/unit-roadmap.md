@@ -29,7 +29,8 @@ Field test validates behaviour on real hardware before merge to **`master`**; ro
 |------|--------|
 | IPSC `PRIVATE_VOICE` encode/decode (0x81) | **Done** — Phase 3 on `master` |
 | Dial-a-tg reflector on IPSC (4000/5000/link TG) | **Done** |
-| `_forward_unit_voice()` hook (SUB_MAP, peer, IPSC) | **Done** |
+| `_forward_unit_voice()` hook (SUB_MAP, peer, IPSC) | **Done** — 4A.1 classifier |
+| BM-parity targeted delivery (`bridge_unit_delivery.py`) | **Done** — 4A.5–4A.9 |
 | Dial-a-tg vs unit-to-unit classifier | **Done** — `bridge_helpers.py` (4A.1) |
 | Local unit-to-unit routing (same server) | **Code done** — field test (4A.4) |
 | OBP unit **data** server-to-server (`VER > 1`) | **Done** — `sendDataToOBP()` |
@@ -171,7 +172,36 @@ Replace broad `is_reflector_private_destination()` with dial-a-tg-only logic:
 
 Align private-call reflector creation in `dmrd_received` (lines ~3022–3028) with the same rules so 7-digit IDs do not spawn `#2348831` reflectors.
 
-### 4A.2 — Forward path hardening
+### 4A.2 — Forward path hardening (superseded by 4A.5)
+
+See **4A.5** below for the implemented BM-parity delivery layer.
+
+### 4A.5 — BM-parity targeted delivery (local)
+
+**Module:** `bridge_unit_delivery.py`
+
+**Resolver order (local):**
+
+1. `SUB_MAP[dst]` → `(system, slot, peer_id)` when system `ENABLED`
+2. Peer prefix match on `MASTER` / `IPSC` (`PEERS` or live `_ipsc_peers`) — hotspot slot **2**
+3. IPSC-only scan when source is not `IPSC`
+
+**Delivery:**
+
+- `MASTER`: `send_peer(peer_id, packet)` — not `send_peers` / `send_system`
+- `IPSC`: `_ipsc_send_voice_to_peer()` after `IpscVoiceTranslator.handle_outbound()`
+- Same-master allowed when `peer_id !=` caller peer
+- `hblink`: skip blind `REPEAT` for unit calls when `UNIT_BRIDGE_ROUTING` (default `True`)
+- Unit ACL: `SUB_ACL` only on unit calls (no TG1/TG2 ACL on subscriber ID)
+- SUB_MAP: seed on peer login (slot 2); peer-only clear on disconnect
+- Voice loop guard: skip forward when stream already active on another system
+
+**Log lines:**
+
+- `UNIT voice forward from …` / `UNIT voice bridged to …` — subscriber routing
+- `Reflector: Private call from …` — dial-a-tg only
+
+**Field test gate:** deploy `RYSEN_BRANCH=unit2` via `docker-configs/test-deploy-install.sh`; run matrix in plan (hotspot↔hotspot, IPSC↔hotspot, 2350/4000/5000, unknown 7-digit must not create reflector).
 
 | Step | Detail |
 |------|--------|

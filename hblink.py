@@ -1024,35 +1024,38 @@ class HBSYSTEM(DatagramProtocol):
                             logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY GLOBAL ACL', self._system, int_id(_stream_id), int_id(_rf_src))
                             self._laststrid[_slot] = _stream_id
                         return
-                    if _slot == 1 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG1_ACL']):
-                        if self._laststrid[_slot] != _stream_id:
-                            logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY GLOBAL TS1 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
-                            self._laststrid[_slot] = _stream_id
-                        return
-                    if _slot == 2 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG2_ACL']):
-                        if self._laststrid[_slot] != _stream_id:
-                            logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY GLOBAL TS2 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
-                            self._laststrid[_slot] = _stream_id
-                        return
+                    if _call_type != 'unit':
+                        if _slot == 1 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG1_ACL']):
+                            if self._laststrid[_slot] != _stream_id:
+                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY GLOBAL TS1 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
+                                self._laststrid[_slot] = _stream_id
+                            return
+                        if _slot == 2 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG2_ACL']):
+                            if self._laststrid[_slot] != _stream_id:
+                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY GLOBAL TS2 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
+                                self._laststrid[_slot] = _stream_id
+                            return
                 if self._config['USE_ACL']:
                     if not acl_check(_rf_src, self._config['SUB_ACL']):
                         if self._laststrid[_slot] != _stream_id:
                             logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY SYSTEM ACL', self._system, int_id(_stream_id), int_id(_rf_src))
                             self._laststrid[_slot] = _stream_id
                         return
-                    if _slot == 1 and not acl_check(_dst_id, self._config['TG1_ACL']):
-                        if self._laststrid[_slot] != _stream_id:
-                            logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY SYSTEM TS1 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
-                            self._laststrid[_slot] = _stream_id
-                        return
-                    if _slot == 2 and not acl_check(_dst_id, self._config['TG2_ACL']):
-                        if self._laststrid[_slot]!= _stream_id:
-                            logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY SYSTEM TS2 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
-                            self._laststrid[_slot] = _stream_id
-                        return
+                    if _call_type != 'unit':
+                        if _slot == 1 and not acl_check(_dst_id, self._config['TG1_ACL']):
+                            if self._laststrid[_slot] != _stream_id:
+                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY SYSTEM TS1 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
+                                self._laststrid[_slot] = _stream_id
+                            return
+                        if _slot == 2 and not acl_check(_dst_id, self._config['TG2_ACL']):
+                            if self._laststrid[_slot]!= _stream_id:
+                                logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY SYSTEM TS2 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
+                                self._laststrid[_slot] = _stream_id
+                            return
 
                 # The basic purpose of a master is to repeat to the peers
-                if self._config['REPEAT'] == True:
+                _unit_bridge = self._config.get('UNIT_BRIDGE_ROUTING', True)
+                if self._config['REPEAT'] == True and not (_unit_bridge and _call_type == 'unit'):
                     pkt = [_data[:11], '', _data[15:]]
                     for _peer in self._peers:
                         if _peer != _peer_id:
