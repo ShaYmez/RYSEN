@@ -85,6 +85,7 @@ from bridge_helpers import (
     strip_disc_from_options,
     deactivate_linked_ipsc_bridge_legs,
     paired_group_route_bridge,
+    clear_default_reflectors_for_system,
 )
 # NOTE: 'words' is loaded dynamically via readAMBE() at runtime (see line ~2689)
 #from voice_lib import words
@@ -575,7 +576,11 @@ def reset_static_tg(tg,ts,_tmout,system):
     _idx_replace_bridge(str(tg))
 
 def reset_default_reflector(reflector,_tmout,system):
-    if is_invalid_dial_reflector(reflector):
+    try:
+        reflector = int(reflector)
+    except (TypeError, ValueError):
+        return
+    if reflector <= 0 or is_invalid_dial_reflector(reflector):
         return
     bridge = ''.join(['#',str(reflector)])
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
@@ -643,12 +648,18 @@ def remove_bridge_system(system):
     rebuild_bridge_index()
 
 
+def clear_default_reflectors(system):
+    """Deactivate stale default (TO_TYPE OFF) dial reflectors on one MASTER slot."""
+    if clear_default_reflectors_for_system(BRIDGES, system):
+        rebuild_bridge_index()
+        logger.info('(REFLECTOR) Cleared stale default reflector(s) for %s', system)
+
+
 def reset_dynamic_reflectors(system):
     """Deactivate dial-a-tg reflector links (TO_TYPE ON, bridge name #...) for one MASTER.
 
-    Static/default reflector bridges (TO_TYPE OFF from StartRef/DIAL) are not changed.
-    Default reflector is re-applied via options_config when the peer sends OPTIONS.
-    """
+    Default reflector bridges (TO_TYPE OFF) are cleared by clear_default_reflectors().
+  """
     _changed = False
     for _bridge in BRIDGES:
         if _bridge[0:1] != '#':
@@ -1610,8 +1621,8 @@ def options_config():
                             reset_default_reflector(CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR'],_tmout,_system)
                             make_default_reflector(int(_options['DEFAULT_REFLECTOR']),_tmout,_system)
                         else:
-                            logger.debug('(OPTIONS) %s default reflector disabled, updating',_system) 
-                            reset_default_reflector(int(_options['DEFAULT_REFLECTOR']),_tmout,_system)
+                            logger.debug('(OPTIONS) %s default reflector disabled, updating',_system)
+                            reset_default_reflector(CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR'],_tmout,_system)
                     
                     ts1 = []
                     if _options['TS1_STATIC'] != CONFIG['SYSTEMS'][_system]['TS1_STATIC']:
@@ -2478,6 +2489,8 @@ class routerHBP(HBSYSTEM):
                 if (_peer_id in self._peers
                         and self._peers[_peer_id]['CONNECTION'] == 'YES'
                         and self._peers[_peer_id]['SOCKADDR'] == _sockaddr):
+                    clear_default_reflectors(self._system)
+                    reset_dynamic_reflectors(self._system)
                     clear_sub_map_for_system(self._system)
                     clear_sub_map_for_peer(_peer_id)
             elif len(_data) >= 8:
@@ -2485,6 +2498,7 @@ class routerHBP(HBSYSTEM):
                 if (_peer_id in self._peers
                         and self._peers[_peer_id]['CONNECTION'] == 'WAITING_CONFIG'
                         and self._peers[_peer_id]['SOCKADDR'] == _sockaddr):
+                    clear_default_reflectors(self._system)
                     reset_dynamic_reflectors(self._system)
                     sanitize_dial_reflectors(self._system)
                     clear_sub_map_for_system(self._system)
@@ -3599,6 +3613,7 @@ class routerIPSC(IpscMasterMixin, routerHBP):
 
     def _remove_ipsc_peer(self, peer_id):
         """Clear dial-a-tg state when a repeater drops off (parity with HBP RPTCL)."""
+        clear_default_reflectors(self._system)
         reset_dynamic_reflectors(self._system)
         sanitize_dial_reflectors(self._system)
         clear_sub_map_for_peer(peer_id)
