@@ -116,6 +116,32 @@ def sanitize_dial_reflectors_for_system(bridges, system):
                 changed = True
     return changed
 
+
+def clear_default_reflectors_for_system(bridges, system):
+    """Deactivate TO_TYPE OFF (#) default dial reflector legs for one MASTER.
+
+    Clears stale auto-linked reflectors left on a proxy slot after the prior
+    hotspot disconnects (DEFAULT_REFLECTOR / DIAL / StartRef), without touching
+    user-activated (TO_TYPE ON) links — those are cleared by reset_dynamic_reflectors().
+    """
+    changed = False
+    for bridge_name in bridges:
+        if bridge_name[0:1] != '#':
+            continue
+        if is_dial_service_code(bridge_name[1:]):
+            continue
+        for entry in bridges[bridge_name]:
+            if entry['SYSTEM'] != system:
+                continue
+            if entry.get('TO_TYPE') != 'OFF':
+                continue
+            if entry.get('ACTIVE'):
+                entry['ACTIVE'] = False
+                entry['TIMER'] = time.time()
+                changed = True
+    return changed
+
+
 _IPSC_LINK_KEYS = frozenset(['IPSC', 'LINK_IPSC'])
 _SELFCARE_DISC_TRUTHY = frozenset(('1', 'true', 'yes'))
 
