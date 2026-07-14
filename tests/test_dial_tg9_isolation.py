@@ -8,6 +8,7 @@ from dmr_utils3.utils import bytes_3
 from bridge_helpers import (
     DIAL_A_TG,
     build_bridge_index,
+    clear_default_reflectors_for_system,
     collect_group_route_bridges,
     is_dial_service_code,
     is_invalid_dial_reflector,
@@ -109,6 +110,55 @@ class TestSanitizeReflectorNine(unittest.TestCase):
         }
         sanitize_dial_reflectors_for_system(bridges, 'SYSTEM-5')
         self.assertEqual(bridges['#2350'][0]['ON'], [bytes_3(2350)])
+
+
+class TestStaleDefaultReflector(unittest.TestCase):
+    """Stale #NNNN default reflector (TO_TYPE OFF) on proxy slot reuse."""
+
+    def _default_reflector_bridge(self, reflector, system, active=True):
+        return {
+            f'#{reflector}': [{
+                'SYSTEM': system,
+                'TS': 2,
+                'TGID': bytes_3(DIAL_A_TG),
+                'ACTIVE': active,
+                'TO_TYPE': 'OFF',
+                'ON': [bytes_3(reflector)],
+            }],
+        }
+
+    def test_clear_default_reflectors_deactivates_stale_off_legs(self):
+        bridges = self._default_reflector_bridge(23426, 'SYSTEM-112', active=True)
+        self.assertTrue(clear_default_reflectors_for_system(bridges, 'SYSTEM-112'))
+        self.assertFalse(bridges['#23426'][0]['ACTIVE'])
+
+    def test_clear_default_reflectors_leaves_user_activated_on(self):
+        bridges = _reflector_bridge(23426, 'SYSTEM-112', source_active=True)
+        self.assertFalse(clear_default_reflectors_for_system(bridges, 'SYSTEM-112'))
+        self.assertTrue(bridges['#23426'][0]['ACTIVE'])
+
+    def test_clear_default_reflectors_does_not_touch_other_systems(self):
+        bridges = self._default_reflector_bridge(23426, 'SYSTEM-15', active=True)
+        bridges['#23426'].append({
+            'SYSTEM': 'SYSTEM-99',
+            'TS': 2,
+            'TGID': bytes_3(DIAL_A_TG),
+            'ACTIVE': True,
+            'TO_TYPE': 'OFF',
+            'ON': [bytes_3(23426)],
+        })
+        clear_default_reflectors_for_system(bridges, 'SYSTEM-15')
+        self.assertFalse(bridges['#23426'][0]['ACTIVE'])
+        self.assertTrue(bridges['#23426'][1]['ACTIVE'])
+
+    def test_slot_handoff_no_active_default_after_clear(self):
+        """Prior peer left #23426 TO_TYPE OFF active; new peer slot cleanup clears it."""
+        bridges = self._default_reflector_bridge(23426, 'SYSTEM-127', active=True)
+        clear_default_reflectors_for_system(bridges, 'SYSTEM-127')
+        idx = build_bridge_index(bridges)
+        routed = collect_group_route_bridges(
+            bridges, idx, 'SYSTEM-127', 2, bytes_3(DIAL_A_TG))
+        self.assertEqual(routed, [])
 
 
 class TestGroupTg9RoutingIsolation(unittest.TestCase):
