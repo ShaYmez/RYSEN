@@ -38,26 +38,6 @@ class ProxyDB:
                                             port=port, charset="utf8mb4")
 
     @inlineCallbacks
-    def make_clients_tbl(self):
-        try:
-            yield self.dbpool.runOperation(
-                ''' CREATE TABLE IF NOT EXISTS Clients(
-                int_id INT UNIQUE PRIMARY KEY NOT NULL,
-                dmr_id TINYBLOB NOT NULL,
-                callsign VARCHAR(10) NOT NULL,
-                host VARCHAR(15),
-                options VARCHAR(100),
-                opt_rcvd TINYINT(1) DEFAULT False NOT NULL,
-                mode TINYINT(1) DEFAULT 4 NOT NULL,
-                logged_in TINYINT(1) DEFAULT False NOT NULL,
-                modified TINYINT(1) DEFAULT False NOT NULL,
-                psswd BLOB(256),
-                last_seen INT NOT NULL) CHARSET=utf8mb4''')
-
-        except Exception as err:
-            print(f"make_clientss_tbl error: {err}")
-
-    @inlineCallbacks
     def test_db(self, _reactor):
         try:
             res = yield self.dbpool.runQuery("SELECT 1")

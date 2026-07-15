@@ -76,9 +76,9 @@ Priority for sticky TGs: **static TGs** (`TS1_STATIC`/`TS2_STATIC`) > **peer STI
 
 | Key | Meaning |
 |-----|---------|
-| `DISC=1` | One-shot remote disconnect request from dashboard; stripped after apply |
+| `DISC=1` | One-shot remote disconnect from dashboard; stripped from memory and MariaDB after apply |
 
-See [selfcare.md](selfcare.md).
+See [selfcare.md](selfcare.md) for IPSC vs hotspot DISC timing.
 
 ## Ignored keys
 

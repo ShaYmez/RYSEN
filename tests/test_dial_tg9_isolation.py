@@ -13,7 +13,6 @@ from bridge_helpers import (
     is_dial_service_code,
     is_invalid_dial_reflector,
     private_call_may_create_reflector,
-    sanitize_dial_reflectors_for_system,
     to_target_forward_systems,
 )
 
@@ -50,6 +49,29 @@ def _reflector_bridge(reflector, source_system, source_active=True, peers=None, 
             'ON': [],
         })
     return {bridge_name: entries}
+
+
+def sanitize_dial_reflectors_for_system(bridges, system):
+    """Test helper: mirror sanitize_dial_reflectors() against a bridges dict."""
+    changed = False
+    dial_tg = bytes_3(DIAL_A_TG)
+    for bridge_name in bridges:
+        if bridge_name[0:1] != '#':
+            continue
+        for entry in bridges[bridge_name]:
+            if entry['SYSTEM'] != system:
+                continue
+            if is_dial_service_code(bridge_name[1:]):
+                if entry.get('ACTIVE'):
+                    entry['ACTIVE'] = False
+                    changed = True
+                if entry.get('ON'):
+                    entry['ON'] = []
+                    changed = True
+            elif dial_tg in entry.get('ON', []):
+                entry['ON'] = [x for x in entry['ON'] if x != dial_tg]
+                changed = True
+    return changed
 
 
 class TestDialTg9Guards(unittest.TestCase):

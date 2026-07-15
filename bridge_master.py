@@ -65,7 +65,6 @@ from ipsc_const import is_routing_master
 from selfcare_db import (
     SelfcareDB,
     find_hotspot_master_peer,
-    find_ipsc_slot_for_radio_id,
     find_ipsc_peer_for_radio_id,
 )
 from bridge_helpers import iter_routing_master_systems as _iter_routing_master_systems
@@ -1702,8 +1701,9 @@ def ipsc_selfcare_poll():
                 continue
             CONFIG['SYSTEMS'][slot]['OPTIONS'] = opt_str
             remaining, had_disc = apply_selfcare_options(slot, peer_id, opt_str)
-            if remaining:
+            if had_disc:
                 CONFIG['SYSTEMS'][slot]['OPTIONS'] = remaining
+                yield _selfcare_db.save_client_options(int_id_val, remaining)
             try:
                 if remaining or not had_disc:
                     options_config()
@@ -1714,7 +1714,7 @@ def ipsc_selfcare_poll():
                 continue
             yield _selfcare_db.clear_modified(int_id_val)
             logger.info('(SELF SERVICE) Applied options for IPSC %s on %s: %s',
-                        int_id_val, slot, opt_str)
+                        int_id_val, slot, remaining if had_disc else opt_str)
     except Exception as err:
         logger.exception('(SELF SERVICE) poll error: %s', err)
 
@@ -1741,8 +1741,9 @@ def hotspot_selfcare_disc_poll():
                     int_id_val)
                 continue
             remaining, had_disc = apply_selfcare_options(system, peer_id, opt_str)
+            CONFIG['SYSTEMS'][system]['OPTIONS'] = remaining
+            yield _selfcare_db.save_client_options(int_id_val, remaining)
             if remaining:
-                CONFIG['SYSTEMS'][system]['OPTIONS'] = remaining
                 try:
                     options_config()
                 except Exception:
@@ -2480,6 +2481,20 @@ class routerHBP(HBSYSTEM):
                 '_allStarMode': False
                 }
             }
+
+    def master_maintenance_loop(self):
+        """Clear reflectors/SUB_MAP on ping timeout (parity with RPTCL path)."""
+        _ping_deadline = (
+            self._CONFIG['GLOBAL']['PING_TIME'] * self._CONFIG['GLOBAL']['MAX_MISSED'])
+        _now = time()
+        for _peer_id in list(self._peers):
+            _this_peer = self._peers[_peer_id]
+            if _this_peer['LAST_PING'] + _ping_deadline < _now:
+                clear_default_reflectors(self._system)
+                reset_dynamic_reflectors(self._system)
+                clear_sub_map_for_system(self._system)
+                clear_sub_map_for_peer(_peer_id)
+        HBSYSTEM.master_maintenance_loop(self)
 
     def master_datagramReceived(self, _data, _sockaddr):
         _command = _data[:4]
