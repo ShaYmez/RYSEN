@@ -73,6 +73,19 @@ class SelfcareDB:
             raise RuntimeError(f'upsert_ipsc_client error: {err}') from err
 
     @inlineCallbacks
+    def mark_ipsc_options_pending(self, int_id):
+        """Re-queue stored selfcare options for apply after reconnect (parity with hotspot login_opt)."""
+        try:
+            yield self.dbpool.runOperation(
+                'UPDATE Clients SET modified = 1 '
+                'WHERE int_id = %s AND mode = %s '
+                "AND options IS NOT NULL AND TRIM(options) != ''",
+                (int_id, IPSC_CLIENT_MODE),
+            )
+        except Exception as err:
+            raise RuntimeError(f'mark_ipsc_options_pending error: {err}') from err
+
+    @inlineCallbacks
     def logout_ipsc_client(self, int_id):
         try:
             yield self.dbpool.runOperation(
