@@ -244,6 +244,8 @@ class IpscMasterMixin:
         seed = build_ipsc_seed_options(self._config) if is_new else None
         rid = int(int_id(peer_id))
         d = db.upsert_ipsc_client(rid, peer_id, callsign, host, seed)
+        if is_new:
+            d.addCallback(lambda _: db.mark_ipsc_options_pending(rid))
         d.addErrback(
             lambda f, _rid=rid: logger.error(
                 '(%s) IPSC selfcare upsert failed for %s: %s',

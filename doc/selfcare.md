@@ -51,7 +51,7 @@ When a Motorola repeater registers (`MODE: IPSC`):
 1. Row upserted in `Clients` table (`mode = 0`)
 2. On dashboard edit, `modified = 1` with OPTIONS string
 3. `ipsc_selfcare_poll()` applies `TS1_STATIC` / `TS2_STATIC` via `options_config()`
-4. Re-register re-applies stored options
+4. On re-register after disconnect or server reboot, `mark_ipsc_options_pending()` sets `modified = 1` from stored DB options so the poll re-applies them (parity with hotspot `login_opt()`)
 
 **Multi-static TG example:**
 ```

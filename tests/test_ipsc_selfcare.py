@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+
+from twisted.internet.defer import succeed
 
 from selfcare_db import (
     IPSC_CLIENT_MODE,
@@ -92,9 +94,12 @@ class _StubIpscSelfcare(IpscMasterMixin):
         self._system = 'IPSC-0'
         self._peers = {}
         self._ipsc_peers = {}
+        db = MagicMock()
+        db.upsert_ipsc_client.return_value = succeed(None)
+        db.mark_ipsc_options_pending.return_value = succeed(None)
         self._CONFIG = {
             'SELF SERVICE': {'ENABLED': selfcare_enabled},
-            '_SELF_SERVICE_DB': MagicMock(),
+            '_SELF_SERVICE_DB': db,
             '_PEER_IDS': {235287: 'GB7NR'},
             'GLOBAL': {'REG_ACL': acl_build('PERMIT:ALL', const.PEER_MAX)},
         }
@@ -161,10 +166,36 @@ class TestIpscSelfcareHooks(unittest.TestCase):
         second_call = stub._CONFIG['_SELF_SERVICE_DB'].upsert_ipsc_client.call_args_list[1]
         self.assertIsNone(second_call[0][4])
 
-    def test_upsert_sql_does_not_reflag_modified_on_reconnect(self):
+    def test_register_marks_options_pending_on_new_session(self):
+        stub = _StubIpscSelfcare(selfcare_enabled=True)
+        stub._on_reg_req(self._reg_packet(), HOST, PORT)
+        db = stub._CONFIG['_SELF_SERVICE_DB']
+        db.mark_ipsc_options_pending.assert_called_once_with(235287)
+
+    def test_reregister_while_connected_does_not_remark_options(self):
+        stub = _StubIpscSelfcare(selfcare_enabled=True)
+        pkt = self._reg_packet()
+        stub._on_reg_req(pkt, HOST, PORT)
+        stub._on_reg_req(pkt, HOST, PORT)
+        db = stub._CONFIG['_SELF_SERVICE_DB']
+        db.mark_ipsc_options_pending.assert_called_once_with(235287)
+
+    def test_reconnect_after_deregister_remarks_options(self):
+        stub = _StubIpscSelfcare(selfcare_enabled=True)
+        pkt = self._reg_packet()
+        stub._on_reg_req(pkt, HOST, PORT)
+        stub._on_de_reg_req(bytes([0x9a]) + PEER_ID, HOST, PORT)
+        stub._on_reg_req(pkt, HOST, PORT)
+        db = stub._CONFIG['_SELF_SERVICE_DB']
+        self.assertEqual(db.mark_ipsc_options_pending.call_count, 2)
+        db.mark_ipsc_options_pending.assert_any_call(235287)
+
+    def test_mark_ipsc_options_pending_sql(self):
         with open('selfcare_db.py', encoding='utf-8') as fh:
             source = fh.read()
-        self.assertNotIn('modified = IF(options IS NOT NULL AND TRIM(options)', source)
+        self.assertIn('def mark_ipsc_options_pending', source)
+        self.assertIn('SET modified = 1', source)
+        self.assertIn("TRIM(options) != ''", source)
         self.assertIn('flag_modified = 1 if seed_options else 0', source)
 
 
