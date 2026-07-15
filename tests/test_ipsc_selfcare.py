@@ -7,7 +7,7 @@ from twisted.internet.defer import succeed
 from selfcare_db import (
     IPSC_CLIENT_MODE,
     build_ipsc_seed_options,
-    find_ipsc_slot_for_radio_id,
+    find_ipsc_peer_for_radio_id,
 )
 from ipsc_master import IpscMasterMixin
 from ipsc_const import MASTER_REG_REQ
@@ -47,8 +47,10 @@ class TestSelfcareHelpers(unittest.TestCase):
                 'PEERS': {},
             },
         }
-        self.assertEqual(find_ipsc_slot_for_radio_id(systems, 235287), 'IPSC-0')
-        self.assertIsNone(find_ipsc_slot_for_radio_id(systems, 999999))
+        slot, _ = find_ipsc_peer_for_radio_id(systems, 235287)
+        self.assertEqual(slot, 'IPSC-0')
+        slot, _ = find_ipsc_peer_for_radio_id(systems, 999999)
+        self.assertIsNone(slot)
 
     def test_find_ipsc_slot_matches_peer_id_when_radio_id_missing(self):
         systems = {
@@ -60,7 +62,8 @@ class TestSelfcareHelpers(unittest.TestCase):
                 },
             },
         }
-        self.assertEqual(find_ipsc_slot_for_radio_id(systems, 235287), 'IPSC-0')
+        slot, _ = find_ipsc_peer_for_radio_id(systems, 235287)
+        self.assertEqual(slot, 'IPSC-0')
 
     def test_find_ipsc_peer_for_radio_id(self):
         systems = {
@@ -85,7 +88,8 @@ class TestSelfcareHelpers(unittest.TestCase):
                 'PEERS': {PEER_ID: {'RADIO_ID': '235287'}},
             },
         }
-        self.assertIsNone(find_ipsc_slot_for_radio_id(systems, 235287))
+        slot, _ = find_ipsc_peer_for_radio_id(systems, 235287)
+        self.assertIsNone(slot)
 
 
 class _StubIpscSelfcare(IpscMasterMixin):
@@ -195,8 +199,8 @@ class TestIpscSelfcareHooks(unittest.TestCase):
             source = fh.read()
         self.assertIn('def mark_ipsc_options_pending', source)
         self.assertIn('SET modified = 1', source)
-        self.assertIn("TRIM(options) != ''", source)
-        self.assertIn('flag_modified = 1 if seed_options else 0', source)
+        self.assertIn("AND options NOT LIKE '%DISC=1%'", source)
+        self.assertIn('def save_client_options', source)
 
 
 class TestOptionsConfigIpscMode(unittest.TestCase):
