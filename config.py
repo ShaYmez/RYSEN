@@ -246,6 +246,7 @@ def build_config(_config_file):
                     'DB_PASS': config.get(section, 'DB_PASS'),
                     'DB_NAME': config.get(section, 'DB_NAME'),
                     'POLL_INTERVAL': config.getint(section, 'POLL_INTERVAL', fallback=5),
+                    'DISC_POLL_INTERVAL': config.getint(section, 'DISC_POLL_INTERVAL', fallback=2),
                 })
 
             elif config.getboolean(section, 'ENABLED'):

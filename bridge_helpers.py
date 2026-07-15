@@ -95,28 +95,6 @@ def private_call_may_create_reflector(int_dst_id, bridges):
     return f'#{int_dst_id}' not in bridges
 
 
-def sanitize_dial_reflectors_for_system(bridges, system):
-    """Deactivate service-code # reflectors for one MASTER. Returns True if state changed."""
-    changed = False
-    for bridge_name in bridges:
-        if bridge_name[0:1] != '#':
-            continue
-        for entry in bridges[bridge_name]:
-            if entry['SYSTEM'] != system:
-                continue
-            if is_dial_service_code(bridge_name[1:]):
-                if entry.get('ACTIVE'):
-                    entry['ACTIVE'] = False
-                    changed = True
-                if entry.get('ON'):
-                    entry['ON'] = []
-                    changed = True
-            elif DIAL_A_TG_BYTES in entry.get('ON', []):
-                entry['ON'] = [x for x in entry['ON'] if x != DIAL_A_TG_BYTES]
-                changed = True
-    return changed
-
-
 def clear_default_reflectors_for_system(bridges, system):
     """Deactivate TO_TYPE OFF (#) default dial reflector legs for one MASTER.
 
