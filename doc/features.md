@@ -79,11 +79,39 @@ Brandmeister-style "last talkgroup" memory per subscriber.
 | `STICKY_TG: True/False` | MASTER system in `rysen.cfg` | Server-wide default |
 | `STICKY=1/0` | Peer OPTIONS string | Per-hotspot override |
 
-**Priority:** static TGs > peer STICKY > system STICKY_TG > normal timeout.
+**When to use:** Hotspots with **no** static TGs (`TS1_STATIC` / `TS2_STATIC` empty). The last keyed UA talkgroup stays linked until the user keys another TG or disconnects.
+
+**When statics are set:** Sticky is **automatically disabled** for that system. UA talkgroups expire per `DEFAULT_UA_TIMER` / `RelinkTime` / `TIMER` only. Peer `STICKY=1` has no effect if statics are configured.
+
+**Priority (no statics):** peer `STICKY` > system `STICKY_TG` > normal UA timeout.
 
 **Required:** every MASTER stanza must include `STICKY_TG: True` or `STICKY_TG: False`.
 
 See [options.md](options.md) and CHANGELOG 1.4.0.
+
+---
+
+## SINGLE_MODE and slot contention
+
+Two mechanisms work together on multi-TG timeslots:
+
+### GROUP_HANGTIME (seconds)
+
+Configured per system in `rysen.cfg`. Controls **real-time routing contention** — only one talkgroup’s audio is forwarded to a given timeslot at a time while a call is active or within hang-time. If static 235 and static 23426 share TS1, an active QSO on 235 blocks 23426 until hang-time clears or a new PTT on 23426 wins. Applies to statics, UA, dial-a-tg, and hotspots equally.
+
+### SINGLE_MODE (on/off)
+
+Configured in `rysen.cfg` or `SINGLE=` in OPTIONS. Controls **server-side UA bridge legs** (`TO_TYPE='ON'`):
+
+- After VTERM on a “wrong” TG, other UA / dial-a-tg legs for that system are deactivated.
+- **Static** and **default reflector** legs (`TO_TYPE='OFF'`, always-on) are **not** torn down — they remain bridged permanently.
+- Does not replace hang-time; statics stay registered while slot isolation is enforced on the wire.
+
+### DEFAULT_UA_TIMER / RelinkTime (minutes)
+
+Separate from hang-time. Controls how long a **user-activated** bridge leg stays `ACTIVE` on the server before timing out (unless sticky is enabled and no statics are set).
+
+See [options.md](options.md) for OPTIONS aliases.
 
 ---
 
