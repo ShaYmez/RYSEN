@@ -28,6 +28,21 @@ def is_invalid_dial_reflector(reflector):
         return False
 
 
+def is_valid_talkgroup_bridge(bridge_name):
+    """False for dial service codes (9/4000/5000) and parrot/service TG ranges."""
+    if bridge_name[0:1] == '#':
+        return not is_dial_service_code(bridge_name[1:])
+    try:
+        n = int(bridge_name)
+    except (TypeError, ValueError):
+        return True
+    if is_dial_service_code(n):
+        return False
+    if 9991 <= n <= 9999:
+        return False
+    return n >= 5
+
+
 def build_bridge_index(bridges):
     """Map (system, ts, tgid_bytes) -> set(bridge_names). Matches BRIDGE_IDX layout."""
     index = {}
