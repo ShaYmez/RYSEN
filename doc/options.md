@@ -74,6 +74,10 @@ Priority for sticky TGs: **static TGs** (`TS1_STATIC`/`TS2_STATIC`) > **peer STI
 
 When either `TS1_STATIC` or `TS2_STATIC` is configured (in `rysen.cfg` or via OPTIONS/selfcare), **sticky TG logic is disabled** for that system. UA talkgroups then expire per `DEFAULT_UA_TIMER` / `RelinkTime` / `TIMER` as usual. Sticky is only active when no static talkgroups are set.
 
+**Service codes are not talkgroups:** TG `9` (dial-a-tg channel), `4000` (disconnect), and `5000` (status) must never appear as bridge keys on the static-TG monitor page. RYSEN excludes them from `GEN_STAT` bridge creation and purges bogus `4000`/`5000`/`9` bridge entries at startup.
+
+**Static monitor timer:** Permanent static legs (`TO_TYPE=OFF`, `ACTIVE=True`) report `TIMER=0` / `TIMEOUT=0` to RYSEN-MONITOR (no countdown). Only UA legs (`TO_TYPE=ON`) use the relink timer.
+
 Use sticky when hotspots have **no** static TGs and you want the last keyed TG to stay linked until the user keys another TG or disconnects. With static TGs configured, rely on `RelinkTime` / `TIMER` for UA timeout instead — `STICKY=1` in OPTIONS is ignored.
 
 ## SINGLE_MODE and GROUP_HANGTIME

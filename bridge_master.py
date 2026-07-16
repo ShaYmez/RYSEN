@@ -86,6 +86,7 @@ from bridge_helpers import (
     paired_group_route_bridge,
     clear_default_reflectors_for_system,
     system_has_static_tgs,
+    is_valid_talkgroup_bridge,
 )
 # NOTE: 'words' is loaded dynamically via readAMBE() at runtime (see line ~2689)
 #from voice_lib import words
@@ -405,6 +406,8 @@ def activate_ua_bridge_source(bridge_name, system, slot, tmout=None, peer_id=Non
                 _entry['ACTIVE'] = True
                 _changed = True
                 logger.info('(ROUTER) Bridge %s activated for %s TS%s', bridge_name, system, slot)
+            if _entry.get('TO_TYPE') == 'OFF' and _entry.get('ACTIVE'):
+                continue
             _entry['TIMER'] = time() + _timeout_s
             if _entry.get('TO_TYPE') == 'ON':
                 _ua_refreshed = True
@@ -533,15 +536,35 @@ def make_default_reflector(reflector,_tmout,system):
         BRIDGES[bridge] = bridgetemp
     _idx_replace_bridge(bridge)
 
+def _ensure_obp_stat_leg(tg_s, tgid_b):
+    """Permanent OBP STAT leg so inbound TS1 (e.g. from OpenBridge) can route to static TGs."""
+    if not CONFIG['GLOBAL'].get('GEN_STAT_BRIDGES'):
+        return
+    if tg_s not in BRIDGES:
+        return
+    for _system in CONFIG['SYSTEMS']:
+        if _system[0:3] != 'OBP':
+            continue
+        for _entry in BRIDGES[tg_s]:
+            if _entry['SYSTEM'] == _system and _entry.get('TO_TYPE') == 'STAT':
+                return
+        BRIDGES[tg_s].append({
+            'SYSTEM': _system, 'TS': 1, 'TGID': tgid_b,
+            'ACTIVE': True, 'TIMEOUT': '', 'TO_TYPE': 'STAT',
+            'OFF': [], 'ON': [], 'RESET': [], 'TIMER': 0,
+        })
+        logger.info('(OPTIONS) Added OBP STAT leg for static TG %s', tg_s)
+
+
 def make_static_tg(tg, ts, _tmout, system):
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
     tg_s = str(tg)
     tgid_b = bytes_3(tg)
     static_entry = {
         'SYSTEM': system, 'TS': ts, 'TGID': tgid_b,
-        'ACTIVE': True, 'TIMEOUT': _tmout * 60, 'TO_TYPE': 'OFF',
+        'ACTIVE': True, 'TIMEOUT': 0, 'TO_TYPE': 'OFF',
         'OFF': [], 'ON': [tgid_b], 'RESET': [],
-        'TIMER': time() + (_tmout * 60),
+        'TIMER': 0,
     }
     if tg_s not in BRIDGES:
         make_single_bridge(tgid_b, system, ts, _tmout)
@@ -559,6 +582,23 @@ def make_static_tg(tg, ts, _tmout, system):
                     tg_s, ts, system)
     BRIDGES[tg_s] = bridgetemp
     _idx_replace_bridge(tg_s)
+    _ensure_obp_stat_leg(tg_s, tgid_b)
+
+
+def purge_invalid_bridges():
+    """Remove bogus bridge keys (4000 disconnect, 9 dial channel, etc.)."""
+    _removed = []
+    for _bridge in list(BRIDGES.keys()):
+        if is_valid_talkgroup_bridge(_bridge):
+            continue
+        _idx_remove_bridge(_bridge)
+        del BRIDGES[_bridge]
+        _removed.append(_bridge)
+    if _removed:
+        rebuild_bridge_index()
+        logger.info('(ROUTER) Purged invalid bridge keys: %s', _removed)
+    return _removed
+
 
 def reset_static_tg(tg,ts,_tmout,system):
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
@@ -638,9 +678,8 @@ def make_single_reflector(_tgid,_tmout,_sourcesystem):
     # Keep routing index in sync
     _idx_add_bridge(_bridge)
 
-def remove_bridge_system(system):
+def remove_bridge_system(system, new_timeout_s=None):
     _bridgestemp = {}
-    _bridgetemp = {}
     for _bridge in BRIDGES:
         for _bridgesystem in BRIDGES[_bridge]:
             if _bridgesystem['SYSTEM'] != system:
@@ -650,19 +689,40 @@ def remove_bridge_system(system):
             else:
                 if _bridge not in _bridgestemp:
                     _bridgestemp[_bridge] = []
-                _bridgestemp[_bridge].append({
-                    'SYSTEM': system,
-                    'TS': _bridgesystem['TS'],
-                    'TGID': _bridgesystem['TGID'],
-                    'ACTIVE': False,
-                    'TIMEOUT': _bridgesystem['TIMEOUT'],
-                    'TO_TYPE': _bridgesystem['TO_TYPE'],
-                    'OFF': list(_bridgesystem['OFF']),
-                    'ON': (list(_bridgesystem['ON']) if _bridgesystem['ON']
-                           else ([] if _bridge[0:1] == '#' else [_bridgesystem['TGID']])),
-                    'RESET': list(_bridgesystem['RESET']),
-                    'TIMER': time() + _bridgesystem['TIMEOUT'],
-                })
+                if (_bridgesystem['TO_TYPE'] == 'OFF' and _bridgesystem['ACTIVE'] == True):
+                    _timeout = _bridgesystem['TIMEOUT']
+                    if new_timeout_s is not None and isinstance(_timeout, (int, float)):
+                        _timeout = new_timeout_s
+                    _bridgestemp[_bridge].append({
+                        'SYSTEM': system,
+                        'TS': _bridgesystem['TS'],
+                        'TGID': _bridgesystem['TGID'],
+                        'ACTIVE': True,
+                        'TIMEOUT': 0,
+                        'TO_TYPE': 'OFF',
+                        'OFF': list(_bridgesystem['OFF']),
+                        'ON': list(_bridgesystem['ON']),
+                        'RESET': list(_bridgesystem['RESET']),
+                        'TIMER': 0,
+                    })
+                else:
+                    _timeout = _bridgesystem['TIMEOUT']
+                    if (new_timeout_s is not None and isinstance(_timeout, (int, float))):
+                        _timeout = new_timeout_s
+                    _timer = time() + _timeout if isinstance(_timeout, (int, float)) and _timeout else time()
+                    _bridgestemp[_bridge].append({
+                        'SYSTEM': system,
+                        'TS': _bridgesystem['TS'],
+                        'TGID': _bridgesystem['TGID'],
+                        'ACTIVE': False,
+                        'TIMEOUT': _timeout,
+                        'TO_TYPE': _bridgesystem['TO_TYPE'],
+                        'OFF': list(_bridgesystem['OFF']),
+                        'ON': (list(_bridgesystem['ON']) if _bridgesystem['ON']
+                               else ([] if _bridge[0:1] == '#' else [_bridgesystem['TGID']])),
+                        'RESET': list(_bridgesystem['RESET']),
+                        'TIMER': _timer,
+                    })
             
     BRIDGES.update(_bridgestemp)
     # Entries for the system changed across ALL bridges; cheapest correct option is a full rebuild
@@ -715,6 +775,7 @@ def disconnect_dial_reflectors(system):
                 logger.info('(REFLECTOR) Disconnect (4000): deactivated %s for %s', _bridge, system)
     if _changed:
         rebuild_bridge_index()
+    purge_invalid_bridges()
 
 
 def deactivate_user_activated_bridges(system):
@@ -1404,6 +1465,7 @@ def options_config():
         if '_reset' in  CONFIG['SYSTEMS'][_system] and CONFIG['SYSTEMS'][_system]['_reset']:
             logger.debug('(OPTIONS) Bridge reset for %s - no peers',_system)
             remove_bridge_system(_system)
+            reapply_static_tgs_for_system(_system)
             CONFIG['SYSTEMS'][_system]['_reset'] = False
             continue
         try:
@@ -1616,8 +1678,10 @@ def options_config():
                     
                     if int(_options['DEFAULT_UA_TIMER']) != CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']:
                         logger.debug('(OPTIONS) %s Updating DEFAULT_UA_TIMER for existing bridges.',_system)
-                        remove_bridge_system(_system)
+                        remove_bridge_system(_system, new_timeout_s=_tmout * 60)
                         for _bridge in BRIDGES:
+                            if not is_valid_talkgroup_bridge(_bridge):
+                                continue
                             ts1 = False 
                             ts2 = False
                             for i,e in enumerate(BRIDGES[_bridge]):
@@ -1636,7 +1700,6 @@ def options_config():
                         # Direct appends to BRIDGES above bypass the individual index helpers;
                         # rebuild the full index to restore consistency.
                         rebuild_bridge_index()
-                        reapply_static_tgs_for_system(_system, _tmout)
                     
                     if int(_options['DEFAULT_REFLECTOR']) != CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR']:
                         if int(_options['DEFAULT_REFLECTOR']) > 0:
@@ -2373,7 +2436,10 @@ class routerOBP(OPENBRIDGE):
             
             #Create STAT bridge for unknown TG
             if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:
-                if int_id(_dst_id) >= 5 and int_id(_dst_id) != 9 and (str(int_id(_dst_id)) not in BRIDGES):
+                if (int_id(_dst_id) >= 5 and int_id(_dst_id) != 9
+                        and not is_dial_service_code(int_id(_dst_id))
+                        and is_valid_talkgroup_bridge(str(int_id(_dst_id)))
+                        and (str(int_id(_dst_id)) not in BRIDGES)):
                     logger.debug('(%s) Bridge for STAT TG %s does not exist. Creating',self._system, int_id(_dst_id))
                     make_stat_bridge(_dst_id)
 
@@ -3690,6 +3756,8 @@ class bridgeReportFactory(reportFactory):
     def _safe_bridges_payload(cls):
         safe_bridges = {}
         for bridge, systems in BRIDGES.items():
+            if not is_valid_talkgroup_bridge(bridge):
+                continue
             if not isinstance(systems, (list, tuple, deque)):
                 logger.warning('(REPORT) Skipping malformed bridge %s payload type: %s', bridge, type(systems))
                 continue
@@ -3701,17 +3769,24 @@ class bridgeReportFactory(reportFactory):
                 if 'SYSTEM' not in bridge_system or 'TS' not in bridge_system or 'TGID' not in bridge_system:
                     logger.warning('(REPORT) Skipping incomplete bridge entry in %s: %s', bridge, bridge_system)
                     continue
+                _to_type = bridge_system.get('TO_TYPE', 'NONE')
+                _active = bool(bridge_system.get('ACTIVE', False))
+                _timeout = bridge_system.get('TIMEOUT', '')
+                _timer = bridge_system.get('TIMER', time())
+                if _to_type == 'OFF' and _active:
+                    _timeout = 0
+                    _timer = 0
                 safe_systems.append({
                     'SYSTEM': bridge_system['SYSTEM'],
                     'TS': bridge_system['TS'],
                     'TGID': bridge_system['TGID'],
-                    'ACTIVE': bool(bridge_system.get('ACTIVE', False)),
-                    'TIMEOUT': bridge_system.get('TIMEOUT', ''),
-                    'TO_TYPE': bridge_system.get('TO_TYPE', 'NONE'),
+                    'ACTIVE': _active,
+                    'TIMEOUT': _timeout,
+                    'TO_TYPE': _to_type,
                     'OFF': cls._clean_trigger_list(bridge_system.get('OFF')),
                     'ON': cls._clean_trigger_list(bridge_system.get('ON')),
                     'RESET': cls._clean_trigger_list(bridge_system.get('RESET')),
-                    'TIMER': bridge_system.get('TIMER', time())
+                    'TIMER': _timer,
                 })
             safe_bridges[str(bridge)] = safe_systems
         return safe_bridges
@@ -3941,6 +4016,8 @@ if __name__ == '__main__':
         if not is_routing_master(CONFIG['SYSTEMS'][system]['MODE']):
             continue
         reapply_static_tgs_for_system(system)
+
+    purge_invalid_bridges()
 
     # INITIALIZE THE REPORTING LOOP
     if CONFIG['REPORTS']['REPORT']:

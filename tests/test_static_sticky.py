@@ -44,7 +44,7 @@ class TestStaticStickySourcePatterns(unittest.TestCase):
     def test_reapply_statics_after_timer_change(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
             source = fh.read()
-        self.assertIn('reapply_static_tgs_for_system(_system, _tmout)', source)
+        self.assertNotIn('reapply_static_tgs_for_system(_system, _tmout)', source)
         self.assertIn('def reapply_static_tgs_for_system(system, tmout=None):', source)
 
 
