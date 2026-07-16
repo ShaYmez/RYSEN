@@ -75,6 +75,13 @@ class TestBridgeServiceCodeSourcePatterns(unittest.TestCase):
             source = fh.read()
         self.assertIn('remove_bridge_system(_system)\n            reapply_static_tgs_for_system(_system)', source)
 
+    def test_routing_skips_dial_service_codes(self):
+        with open('bridge_master.py', encoding='utf-8') as fh:
+            source = fh.read()
+        self.assertIn('if not is_dial_service_code(_int_dst):', source)
+        self.assertIn('if not is_dial_service_code(int_id(_dst_id)):', source)
+        self.assertIn('if int_id(_dst_id) == 4000:\n                    disconnect_dial_reflectors(self._system)', source)
+
 
 if __name__ == '__main__':
     unittest.main()
