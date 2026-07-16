@@ -85,6 +85,7 @@ from bridge_helpers import (
     deactivate_linked_ipsc_bridge_legs,
     paired_group_route_bridge,
     clear_default_reflectors_for_system,
+    system_has_static_tgs,
 )
 # NOTE: 'words' is loaded dynamically via readAMBE() at runtime (see line ~2689)
 #from voice_lib import words
@@ -574,6 +575,27 @@ def reset_static_tg(tg,ts,_tmout,system):
     BRIDGES[str(tg)] = bridgetemp
     _idx_replace_bridge(str(tg))
 
+
+def reapply_static_tgs_for_system(system, tmout=None):
+    """Re-create static TG bridge legs for one routing master (after bridge reset)."""
+    if system not in CONFIG['SYSTEMS']:
+        return
+    if not is_routing_master(CONFIG['SYSTEMS'][system]['MODE']):
+        return
+    if tmout is None:
+        tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
+    ts1 = CONFIG['SYSTEMS'][system].get('TS1_STATIC') or ''
+    ts2 = CONFIG['SYSTEMS'][system].get('TS2_STATIC') or ''
+    for tg in (ts1.split(',') if ts1 else []):
+        if not tg:
+            continue
+        make_static_tg(int(tg), 1, tmout, system)
+    for tg in (ts2.split(',') if ts2 else []):
+        if not tg:
+            continue
+        make_static_tg(int(tg), 2, tmout, system)
+
+
 def reset_default_reflector(reflector,_tmout,system):
     try:
         reflector = int(reflector)
@@ -880,7 +902,8 @@ def rule_timer_loop():
                     # scan for every active bridge entry on non-sticky systems.
                     if (_bridge[0:1] != '#' and
                             is_routing_master(CONFIG['SYSTEMS'][_system['SYSTEM']]['MODE']) and
-                            _system['SYSTEM'] in _sticky_enabled_systems):
+                            _system['SYSTEM'] in _sticky_enabled_systems and
+                            not system_has_static_tgs(CONFIG['SYSTEMS'][_system['SYSTEM']])):
                         # Check if any subscriber has this TG as their sticky TG
                         for _subscriber in SUB_MAP:
                             try:
@@ -1613,7 +1636,8 @@ def options_config():
                         # Direct appends to BRIDGES above bypass the individual index helpers;
                         # rebuild the full index to restore consistency.
                         rebuild_bridge_index()
-            
+                        reapply_static_tgs_for_system(_system, _tmout)
+                    
                     if int(_options['DEFAULT_REFLECTOR']) != CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR']:
                         if int(_options['DEFAULT_REFLECTOR']) > 0:
                             logger.debug('(OPTIONS) %s default reflector changed, updating',_system) 
@@ -3334,7 +3358,8 @@ class routerHBP(HBSYSTEM):
                     
                     # Check if we should log sticky TG change based on per-peer or system-wide setting
                     _sticky_enabled = False
-                    if (is_routing_master(CONFIG['SYSTEMS'][self._system]['MODE']) and 
+                    if (is_routing_master(CONFIG['SYSTEMS'][self._system]['MODE']) and
+                        not system_has_static_tgs(CONFIG['SYSTEMS'][self._system]) and
                         'PEERS' in CONFIG['SYSTEMS'][self._system] and
                         _peer_id in CONFIG['SYSTEMS'][self._system]['PEERS']):
                         # Priority 1: Check peer-specific STICKY setting
@@ -3559,7 +3584,9 @@ class routerHBP(HBSYSTEM):
                                             or reflector_single_mode_wrong_tg(
                                                 _int_dst_id, _dst_id, _bridge, _system)):
                                     #if _dst_id in _system['OFF']:
-                                        if _system['ACTIVE'] == True:
+                                        if (_system['TO_TYPE'] == 'OFF' and _system['ACTIVE'] == True):
+                                            pass  # static / default reflector — never torn down by wrong-TG traffic
+                                        elif _system['ACTIVE'] == True:
                                             _system['ACTIVE'] = False
                                             if _bridge[0:1] == '#':
                                                 clear_reflector_link_owner(_system)
@@ -3913,24 +3940,7 @@ if __name__ == '__main__':
     for system in CONFIG['SYSTEMS']:
         if not is_routing_master(CONFIG['SYSTEMS'][system]['MODE']):
             continue
-        _tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
-        ts1 = []
-        ts2 = []
-        if CONFIG['SYSTEMS'][system]['TS1_STATIC']:
-            ts1 = CONFIG['SYSTEMS'][system]['TS1_STATIC'].split(',')
-        if CONFIG['SYSTEMS'][system]['TS2_STATIC']:
-            ts2 = CONFIG['SYSTEMS'][system]['TS2_STATIC'].split(',')
-            
-        for tg in ts1:
-                if not tg:
-                    continue
-                tg = int(tg)
-                make_static_tg(tg,1,_tmout,system)
-        for tg in ts2:
-                if not tg:
-                    continue
-                tg = int(tg)
-                make_static_tg(tg,2,_tmout,system)
+        reapply_static_tgs_for_system(system)
 
     # INITIALIZE THE REPORTING LOOP
     if CONFIG['REPORTS']['REPORT']:

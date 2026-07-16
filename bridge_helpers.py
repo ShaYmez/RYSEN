@@ -340,6 +340,15 @@ def reflector_single_mode_wrong_tg(int_dst_id, dst_id_bytes, bridge, entry):
     return True
 
 
+def system_has_static_tgs(system_cfg):
+    """True when TS1_STATIC or TS2_STATIC is configured (sticky TG must not run)."""
+    for key in ('TS1_STATIC', 'TS2_STATIC'):
+        val = system_cfg.get(key)
+        if val and str(val).strip() and str(val).strip() not in ('0', 'False'):
+            return True
+    return False
+
+
 def set_reflector_link_owner(entry, rf_src, peer_id):
     """Record who owns an active dial-a-tg link (timer resets only on their PTT)."""
     entry['LINKER'] = rf_src
