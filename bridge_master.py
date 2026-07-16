@@ -2450,38 +2450,39 @@ class routerOBP(OPENBRIDGE):
                     and str(_int_dst) in BRIDGES):
                 activate_ua_bridge_source(str(_int_dst), self._system, _slot, peer_id=_peer_id)
             
-            # --- OPTIMISED ROUTING: use BRIDGE_IDX for O(1) lookup instead of O(N*M) full scan ---
-            _sysIgnore = deque()
-            _lookup_key = (self._system, _slot, _dst_id)
-            _candidate_bridges = BRIDGE_IDX.get(_lookup_key)
-            _ROUTE_STATS['packets'] += 1
-            if _candidate_bridges is None:
-                # Index miss - fall back to full scan and schedule a rebuild.
-                # This should never happen in normal operation; log at WARNING.
-                logger.warning('(%s) OBP BRIDGE_IDX miss for key (%s, %s, %s) '
-                               '- falling back to full scan and rebuilding index',
-                               self._system, self._system, _slot, int_id(_dst_id))
-                _ROUTE_STATS['index_misses'] += 1
-                _ROUTE_STATS['fallbacks'] += 1
-                rebuild_bridge_index()
-                _candidate_bridges = BRIDGE_IDX.get(_lookup_key, set())
-                # Full-scan fallback for safety
-                for _bridge in BRIDGES:
-                    for _system in BRIDGES[_bridge]:
-                        if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
-                            _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore,_hops, _source_server, _ber, _rssi, _source_rptr)
-            else:
-                _ROUTE_STATS['index_hits'] += 1
-                for _orig_bridge in list(_candidate_bridges):
-                    if _orig_bridge not in BRIDGES:
-                        # Stale index entry - skip and schedule a rebuild
-                        logger.debug('(%s) OBP BRIDGE_IDX stale entry for bridge %s, skipping',
-                                     self._system, _orig_bridge)
-                        continue
-                    for _system in BRIDGES[_orig_bridge]:
-                        if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
-                            _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_orig_bridge,_system,False,_sysIgnore,_hops, _source_server, _ber, _rssi, _source_rptr)
-            _log_route_stats()
+            if not is_dial_service_code(_int_dst):
+                # --- OPTIMISED ROUTING: use BRIDGE_IDX for O(1) lookup instead of O(N*M) full scan ---
+                _sysIgnore = deque()
+                _lookup_key = (self._system, _slot, _dst_id)
+                _candidate_bridges = BRIDGE_IDX.get(_lookup_key)
+                _ROUTE_STATS['packets'] += 1
+                if _candidate_bridges is None:
+                    # Index miss - fall back to full scan and schedule a rebuild.
+                    # This should never happen in normal operation; log at WARNING.
+                    logger.warning('(%s) OBP BRIDGE_IDX miss for key (%s, %s, %s) '
+                                   '- falling back to full scan and rebuilding index',
+                                   self._system, self._system, _slot, int_id(_dst_id))
+                    _ROUTE_STATS['index_misses'] += 1
+                    _ROUTE_STATS['fallbacks'] += 1
+                    rebuild_bridge_index()
+                    _candidate_bridges = BRIDGE_IDX.get(_lookup_key, set())
+                    # Full-scan fallback for safety
+                    for _bridge in BRIDGES:
+                        for _system in BRIDGES[_bridge]:
+                            if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
+                                _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore,_hops, _source_server, _ber, _rssi, _source_rptr)
+                else:
+                    _ROUTE_STATS['index_hits'] += 1
+                    for _orig_bridge in list(_candidate_bridges):
+                        if _orig_bridge not in BRIDGES:
+                            # Stale index entry - skip and schedule a rebuild
+                            logger.debug('(%s) OBP BRIDGE_IDX stale entry for bridge %s, skipping',
+                                         self._system, _orig_bridge)
+                            continue
+                        for _system in BRIDGES[_orig_bridge]:
+                            if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
+                                _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_orig_bridge,_system,False,_sysIgnore,_hops, _source_server, _ber, _rssi, _source_rptr)
+                _log_route_stats()
 
 
             # Final actions - Is this a voice terminator?
@@ -3396,6 +3397,9 @@ class routerHBP(HBSYSTEM):
                     self.STATUS[_slot]['RX_LC'] = b''.join([LC_OPT,_dst_id,_rf_src])
 
             #Create default bridge for unknown TG
+                if int_id(_dst_id) == 4000:
+                    disconnect_dial_reflectors(self._system)
+                    clear_subscriber_on_disconnect(self._system, _rf_src, _peer_id)
                 if int_id(_dst_id) >= 5 and int_id(_dst_id) != 9 and int_id(_dst_id) != 4000 and int_id(_dst_id) != 5000  and (str(int_id(_dst_id)) not in BRIDGES):
                     logger.info('(%s) Bridge for TG %s does not exist. Creating as User Activated. Timeout %s',self._system, int_id(_dst_id),CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
                     make_single_bridge(_dst_id,self._system,_slot,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
@@ -3522,48 +3526,49 @@ class routerHBP(HBSYSTEM):
             self.STATUS[_slot]['lastSeq'] = _seq
             #Save this packet
             self.STATUS[_slot]['lastData'] = _data
-                          
-            # --- OPTIMISED ROUTING: use BRIDGE_IDX for O(1) lookup instead of O(N*M) full scan ---
-            _sysIgnore = deque()
-            _lookup_key = (self._system, _slot, _dst_id)
-            _candidate_bridges = BRIDGE_IDX.get(_lookup_key)
-            _ROUTE_STATS['packets'] += 1
-            if _candidate_bridges is None:
-                # Index miss - fall back to full scan and schedule a rebuild.
-                # This should never happen in normal operation; log at WARNING.
-                logger.warning('(%s) HBP BRIDGE_IDX miss for key (%s, %s, %s) '
-                               '- falling back to full scan and rebuilding index',
-                               self._system, self._system, _slot, int_id(_dst_id))
-                _ROUTE_STATS['index_misses'] += 1
-                _ROUTE_STATS['fallbacks'] += 1
-                rebuild_bridge_index()
-                _candidate_bridges = BRIDGE_IDX.get(_lookup_key, set())
-                # Full-scan fallback for safety
-                for _bridge in BRIDGES:
-                    for _system in BRIDGES[_bridge]:
-                        if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
-                            _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi, _source_rptr)
-                            _paired_bridge = paired_group_route_bridge(
-                                _bridge, BRIDGES, _dst_id)
-                            if _paired_bridge:
-                                _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_paired_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi,_source_rptr)
-            else:
-                _ROUTE_STATS['index_hits'] += 1
-                for _orig_bridge in list(_candidate_bridges):
-                    if _orig_bridge not in BRIDGES:
-                        # Stale index entry - skip
-                        logger.debug('(%s) HBP BRIDGE_IDX stale entry for bridge %s, skipping',
-                                     self._system, _orig_bridge)
-                        continue
-                    for _system in BRIDGES[_orig_bridge]:
-                        if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
-                            _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_orig_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi, _source_rptr)
-                            # Also route to paired reflector/TG bridge on dial-a-tg (TG 9) only
-                            _paired_bridge = paired_group_route_bridge(
-                                _orig_bridge, BRIDGES, _dst_id)
-                            if _paired_bridge:
-                                _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_paired_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi,_source_rptr)
-            _log_route_stats()
+
+            if not is_dial_service_code(int_id(_dst_id)):
+                # --- OPTIMISED ROUTING: use BRIDGE_IDX for O(1) lookup instead of O(N*M) full scan ---
+                _sysIgnore = deque()
+                _lookup_key = (self._system, _slot, _dst_id)
+                _candidate_bridges = BRIDGE_IDX.get(_lookup_key)
+                _ROUTE_STATS['packets'] += 1
+                if _candidate_bridges is None:
+                    # Index miss - fall back to full scan and schedule a rebuild.
+                    # This should never happen in normal operation; log at WARNING.
+                    logger.warning('(%s) HBP BRIDGE_IDX miss for key (%s, %s, %s) '
+                                   '- falling back to full scan and rebuilding index',
+                                   self._system, self._system, _slot, int_id(_dst_id))
+                    _ROUTE_STATS['index_misses'] += 1
+                    _ROUTE_STATS['fallbacks'] += 1
+                    rebuild_bridge_index()
+                    _candidate_bridges = BRIDGE_IDX.get(_lookup_key, set())
+                    # Full-scan fallback for safety
+                    for _bridge in BRIDGES:
+                        for _system in BRIDGES[_bridge]:
+                            if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
+                                _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi, _source_rptr)
+                                _paired_bridge = paired_group_route_bridge(
+                                    _bridge, BRIDGES, _dst_id)
+                                if _paired_bridge:
+                                    _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_paired_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi,_source_rptr)
+                else:
+                    _ROUTE_STATS['index_hits'] += 1
+                    for _orig_bridge in list(_candidate_bridges):
+                        if _orig_bridge not in BRIDGES:
+                            # Stale index entry - skip
+                            logger.debug('(%s) HBP BRIDGE_IDX stale entry for bridge %s, skipping',
+                                         self._system, _orig_bridge)
+                            continue
+                        for _system in BRIDGES[_orig_bridge]:
+                            if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
+                                _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_orig_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi, _source_rptr)
+                                # Also route to paired reflector/TG bridge on dial-a-tg (TG 9) only
+                                _paired_bridge = paired_group_route_bridge(
+                                    _orig_bridge, BRIDGES, _dst_id)
+                                if _paired_bridge:
+                                    _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_paired_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi,_source_rptr)
+                _log_route_stats()
 
             # Final actions - Is this a voice terminator?
             if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
