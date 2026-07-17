@@ -69,7 +69,7 @@ class TestSelfcareDbHardening(unittest.TestCase):
         with open('selfcare_db.py', encoding='utf-8') as fh:
             source = fh.read()
         self.assertIn('def save_client_options', source)
-        self.assertIn("AND options NOT LIKE '%DISC=1%'", source)
+        self.assertIn("AND options NOT LIKE '%%DISC=1%%'", source)
 
     def test_strip_disc_for_db_persist(self):
         from bridge_helpers import strip_disc_from_options

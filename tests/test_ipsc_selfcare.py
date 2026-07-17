@@ -199,7 +199,7 @@ class TestIpscSelfcareHooks(unittest.TestCase):
             source = fh.read()
         self.assertIn('def mark_ipsc_options_pending', source)
         self.assertIn('SET modified = 1', source)
-        self.assertIn("AND options NOT LIKE '%DISC=1%'", source)
+        self.assertIn("AND options NOT LIKE '%%DISC=1%%'", source)
         self.assertIn('def save_client_options', source)
 
 
