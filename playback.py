@@ -110,6 +110,8 @@ class playback(HBSYSTEM):
             }
         }
         self.CALL_DATA = []
+        self._record_call_type = None
+        self._record_rf_src = None
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pkt_time = time()
@@ -117,11 +119,13 @@ class playback(HBSYSTEM):
         _bits = _data[15]
         
         
-        if _call_type == 'group':
+        if _call_type in ('group', 'unit'):
             
             # Is this is a new call stream?
             if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
                 self.STATUS['RX_START'] = pkt_time
+                self._record_call_type = _call_type
+                self._record_rf_src = _rf_src
                 logger.info('(%s) *START RECORDING* STREAM ID: %s SUB: %s (%s) REPEATER: %s (%s) TGID %s (%s), TS %s', \
                                   self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
                 self.CALL_DATA.append(_data)
@@ -139,12 +143,18 @@ class playback(HBSYSTEM):
                 logger.info('(%s) *START  PLAYBACK* STREAM ID: %s SUB: %s (%s) REPEATER: %s (%s) TGID %s (%s), TS %s, Duration: %s', \
                                   self._system, int_id(_new_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration)
                 
+                _parrot_src = bytes_3(9990)
                 for i in self.CALL_DATA:
 
                     i = i[:16] + _new_stream_id + i[20:]
+                    if self._record_call_type == 'unit' and self._record_rf_src is not None:
+                        # Echo private call back to the caller (swap src/dst).
+                        i = i[:5] + _parrot_src + self._record_rf_src + i[11:]
                     self.send_system(i)
                     sleep(0.06)
                 self.CALL_DATA = []
+                self._record_call_type = None
+                self._record_rf_src = None
                 logger.info('(%s) *END    PLAYBACK* STREAM ID: %s', self._system, int_id(_new_stream_id))
 
             else:
