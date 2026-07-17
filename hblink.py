@@ -237,7 +237,7 @@ class OPENBRIDGE(DatagramProtocol):
 
     def send_system(self, _packet, _hops = b'', _ber = b'\x00', _rssi = b'\x00', _source_server = b'\x00\x00\x00\x00', _source_rptr = b'\x00\x00\x00\x00'):                      
         #Don't do anything if we are STUNned
-        if 'STUN' in self._CONFIG:
+        if self._config.get('_STUN'):
             logger.info('(%s) Bridge STUNned, discarding', self._system)
             return
         
@@ -392,7 +392,7 @@ class OPENBRIDGE(DatagramProtocol):
                         return
                     
                     #Don't do anything if we are STUNned
-                    if 'STUN' in self._CONFIG:
+                    if self._config.get('_STUN'):
                             if _stream_id not in self._laststrid:
                                 logger.warning('(%s) Bridge STUNned, discarding', self._system)
                                 self._laststrid.append(_stream_id)
@@ -510,7 +510,7 @@ class OPENBRIDGE(DatagramProtocol):
                     #logger.debug('(%s) DMRD - Seqence: %s, RF Source: %s, Destination ID: %s', self._system, int_id(_seq), int_id(_rf_src), int_id(_dst_id))
                     
                     #Don't do anything if we are STUNned
-                    if 'STUN' in self._CONFIG:
+                    if self._config.get('_STUN'):
                             if _stream_id not in self._laststrid:
                                 logger.warning('(%s) Bridge STUNned, discarding', self._system)
                                 self._laststrid.append(_stream_id)
@@ -644,7 +644,7 @@ class OPENBRIDGE(DatagramProtocol):
                     #logger.debug('(%s) DMRD - Seqence: %s, RF Source: %s, Destination ID: %s', self._system, int_id(_seq), int_id(_rf_src), int_id(_dst_id))
                     
                     #Don't do anything if we are STUNned
-                    if 'STUN' in self._CONFIG:
+                    if self._config.get('_STUN'):
                             if _stream_id not in self._laststrid:
                                 logger.warning('(%s) Bridge STUNned, discarding', self._system)
                                 self._laststrid.append(_stream_id)

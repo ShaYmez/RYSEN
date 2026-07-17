@@ -191,6 +191,68 @@ _ROUTE_STATS_NEXT_LOG = [0.0]        # mutable list so inner functions can write
 _REACTOR_LAG_INTERVAL = 5.0          # expected loop-call interval (seconds)
 _REACTOR_LAG_LAST = [None]           # timestamp of last check
 
+# LoopControl optimisation: avoid scanning every SYSTEM-XXX on each voice packet.
+_OBP_SYSTEMS = ()                    # refreshed at startup
+_STREAM_RX_OWNER = {}                  # stream_id bytes -> HBP system name
+
+
+def refresh_obp_system_list():
+    """Cache OPENBRIDGE system names for LoopControl (small fixed set)."""
+    global _OBP_SYSTEMS
+    _OBP_SYSTEMS = tuple(
+        s for s in CONFIG['SYSTEMS']
+        if CONFIG['SYSTEMS'][s].get('ENABLED')
+        and CONFIG['SYSTEMS'][s]['MODE'] == 'OPENBRIDGE'
+    )
+
+
+def _track_hbp_rx_stream(system, slot_status, stream_id):
+    """Record which HBP system is receiving stream_id (LoopControl fast path)."""
+    _prev = slot_status.get('RX_STREAM_ID')
+    if _prev and _prev != b'\x00' and _prev != stream_id:
+        if _STREAM_RX_OWNER.get(_prev) == system:
+            _STREAM_RX_OWNER.pop(_prev, None)
+    if stream_id and stream_id != b'\x00':
+        _STREAM_RX_OWNER[stream_id] = system
+
+
+def _untrack_hbp_rx_stream(system, stream_id):
+    if stream_id and stream_id != b'\x00' and _STREAM_RX_OWNER.get(stream_id) == system:
+        _STREAM_RX_OWNER.pop(stream_id, None)
+
+
+def _find_hbp_stream_rx_owner(stream_id, exclude=None):
+    """Return (True, system) if a non-OBP system is RXing stream_id; else (False, None).
+
+    Uses _STREAM_RX_OWNER when warm; falls back to full scan so behaviour matches
+    pre-optimisation code if the map is stale or missing an entry.
+    """
+    _owner = _STREAM_RX_OWNER.get(stream_id)
+    if _owner is not None and _owner != exclude:
+        if CONFIG['SYSTEMS'][_owner]['MODE'] != 'OPENBRIDGE':
+            return True, _owner
+        return False, None
+    for _system in systems:
+        if _system == exclude:
+            continue
+        if CONFIG['SYSTEMS'][_system]['MODE'] == 'OPENBRIDGE':
+            continue
+        for _sysslot in systems[_system].STATUS:
+            if systems[_system].STATUS[_sysslot].get('RX_STREAM_ID') == stream_id:
+                _STREAM_RX_OWNER[stream_id] = _system
+                return True, _system
+    return False, None
+
+
+def _obp_loop_hr_times(stream_id, dst_id):
+    """Collect OBP first-receiver times for stream_id (OBP systems only)."""
+    _hr_times = {}
+    for _obp in _OBP_SYSTEMS:
+        _st = systems[_obp].STATUS.get(stream_id)
+        if _st and '1ST' in _st and _st['TGID'] == dst_id:
+            _hr_times[_obp] = _st['1ST']
+    return _hr_times
+
 
 def _idx_add_bridge(bridge_name):
     """Add all entries for *bridge_name* into BRIDGE_IDX."""
@@ -1209,6 +1271,7 @@ def stream_trimmer_loop():
                         systems[system]._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(_slot['RX_STREAM_ID']), int_id(_slot['RX_PEER']), int_id(_slot['RX_RFS']), slot, int_id(_slot['RX_TGID']), _slot['RX_TIME'] - _slot['RX_START']).encode(encoding='utf-8', errors='ignore'))
                 #Null stream_id - for loop control 
                 if _slot['RX_TIME'] < _now - 60:
+                    _untrack_hbp_rx_stream(system, _slot['RX_STREAM_ID'])
                     _slot['RX_STREAM_ID'] = b'\x00'
 
                 # TX slot check
@@ -2012,6 +2075,7 @@ class routerOBP(OPENBRIDGE):
                             'RFS':       _rf_src,
                             'TGID':      _dst_id,
                             'RX_PEER': _peer_id,
+                            '1ST': perf_counter(),
 
                         }
                         # Generate LCs (full and EMB) for the TX stream
@@ -2192,7 +2256,8 @@ class routerOBP(OPENBRIDGE):
                 'RFS':       _rf_src,
                 'TGID':      _dst_id,
                 'RX_PEER':   _peer_id,
-                'packets': 0
+                'packets': 0,
+                '1ST': perf_counter(),
             }
             
         # Record the time of this packet so we can later identify a stale stream
@@ -2263,20 +2328,18 @@ class routerOBP(OPENBRIDGE):
             
             self.STATUS[_stream_id]['LAST'] = pkt_time
             self.STATUS[_stream_id]['packets'] = self.STATUS[_stream_id]['packets'] + 1
+
+            if '1ST' not in self.STATUS[_stream_id]:
+                self.STATUS[_stream_id]['1ST'] = perf_counter()
             
-            hr_times = {}
-            for system in systems: 
-                if system != self._system and CONFIG['SYSTEMS'][system]['MODE'] != 'OPENBRIDGE':
-                        for _sysslot in systems[system].STATUS:
-                            if 'RX_STREAM_ID' in systems[system].STATUS[_sysslot] and _stream_id == systems[system].STATUS[_sysslot]['RX_STREAM_ID']:
-                                if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']: 
-                                    logger.debug("(%s) OBP UNIT *LoopControl* FIRST HBP: %s, STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id),_sysslot)
-                                    self.STATUS[_stream_id]['LOOPLOG'] = True
-                                self.STATUS[_stream_id]['LAST'] = pkt_time
-                                return
-                else:
-                    if _stream_id in systems[system].STATUS and '1ST' in systems[system].STATUS[_stream_id] and    systems[system].STATUS[_stream_id]['TGID'] == _dst_id:
-                        hr_times[system] = systems[system].STATUS[_stream_id]['1ST']
+            _hbp_active, _hbp_sys = _find_hbp_stream_rx_owner(_stream_id, exclude=self._system)
+            if _hbp_active:
+                if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
+                    logger.debug("(%s) OBP UNIT *LoopControl* FIRST HBP: %s, STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, _hbp_sys, int_id(_stream_id), int_id(_dst_id), _slot)
+                    self.STATUS[_stream_id]['LOOPLOG'] = True
+                self.STATUS[_stream_id]['LAST'] = pkt_time
+                return
+            hr_times = _obp_loop_hr_times(_stream_id, _dst_id)
                     
             #use the minimum perf_counter to ensure
             #We always use only the earliest packet
@@ -2284,12 +2347,7 @@ class routerOBP(OPENBRIDGE):
             
             hr_times = None
             
-            if not fi:
-                logger.warning("(%s) OBP UNIT *LoopControl* fi is empty for some reason : %s, STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
-                self.STATUS[_stream_id]['LAST'] = pkt_time
-                return
-            
-            if self._system != fi:             
+            if fi and self._system != fi:             
                 if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
                     call_duration = pkt_time - self.STATUS[_stream_id]['START']
                     packet_rate = 0
@@ -2456,24 +2514,18 @@ class routerOBP(OPENBRIDGE):
                     self.STATUS[_stream_id]['LAST'] = pkt_time
                     return
                     
-                
+                if '1ST' not in self.STATUS[_stream_id]:
+                    self.STATUS[_stream_id]['1ST'] = perf_counter()
+
                 #LoopControl
-                hr_times = {}
-                for system in systems:                            
-                   # if system  == self._system:
-                   #     continue
-                    if system != self._system and CONFIG['SYSTEMS'][system]['MODE'] != 'OPENBRIDGE':
-                        for _sysslot in systems[system].STATUS:
-                            if 'RX_STREAM_ID' in systems[system].STATUS[_sysslot] and _stream_id == systems[system].STATUS[_sysslot]['RX_STREAM_ID']:
-                                if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']: 
-                                    logger.debug("(%s) OBP *LoopControl* FIRST HBP: %s, STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id),_sysslot)
-                                    self.STATUS[_stream_id]['LOOPLOG'] = True
-                                self.STATUS[_stream_id]['LAST'] = pkt_time
-                                return
-                    else:
-                        #if _stream_id in systems[system].STATUS and systems[system].STATUS[_stream_id]['START'] <= self.STATUS[_stream_id]['START']:
-                        if _stream_id in systems[system].STATUS and '1ST' in systems[system].STATUS[_stream_id] and systems[system].STATUS[_stream_id]['TGID'] == _dst_id:
-                             hr_times[system] = systems[system].STATUS[_stream_id]['1ST']
+                _hbp_active, _hbp_sys = _find_hbp_stream_rx_owner(_stream_id, exclude=self._system)
+                if _hbp_active:
+                    if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
+                        logger.debug("(%s) OBP *LoopControl* FIRST HBP: %s, STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, _hbp_sys, int_id(_stream_id), int_id(_dst_id), _slot)
+                        self.STATUS[_stream_id]['LOOPLOG'] = True
+                    self.STATUS[_stream_id]['LAST'] = pkt_time
+                    return
+                hr_times = _obp_loop_hr_times(_stream_id, _dst_id)
                 
                 #use the minimum perf_counter to ensure
                 #We always use only the earliest packet
@@ -2481,17 +2533,13 @@ class routerOBP(OPENBRIDGE):
                 
                 hr_times = None
                 
-                if not fi:
-                    logger.warning("(%s) OBP *LoopControl* fi is empty for some reason : STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
-                    return
-                
-                if self._system != fi:             
+                if fi and self._system != fi:             
                     if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
                         call_duration = pkt_time - self.STATUS[_stream_id]['START']
                         packet_rate = 0
                         if 'packets' in self.STATUS[_stream_id]:
                             packet_rate = self.STATUS[_stream_id]['packets'] / call_duration
-                        logger.debug("(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE. PACKET RATE %0.2f/s",self._system, fi, int_id(_stream_id), int_id(_dst_id),call_duration)
+                        logger.debug("(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE. PACKET RATE %0.2f/s",self._system, fi, int_id(_stream_id), int_id(_dst_id),packet_rate)
                         self.STATUS[_stream_id]['LOOPLOG'] = True
                     self.STATUS[_stream_id]['LAST'] = pkt_time
                     
@@ -2501,7 +2549,7 @@ class routerOBP(OPENBRIDGE):
                     return
                 
                 #Rate drop
-                if self.STATUS[_stream_id]['packets'] > 18 and (self.STATUS[_stream_id]['packets'] / self.STATUS[_stream_id]['START'] > 25):
+                if self.STATUS[_stream_id]['packets'] > 18 and (pkt_time - self.STATUS[_stream_id]['START']) > 0 and (self.STATUS[_stream_id]['packets'] / (pkt_time - self.STATUS[_stream_id]['START']) > 25):
                     logger.warning("(%s) *PacketControl* RATE DROP! Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
                     return
                 
@@ -2686,6 +2734,10 @@ class routerHBP(HBSYSTEM):
                 }
             }
 
+    def _assign_rx_stream_id(self, slot, stream_id):
+        _track_hbp_rx_stream(self._system, self.STATUS[slot], stream_id)
+        self.STATUS[slot]['RX_STREAM_ID'] = stream_id
+
     def master_maintenance_loop(self):
         """Clear reflectors/SUB_MAP on ping timeout (parity with RPTCL path)."""
         _ping_deadline = (
@@ -2768,7 +2820,8 @@ class routerHBP(HBSYSTEM):
                                 'CONTENTION':False,
                                 'RFS':       _rf_src,
                                 'TGID':      _dst_id,
-                                'RX_PEER':   _peer_id
+                                'RX_PEER':   _peer_id,
+                                '1ST': perf_counter(),
                             }
                             # Generate LCs (full and EMB) for the TX stream
                             dst_lc = b''.join([self.STATUS[_slot]['RX_LC'][0:3], _target['TGID'], _rf_src])
@@ -3133,7 +3186,8 @@ class routerHBP(HBSYSTEM):
                 'CONTENTION':False,
                 'RFS':       _rf_src,
                 'TGID':      _dst_id,
-                'RX_PEER':   _peer_id
+                'RX_PEER':   _peer_id,
+                '1ST': perf_counter(),
             }
             
         # Record the time of this packet so we can later identify a stale stream
@@ -3353,7 +3407,7 @@ class routerHBP(HBSYSTEM):
             self.STATUS[_slot]['RX_TYPE']      = _dtype_vseq
             self.STATUS[_slot]['RX_TGID']      = _dst_id
             self.STATUS[_slot]['RX_TIME']      = pkt_time
-            self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
+            self._assign_rx_stream_id(_slot, _stream_id)
             self.STATUS[_slot]['VOICE_STREAM'] = _voice_call
             
             self.STATUS[_slot]['packets'] = self.STATUS[_slot]['packets'] +1 
@@ -3370,7 +3424,7 @@ class routerHBP(HBSYSTEM):
                 self.STATUS[_slot]['RX_TYPE']      = _dtype_vseq
                 self.STATUS[_slot]['RX_TGID']      = _dst_id
                 self.STATUS[_slot]['RX_TIME']      = pkt_time
-                self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
+                self._assign_rx_stream_id(_slot, _stream_id)
                 self.STATUS[_slot]['VOICE_STREAM'] = _voice_call
                 self.STATUS[_slot]['packets'] = self.STATUS[_slot]['packets'] + 1
 
@@ -3387,7 +3441,7 @@ class routerHBP(HBSYSTEM):
                 self.STATUS[_slot]['RX_TYPE']      = _dtype_vseq
                 self.STATUS[_slot]['RX_TGID']      = _dst_id
                 self.STATUS[_slot]['RX_TIME']      = pkt_time
-                self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
+                self._assign_rx_stream_id(_slot, _stream_id)
                 self.STATUS[_slot]['VOICE_STREAM'] = _voice_call
                 self.STATUS[_slot]['packets'] = self.STATUS[_slot]['packets'] + 1
 
@@ -3505,7 +3559,7 @@ class routerHBP(HBSYSTEM):
                 self.STATUS[_slot]['RX_TYPE']      = _dtype_vseq
                 self.STATUS[_slot]['RX_TGID']      = _dst_id
                 self.STATUS[_slot]['RX_TIME']      = pkt_time
-                self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
+                self._assign_rx_stream_id(_slot, _stream_id)
                 self.STATUS[_slot]['VOICE_STREAM'] = _voice_call
             
                 self.STATUS[_slot]['packets'] = self.STATUS[_slot]['packets'] +1                
@@ -3632,28 +3686,27 @@ class routerHBP(HBSYSTEM):
                 return
             
             #LoopControl#
-            for system in systems:                            
-                if system  == self._system:
+            _hbp_active, _hbp_sys = _find_hbp_stream_rx_owner(_stream_id, exclude=self._system)
+            if _hbp_active:
+                if 'LOOPLOG' not in self.STATUS[_slot] or not self.STATUS[_slot]['LOOPLOG']:
+                    logger.debug("(%s) OBP *LoopControl* FIRST HBP: %s, STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, _hbp_sys, int_id(_stream_id), int_id(_dst_id), _slot)
+                    self.STATUS[_slot]['LOOPLOG'] = True
+                self.STATUS[_slot]['LAST'] = pkt_time
+                return
+            for _obp_system in _OBP_SYSTEMS:
+                if _obp_system == self._system:
                     continue
-                if CONFIG['SYSTEMS'][system]['MODE'] != 'OPENBRIDGE':
-                    for _sysslot in systems[system].STATUS:
-                        if 'RX_STREAM_ID' in systems[system].STATUS[_sysslot] and _stream_id == systems[system].STATUS[_sysslot]['RX_STREAM_ID']:
-                            if 'LOOPLOG' not in self.STATUS[_slot] or not self.STATUS[_slot]['LOOPLOG']: 
-                                logger.debug("(%s) OBP *LoopControl* FIRST HBP: %s, STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id),_sysslot)
-                                self.STATUS[_slot]['LOOPLOG'] = True
-                            self.STATUS[_slot]['LAST'] = pkt_time
-                            return
-                else:
-                    if _stream_id in systems[system].STATUS and '1ST' in systems[system].STATUS[_stream_id] and systems[system].STATUS[_stream_id]['TGID'] == _dst_id:
-                        if 'LOOPLOG' not in self.STATUS[_slot] or not self.STATUS[_slot]['LOOPLOG']:
-                            logger.debug("(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id))
-                            self.STATUS[_slot]['LOOPLOG'] = True
-                        self.STATUS[_slot]['LAST'] = pkt_time
-                        
-                        if 'ENHANCED_OBP' in CONFIG['SYSTEMS'][self._system] and CONFIG['SYSTEMS'][self._system]['ENHANCED_OBP'] and '_bcsq' not in self.STATUS[_slot]:
-                            systems[self._system].send_bcsq(_dst_id,_stream_id)
-                            self.STATUS[_slot]['_bcsq'] = True
-                        return
+                if (_stream_id in systems[_obp_system].STATUS
+                        and '1ST' in systems[_obp_system].STATUS[_stream_id]
+                        and systems[_obp_system].STATUS[_stream_id]['TGID'] == _dst_id):
+                    if 'LOOPLOG' not in self.STATUS[_slot] or not self.STATUS[_slot]['LOOPLOG']:
+                        logger.debug("(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE",self._system, _obp_system, int_id(_stream_id), int_id(_dst_id))
+                        self.STATUS[_slot]['LOOPLOG'] = True
+                    self.STATUS[_slot]['LAST'] = pkt_time
+                    if 'ENHANCED_OBP' in CONFIG['SYSTEMS'][self._system] and CONFIG['SYSTEMS'][self._system]['ENHANCED_OBP'] and '_bcsq' not in self.STATUS[_slot]:
+                        systems[self._system].send_bcsq(_dst_id,_stream_id)
+                        self.STATUS[_slot]['_bcsq'] = True
+                    return
             
             #Duplicate handling#
             #Duplicate complete packet
@@ -3866,7 +3919,7 @@ class routerHBP(HBSYSTEM):
             self.STATUS[_slot]['RX_TYPE']      = _dtype_vseq
             self.STATUS[_slot]['RX_TGID']      = _dst_id
             self.STATUS[_slot]['RX_TIME']      = pkt_time
-            self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
+            self._assign_rx_stream_id(_slot, _stream_id)
             
             self.STATUS[_slot]['crcs'].add(_pkt_crc)
 
@@ -4230,6 +4283,9 @@ if __name__ == '__main__':
             listeningPorts[system] = reactor.listenUDP(CONFIG['SYSTEMS'][system]['PORT'], systems[system], interface=CONFIG['SYSTEMS'][system]['IP'])
             logger.debug('(GLOBAL) %s instance created: %s, %s', CONFIG['SYSTEMS'][system]['MODE'], system, systems[system])
 
+    refresh_obp_system_list()
+    logger.info('(ROUTER) LoopControl fast path: %d OBP systems cached', len(_OBP_SYSTEMS))
+
     def loopingErrHandle(failure):
         logger.error('(GLOBAL) STOPPING REACTOR TO AVOID MEMORY LEAK: Unhandled error in timed loop.\n %s', failure)
         reactor.stop()
@@ -4286,7 +4342,7 @@ if __name__ == '__main__':
     #STAT trimmer - once every 10 mins (roughly - shifted so all timed tasks don't run at once
     if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:
         stat_trimmer_task = task.LoopingCall(statTrimmer)
-        stat_trimmer = stat_trimmer_task.start(523)#3600
+        stat_trimmer = stat_trimmer_task.start(3600)
         stat_trimmer.addErrback(loopingErrHandle)
         
     #KA Reporting
