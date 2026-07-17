@@ -364,6 +364,66 @@ def system_has_static_tgs(system_cfg):
     return False
 
 
+def parse_static_tg_list(ts_static):
+    """Normalize TS1_STATIC/TS2_STATIC config value to a list of TG integers."""
+    if not ts_static or ts_static is False:
+        return []
+    text = re.sub(r'\s', '', str(ts_static))
+    if not text or text in ('0', 'False'):
+        return []
+    result = []
+    for part in text.split(','):
+        if not part:
+            continue
+        try:
+            tg = int(part)
+        except (TypeError, ValueError):
+            continue
+        if tg <= 0 or tg >= 16777215:
+            continue
+        result.append(tg)
+    return result
+
+
+def parse_options_static_fields(options_str):
+    """Extract TS1/TS2 static talkgroup lists from a semicolon OPTIONS string."""
+    ts1 = False
+    ts2 = False
+    if not options_str:
+        return ts1, ts2
+    text = options_str
+    if isinstance(text, bytes):
+        text = text.decode('ascii', errors='ignore')
+    text = text.rstrip('\x00')
+    for part in str(text).split(';'):
+        if '=' not in part:
+            continue
+        key, val = part.split('=', 1)
+        key = key.strip()
+        val = val.strip()
+        if key in ('TS1', 'TS1_1'):
+            ts1 = val if val else False
+        elif key in ('TS2', 'TS2_1'):
+            ts2 = val if val else False
+        elif key.startswith('TS1_') and val:
+            ts1 = ','.join([str(ts1), val]) if ts1 and ts1 is not False else val
+        elif key.startswith('TS2_') and val:
+            ts2 = ','.join([str(ts2), val]) if ts2 and ts2 is not False else val
+    return ts1, ts2
+
+
+def bridge_has_active_static_leg(bridges, system, ts, tg):
+    """True when bridge *tg* has a permanent static leg on *system* slot *ts*."""
+    from dmr_utils3.utils import bytes_3
+    tgid_b = bytes_3(tg)
+    for entry in bridges.get(str(tg), ()):
+        if (entry.get('SYSTEM') == system and entry.get('TS') == ts
+                and entry.get('TGID') == tgid_b
+                and entry.get('TO_TYPE') == 'OFF' and entry.get('ACTIVE')):
+            return True
+    return False
+
+
 def set_reflector_link_owner(entry, rf_src, peer_id):
     """Record who owns an active dial-a-tg link (timer resets only on their PTT)."""
     entry['LINKER'] = rf_src

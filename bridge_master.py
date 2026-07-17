@@ -87,6 +87,9 @@ from bridge_helpers import (
     clear_default_reflectors_for_system,
     system_has_static_tgs,
     is_valid_talkgroup_bridge,
+    parse_static_tg_list,
+    parse_options_static_fields,
+    bridge_has_active_static_leg,
 )
 # NOTE: 'words' is loaded dynamically via readAMBE() at runtime (see line ~2689)
 #from voice_lib import words
@@ -616,24 +619,43 @@ def reset_static_tg(tg,ts,_tmout,system):
     _idx_replace_bridge(str(tg))
 
 
-def reapply_static_tgs_for_system(system, tmout=None):
-    """Re-create static TG bridge legs for one routing master (after bridge reset)."""
+def ensure_static_tgs_for_system(system, tmout=None):
+    """Idempotent: create any missing OFF/ACTIVE static legs from CONFIG TS1/TS2_STATIC."""
     if system not in CONFIG['SYSTEMS']:
-        return
+        return 0
     if not is_routing_master(CONFIG['SYSTEMS'][system]['MODE']):
-        return
+        return 0
+    if not system_has_static_tgs(CONFIG['SYSTEMS'][system]):
+        return 0
     if tmout is None:
         tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
-    ts1 = CONFIG['SYSTEMS'][system].get('TS1_STATIC') or ''
-    ts2 = CONFIG['SYSTEMS'][system].get('TS2_STATIC') or ''
-    for tg in (ts1.split(',') if ts1 else []):
-        if not tg:
+    repaired = 0
+    for tg in parse_static_tg_list(CONFIG['SYSTEMS'][system].get('TS1_STATIC')):
+        if not bridge_has_active_static_leg(BRIDGES, system, 1, tg):
+            make_static_tg(tg, 1, tmout, system)
+            repaired += 1
+            logger.info('(OPTIONS) Repaired missing static TG %s TS1 for %s', tg, system)
+    for tg in parse_static_tg_list(CONFIG['SYSTEMS'][system].get('TS2_STATIC')):
+        if not bridge_has_active_static_leg(BRIDGES, system, 2, tg):
+            make_static_tg(tg, 2, tmout, system)
+            repaired += 1
+            logger.info('(OPTIONS) Repaired missing static TG %s TS2 for %s', tg, system)
+    if repaired:
+        notify_bridge_table_updated()
+    return repaired
+
+
+def reapply_static_tgs_for_system(system, tmout=None):
+    """Re-create static TG bridge legs for one routing master (after bridge reset)."""
+    return ensure_static_tgs_for_system(system, tmout)
+
+
+def repair_static_tgs_all_systems():
+    """Ensure static legs exist for every routing master with TS1/TS2_STATIC configured."""
+    for _system in CONFIG['SYSTEMS']:
+        if not CONFIG['SYSTEMS'][_system].get('ENABLED'):
             continue
-        make_static_tg(int(tg), 1, tmout, system)
-    for tg in (ts2.split(',') if ts2 else []):
-        if not tg:
-            continue
-        make_static_tg(int(tg), 2, tmout, system)
+        ensure_static_tgs_for_system(_system)
 
 
 def reset_default_reflector(reflector,_tmout,system):
@@ -678,7 +700,7 @@ def make_single_reflector(_tgid,_tmout,_sourcesystem):
     # Keep routing index in sync
     _idx_add_bridge(_bridge)
 
-def remove_bridge_system(system, new_timeout_s=None):
+def remove_bridge_system(system, new_timeout_s=None, preserve_static_legs=True):
     _bridgestemp = {}
     for _bridge in BRIDGES:
         for _bridgesystem in BRIDGES[_bridge]:
@@ -689,7 +711,8 @@ def remove_bridge_system(system, new_timeout_s=None):
             else:
                 if _bridge not in _bridgestemp:
                     _bridgestemp[_bridge] = []
-                if (_bridgesystem['TO_TYPE'] == 'OFF' and _bridgesystem['ACTIVE'] == True):
+                if (preserve_static_legs
+                        and _bridgesystem['TO_TYPE'] == 'OFF' and _bridgesystem['ACTIVE'] == True):
                     _timeout = _bridgesystem['TIMEOUT']
                     if new_timeout_s is not None and isinstance(_timeout, (int, float)):
                         _timeout = new_timeout_s
@@ -1075,6 +1098,8 @@ def statTrimmer():
                 _bridge_stat = True
             if _system['TO_TYPE'] == 'ON' and _system['ACTIVE']:
                 _in_use = True
+            elif _system['TO_TYPE'] == 'OFF' and _system['ACTIVE']:
+                _in_use = True
             elif _system['TO_TYPE'] == 'OFF' and not _system['ACTIVE']:
                 _in_use = True
         if _bridge_stat and not _in_use:
@@ -1082,7 +1107,10 @@ def statTrimmer():
     for _bridgerem in _remove_bridges:
         _idx_remove_bridge(_bridgerem)
         del BRIDGES[_bridgerem]
-        logger.debug('(ROUTER) STAT bridge %s removed',_bridgerem)
+        logger.info('(ROUTER) STAT bridge %s removed (idle, no active legs)', _bridgerem)
+    if _remove_bridges:
+        rebuild_bridge_index()
+    repair_static_tgs_all_systems()
     if CONFIG['REPORTS']['REPORT']:
         report_server.send_clients(b'bridge updated')
 
@@ -1463,9 +1491,13 @@ def options_config():
     logger.debug('(OPTIONS) Running options parser')
     for _system in CONFIG['SYSTEMS']:
         if '_reset' in  CONFIG['SYSTEMS'][_system] and CONFIG['SYSTEMS'][_system]['_reset']:
-            logger.debug('(OPTIONS) Bridge reset for %s - no peers',_system)
-            remove_bridge_system(_system)
-            reapply_static_tgs_for_system(_system)
+            logger.info('(OPTIONS) Bridge reset for %s - no peers', _system)
+            _opt_str = CONFIG['SYSTEMS'][_system].get('OPTIONS', '')
+            if _opt_str:
+                _ts1, _ts2 = parse_options_static_fields(_opt_str)
+                CONFIG['SYSTEMS'][_system]['TS1_STATIC'] = _ts1 if _ts1 else False
+                CONFIG['SYSTEMS'][_system]['TS2_STATIC'] = _ts2 if _ts2 else False
+            remove_bridge_system(_system, preserve_static_legs=False)
             CONFIG['SYSTEMS'][_system]['_reset'] = False
             continue
         try:
@@ -1753,6 +1785,7 @@ def options_config():
                     CONFIG['SYSTEMS'][_system]['TS2_STATIC'] = _options['TS2_STATIC']
                     CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR'] = int(_options['DEFAULT_REFLECTOR'])
                     CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER'] = int(_options['DEFAULT_UA_TIMER'])
+                    ensure_static_tgs_for_system(_system, _tmout)
         except Exception as e:
             logger.exception('(OPTIONS) caught exception: %s',e)
             continue
