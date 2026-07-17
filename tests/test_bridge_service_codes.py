@@ -18,6 +18,12 @@ class TestIsValidTalkgroupBridge(unittest.TestCase):
         self.assertFalse(is_valid_talkgroup_bridge('9991'))
         self.assertFalse(is_valid_talkgroup_bridge('9999'))
 
+    def test_parrot_talkgroup_accepted(self):
+        from bridge_helpers import is_parrot_talkgroup, PARROT_TG
+        self.assertTrue(is_valid_talkgroup_bridge('9990'))
+        self.assertTrue(is_parrot_talkgroup(PARROT_TG))
+        self.assertFalse(is_parrot_talkgroup(9991))
+
     def test_normal_talkgroups_accepted(self):
         self.assertTrue(is_valid_talkgroup_bridge('23426'))
         self.assertTrue(is_valid_talkgroup_bridge('235'))
@@ -86,6 +92,18 @@ class TestBridgeServiceCodeSourcePatterns(unittest.TestCase):
         self.assertIn('if not is_dial_service_code(_int_dst):', source)
         self.assertIn('if not is_dial_service_code(int_id(_dst_id)):', source)
         self.assertIn('if int_id(_dst_id) == 4000:\n                    disconnect_dial_reflectors(self._system)', source)
+
+    def test_parrot_never_routes_obp(self):
+        from bridge_helpers import is_parrot_bridge, PARROT_TG
+        with open('bridge_master.py', encoding='utf-8') as fh:
+            source = fh.read()
+        self.assertTrue(is_parrot_bridge(str(PARROT_TG)))
+        self.assertTrue(is_parrot_bridge('#9990'))
+        self.assertIn('is_parrot_bridge(_bridge)', source)
+        self.assertIn('Parrot (TG 9990) is HBP/PEER only', source)
+        with open('hblink.py', encoding='utf-8') as fh:
+            hblink = fh.read()
+        self.assertIn('_int_dst_id >= 9990 and _int_dst_id <= 9999', hblink)
 
 
 if __name__ == '__main__':
