@@ -52,7 +52,8 @@ class TestBridgeServiceCodeSourcePatterns(unittest.TestCase):
     def test_remove_bridge_preserves_static_off(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
             source = fh.read()
-        self.assertIn("if (_bridgesystem['TO_TYPE'] == 'OFF' and _bridgesystem['ACTIVE'] == True):", source)
+        self.assertIn('preserve_static_legs', source)
+        self.assertIn("_bridgesystem['TO_TYPE'] == 'OFF' and _bridgesystem['ACTIVE'] == True", source)
 
     def test_static_timer_zero_in_make_static_tg(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
@@ -70,10 +71,14 @@ class TestBridgeServiceCodeSourcePatterns(unittest.TestCase):
             source = fh.read()
         self.assertIn('def _ensure_obp_stat_leg(tg_s, tgid_b):', source)
 
-    def test_reset_reapplies_statics(self):
+    def test_reset_clears_statics_until_reconnect(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
             source = fh.read()
-        self.assertIn('remove_bridge_system(_system)\n            reapply_static_tgs_for_system(_system)', source)
+        self.assertIn('preserve_static_legs=False)', source)
+        self.assertIn('parse_options_static_fields(_opt_str)', source)
+        self.assertNotIn(
+            'remove_bridge_system(_system)\n            reapply_static_tgs_for_system(_system)',
+            source)
 
     def test_routing_skips_dial_service_codes(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
