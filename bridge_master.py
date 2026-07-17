@@ -71,8 +71,11 @@ from bridge_helpers import iter_routing_master_systems as _iter_routing_master_s
 from bridge_helpers import (
     DIAL_A_TG,
     DIAL_A_TG_BYTES,
+    PARROT_TG,
     is_dial_service_code,
     is_invalid_dial_reflector,
+    is_parrot_talkgroup,
+    is_parrot_bridge,
     reflector_bridge_matches_group_call,
     bridge_transmission_matches_rule,
     reflector_single_mode_wrong_tg,
@@ -460,6 +463,8 @@ def make_single_bridge(_tgid,_sourcesystem,_slot,_tmout):
 
 #Make static bridge - used for on-the-fly relay bridges
 def make_stat_bridge(_tgid):
+    if is_parrot_talkgroup(int_id(_tgid)):
+        return
     _tgid_s = str(int_id(_tgid))
     BRIDGES[_tgid_s] = []
     for _system in iter_routing_master_systems():
@@ -492,7 +497,7 @@ def is_reflector_private_destination(int_dst_id):
     """
     if int_dst_id in (4000, 5000):
         return True
-    if int_dst_id >= 9991 and int_dst_id <= 9999:
+    if int_dst_id in range(9991, 10000):
         return True
     if int_dst_id >= 5 and int_dst_id not in (8, 9) and int_dst_id <= 999999:
         return True
@@ -542,6 +547,8 @@ def make_default_reflector(reflector,_tmout,system):
 
 def _ensure_obp_stat_leg(tg_s, tgid_b):
     """Permanent OBP STAT leg so inbound TS1 (e.g. from OpenBridge) can route to static TGs."""
+    if is_parrot_talkgroup(tg_s):
+        return
     if not CONFIG['GLOBAL'].get('GEN_STAT_BRIDGES'):
         return
     if tg_s not in BRIDGES:
@@ -1967,7 +1974,7 @@ class routerOBP(OPENBRIDGE):
                     #logger.debug("(DEDUP) OBP Source Skipping system %s TS: %s",_target['SYSTEM'],_target['TS'])
                     continue
                 if _target_system['MODE'] == 'OPENBRIDGE':
-                    if _noOBP == True:
+                    if _noOBP == True or is_parrot_bridge(_bridge):
                         continue
                     #We want to ignore this system and TS combination if it's called again for this packet
                     _sysIgnore.append((_target['SYSTEM'],_target['TS']))
@@ -2217,6 +2224,12 @@ class routerOBP(OPENBRIDGE):
         _pkt_crc = _h.digest()
         
         #_pkt_crc = _hash
+
+        _int_dst_id = int_id(_dst_id)
+
+        # Parrot (TG 9990) is HBP/PEER only — never bridge through OpenBridge.
+        if is_parrot_talkgroup(_int_dst_id):
+            return
 
         # Match UNIT data, SMS/GPS, and send it to the dst_id if it is in SUB_MAP
         if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or _dtype_vseq == 8 or ((_stream_id not in self.STATUS) and _dtype_vseq == 3)):
@@ -2532,6 +2545,7 @@ class routerOBP(OPENBRIDGE):
             if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:
                 if (int_id(_dst_id) >= 5 and int_id(_dst_id) != 9
                         and not is_dial_service_code(int_id(_dst_id))
+                        and not is_parrot_talkgroup(int_id(_dst_id))
                         and is_valid_talkgroup_bridge(str(int_id(_dst_id)))
                         and (str(int_id(_dst_id)) not in BRIDGES)):
                     logger.debug('(%s) Bridge for STAT TG %s does not exist. Creating',self._system, int_id(_dst_id))
@@ -2540,6 +2554,7 @@ class routerOBP(OPENBRIDGE):
             # Activate this OBP leg on an existing conference bridge (same as HBP on call start)
             _int_dst = int_id(_dst_id)
             if (_int_dst >= 5 and _int_dst != 9 and _int_dst not in (4000, 5000)
+                    and not is_parrot_talkgroup(_int_dst)
                     and not (_int_dst >= 9991 and _int_dst <= 9999)
                     and str(_int_dst) in BRIDGES):
                 activate_ua_bridge_source(str(_int_dst), self._system, _slot, peer_id=_peer_id)
@@ -2718,7 +2733,7 @@ class routerHBP(HBSYSTEM):
                         #logger.debug("(DEDUP) HBP Source - Skipping system %s TS: %s",_target['SYSTEM'],_target['TS'])
                         continue
                     if _target_system['MODE'] == 'OPENBRIDGE':
-                        if _noOBP == True:
+                        if _noOBP == True or is_parrot_bridge(_bridge):
                             continue
                         #We want to ignore this system and TS combination if it's called again for this packet
                         _sysIgnore.append((_target['SYSTEM'],_target['TS']))
@@ -3168,12 +3183,6 @@ class routerHBP(HBSYSTEM):
             #_bits = header(_slot,'unit',_bits)
             #logger.info('(%s) Type Rewrite - GPS data from ID: %s,  on TG 900999 rewritten to unit call to ID 900999 : bits %s',self._system,int_id(_rf_src),_bits)
             #_call_type == 'unit'
-       
-        #Rewrite incoming loro request to group call
-        #if _call_type == 'unit' and _int_dst_id == 9990:
-            #_bits = header(_slot,'group',_bits)
-            #logger.info('(%s) Type Rewrite - Echo data from ID: %s,  on PC 9990 rewritten to group call to TG 9990',self._system,int_id(_rf_src))
-            #_call_type == 'group'
        
        
         if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or _dtype_vseq == 8 or (_stream_id != self.STATUS[_slot]['RX_STREAM_ID'] and _dtype_vseq == 3)):

@@ -10,6 +10,8 @@ from ipsc_const import is_routing_master
 DIAL_A_TG = 9
 DIAL_A_TG_BYTES = bytes_3(DIAL_A_TG)
 _DIAL_SERVICE_CODES = frozenset([DIAL_A_TG, 4000, 5000])
+PARROT_TG = 9990
+_SERVICE_TG_RANGE = range(9991, 10000)
 
 
 def is_dial_service_code(reflector):
@@ -28,6 +30,23 @@ def is_invalid_dial_reflector(reflector):
         return False
 
 
+def is_parrot_talkgroup(tgid):
+    """TG 9990 — parrot echo (group call on 9990, or dial-a-tg private call to 9990)."""
+    try:
+        return int(tgid) == PARROT_TG
+    except (TypeError, ValueError):
+        return False
+
+
+def is_parrot_bridge(bridge_name):
+    """Conference or dial reflector bridge for parrot (never routes via OpenBridge)."""
+    if not bridge_name:
+        return False
+    if bridge_name[0:1] == '#':
+        return is_parrot_talkgroup(bridge_name[1:])
+    return is_parrot_talkgroup(bridge_name)
+
+
 def is_valid_talkgroup_bridge(bridge_name):
     """False for dial service codes (9/4000/5000) and parrot/service TG ranges."""
     if bridge_name[0:1] == '#':
@@ -38,7 +57,7 @@ def is_valid_talkgroup_bridge(bridge_name):
         return True
     if is_dial_service_code(n):
         return False
-    if 9991 <= n <= 9999:
+    if n in _SERVICE_TG_RANGE:
         return False
     return n >= 5
 
@@ -105,7 +124,7 @@ def private_call_may_create_reflector(int_dst_id, bridges):
         return False
     if 4000 <= int_dst_id <= 5000:
         return False
-    if 9991 <= int_dst_id <= 9999:
+    if int_dst_id in _SERVICE_TG_RANGE:
         return False
     return f'#{int_dst_id}' not in bridges
 

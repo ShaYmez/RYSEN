@@ -7,11 +7,13 @@ from dmr_utils3.utils import bytes_3
 
 from bridge_helpers import (
     DIAL_A_TG,
+    PARROT_TG,
     build_bridge_index,
     clear_default_reflectors_for_system,
     collect_group_route_bridges,
     is_dial_service_code,
     is_invalid_dial_reflector,
+    is_parrot_talkgroup,
     private_call_may_create_reflector,
     to_target_forward_systems,
 )
@@ -101,6 +103,14 @@ class TestPrivateCallReflectorNine(unittest.TestCase):
 
     def test_private_to_reflector_still_allowed(self):
         self.assertTrue(private_call_may_create_reflector(2350, {}))
+
+    def test_private_to_parrot_creates_dial_reflector(self):
+        """Dial-a-tg: PC 9990 then PTT on TG 9 uses #9990 reflector bridge."""
+        self.assertTrue(private_call_may_create_reflector(PARROT_TG, {}))
+        self.assertTrue(is_parrot_talkgroup(PARROT_TG))
+        from bridge_helpers import is_parrot_bridge
+        self.assertTrue(is_parrot_bridge('#9990'))
+        self.assertTrue(is_parrot_bridge('9990'))
 
 
 class TestSanitizeReflectorNine(unittest.TestCase):
