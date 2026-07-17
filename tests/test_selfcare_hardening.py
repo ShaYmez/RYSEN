@@ -95,8 +95,8 @@ class TestHotspotProxyHardening(unittest.TestCase):
         self.assertIn('yield self.db_proxy.slct_opt(_peer_id)', source)
         self.assertIn('yield self.db_proxy.slct_db()', source)
         self.assertIn(".get('opt_timer')", source)
-        self.assertIn('selfcare re-apply in 3s', source)
-        self.assertNotIn('Options send by peer overrides Self Service options', source)
+        self.assertIn('Options received from:', source)
+        self.assertNotIn('selfcare re-apply in 3s', source)
 
     def test_opt_rcvd_preserves_db_options(self):
         with open('proxy_db.py', encoding='utf-8') as fh:
@@ -110,6 +110,23 @@ class TestHotspotProxyHardening(unittest.TestCase):
         with open('selfcare_db.py', encoding='utf-8') as fh:
             source = fh.read()
         self.assertIn('def select_hotspot_options(self, dmr_id):', source)
+
+
+class TestStaticKeyupNoise(unittest.TestCase):
+
+    def test_multi_to_single_is_noise(self):
+        from bridge_helpers import is_static_field_keyup_noise
+        self.assertTrue(is_static_field_keyup_noise('116,235,2350', '69'))
+
+    def test_login_multi_static_is_not_noise(self):
+        from bridge_helpers import is_static_field_keyup_noise
+        self.assertFalse(is_static_field_keyup_noise('', '116,235,2350'))
+        self.assertFalse(is_static_field_keyup_noise('2350', '116,235'))
+
+    def test_single_static_user_not_noise(self):
+        from bridge_helpers import is_static_field_keyup_noise
+        self.assertFalse(is_static_field_keyup_noise('', '2350'))
+        self.assertFalse(is_static_field_keyup_noise(False, '2350'))
 
 
 class TestRouterHbpTimeoutCleanup(unittest.TestCase):

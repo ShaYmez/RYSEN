@@ -90,6 +90,7 @@ from bridge_helpers import (
     parse_static_tg_list,
     parse_options_static_fields,
     bridge_has_active_static_leg,
+    is_static_field_keyup_noise,
 )
 # NOTE: 'words' is loaded dynamically via readAMBE() at runtime (see line ~2689)
 #from voice_lib import words
@@ -1692,6 +1693,21 @@ def options_config():
                         if re.search(r"[^\d,]", _options['TS2_STATIC']):
                             logger.debug('(OPTIONS) %s - TS2_STATIC contains characters other than numbers and comma, ignoring',_system)
                             continue
+
+                    if is_static_field_keyup_noise(
+                            CONFIG['SYSTEMS'][_system].get('TS1_STATIC'), _options['TS1_STATIC']):
+                        logger.info(
+                            '(OPTIONS) %s ignoring TS1=%s (key-up noise vs static bundle %s)',
+                            _system, _options['TS1_STATIC'],
+                            CONFIG['SYSTEMS'][_system].get('TS1_STATIC'))
+                        _options['TS1_STATIC'] = CONFIG['SYSTEMS'][_system]['TS1_STATIC']
+                    if is_static_field_keyup_noise(
+                            CONFIG['SYSTEMS'][_system].get('TS2_STATIC'), _options['TS2_STATIC']):
+                        logger.info(
+                            '(OPTIONS) %s ignoring TS2=%s (key-up noise vs static bundle %s)',
+                            _system, _options['TS2_STATIC'],
+                            CONFIG['SYSTEMS'][_system].get('TS2_STATIC'))
+                        _options['TS2_STATIC'] = CONFIG['SYSTEMS'][_system]['TS2_STATIC']
                     
                     if isinstance(_options['DEFAULT_REFLECTOR'], str) and not _options['DEFAULT_REFLECTOR'].isdigit():
                         logger.debug('(OPTIONS) %s - DEFAULT_REFLECTOR is not an integer, ignoring',_system)
@@ -1841,7 +1857,7 @@ def ipsc_selfcare_poll():
 
 @inlineCallbacks
 def hotspot_selfcare_static_reconcile():
-    """Re-apply MariaDB TS1/TS2 when Pi-Star local RPTO overwrote selfcare statics."""
+    """Repair selfcare static bundle after key-up noise overwrote CONFIG (not peer login Options=)."""
     ss = CONFIG.get('SELF SERVICE', {})
     if not ss.get('ENABLED') or _selfcare_db is None:
         return
@@ -1865,11 +1881,14 @@ def hotspot_selfcare_static_reconcile():
             db_ts1, db_ts2 = parse_options_static_fields(opt_str)
             cfg_ts1 = syscfg.get('TS1_STATIC') or False
             cfg_ts2 = syscfg.get('TS2_STATIC') or False
+            if not is_static_field_keyup_noise(db_ts2, cfg_ts2):
+                if not is_static_field_keyup_noise(db_ts1, cfg_ts1):
+                    continue
             if (parse_static_tg_list(db_ts1) == parse_static_tg_list(cfg_ts1)
                     and parse_static_tg_list(db_ts2) == parse_static_tg_list(cfg_ts2)):
                 continue
             logger.info(
-                '(SELF SERVICE) Hotspot static mismatch on %s — reapplying DB options (cfg TS2=%s, db TS2=%s)',
+                '(SELF SERVICE) Hotspot static key-up noise on %s — restoring selfcare statics (cfg TS2=%s, db TS2=%s)',
                 system, cfg_ts2, db_ts2)
             CONFIG['SYSTEMS'][system]['OPTIONS'] = opt_str
             try:

@@ -424,6 +424,21 @@ def bridge_has_active_static_leg(bridges, system, ts, tg):
     return False
 
 
+def is_static_field_keyup_noise(existing_ts_static, proposed_ts_static):
+    """True when a lone TG in OPTIONS likely reflects a keyed talkgroup, not static config.
+
+    Pi-Star/VoxDMR login Options= with comma-separated statics is real config and is not
+    noise. A single TG replacing an established multi-static bundle usually is key-up noise.
+    """
+    old_list = parse_static_tg_list(existing_ts_static)
+    new_list = parse_static_tg_list(proposed_ts_static)
+    if len(new_list) != 1:
+        return False
+    if len(old_list) <= 1:
+        return False
+    return new_list[0] not in old_list
+
+
 def set_reflector_link_owner(entry, rf_src, peer_id):
     """Record who owns an active dial-a-tg link (timer resets only on their PTT)."""
     entry['LINKER'] = rf_src
