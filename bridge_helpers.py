@@ -120,6 +120,8 @@ def to_target_forward_systems(bridge_entries, source_system):
 
 def private_call_may_create_reflector(int_dst_id, bridges):
     """True when a private call would invoke make_single_reflector (routerHBP private path)."""
+    if is_parrot_talkgroup(int_dst_id):
+        return False
     if int_dst_id < 5 or int_dst_id in (8, 9) or int_dst_id > 999999:
         return False
     if 4000 <= int_dst_id <= 5000:

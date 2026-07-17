@@ -104,13 +104,13 @@ class TestPrivateCallReflectorNine(unittest.TestCase):
     def test_private_to_reflector_still_allowed(self):
         self.assertTrue(private_call_may_create_reflector(2350, {}))
 
-    def test_private_to_parrot_creates_dial_reflector(self):
-        """Dial-a-tg: PC 9990 then PTT on TG 9 uses #9990 reflector bridge."""
-        self.assertTrue(private_call_may_create_reflector(PARROT_TG, {}))
+    def test_private_to_parrot_uses_unit_echo_not_reflector(self):
+        """Parrot is a private call to 9990 — not a dial-a-tg reflector link."""
+        self.assertFalse(private_call_may_create_reflector(PARROT_TG, {}))
         self.assertTrue(is_parrot_talkgroup(PARROT_TG))
         from bridge_helpers import is_parrot_bridge
-        self.assertTrue(is_parrot_bridge('#9990'))
         self.assertTrue(is_parrot_bridge('9990'))
+        self.assertFalse(is_parrot_bridge('2350'))
 
 
 class TestSanitizeReflectorNine(unittest.TestCase):
