@@ -1840,6 +1840,48 @@ def ipsc_selfcare_poll():
 
 
 @inlineCallbacks
+def hotspot_selfcare_static_reconcile():
+    """Re-apply MariaDB TS1/TS2 when Pi-Star local RPTO overwrote selfcare statics."""
+    ss = CONFIG.get('SELF SERVICE', {})
+    if not ss.get('ENABLED') or _selfcare_db is None:
+        return
+    try:
+        for system, syscfg in CONFIG['SYSTEMS'].items():
+            if syscfg.get('MODE') != 'MASTER' or not syscfg.get('ENABLED'):
+                continue
+            connected = [(pid, p) for pid, p in (syscfg.get('PEERS') or {}).items()
+                         if p.get('CONNECTION') == 'YES']
+            if len(connected) != 1:
+                continue
+            peer_id, _peer = connected[0]
+            rows = yield _selfcare_db.select_hotspot_options(peer_id)
+            if not rows:
+                continue
+            options = rows[0][0]
+            opt_str = (options.decode('utf-8', errors='ignore')
+                       if isinstance(options, bytes) else str(options))
+            if not opt_str.strip():
+                continue
+            db_ts1, db_ts2 = parse_options_static_fields(opt_str)
+            cfg_ts1 = syscfg.get('TS1_STATIC') or False
+            cfg_ts2 = syscfg.get('TS2_STATIC') or False
+            if (parse_static_tg_list(db_ts1) == parse_static_tg_list(cfg_ts1)
+                    and parse_static_tg_list(db_ts2) == parse_static_tg_list(cfg_ts2)):
+                continue
+            logger.info(
+                '(SELF SERVICE) Hotspot static mismatch on %s — reapplying DB options (cfg TS2=%s, db TS2=%s)',
+                system, cfg_ts2, db_ts2)
+            CONFIG['SYSTEMS'][system]['OPTIONS'] = opt_str
+            try:
+                options_config()
+            except Exception:
+                logger.exception(
+                    '(SELF SERVICE) options_config failed during hotspot reconcile for %s', system)
+    except Exception as err:
+        logger.exception('(SELF SERVICE) hotspot static reconcile error: %s', err)
+
+
+@inlineCallbacks
 def hotspot_selfcare_disc_poll():
     """Apply DISC=1 from MariaDB for hotspots without waiting for proxy RPTO."""
     ss = CONFIG.get('SELF SERVICE', {})
@@ -4151,6 +4193,11 @@ if __name__ == '__main__':
         hs_disc.addErrback(loopingErrHandle)
         logger.info('(SELF SERVICE) Hotspot DISC=1 poll every %ss',
                     ss.get('DISC_POLL_INTERVAL', 2))
+        hs_static_task = task.LoopingCall(hotspot_selfcare_static_reconcile)
+        hs_static = hs_static_task.start(ss.get('POLL_INTERVAL', 5))
+        hs_static.addErrback(loopingErrHandle)
+        logger.info('(SELF SERVICE) Hotspot static reconcile poll every %ss',
+                    ss.get('POLL_INTERVAL', 5))
         
     #STAT trimmer - once every 10 mins (roughly - shifted so all timed tasks don't run at once
     if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:

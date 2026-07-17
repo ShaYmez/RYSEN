@@ -224,11 +224,13 @@ class Proxy(DatagramProtocol):
                             print(f'Password stored for: {int_id(_peer_id)}')
                             return
                     self.db_proxy.updt_tbl('opt_rcvd', _peer_id)
-                    # Options send by peer overrides Self Service options
+                    # Pi-Star may send local TS2= before selfcare; re-push DB options shortly.
                     _opt_timer = self.peerTrack[_peer_id].get('opt_timer')
                     if _opt_timer is not None and _opt_timer.active():
                         _opt_timer.cancel()
-                        print(f'Options received from: {int_id(_peer_id)}')
+                    self.peerTrack[_peer_id]['opt_timer'] = reactor.callLater(
+                        3, self.login_opt, _peer_id)
+                    print(f'Options received from peer {int_id(_peer_id)}; selfcare re-apply in 3s')
 
             elif _command == RPTP:              # RPTPing -- peer is pinging us
                 _peer_id = data[7:11]

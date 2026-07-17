@@ -89,7 +89,7 @@ class ProxyDB:
                 yield self.dbpool.runOperation("UPDATE Clients SET logged_in=False, opt_rcvd=False")
             elif actn == "opt_rcvd":
                 yield self.dbpool.runOperation(
-                    "UPDATE Clients SET opt_rcvd = True, options = NULL WHERE dmr_id = %s",
+                    "UPDATE Clients SET opt_rcvd = True WHERE dmr_id = %s",
                     (dmr_id,))
             elif actn == "last_seen":
                 yield self.dbpool.runOperation(

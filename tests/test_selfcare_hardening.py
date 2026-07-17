@@ -95,6 +95,21 @@ class TestHotspotProxyHardening(unittest.TestCase):
         self.assertIn('yield self.db_proxy.slct_opt(_peer_id)', source)
         self.assertIn('yield self.db_proxy.slct_db()', source)
         self.assertIn(".get('opt_timer')", source)
+        self.assertIn('selfcare re-apply in 3s', source)
+        self.assertNotIn('Options send by peer overrides Self Service options', source)
+
+    def test_opt_rcvd_preserves_db_options(self):
+        with open('proxy_db.py', encoding='utf-8') as fh:
+            source = fh.read()
+        self.assertNotIn('opt_rcvd = True, options = NULL', source)
+
+    def test_hotspot_static_reconcile_poll(self):
+        with open('bridge_master.py', encoding='utf-8') as fh:
+            source = fh.read()
+        self.assertIn('def hotspot_selfcare_static_reconcile():', source)
+        with open('selfcare_db.py', encoding='utf-8') as fh:
+            source = fh.read()
+        self.assertIn('def select_hotspot_options(self, dmr_id):', source)
 
 
 class TestRouterHbpTimeoutCleanup(unittest.TestCase):

@@ -113,6 +113,14 @@ class SelfcareDB:
             (IPSC_CLIENT_MODE,),
         )
 
+    def select_hotspot_options(self, dmr_id):
+        """Stored selfcare OPTIONS for a connected hotspot (mode > 0)."""
+        return self.dbpool.runQuery(
+            'SELECT options FROM Clients WHERE dmr_id = %s AND mode > 0 '
+            "AND options IS NOT NULL AND TRIM(options) != ''",
+            (dmr_id,),
+        )
+
     @inlineCallbacks
     def touch_ipsc_seen(self, int_id, host=None):
         """Keep IPSC Clients row marked online while repeater is connected."""
