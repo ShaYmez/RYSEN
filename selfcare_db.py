@@ -80,7 +80,7 @@ class SelfcareDB:
                 'UPDATE Clients SET modified = 1 '
                 'WHERE int_id = %s AND mode = %s '
                 "AND options IS NOT NULL AND TRIM(options) != '' "
-                "AND options NOT LIKE '%DISC=1%'",
+                "AND options NOT LIKE '%%DISC=1%%'",
                 (int_id, IPSC_CLIENT_MODE),
             )
         except Exception as err:
@@ -137,7 +137,7 @@ class SelfcareDB:
         return self.dbpool.runQuery(
             'SELECT int_id, options FROM Clients '
             'WHERE modified = 1 AND logged_in = 1 AND mode > 0 '
-            "AND options LIKE '%DISC=1%'",
+            "AND options LIKE '%%DISC=1%%'",
         )
 
     @inlineCallbacks
