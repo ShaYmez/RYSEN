@@ -94,6 +94,7 @@ from bridge_helpers import (
     parse_options_static_fields,
     bridge_has_active_static_leg,
     is_static_field_keyup_noise,
+    reclaim_obp_inbound_stream,
 )
 # NOTE: 'words' is loaded dynamically via readAMBE() at runtime (see line ~2689)
 #from voice_lib import words
@@ -245,11 +246,11 @@ def _find_hbp_stream_rx_owner(stream_id, exclude=None):
 
 
 def _obp_loop_hr_times(stream_id, dst_id):
-    """Collect OBP first-receiver times for stream_id (OBP systems only)."""
+    """Collect OBP first-receiver times for stream_id (inbound OBP legs only)."""
     _hr_times = {}
     for _obp in _OBP_SYSTEMS:
         _st = systems[_obp].STATUS.get(stream_id)
-        if _st and '1ST' in _st and _st['TGID'] == dst_id:
+        if _st and not _st.get('_outbound') and '1ST' in _st and _st['TGID'] == dst_id:
             _hr_times[_obp] = _st['1ST']
     return _hr_times
 
@@ -2075,7 +2076,7 @@ class routerOBP(OPENBRIDGE):
                             'RFS':       _rf_src,
                             'TGID':      _dst_id,
                             'RX_PEER': _peer_id,
-                            '1ST': perf_counter(),
+                            '_outbound': True,
 
                         }
                         # Generate LCs (full and EMB) for the TX stream
@@ -2257,7 +2258,7 @@ class routerOBP(OPENBRIDGE):
                 'TGID':      _dst_id,
                 'RX_PEER':   _peer_id,
                 'packets': 0,
-                '1ST': perf_counter(),
+                '_outbound': True,
             }
             
         # Record the time of this packet so we can later identify a stale stream
@@ -2308,23 +2309,29 @@ class routerOBP(OPENBRIDGE):
             # This is a data call
             _data_call = True
             
+            _reclaimed_inbound = (
+                _dtype_vseq == 6
+                and reclaim_obp_inbound_stream(
+                    self.STATUS, _stream_id, pkt_time, _rf_src, _dst_id, _peer_id)
+            )
             # Is this a new call stream?
-            if (_stream_id not in self.STATUS):
+            if (_stream_id not in self.STATUS) or _reclaimed_inbound:
                 
-                # This is a new call stream
-                self.STATUS[_stream_id] = {
-                    'START':     pkt_time,
-                    'CONTENTION':False,
-                    'RFS':       _rf_src,
-                    'TGID':      _dst_id,
-                    '1ST': perf_counter(),
-                    'lastSeq': False,
-                    'lastData': False,
-                    'RX_PEER': _peer_id,
-                    'packets': 0,
-                    'crcs': set()
+                if not _reclaimed_inbound:
+                    # This is a new call stream
+                    self.STATUS[_stream_id] = {
+                        'START':     pkt_time,
+                        'CONTENTION':False,
+                        'RFS':       _rf_src,
+                        'TGID':      _dst_id,
+                        '1ST': perf_counter(),
+                        'lastSeq': False,
+                        'lastData': False,
+                        'RX_PEER': _peer_id,
+                        'packets': 0,
+                        'crcs': set()
 
-                }
+                    }
             
             self.STATUS[_stream_id]['LAST'] = pkt_time
             self.STATUS[_stream_id]['packets'] = self.STATUS[_stream_id]['packets'] + 1
@@ -2458,40 +2465,48 @@ class routerOBP(OPENBRIDGE):
             
                     
         if _call_type == 'group' or _call_type == 'vcsbk':
+            _is_vhead = _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD
+            _reclaimed_inbound = (
+                _is_vhead
+                and reclaim_obp_inbound_stream(
+                    self.STATUS, _stream_id, pkt_time, _rf_src, _dst_id, _peer_id)
+            )
             # Is this a new call stream?
-            if (_stream_id not in self.STATUS):
+            if (_stream_id not in self.STATUS) or _reclaimed_inbound:
                 
-                # This is a new call stream
-                self.STATUS[_stream_id] = {
-                    'START':     pkt_time,
-                    'CONTENTION':False,
-                    'RFS':       _rf_src,
-                    'TGID':      _dst_id,
-                    '1ST': perf_counter(),
-                    'lastSeq': False,
-                    'lastData': False,
-                    'RX_PEER': _peer_id,
-                    'packets': 0,
-                    'loss': 0,
-                    'crcs': set()
+                if not _reclaimed_inbound:
+                    # This is a new call stream
+                    self.STATUS[_stream_id] = {
+                        'START':     pkt_time,
+                        'CONTENTION':False,
+                        'RFS':       _rf_src,
+                        'TGID':      _dst_id,
+                        '1ST': perf_counter(),
+                        'lastSeq': False,
+                        'lastData': False,
+                        'RX_PEER': _peer_id,
+                        'packets': 0,
+                        'loss': 0,
+                        'crcs': set()
 
-                }
+                    }
 
                 # If we can, use the LC from the voice header as to keep all options intact
-                if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
+                if _is_vhead:
                     decoded = decode.voice_head_term(dmrpkt)
                     self.STATUS[_stream_id]['LC'] = decoded['LC']
 
                 # If we don't have a voice header then don't wait to decode the Embedded LC
                 # just make a new one from the HBP header. This is good enough, and it saves lots of time
-                else:
+                elif not _reclaimed_inbound:
                     self.STATUS[_stream_id]['LC'] = b''.join([LC_OPT,_dst_id,_rf_src])
 
                 _inthops = 0 
                 if _hops:
                     _inthops = int.from_bytes(_hops,'big')
-                logger.info('(%s) *CALL START* STREAM ID: %s, SUB: %s (%s), RPTR: %s (%s), PEER: %s (%s) TGID %s (%s), TS %s, SRC: %s, HOPS %s', 
-                        self._system, int_id(_stream_id),get_alias(_rf_src, subscriber_ids),int_id(_rf_src),self.get_rptr(_source_rptr), int_id(_source_rptr),  get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot,int_id(_source_server),_inthops)
+                logger.info('(%s) *CALL START* STREAM ID: %s, SUB: %s (%s), RPTR: %s (%s), PEER: %s (%s) TGID %s (%s), TS %s, SRC: %s, HOPS %s%s', 
+                        self._system, int_id(_stream_id),get_alias(_rf_src, subscriber_ids),int_id(_rf_src),self.get_rptr(_source_rptr), int_id(_source_rptr),  get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot,int_id(_source_server),_inthops,
+                        ' (reclaimed inbound)' if _reclaimed_inbound else '')
                 if CONFIG['REPORTS']['REPORT']:
                     self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
 
@@ -2548,8 +2563,12 @@ class routerOBP(OPENBRIDGE):
                         self.STATUS[_stream_id]['_bcsq'] = True
                     return
                 
-                #Rate drop
-                if self.STATUS[_stream_id]['packets'] > 18 and (pkt_time - self.STATUS[_stream_id]['START']) > 0 and (self.STATUS[_stream_id]['packets'] / (pkt_time - self.STATUS[_stream_id]['START']) > 25):
+                # Rate limit inbound OBP floods. Requires ~1s of call before measuring so
+                # reactor-lag catch-up bursts are not mistaken for sustained over-rate.
+                _call_age = pkt_time - self.STATUS[_stream_id]['START']
+                if (self.STATUS[_stream_id]['packets'] > 18
+                        and _call_age > 1.0
+                        and (self.STATUS[_stream_id]['packets'] / _call_age) > 35):
                     logger.warning("(%s) *PacketControl* RATE DROP! Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
                     return
                 
@@ -2821,7 +2840,7 @@ class routerHBP(HBSYSTEM):
                                 'RFS':       _rf_src,
                                 'TGID':      _dst_id,
                                 'RX_PEER':   _peer_id,
-                                '1ST': perf_counter(),
+                                '_outbound': True,
                             }
                             # Generate LCs (full and EMB) for the TX stream
                             dst_lc = b''.join([self.STATUS[_slot]['RX_LC'][0:3], _target['TGID'], _rf_src])
@@ -3187,7 +3206,7 @@ class routerHBP(HBSYSTEM):
                 'RFS':       _rf_src,
                 'TGID':      _dst_id,
                 'RX_PEER':   _peer_id,
-                '1ST': perf_counter(),
+                '_outbound': True,
             }
             
         # Record the time of this packet so we can later identify a stale stream
@@ -3697,6 +3716,7 @@ class routerHBP(HBSYSTEM):
                 if _obp_system == self._system:
                     continue
                 if (_stream_id in systems[_obp_system].STATUS
+                        and not systems[_obp_system].STATUS[_stream_id].get('_outbound')
                         and '1ST' in systems[_obp_system].STATUS[_stream_id]
                         and systems[_obp_system].STATUS[_stream_id]['TGID'] == _dst_id):
                     if 'LOOPLOG' not in self.STATUS[_slot] or not self.STATUS[_slot]['LOOPLOG']:

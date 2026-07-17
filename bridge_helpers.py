@@ -492,7 +492,11 @@ def dial_reflector_user_activity_counts(int_dst_id, bridge, group_call=False):
         return False
     linked = reflector_bridge_linked_int(bridge)
     if group_call:
-        return int_dst_id == 9
+        if int_dst_id == 9:
+            return True
+        if linked is not None and int_dst_id == linked:
+            return True
+        return False
     if int_dst_id == 5000:
         return True
     if linked is not None and int_dst_id == linked:
@@ -529,3 +533,35 @@ def reset_dial_reflector_timers_on_user_activity(bridges, system, rf_src, peer_i
             entry['TIMER'] = pkt_time + timeout
             reset_bridges.append(bridge)
     return reset_bridges
+
+
+_OBP_RECLAIM_CLEAR_KEYS = (
+    'LOOPLOG', '_bcsq', '_finlog', '_fin', 'H_LC', 'T_LC', 'EMB_LC',
+)
+
+
+def reclaim_obp_inbound_stream(status, stream_id, pkt_time, rf_src, dst_id, peer_id):
+    """Convert outbound-only OBP STATUS to inbound when a real RX call starts.
+
+    Outbound bridge bookkeeping (_outbound) must not compete in LoopControl.
+    If a genuine inbound call arrives on the same stream_id before the outbound
+    entry times out, reclaim it on VHEAD (group) or unit data header.
+    """
+    st = status.get(stream_id)
+    if not st or not st.get('_outbound'):
+        return False
+    st.pop('_outbound', None)
+    st['START'] = pkt_time
+    st['CONTENTION'] = False
+    st['RFS'] = rf_src
+    st['TGID'] = dst_id
+    st['RX_PEER'] = peer_id
+    st['1ST'] = time.perf_counter()
+    st['lastSeq'] = False
+    st['lastData'] = False
+    st['packets'] = 0
+    st['loss'] = 0
+    st['crcs'] = set()
+    for _k in _OBP_RECLAIM_CLEAR_KEYS:
+        st.pop(_k, None)
+    return True
