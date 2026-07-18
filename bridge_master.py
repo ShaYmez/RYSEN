@@ -2076,6 +2076,8 @@ class routerOBP(OPENBRIDGE):
                             'TGID':      _dst_id,
                             'RX_PEER': _peer_id,
                             '_outbound': True,
+                            'packets': 0,
+                            'loss': 0,
 
                         }
                         # Generate LCs (full and EMB) for the TX stream
@@ -2257,6 +2259,7 @@ class routerOBP(OPENBRIDGE):
                 'TGID':      _dst_id,
                 'RX_PEER':   _peer_id,
                 'packets': 0,
+                'loss': 0,
                 '_outbound': True,
             }
             
@@ -2497,8 +2500,11 @@ class routerOBP(OPENBRIDGE):
 
 
             else:
-                if 'packets' in self.STATUS[_stream_id]:
-                    self.STATUS[_stream_id]['packets'] = self.STATUS[_stream_id]['packets'] +1
+                if 'packets' not in self.STATUS[_stream_id]:
+                    self.STATUS[_stream_id]['packets'] = 0
+                if 'loss' not in self.STATUS[_stream_id]:
+                    self.STATUS[_stream_id]['loss'] = 0
+                self.STATUS[_stream_id]['packets'] = self.STATUS[_stream_id]['packets'] + 1
                 #Finished stream handling#
                 if '_fin' in self.STATUS[_stream_id]:
                     if '_finlog' not in self.STATUS[_stream_id]:
@@ -2826,6 +2832,8 @@ class routerHBP(HBSYSTEM):
                                 'TGID':      _dst_id,
                                 'RX_PEER':   _peer_id,
                                 '_outbound': True,
+                                'packets': 0,
+                                'loss': 0,
                             }
                             # Generate LCs (full and EMB) for the TX stream
                             dst_lc = b''.join([self.STATUS[_slot]['RX_LC'][0:3], _target['TGID'], _rf_src])
