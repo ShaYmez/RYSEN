@@ -94,7 +94,6 @@ from bridge_helpers import (
     parse_options_static_fields,
     bridge_has_active_static_leg,
     is_static_field_keyup_noise,
-    reclaim_obp_inbound_stream,
 )
 # NOTE: 'words' is loaded dynamically via readAMBE() at runtime (see line ~2689)
 #from voice_lib import words
@@ -2309,29 +2308,23 @@ class routerOBP(OPENBRIDGE):
             # This is a data call
             _data_call = True
             
-            _reclaimed_inbound = (
-                _dtype_vseq == 6
-                and reclaim_obp_inbound_stream(
-                    self.STATUS, _stream_id, pkt_time, _rf_src, _dst_id, _peer_id)
-            )
             # Is this a new call stream?
-            if (_stream_id not in self.STATUS) or _reclaimed_inbound:
+            if (_stream_id not in self.STATUS):
                 
-                if not _reclaimed_inbound:
-                    # This is a new call stream
-                    self.STATUS[_stream_id] = {
-                        'START':     pkt_time,
-                        'CONTENTION':False,
-                        'RFS':       _rf_src,
-                        'TGID':      _dst_id,
-                        '1ST': perf_counter(),
-                        'lastSeq': False,
-                        'lastData': False,
-                        'RX_PEER': _peer_id,
-                        'packets': 0,
-                        'crcs': set()
+                # This is a new call stream
+                self.STATUS[_stream_id] = {
+                    'START':     pkt_time,
+                    'CONTENTION':False,
+                    'RFS':       _rf_src,
+                    'TGID':      _dst_id,
+                    '1ST': perf_counter(),
+                    'lastSeq': False,
+                    'lastData': False,
+                    'RX_PEER': _peer_id,
+                    'packets': 0,
+                    'crcs': set()
 
-                    }
+                }
             
             self.STATUS[_stream_id]['LAST'] = pkt_time
             self.STATUS[_stream_id]['packets'] = self.STATUS[_stream_id]['packets'] + 1
@@ -2465,48 +2458,40 @@ class routerOBP(OPENBRIDGE):
             
                     
         if _call_type == 'group' or _call_type == 'vcsbk':
-            _is_vhead = _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD
-            _reclaimed_inbound = (
-                _is_vhead
-                and reclaim_obp_inbound_stream(
-                    self.STATUS, _stream_id, pkt_time, _rf_src, _dst_id, _peer_id)
-            )
             # Is this a new call stream?
-            if (_stream_id not in self.STATUS) or _reclaimed_inbound:
+            if (_stream_id not in self.STATUS):
                 
-                if not _reclaimed_inbound:
-                    # This is a new call stream
-                    self.STATUS[_stream_id] = {
-                        'START':     pkt_time,
-                        'CONTENTION':False,
-                        'RFS':       _rf_src,
-                        'TGID':      _dst_id,
-                        '1ST': perf_counter(),
-                        'lastSeq': False,
-                        'lastData': False,
-                        'RX_PEER': _peer_id,
-                        'packets': 0,
-                        'loss': 0,
-                        'crcs': set()
+                # This is a new call stream
+                self.STATUS[_stream_id] = {
+                    'START':     pkt_time,
+                    'CONTENTION':False,
+                    'RFS':       _rf_src,
+                    'TGID':      _dst_id,
+                    '1ST': perf_counter(),
+                    'lastSeq': False,
+                    'lastData': False,
+                    'RX_PEER': _peer_id,
+                    'packets': 0,
+                    'loss': 0,
+                    'crcs': set()
 
-                    }
+                }
 
                 # If we can, use the LC from the voice header as to keep all options intact
-                if _is_vhead:
+                if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
                     decoded = decode.voice_head_term(dmrpkt)
                     self.STATUS[_stream_id]['LC'] = decoded['LC']
 
                 # If we don't have a voice header then don't wait to decode the Embedded LC
                 # just make a new one from the HBP header. This is good enough, and it saves lots of time
-                elif not _reclaimed_inbound:
+                else:
                     self.STATUS[_stream_id]['LC'] = b''.join([LC_OPT,_dst_id,_rf_src])
 
                 _inthops = 0 
                 if _hops:
                     _inthops = int.from_bytes(_hops,'big')
-                logger.info('(%s) *CALL START* STREAM ID: %s, SUB: %s (%s), RPTR: %s (%s), PEER: %s (%s) TGID %s (%s), TS %s, SRC: %s, HOPS %s%s', 
-                        self._system, int_id(_stream_id),get_alias(_rf_src, subscriber_ids),int_id(_rf_src),self.get_rptr(_source_rptr), int_id(_source_rptr),  get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot,int_id(_source_server),_inthops,
-                        ' (reclaimed inbound)' if _reclaimed_inbound else '')
+                logger.info('(%s) *CALL START* STREAM ID: %s, SUB: %s (%s), RPTR: %s (%s), PEER: %s (%s) TGID %s (%s), TS %s, SRC: %s, HOPS %s', 
+                        self._system, int_id(_stream_id),get_alias(_rf_src, subscriber_ids),int_id(_rf_src),self.get_rptr(_source_rptr), int_id(_source_rptr),  get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot,int_id(_source_server),_inthops)
                 if CONFIG['REPORTS']['REPORT']:
                     self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
 

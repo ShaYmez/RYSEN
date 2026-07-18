@@ -41,14 +41,11 @@ class TestReclaimObpInboundStream(unittest.TestCase):
             {}, b'\x01\x02\x03\x04', 100.0, b'\xaa', b'\xbb', b'\xcc'))
 
 
-class TestObpInboundReclaimWiring(unittest.TestCase):
+class TestObpInboundReclaimHelper(unittest.TestCase):
 
-    def test_bridge_master_calls_reclaim_on_vhead(self):
-        with open('bridge_master.py', encoding='utf-8') as fh:
-            source = fh.read()
-        self.assertIn('reclaim_obp_inbound_stream', source)
-        self.assertIn('_reclaimed_inbound', source)
-        self.assertIn('_is_vhead', source)
+    def test_helper_still_available(self):
+        from bridge_helpers import reclaim_obp_inbound_stream
+        self.assertTrue(callable(reclaim_obp_inbound_stream))
 
 
 if __name__ == '__main__':
