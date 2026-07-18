@@ -3200,6 +3200,8 @@ class routerHBP(HBSYSTEM):
                 'TGID':      _dst_id,
                 'RX_PEER':   _peer_id,
                 '_outbound': True,
+                'packets': 0,
+                'loss': 0,
             }
             
         # Record the time of this packet so we can later identify a stale stream
