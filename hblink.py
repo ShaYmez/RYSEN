@@ -755,7 +755,7 @@ class OPENBRIDGE(DatagramProtocol):
                     _hash = _packet[4:]
                     _ckhs = hmac_new(self._config['PASSPHRASE'],_packet[4:],sha1).digest()
                     if compare_digest(_hash, _ckhs):
-                        logger.trace('(%s) *BridgeControl*  BCST STUN request received for TGID: %s, Stream ID: %s',self._system,int_id(_tgid), int_id(_stream_id))
+                        logger.trace('(%s) *BridgeControl*  BCST STUN request received', self._system)
                         self._config['_STUN'] = True
                     else:
                         h,p = _sockaddr

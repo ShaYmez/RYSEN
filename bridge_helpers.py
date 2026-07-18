@@ -535,17 +535,57 @@ def reset_dial_reflector_timers_on_user_activity(bridges, system, rf_src, peer_i
     return reset_bridges
 
 
+# Outbound collision actions for inbound OBP RX (never reclaim/promote to CALL START).
+OBP_OUTBOUND_ECHO = 'echo'
+OBP_OUTBOUND_REPLACE = 'replace'
+
+
+def classify_obp_outbound_collision(status_entry, dst_id):
+    """Classify inbound RX against an existing OBP STATUS entry.
+
+    Returns:
+      'echo' — STATUS is _outbound with same TGID; mesh/TX echo — do not route.
+      'replace' — STATUS is _outbound with different TGID; delete then create fresh inbound.
+      None — not an outbound collision (normal new stream or continuation).
+
+    Production must NEVER reclaim/promote outbound into CALL START (MAX HOPS meltdown).
+    """
+    if not status_entry or not status_entry.get('_outbound'):
+        return None
+    if status_entry.get('TGID') == dst_id:
+        return OBP_OUTBOUND_ECHO
+    return OBP_OUTBOUND_REPLACE
+
+
+def ensure_obp_inbound_status_keys(st, perf_counter_fn=None):
+    """Backfill inbound-only keys on continuation STATUS (safe if already present)."""
+    if 'packets' not in st:
+        st['packets'] = 0
+    if 'loss' not in st:
+        st['loss'] = 0
+    if 'lastSeq' not in st:
+        st['lastSeq'] = False
+    if 'lastData' not in st:
+        st['lastData'] = False
+    if 'crcs' not in st:
+        st['crcs'] = set()
+    if '1ST' not in st:
+        _pc = perf_counter_fn if perf_counter_fn is not None else time.perf_counter
+        st['1ST'] = _pc()
+    return st
+
+
 _OBP_RECLAIM_CLEAR_KEYS = (
     'LOOPLOG', '_bcsq', '_finlog', '_fin', 'H_LC', 'T_LC', 'EMB_LC',
 )
 
 
 def reclaim_obp_inbound_stream(status, stream_id, pkt_time, rf_src, dst_id, peer_id):
-    """Convert outbound-only OBP STATUS to inbound when a real RX call starts.
+    """Unit-test helper only — MUST remain unwired in production.
 
-    Outbound bridge bookkeeping (_outbound) must not compete in LoopControl.
-    If a genuine inbound call arrives on the same stream_id before the outbound
-    entry times out, reclaim it on VHEAD (group) or unit data header.
+    Reclaim on VHEAD promoted mesh echoes into CALL START, skipped LoopControl,
+    and inflated hops to MAX HOPS. Use classify_obp_outbound_collision instead:
+    same-TG echo drop, or delete+fresh create on different TGID.
     """
     st = status.get(stream_id)
     if not st or not st.get('_outbound'):
