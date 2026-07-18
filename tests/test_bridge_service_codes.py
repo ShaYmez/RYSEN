@@ -68,9 +68,12 @@ class TestBridgeServiceCodeSourcePatterns(unittest.TestCase):
         self.assertIn("'TIMER': 0", source)
 
     def test_monitor_static_off_reports_zero_timer(self):
+        with open('bridge_helpers.py', encoding='utf-8') as fh:
+            helpers = fh.read()
+        self.assertIn("if _to_type == 'OFF' and _active:", helpers)
         with open('bridge_master.py', encoding='utf-8') as fh:
             source = fh.read()
-        self.assertIn("if _to_type == 'OFF' and _active:", source)
+        self.assertIn('build_report_bridge_leg(bridge_system)', source)
 
     def test_obp_stat_leg_on_static_create(self):
         with open('bridge_master.py', encoding='utf-8') as fh:

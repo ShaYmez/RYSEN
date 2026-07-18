@@ -96,6 +96,9 @@ from bridge_helpers import (
     is_static_field_keyup_noise,
     classify_obp_outbound_collision,
     ensure_obp_inbound_status_keys,
+    report_include_bridge_leg,
+    build_report_bridge_leg,
+    STAT_TRIMMER_INTERVAL_S,
     OBP_OUTBOUND_ECHO,
     OBP_OUTBOUND_REPLACE,
 )
@@ -450,12 +453,51 @@ def augment_bridges_for_masters():
                     _removed, _added)
 
 
+def _ensure_master_on_legs(bridge_name, system):
+    """Add missing UA ON legs for a routing master on a lazy STAT bridge.
+
+    make_stat_bridge only creates OBP STAT legs; master ON legs are added on demand
+    when this hotspot/IPSC actually keys or needs the TG.
+    """
+    if bridge_name not in BRIDGES or system not in CONFIG['SYSTEMS']:
+        return False
+    if not is_routing_master(CONFIG['SYSTEMS'][system]['MODE']):
+        return False
+    try:
+        _tgid_i = int(bridge_name[1:]) if bridge_name[0:1] == '#' else int(bridge_name)
+    except ValueError:
+        return False
+    _tgid_b = bytes_3(_tgid_i)
+    _tmout = CONFIG['SYSTEMS'][system].get('DEFAULT_UA_TIMER', 10)
+    if bridge_name == '9990':
+        _tmout = 1
+    _existing = {
+        (_e['SYSTEM'], _e['TS'])
+        for _e in BRIDGES[bridge_name]
+        if _e['SYSTEM'] == system and _e.get('TO_TYPE') == 'ON'
+    }
+    _added = False
+    for _ts in (1, 2):
+        if (system, _ts) in _existing:
+            continue
+        BRIDGES[bridge_name].append({
+            'SYSTEM': system, 'TS': _ts, 'TGID': _tgid_b,
+            'ACTIVE': False, 'TIMEOUT': _tmout * 60, 'TO_TYPE': 'ON',
+            'OFF': [], 'ON': [_tgid_b], 'RESET': [], 'TIMER': time(),
+        })
+        _added = True
+    if _added:
+        _idx_replace_bridge(bridge_name)
+    return _added
+
+
 def activate_ua_bridge_source(bridge_name, system, slot, tmout=None, peer_id=None):
     """Activate this master's UA slot on an existing bridge (e.g. direct TG 9990 PTT)."""
     if bridge_name not in BRIDGES:
         return False
     if system not in CONFIG['SYSTEMS']:
         return False
+    _ensure_master_on_legs(bridge_name, system)
     if tmout is None:
         tmout = CONFIG['SYSTEMS'][system].get('DEFAULT_UA_TIMER')
         if tmout is None:
@@ -529,14 +571,15 @@ def make_single_bridge(_tgid,_sourcesystem,_slot,_tmout):
 
 #Make static bridge - used for on-the-fly relay bridges
 def make_stat_bridge(_tgid):
+    """Create a lazy STAT bridge: OBP STAT legs only.
+
+    Master UA ON legs are added on demand via _ensure_master_on_legs /
+    activate_ua_bridge_source (avoids 2*N_masters BRIDGE_IDX keys per discovered TG).
+    """
     if is_parrot_talkgroup(int_id(_tgid)):
         return
     _tgid_s = str(int_id(_tgid))
     BRIDGES[_tgid_s] = []
-    for _system in iter_routing_master_systems():
-        _tmout = CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']
-        BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time()})
-        BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time()})
     for _system in CONFIG['SYSTEMS']:
         if _system[0:3] == 'OBP':
             BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': '','TO_TYPE': 'STAT','OFF': [],'ON': [],'RESET': [], 'TIMER': time()})
@@ -4057,28 +4100,15 @@ class bridgeReportFactory(reportFactory):
                 if not isinstance(bridge_system, dict):
                     logger.warning('(REPORT) Skipping malformed bridge entry in %s payload type: %s', bridge, type(bridge_system))
                     continue
-                if 'SYSTEM' not in bridge_system or 'TS' not in bridge_system or 'TGID' not in bridge_system:
+                leg = build_report_bridge_leg(bridge_system)
+                if leg is None:
+                    if not report_include_bridge_leg(
+                            bridge_system.get('TO_TYPE', 'NONE'),
+                            bool(bridge_system.get('ACTIVE', False))):
+                        continue
                     logger.warning('(REPORT) Skipping incomplete bridge entry in %s: %s', bridge, bridge_system)
                     continue
-                _to_type = bridge_system.get('TO_TYPE', 'NONE')
-                _active = bool(bridge_system.get('ACTIVE', False))
-                _timeout = bridge_system.get('TIMEOUT', '')
-                _timer = bridge_system.get('TIMER', time())
-                if _to_type == 'OFF' and _active:
-                    _timeout = 0
-                    _timer = 0
-                safe_systems.append({
-                    'SYSTEM': bridge_system['SYSTEM'],
-                    'TS': bridge_system['TS'],
-                    'TGID': bridge_system['TGID'],
-                    'ACTIVE': _active,
-                    'TIMEOUT': _timeout,
-                    'TO_TYPE': _to_type,
-                    'OFF': cls._clean_trigger_list(bridge_system.get('OFF')),
-                    'ON': cls._clean_trigger_list(bridge_system.get('ON')),
-                    'RESET': cls._clean_trigger_list(bridge_system.get('RESET')),
-                    'TIMER': _timer,
-                })
+                safe_systems.append(leg)
             safe_bridges[str(bridge)] = safe_systems
         return safe_bridges
 
@@ -4413,11 +4443,12 @@ if __name__ == '__main__':
         logger.info('(SELF SERVICE) Hotspot static reconcile poll every %ss',
                     ss.get('POLL_INTERVAL', 5))
         
-    #STAT trimmer - once every 10 mins (roughly - shifted so all timed tasks don't run at once
+    # STAT trimmer — idle GEN_STAT bridges (comment historically said 10 min; was 3600)
     if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:
         stat_trimmer_task = task.LoopingCall(statTrimmer)
-        stat_trimmer = stat_trimmer_task.start(3600)
+        stat_trimmer = stat_trimmer_task.start(STAT_TRIMMER_INTERVAL_S)
         stat_trimmer.addErrback(loopingErrHandle)
+        logger.info('(ROUTER) STAT trimmer every %ss', STAT_TRIMMER_INTERVAL_S)
         
     #KA Reporting
     ka_task = task.LoopingCall(kaReporting)

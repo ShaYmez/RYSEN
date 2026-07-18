@@ -575,6 +575,65 @@ def ensure_obp_inbound_status_keys(st, perf_counter_fn=None):
     return st
 
 
+def report_include_bridge_leg(to_type, active):
+    """Whether a bridge leg belongs in the monitor report payload.
+
+    Idle UA ON legs dominate GEN_STAT meshes and inflate BRIDGE_SND pickles;
+    static OFF+ACTIVE and live/STAT/NONE legs are kept.
+    """
+    if to_type == 'ON' and not active:
+        return False
+    return True
+
+
+def clean_report_trigger_list(value):
+    """Normalise ON/OFF/RESET trigger lists for report pickle; empty -> []."""
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    # deque and other sequences
+    try:
+        return list(value)
+    except TypeError:
+        return [value]
+
+
+def build_report_bridge_leg(bridge_system, now_fn=None):
+    """Build one slim report leg dict, or None if the leg should be omitted."""
+    if not isinstance(bridge_system, dict):
+        return None
+    if 'SYSTEM' not in bridge_system or 'TS' not in bridge_system or 'TGID' not in bridge_system:
+        return None
+    _to_type = bridge_system.get('TO_TYPE', 'NONE')
+    _active = bool(bridge_system.get('ACTIVE', False))
+    if not report_include_bridge_leg(_to_type, _active):
+        return None
+    _now = now_fn if now_fn is not None else time.time
+    _timeout = bridge_system.get('TIMEOUT', '')
+    _timer = bridge_system.get('TIMER', _now())
+    if _to_type == 'OFF' and _active:
+        _timeout = 0
+        _timer = 0
+    leg = {
+        'SYSTEM': bridge_system['SYSTEM'],
+        'TS': bridge_system['TS'],
+        'TGID': bridge_system['TGID'],
+        'ACTIVE': _active,
+        'TIMEOUT': _timeout,
+        'TO_TYPE': _to_type,
+        'TIMER': _timer,
+    }
+    for key in ('OFF', 'ON', 'RESET'):
+        cleaned = clean_report_trigger_list(bridge_system.get(key))
+        if cleaned:
+            leg[key] = cleaned
+    return leg
+
+
+STAT_TRIMMER_INTERVAL_S = 600
+
+
 _OBP_RECLAIM_CLEAR_KEYS = (
     'LOOPLOG', '_bcsq', '_finlog', '_fin', 'H_LC', 'T_LC', 'EMB_LC',
 )
