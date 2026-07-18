@@ -3689,9 +3689,12 @@ class routerHBP(HBSYSTEM):
                     if CONFIG['REPORTS']['REPORT']:
                         self._report.send_bridgeEvent('VCSBK 3/4 DATA BLOCK,DATA,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
                         
-            #Packet rate limit
-            #Rate drop
-            if self.STATUS[_slot]['packets'] > 18 and (self.STATUS[_slot]['packets'] / (pkt_time - self.STATUS[_slot]['RX_START']) > 25):
+            # Rate limit HBP floods. Require ~1s before measuring so reactor-lag
+            # catch-up bursts are not mistaken for sustained over-rate.
+            _call_age = pkt_time - self.STATUS[_slot]['RX_START']
+            if (self.STATUS[_slot]['packets'] > 18
+                    and _call_age > 1.0
+                    and (self.STATUS[_slot]['packets'] / _call_age) > 25):
                 logger.warning("(%s) *PacketControl* RATE DROP! Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
                 self.STATUS[_slot]['LAST'] = pkt_time
                 return
