@@ -540,6 +540,42 @@ OBP_OUTBOUND_ECHO = 'echo'
 OBP_OUTBOUND_REPLACE = 'replace'
 
 
+def earliest_obp_owner(hr_times):
+    """Return the OBP system name with the earliest 1ST, or None if empty."""
+    if not hr_times:
+        return None
+    return min(hr_times, key=hr_times.get)
+
+
+def should_report_obp_rx_start(system, hbp_owner, hr_times):
+    """True if this OBP system should emit GROUP VOICE START RX.
+
+    Matches LoopControl: any HBP owner wins; else earliest inbound OBP 1ST wins.
+    """
+    if hbp_owner:
+        return False
+    winner = earliest_obp_owner(hr_times)
+    if winner is None:
+        return True
+    return system == winner
+
+
+def should_report_hbp_rx_start(hbp_owner, obp_already_inbound):
+    """True if this HBP should emit START RX (no other HBP / inbound OBP owner)."""
+    if hbp_owner or obp_already_inbound:
+        return False
+    return True
+
+
+def should_report_stream_end(status):
+    """False when LOOPLOG or _outbound — no START was meant for the dash."""
+    if not status:
+        return True
+    if status.get('LOOPLOG') or status.get('_outbound'):
+        return False
+    return True
+
+
 def classify_obp_outbound_collision(status_entry, dst_id):
     """Classify inbound RX against an existing OBP STATUS entry.
 

@@ -98,6 +98,9 @@ from bridge_helpers import (
     ensure_obp_inbound_status_keys,
     report_include_bridge_leg,
     build_report_bridge_leg,
+    should_report_obp_rx_start,
+    should_report_hbp_rx_start,
+    should_report_stream_end,
     STAT_TRIMMER_INTERVAL_S,
     OBP_OUTBOUND_ECHO,
     OBP_OUTBOUND_REPLACE,
@@ -1314,7 +1317,7 @@ def stream_trimmer_loop():
                     else:
                         logger.info('(%s) *TIME OUT*  RX STREAM ID: %s SUB: %s TGID %s, TS %s, Duration: %.2f', \
                             system, int_id(_slot['RX_STREAM_ID']), int_id(_slot['RX_RFS']), int_id(_slot['RX_TGID']), slot, _slot['RX_TIME'] - _slot['RX_START'])
-                    if CONFIG['REPORTS']['REPORT']:
+                    if CONFIG['REPORTS']['REPORT'] and should_report_stream_end(_slot):
                         systems[system]._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(_slot['RX_STREAM_ID']), int_id(_slot['RX_PEER']), int_id(_slot['RX_RFS']), slot, int_id(_slot['RX_TGID']), _slot['RX_TIME'] - _slot['RX_START']).encode(encoding='utf-8', errors='ignore'))
                 #Null stream_id - for loop control 
                 if _slot['RX_TIME'] < _now - 60:
@@ -1365,7 +1368,7 @@ def stream_trimmer_loop():
                                 logger.debug('(%s) *TIME OUT*   STREAM ID: %s SUB: %s PEER: %s TGID: %s TS 1 Duration: %.2f', \
                                     system, int_id(stream_id), get_alias(int_id(_stream['RFS']), subscriber_ids), get_alias(int_id(_stream['RX_PEER']), peer_ids), get_alias(int_id(_stream['TGID']), talkgroup_ids), _stream['LAST'] - _stream['START'])
                             
-                        if CONFIG['REPORTS']['REPORT']:
+                        if CONFIG['REPORTS']['REPORT'] and should_report_stream_end(_stream):
                                 systems[system]._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(stream_id), int_id(_stream['RX_PEER']), int_id(_stream['RFS']), 1, int_id(_stream['TGID']), _stream['LAST'] - _stream['START']).encode(encoding='utf-8', errors='ignore'))
                         systems[system].STATUS[stream_id]['_to'] = True
                         continue
@@ -2562,6 +2565,21 @@ class routerOBP(OPENBRIDGE):
                 else:
                     self.STATUS[_stream_id]['LC'] = b''.join([LC_OPT,_dst_id,_rf_src])
 
+                # Gate START RX on LoopControl ownership before reporting (multi-OBP mesh).
+                _hbp_active, _hbp_sys = _find_hbp_stream_rx_owner(_stream_id, exclude=self._system)
+                _hr_times = _obp_loop_hr_times(_stream_id, _dst_id)
+                if not should_report_obp_rx_start(
+                        self._system, _hbp_sys if _hbp_active else None, _hr_times):
+                    self.STATUS[_stream_id]['LOOPLOG'] = True
+                    self.STATUS[_stream_id]['LAST'] = pkt_time
+                    self.STATUS[_stream_id]['packets'] = 1
+                    logger.debug(
+                        "(%s) OBP *LoopControl* START RX suppressed STREAM ID: %s TG: %s "
+                        "(HBP=%s hr=%s)",
+                        self._system, int_id(_stream_id), int_id(_dst_id),
+                        _hbp_sys if _hbp_active else None, list(_hr_times))
+                    return
+
                 _inthops = 0 
                 if _hops:
                     _inthops = int.from_bytes(_hops,'big')
@@ -2745,7 +2763,7 @@ class routerOBP(OPENBRIDGE):
                     loss = (self.STATUS[_stream_id]['loss'] / self.STATUS[_stream_id]['packets']) * 100
                 logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %.2f, Packet rate: %.2f/s, Loss: %.2f%%', \
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration, packet_rate,loss)
-                if CONFIG['REPORTS']['REPORT']:
+                if CONFIG['REPORTS']['REPORT'] and should_report_stream_end(self.STATUS[_stream_id]):
                    self._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), call_duration).encode(encoding='utf-8', errors='ignore'))
                    self.STATUS[_stream_id]['_fin'] = True
                    
@@ -3693,6 +3711,7 @@ class routerHBP(HBSYSTEM):
 
                 # This is a new call stream
                 self.STATUS[_slot]['RX_START'] = pkt_time
+                self.STATUS[_slot].pop('LOOPLOG', None)
                 
                 if _call_type == 'group' :
                     if _dtype_vseq == 6:
@@ -3702,6 +3721,27 @@ class routerHBP(HBSYSTEM):
                             self._report.send_bridgeEvent('DATA HEADER,DATA,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
                     
                     else:
+                        # Gate START RX on LoopControl ownership before reporting.
+                        _hbp_active, _hbp_sys = _find_hbp_stream_rx_owner(_stream_id, exclude=self._system)
+                        _obp_first = False
+                        for _obp_system in _OBP_SYSTEMS:
+                            if _obp_system == self._system:
+                                continue
+                            _obp_st = systems[_obp_system].STATUS.get(_stream_id)
+                            if (_obp_st and not _obp_st.get('_outbound')
+                                    and '1ST' in _obp_st and _obp_st['TGID'] == _dst_id):
+                                _obp_first = True
+                                break
+                        if not should_report_hbp_rx_start(
+                                _hbp_sys if _hbp_active else None, _obp_first):
+                            self.STATUS[_slot]['LOOPLOG'] = True
+                            self.STATUS[_slot]['RX_TIME'] = pkt_time
+                            logger.debug(
+                                "(%s) HBP *LoopControl* START RX suppressed STREAM ID: %s TG: %s "
+                                "(HBP=%s OBP=%s)",
+                                self._system, int_id(_stream_id), int_id(_dst_id),
+                                _hbp_sys if _hbp_active else None, _obp_first)
+                            return
                         logger.info('(%s) *CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
                             self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
                         if CONFIG['REPORTS']['REPORT']:
@@ -3909,7 +3949,7 @@ class routerHBP(HBSYSTEM):
                     loss = (self.STATUS[_slot]['loss'] / self.STATUS[_slot]['packets']) * 100
                 logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %.2f,  Packet rate: %.2f/s, LOSS: %.2f%%', \
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration, packet_rate, loss)
-                if CONFIG['REPORTS']['REPORT']:
+                if CONFIG['REPORTS']['REPORT'] and should_report_stream_end(self.STATUS[_slot]):
                    self._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), call_duration).encode(encoding='utf-8', errors='ignore'))
                 
                 #Reset back to False  
