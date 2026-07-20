@@ -49,6 +49,7 @@ from dmr_utils3.utils import int_id, bytes_3, bytes_4, get_alias, mk_id_dict
 from ipsc_peer_meta import (
     lookup_peer_alias, callsign_bytes, parse_ipsc_peer_status, ipsc_peer_display_fields,
 )
+from bridge_helpers import DMRE_MAX_PACKET_AGE_S
 
 # Imports for the reporting server
 import pickle
@@ -516,11 +517,11 @@ class OPENBRIDGE(DatagramProtocol):
                                 self._laststrid.append(_stream_id)
                             return
                         
-                    #Discard old packets
-                    if (int.from_bytes(_timestamp,'big')/1000000000) < (time() - 5):
+                    # Discard old packets. Do NOT send_bcsq on age alone — under
+                    # reactor lag that quenches live streams and worsens audio.
+                    if (int.from_bytes(_timestamp,'big')/1000000000) < (time() - DMRE_MAX_PACKET_AGE_S):
                         if _stream_id not in self._laststrid:
-                            logger.warning('(%s) Packet from server %s more than 5s old!, discarding',  self._system,int.from_bytes(_source_server,'big'))
-                            self.send_bcsq(_dst_id,_stream_id)
+                            logger.warning('(%s) Packet from server %s more than %.0fs old!, discarding',  self._system,int.from_bytes(_source_server,'big'), DMRE_MAX_PACKET_AGE_S)
                             self._laststrid.append(_stream_id)
                         return
                     

@@ -102,8 +102,11 @@ from bridge_helpers import (
     should_report_hbp_rx_start,
     should_report_stream_end,
     dmrd_seq_delta,
+    obp_target_already_has_inbound,
+    group_call_end_bridge_candidates,
     STAT_TRIMMER_INTERVAL_S,
     OBP_RATE_DROP_ENABLED,
+    HBP_RATE_DROP_ENABLED,
     OBP_OUTBOUND_ECHO,
     OBP_OUTBOUND_REPLACE,
 )
@@ -1177,7 +1180,7 @@ def rule_timer_loop():
                     else:
                         timeout_in = _system['TIMER'] - _now
                         _bridge_used = True
-                        logger.info('(ROUTER) Conference Bridge ACTIVE (ON timer running): System: %s Bridge: %s, TS: %s, TGID: %s, Timeout in: %.2fs,', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']),  timeout_in)
+                        logger.debug('(ROUTER) Conference Bridge ACTIVE (ON timer running): System: %s Bridge: %s, TS: %s, TGID: %s, Timeout in: %.2fs,', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']),  timeout_in)
                 elif _system['ACTIVE'] == False:
                     logger.debug('(ROUTER) Conference Bridge INACTIVE (no change): System: %s Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
             elif _system['TO_TYPE'] == 'OFF':
@@ -1191,7 +1194,7 @@ def rule_timer_loop():
                     else:
                         timeout_in = _system['TIMER'] - _now
                         _bridge_used = True
-                        logger.info('(ROUTER) Conference Bridge INACTIVE (OFF timer running): System: %s Bridge: %s, TS: %s, TGID: %s, Timeout in: %.2fs,', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']),  timeout_in)
+                        logger.debug('(ROUTER) Conference Bridge INACTIVE (OFF timer running): System: %s Bridge: %s, TS: %s, TGID: %s, Timeout in: %.2fs,', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']),  timeout_in)
                 elif _system['ACTIVE'] == True:
                     _bridge_used = True
                     logger.debug('(ROUTER) Conference Bridge ACTIVE (no change): System: %s Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
@@ -1774,7 +1777,7 @@ def options_config():
                     if 'DEFAULT_REFLECTOR' not in _options:
                         _options['DEFAULT_REFLECTOR'] = 0
                     if is_invalid_dial_reflector(_options['DEFAULT_REFLECTOR']):
-                        logger.warning('(OPTIONS) %s DEFAULT_REFLECTOR=9 is invalid (dial-a-tg channel), treating as 0', _system)
+                        logger.debug('(OPTIONS) %s DEFAULT_REFLECTOR=9 is invalid (dial-a-tg channel), treating as 0', _system)
                         _options['DEFAULT_REFLECTOR'] = 0
                     
                     if 'OVERRIDE_IDENT_TG' not in _options:
@@ -2095,6 +2098,10 @@ class routerOBP(OPENBRIDGE):
                     continue
                 if _target_system['MODE'] == 'OPENBRIDGE':
                     if _noOBP == True or is_parrot_bridge(_bridge):
+                        continue
+                    # Peer already hearing this stream inbound — skip mesh re-fanout TX
+                    if obp_target_already_has_inbound(_target_status, _stream_id, _dst_id):
+                        _sysIgnore.append((_target['SYSTEM'], _target['TS']))
                         continue
                     #We want to ignore this system and TS combination if it's called again for this packet
                     _sysIgnore.append((_target['SYSTEM'],_target['TS']))
@@ -2903,6 +2910,10 @@ class routerHBP(HBSYSTEM):
                         continue
                     if _target_system['MODE'] == 'OPENBRIDGE':
                         if _noOBP == True or is_parrot_bridge(_bridge):
+                            continue
+                        # Peer already hearing this stream inbound — skip mesh re-fanout TX
+                        if obp_target_already_has_inbound(_target_status, _stream_id, _dst_id):
+                            _sysIgnore.append((_target['SYSTEM'], _target['TS']))
                             continue
                         #We want to ignore this system and TS combination if it's called again for this packet
                         _sysIgnore.append((_target['SYSTEM'],_target['TS']))
@@ -3827,15 +3838,15 @@ class routerHBP(HBSYSTEM):
                     if CONFIG['REPORTS']['REPORT']:
                         self._report.send_bridgeEvent('VCSBK 3/4 DATA BLOCK,DATA,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
                         
-            # Rate limit HBP floods. Require ~1s before measuring so reactor-lag
-            # catch-up bursts are not mistaken for sustained over-rate.
-            _call_age = pkt_time - self.STATUS[_slot]['RX_START']
-            if (self.STATUS[_slot]['packets'] > 18
-                    and _call_age > 1.0
-                    and (self.STATUS[_slot]['packets'] / _call_age) > 25):
-                logger.warning("(%s) *PacketControl* RATE DROP! Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
-                self.STATUS[_slot]['LAST'] = pkt_time
-                return
+            # HBP RATE DROP disabled: same lag catch-up poison as OBP (see HBP_RATE_DROP_ENABLED).
+            if HBP_RATE_DROP_ENABLED:
+                _call_age = pkt_time - self.STATUS[_slot]['RX_START']
+                if (self.STATUS[_slot]['packets'] > 18
+                        and _call_age > 1.0
+                        and (self.STATUS[_slot]['packets'] / _call_age) > 25):
+                    logger.warning("(%s) *PacketControl* RATE DROP! Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
+                    self.STATUS[_slot]['LAST'] = pkt_time
+                    return
             
             #Timeout
             if self.STATUS[_slot]['RX_START'] + 180 < pkt_time:
@@ -3974,7 +3985,7 @@ class routerHBP(HBSYSTEM):
                 if _reset:
                     notify_bridge_table_updated()
 
-                for _bridge in BRIDGES:
+                for _bridge in group_call_end_bridge_candidates(BRIDGES, _int_dst_id):
                     if not _reflector_bridge_matches_group_call(_bridge, _int_dst_id):
                         continue
                     for _system in BRIDGES[_bridge]:

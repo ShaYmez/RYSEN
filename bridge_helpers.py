@@ -545,12 +545,53 @@ OBP_OUTBOUND_REPLACE = 'replace'
 # lag-aware / sliding-window limiter later.
 OBP_RATE_DROP_ENABLED = False
 
+# Same catch-up poison as OBP RATE DROP; disable so hotspot RX survives lag bursts.
+HBP_RATE_DROP_ENABLED = False
+
+# DMRE packet age (seconds). 5s sits inside typical UK reactor lag and false-triggers.
+DMRE_MAX_PACKET_AGE_S = 15.0
+
 
 def dmrd_seq_delta(seq, last_seq):
     """Unsigned 8-bit DMRD sequence delta, or None if last_seq is unset."""
     if last_seq is False or last_seq is None:
         return None
     return (seq - last_seq) % 256
+
+
+def obp_target_already_has_inbound(target_status, stream_id, dst_id):
+    """True if OBP STATUS already has this stream as inbound (not our outbound TX).
+
+    Skipping TX to those peers avoids mesh re-fanout CPU when they already heard
+    the call on another path (LoopControl loser / parallel ingress).
+    """
+    if not target_status or stream_id not in target_status:
+        return False
+    st = target_status[stream_id]
+    if st.get('_outbound'):
+        return False
+    if '1ST' not in st:
+        return False
+    return st.get('TGID') == dst_id
+
+
+def group_call_end_bridge_candidates(bridges, int_dst_id):
+    """Bridges that in-band call-end signalling may touch — not a full table scan.
+
+    Dial-a-tg channel (TG 9) still considers all # reflector bridges.
+    """
+    if not bridges:
+        return []
+    if int_dst_id == DIAL_A_TG:
+        return [b for b in bridges if b[:1] == '#']
+    out = []
+    tg_s = str(int_dst_id)
+    if tg_s in bridges:
+        out.append(tg_s)
+    hash_b = '#' + tg_s
+    if hash_b in bridges:
+        out.append(hash_b)
+    return out
 
 
 def earliest_obp_owner(hr_times):

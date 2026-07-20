@@ -2,7 +2,7 @@
 """PacketControl: wrap-aware SEQ and disabled OBP RATE DROP."""
 import unittest
 
-from bridge_helpers import OBP_RATE_DROP_ENABLED, dmrd_seq_delta
+from bridge_helpers import OBP_RATE_DROP_ENABLED, HBP_RATE_DROP_ENABLED, dmrd_seq_delta
 
 
 class TestDmrdSeqDelta(unittest.TestCase):
@@ -31,12 +31,14 @@ class TestObpRateDropDisabled(unittest.TestCase):
 
     def test_flag_is_false(self):
         self.assertFalse(OBP_RATE_DROP_ENABLED)
+        self.assertFalse(HBP_RATE_DROP_ENABLED)
 
     def test_bridge_master_gates_on_flag(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
             source = fh.read()
         self.assertIn('OBP_RATE_DROP_ENABLED', source)
         self.assertIn('if OBP_RATE_DROP_ENABLED:', source)
+        self.assertIn('if HBP_RATE_DROP_ENABLED:', source)
         # Must not unconditionally RATE DROP on OBP continuation
         self.assertIn('dmrd_seq_delta', source)
 
