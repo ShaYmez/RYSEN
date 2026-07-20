@@ -539,6 +539,19 @@ def reset_dial_reflector_timers_on_user_activity(bridges, system, rf_src, peer_i
 OBP_OUTBOUND_ECHO = 'echo'
 OBP_OUTBOUND_REPLACE = 'replace'
 
+# Cumulative wall-clock OBP RATE DROP deletes lag catch-up frames on the winning
+# path (armed mid-2026 when the formula was fixed). Historically inert for years;
+# LoopControl / echo-drop handle mesh. Keep False unless a true flood needs a
+# lag-aware / sliding-window limiter later.
+OBP_RATE_DROP_ENABLED = False
+
+
+def dmrd_seq_delta(seq, last_seq):
+    """Unsigned 8-bit DMRD sequence delta, or None if last_seq is unset."""
+    if last_seq is False or last_seq is None:
+        return None
+    return (seq - last_seq) % 256
+
 
 def earliest_obp_owner(hr_times):
     """Return the OBP system name with the earliest 1ST, or None if empty."""
