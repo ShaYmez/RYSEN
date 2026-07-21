@@ -81,7 +81,10 @@ class TestDialTg9Guards(unittest.TestCase):
     def test_tg9_is_invalid_reflector(self):
         self.assertTrue(is_invalid_dial_reflector(9))
         self.assertTrue(is_invalid_dial_reflector('9'))
+        self.assertTrue(is_invalid_dial_reflector(4000))
+        self.assertTrue(is_invalid_dial_reflector(5000))
         self.assertFalse(is_invalid_dial_reflector(2350))
+        self.assertFalse(is_invalid_dial_reflector(23426))
 
     def test_tg9_is_dial_service_code(self):
         self.assertTrue(is_dial_service_code(9))

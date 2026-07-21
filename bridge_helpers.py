@@ -23,11 +23,45 @@ def is_dial_service_code(reflector):
 
 
 def is_invalid_dial_reflector(reflector):
-    """Reflector 9 is the dial-a-tg relay channel, not a linkable reflector."""
+    """Not a linkable startup reflector (9 / 4000 / 5000).
+
+    TG 9 is the dial-a-tg relay channel. 4000/5000 are disconnect/status
+    service codes — BlueDV sends StartRef=4000 which must NOT create an
+    ACTIVE #4000 reflector on TS2 (contends with static DMO TGs).
+    """
     try:
-        return int(reflector) == DIAL_A_TG
+        return int(reflector) in _DIAL_SERVICE_CODES
     except (TypeError, ValueError):
         return False
+
+
+def normalize_default_reflector(reflector):
+    """Coerce StartRef/DEFAULT_REFLECTOR to 0 when unset or a service code."""
+    try:
+        value = int(reflector)
+    except (TypeError, ValueError):
+        return 0
+    if value <= 0 or is_invalid_dial_reflector(value):
+        return 0
+    return value
+
+
+def normalize_static_tg_csv(value):
+    """Join TS*_STATIC fragments; drop empty tokens and trailing commas."""
+    if value is False or value is None:
+        return False
+    text = str(value).strip()
+    if not text:
+        return False
+    parts = []
+    for token in text.split(','):
+        token = token.strip()
+        if not token:
+            continue
+        if not token.isdigit():
+            return False
+        parts.append(token)
+    return ','.join(parts) if parts else False
 
 
 def is_parrot_talkgroup(tgid):
@@ -407,7 +441,11 @@ def parse_static_tg_list(ts_static):
 
 
 def parse_options_static_fields(options_str):
-    """Extract TS1/TS2 static talkgroup lists from a semicolon OPTIONS string."""
+    """Extract TS1/TS2 static talkgroup lists from a semicolon OPTIONS string.
+
+    Handles BlueDV-style ``TS2_1=23426;TS2_2=;`` (empty slots ignored) and
+    DMR+ numbered slots. Returns False or a comma-separated digit string.
+    """
     ts1 = False
     ts2 = False
     if not options_str:
@@ -419,9 +457,13 @@ def parse_options_static_fields(options_str):
     for part in str(text).split(';'):
         if '=' not in part:
             continue
+        # BlueDV may embed commas inside a segment (Userlink=1,TS1_1=)
         key, val = part.split('=', 1)
         key = key.strip()
         val = val.strip()
+        # Ignore mangled keys that are not pure TSx fields
+        if ',' in key:
+            continue
         if key in ('TS1', 'TS1_1'):
             ts1 = val if val else False
         elif key in ('TS2', 'TS2_1'):
@@ -430,7 +472,21 @@ def parse_options_static_fields(options_str):
             ts1 = ','.join([str(ts1), val]) if ts1 and ts1 is not False else val
         elif key.startswith('TS2_') and val:
             ts2 = ','.join([str(ts2), val]) if ts2 and ts2 is not False else val
-    return ts1, ts2
+    return normalize_static_tg_csv(ts1), normalize_static_tg_csv(ts2)
+
+
+def is_permanent_static_leg(target):
+    """True for permanent (non-expiring) static TG legs: TO_TYPE OFF + ACTIVE."""
+    return target.get('TO_TYPE') == 'OFF' and bool(target.get('ACTIVE'))
+
+
+def obp_allows_static_stream_takeover(target):
+    """OBP→HBP: permanent static DMO legs accept a new stream_id / RFS.
+
+    Same-TG STREAM_TO contention must not black-hole mesh feeds into PA7LIM
+    after a local kerchunk or half-open TX on the same static TG.
+    """
+    return is_permanent_static_leg(target)
 
 
 def bridge_has_active_static_leg(bridges, system, ts, tg):
@@ -440,7 +496,7 @@ def bridge_has_active_static_leg(bridges, system, ts, tg):
     for entry in bridges.get(str(tg), ()):
         if (entry.get('SYSTEM') == system and entry.get('TS') == ts
                 and entry.get('TGID') == tgid_b
-                and entry.get('TO_TYPE') == 'OFF' and entry.get('ACTIVE')):
+                and is_permanent_static_leg(entry)):
             return True
     return False
 

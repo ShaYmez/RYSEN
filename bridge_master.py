@@ -74,6 +74,8 @@ from bridge_helpers import (
     PARROT_TG,
     is_dial_service_code,
     is_invalid_dial_reflector,
+    normalize_default_reflector,
+    normalize_static_tg_csv,
     is_parrot_talkgroup,
     is_parrot_bridge,
     reflector_bridge_matches_group_call,
@@ -93,6 +95,8 @@ from bridge_helpers import (
     parse_static_tg_list,
     parse_options_static_fields,
     bridge_has_active_static_leg,
+    is_permanent_static_leg,
+    obp_allows_static_stream_takeover,
     is_static_field_keyup_noise,
     classify_obp_outbound_collision,
     ensure_obp_inbound_status_keys,
@@ -583,6 +587,9 @@ def make_stat_bridge(_tgid):
 
     Master UA ON legs are added on demand via _ensure_master_on_legs /
     activate_ua_bridge_source (avoids 2*N_masters BRIDGE_IDX keys per discovered TG).
+
+    Immediately attach any CONFIG static HBP legs that match this TG so OBP can
+    fan to PA7LIM/BlueDV DMO peers without waiting for the trimmer.
     """
     if is_parrot_talkgroup(int_id(_tgid)):
         return
@@ -593,7 +600,7 @@ def make_stat_bridge(_tgid):
             BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': '','TO_TYPE': 'STAT','OFF': [],'ON': [],'RESET': [], 'TIMER': time()})
     # Keep routing index in sync
     _idx_add_bridge(_tgid_s)
-        
+    repair_static_tgs_all_systems()
 
 _DIAL_A_TG = DIAL_A_TG
 _DIAL_A_TG_BYTES = DIAL_A_TG_BYTES
@@ -1687,9 +1694,13 @@ def options_config():
                     CONFIG['SYSTEMS'][_system]['OPTIONS'] = re.sub("\"","",CONFIG['SYSTEMS'][_system]['OPTIONS'])
                     for x in CONFIG['SYSTEMS'][_system]['OPTIONS'].split(";"):
                         try:
-                            k,v = x.split('=')
+                            k,v = x.split('=', 1)
                         except ValueError:
                             #logger.debug('(OPTIONS) Value error %s ignoring %s %s',_system,k,v)
+                            continue
+                        k = k.strip()
+                        v = v.strip()
+                        if not k or ',' in k:
                             continue
                         if k == 'DISC':
                             continue
@@ -1767,19 +1778,41 @@ def options_config():
 
                     if 'UserLink' in _options:
                         _options.pop('UserLink')
+                    if 'Userlink' in _options:
+                        _options.pop('Userlink')
                     
                     if 'TS1_STATIC' not in _options:
                         _options['TS1_STATIC'] = False
                     
                     if 'TS2_STATIC' not in _options:
                         _options['TS2_STATIC'] = False
+
+                    # Align with shared BlueDV/DMR+ static parser (drops empty TS2_N=)
+                    _ts1_parsed, _ts2_parsed = parse_options_static_fields(
+                        CONFIG['SYSTEMS'][_system]['OPTIONS'])
+                    if _ts1_parsed is not False:
+                        _options['TS1_STATIC'] = _ts1_parsed
+                    else:
+                        _options['TS1_STATIC'] = normalize_static_tg_csv(
+                            _options.get('TS1_STATIC', False))
+                    if _ts2_parsed is not False:
+                        _options['TS2_STATIC'] = _ts2_parsed
+                    else:
+                        _options['TS2_STATIC'] = normalize_static_tg_csv(
+                            _options.get('TS2_STATIC', False))
                         
                     if 'DEFAULT_REFLECTOR' not in _options:
                         _options['DEFAULT_REFLECTOR'] = 0
-                    if is_invalid_dial_reflector(_options['DEFAULT_REFLECTOR']):
-                        logger.debug('(OPTIONS) %s DEFAULT_REFLECTOR=9 is invalid (dial-a-tg channel), treating as 0', _system)
-                        _options['DEFAULT_REFLECTOR'] = 0
-                    
+                    try:
+                        _raw_reflector = int(_options['DEFAULT_REFLECTOR'] or 0)
+                    except (TypeError, ValueError):
+                        _raw_reflector = 0
+                    _options['DEFAULT_REFLECTOR'] = normalize_default_reflector(_raw_reflector)
+                    if _raw_reflector and _options['DEFAULT_REFLECTOR'] == 0:
+                        logger.info(
+                            '(OPTIONS) %s StartRef/DEFAULT_REFLECTOR=%s is a dial service '
+                            'code (9/4000/5000), treating as 0 (no default reflector)',
+                            _system, _raw_reflector) 
                     if 'OVERRIDE_IDENT_TG' not in _options:
                         _options['OVERRIDE_IDENT_TG'] = False
                         
@@ -2220,16 +2253,19 @@ class routerOBP(OPENBRIDGE):
                             self.STATUS[_stream_id]['CONTENTION'] = True
                             logger.info('(%s) Call not routed to TGID%s, target in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']))
                         continue
-                    if (_target['TGID'] == _target_status[_target['TS']]['RX_TGID']) and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < STREAM_TO):
-                        if _stream_id in self.STATUS and self.STATUS[_stream_id].get('CONTENTION') == False:
-                            self.STATUS[_stream_id]['CONTENTION'] = True
-                            logger.info('(%s) Call not routed to TGID%s, matching call already active on target: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
-                        continue
-                    if (_target['TGID'] == _target_status[_target['TS']]['TX_TGID']) and (_rf_src != _target_status[_target['TS']]['TX_RFS']) and ((pkt_time - _target_status[_target['TS']]['TX_TIME']) < STREAM_TO):
-                        if _stream_id in self.STATUS and self.STATUS[_stream_id].get('CONTENTION') == False:
-                            self.STATUS[_stream_id]['CONTENTION'] = True
-                            logger.info('(%s) Call not routed for subscriber %s, call route in progress on target: HBSystem: %s, TS: %s, TGID: %s, SUB: %s', self._system, int_id(_rf_src), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']), int_id(_target_status[_target['TS']]['TX_RFS']))
-                        continue
+                    # Permanent static (TO_TYPE OFF) DMO legs: allow a new mesh stream_id
+                    # to take over same-TG TX after a local kerchunk / half-open TX.
+                    if not obp_allows_static_stream_takeover(_target):
+                        if (_target['TGID'] == _target_status[_target['TS']]['RX_TGID']) and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < STREAM_TO):
+                            if _stream_id in self.STATUS and self.STATUS[_stream_id].get('CONTENTION') == False:
+                                self.STATUS[_stream_id]['CONTENTION'] = True
+                                logger.info('(%s) Call not routed to TGID%s, matching call already active on target: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
+                            continue
+                        if (_target['TGID'] == _target_status[_target['TS']]['TX_TGID']) and (_rf_src != _target_status[_target['TS']]['TX_RFS']) and ((pkt_time - _target_status[_target['TS']]['TX_TIME']) < STREAM_TO):
+                            if _stream_id in self.STATUS and self.STATUS[_stream_id].get('CONTENTION') == False:
+                                self.STATUS[_stream_id]['CONTENTION'] = True
+                                logger.info('(%s) Call not routed for subscriber %s, call route in progress on target: HBSystem: %s, TS: %s, TGID: %s, SUB: %s', self._system, int_id(_rf_src), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']), int_id(_target_status[_target['TS']]['TX_RFS']))
+                            continue
 
                     # Is this a new call stream?
                     if (_target_status[_target['TS']]['TX_STREAM_ID'] != _stream_id):
