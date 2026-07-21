@@ -39,8 +39,10 @@ ID_MAX = 16776415
 # Timers
 STREAM_TO = .360
 
-# Options from the LC - used for late entry
-LC_OPT = b'\x00\x00\x20'
+# Options from the LC - used for late entry.
+# FreeDMR normal service options are 0x00; 0x20 is HBLink legacy only.
+LC_OPT = b'\x00\x00\x00'
+LC_OPT_HBLINK_LEGACY = b'\x00\x00\x20'
 
 # HomeBrew Protocol Frame Types
 HBPF_VOICE      = 0x0

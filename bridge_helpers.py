@@ -594,13 +594,58 @@ HBP_RATE_DROP_ENABLED = False
 DMRE_MAX_PACKET_AGE_S = 15.0
 
 
-def target_requires_emb_lc_rewrite(_dst_id, _target_tgid):
-    """FreeDMR parity: rewrite embedded LC only when destination TG changes.
+def target_requires_lc_rewrite(_dst_id, _target_tgid):
+    """True when destination TG differs — rewrite H_LC/T_LC/EMB for the remap.
 
-    Same-TG HBP/OBP fanout must pass original B-E bursts through. Always rewriting
-    (and KeyError-continue on missing EMB_LC) punches holes that soft clients stretch.
+    Same-TG HBP/OBP fanout must pass original VHEAD/VTERM/B-E bursts through.
+    Always rewriting (and KeyError-continue on missing LC) punches holes that
+    thin soft clients (Peanut/DVSwitch/DroidStar) stretch.
     """
     return _dst_id != _target_tgid
+
+
+# Back-compat alias used by older call sites / tests
+target_requires_emb_lc_rewrite = target_requires_lc_rewrite
+
+
+def begin_generated_voice(slot):
+    """Mark HBP slot as playing a voice-ident / prompt; return cancel token."""
+    token = object()
+    slot['TX_PROMPT_ACTIVE'] = True
+    slot['TX_PROMPT_CANCEL'] = False
+    slot['TX_PROMPT_TOKEN'] = token
+    return token
+
+
+def generated_voice_cancelled(slot, token):
+    return slot.get('TX_PROMPT_CANCEL', False) or slot.get('TX_PROMPT_TOKEN') is not token
+
+
+def end_generated_voice(slot, token):
+    if slot.get('TX_PROMPT_TOKEN') is token:
+        slot['TX_PROMPT_ACTIVE'] = False
+
+
+def cancel_generated_voice(slot):
+    """Stop an in-progress voice prompt so live TX is not interleaved on DMO."""
+    if slot.get('TX_PROMPT_ACTIVE', False):
+        slot['TX_PROMPT_CANCEL'] = True
+        slot['TX_PROMPT_ACTIVE'] = False
+
+
+def hbp_slot_prompt_defaults():
+    """STATUS fields for FreeDMR-style voice-prompt cancel / finished streams."""
+    return {
+        'RX_FINISHED_STREAM_ID': b'\x00',
+        'RX_FINISHED_STREAM_LOG': False,
+        'TX_PROMPT_ACTIVE': False,
+        'TX_PROMPT_CANCEL': False,
+        'TX_PROMPT_TOKEN': None,
+        'TX_PROMPT_TIME': 0,
+        'TX_PROMPT_STREAM_ID': b'\x00',
+        'TX_PROMPT_TGID': b'\x00\x00\x00',
+        'TX_PROMPT_RFS': b'\x00',
+    }
 
 
 def dmrd_seq_delta(seq, last_seq):

@@ -104,7 +104,13 @@ from bridge_helpers import (
     should_report_hbp_rx_start,
     should_report_stream_end,
     dmrd_seq_delta,
+    target_requires_lc_rewrite,
     target_requires_emb_lc_rewrite,
+    begin_generated_voice,
+    generated_voice_cancelled,
+    end_generated_voice,
+    cancel_generated_voice,
+    hbp_slot_prompt_defaults,
     obp_target_already_has_inbound,
     group_call_end_bridge_candidates,
     STAT_TRIMMER_INTERVAL_S,
@@ -1422,6 +1428,8 @@ def sendVoicePacket(self, pkt, _source_id, _dest_id, _slot):
     _system = self._system
     _stream_id = pkt[16:20]
     _pkt_time = time()
+    if _slot.get('TX_PROMPT_CANCEL', False):
+        return
     if _stream_id not in systems[_system].STATUS:
         systems[_system].STATUS[_stream_id] = {
             'START': _pkt_time,
@@ -1434,6 +1442,11 @@ def sendVoicePacket(self, pkt, _source_id, _dest_id, _slot):
     else:
         systems[_system].STATUS[_stream_id]['LAST'] = _pkt_time
         _slot['TX_TIME'] = _pkt_time
+    _slot['TX_PROMPT_ACTIVE'] = True
+    _slot['TX_PROMPT_TIME'] = _pkt_time
+    _slot['TX_PROMPT_STREAM_ID'] = _stream_id
+    _slot['TX_PROMPT_TGID'] = _dest_id
+    _slot['TX_PROMPT_RFS'] = _source_id
 
     self.send_system(pkt)
 
@@ -1443,15 +1456,21 @@ def sendSpeech(self, speech):
     _nine = bytes_3(9)
     _source_id = bytes_3(5000)
     _slot = systems[self._system].STATUS[2]
+    _prompt_token = begin_generated_voice(_slot)
     while True:
+        if generated_voice_cancelled(_slot, _prompt_token):
+            break
         try:
             pkt = next(speech)
         except StopIteration:
             break
         #Packet every 60ms
         sleep(0.058)
+        if generated_voice_cancelled(_slot, _prompt_token):
+            break
         reactor.callFromThread(sendVoicePacket,self,pkt,_source_id,_nine,_slot)
 
+    end_generated_voice(_slot, _prompt_token)
     logger.debug('(%s) Sendspeech thread ended',self._system)
 
 def disconnectedVoice(system):
@@ -1491,14 +1510,20 @@ def disconnectedVoice(system):
     sleep(1)
     _master = systems[system]
     _slot = _master.STATUS[2]
+    _prompt_token = begin_generated_voice(_slot)
     while True:
+        if generated_voice_cancelled(_slot, _prompt_token):
+            break
         try:
             pkt = next(speech)
         except StopIteration:
             break
         sleep(0.058)
+        if generated_voice_cancelled(_slot, _prompt_token):
+            break
         reactor.callFromThread(sendVoicePacket, _master, pkt, _source_id, _nine, _slot)
 
+    end_generated_voice(_slot, _prompt_token)
     logger.debug('(%s) disconnected voice thread end', system)
 
 def playFileOnRequest(self,fileNumber):
@@ -1517,16 +1542,20 @@ def playFileOnRequest(self,fileNumber):
     speech = pkt_gen(_source_id, _nine, bytes_4(9), 1, _say)
     sleep(1)
     _slot  = systems[system].STATUS[2]
+    _prompt_token = begin_generated_voice(_slot)
     while True:
+        if generated_voice_cancelled(_slot, _prompt_token):
+            break
         try:
             pkt = next(speech)
         except StopIteration:
                 break
         #Packet every 60ms
         sleep(0.058)
-        _stream_id = pkt[16:20]
-        _pkt_time = time()
+        if generated_voice_cancelled(_slot, _prompt_token):
+            break
         reactor.callFromThread(sendVoicePacket,self,pkt,_source_id,_nine,_slot)
+    end_generated_voice(_slot, _prompt_token)
     logger.debug('(%s) Sending AMBE file %s end',system,fileNumber)
 
     
@@ -2198,24 +2227,23 @@ class routerOBP(OPENBRIDGE):
                         _target_status[_stream_id]['H_LC'] = bptc.encode_header_lc(_dst_lc)
                         _target_status[_stream_id]['T_LC'] = bptc.encode_terminator_lc(_dst_lc)
                         _target_status[_stream_id]['EMB_LC'] = bptc.encode_emblc(_dst_lc)
-                    # Create a voice header packet (FULL LC)
-                    if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
+                    # Create a voice header packet (FULL LC) — same-TG: passthrough
+                    if target_requires_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
                         try:
                             dmrbits = _target_status[_stream_id]['H_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['H_LC'][98:197]
                         except KeyError:
-                            logger.debug('(%s) KeyError - H_LC, skipping', self._system)
-                            continue
-                    # Create a voice terminator packet (FULL LC)
-                    elif _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
+                            logger.debug('(%s) KeyError - H_LC, sending original bits', self._system)
+                    # Create a voice terminator packet (FULL LC) — same-TG: passthrough
+                    elif target_requires_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
                         try:
                             dmrbits = _target_status[_stream_id]['T_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['T_LC'][98:197]
                         except KeyError:
-                            logger.debug('(%s) KeyError - T_LC, skipping', self._system)
+                            logger.debug('(%s) KeyError - T_LC, sending original bits', self._system)
                         if CONFIG['REPORTS']['REPORT']:
                             call_duration = pkt_time - _target_status[_stream_id]['START']
                             systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
                     # Create a Burst B-E packet (Embedded LC) — FreeDMR: only when TG remaps
-                    elif target_requires_emb_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_VOICE and _dtype_vseq in [1,2,3,4]:
+                    elif target_requires_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_VOICE and _dtype_vseq in [1,2,3,4]:
                         try:
                             dmrbits = dmrbits[0:116] + _target_status[_stream_id]['EMB_LC'][_dtype_vseq] + dmrbits[148:264]
                         except KeyError:
@@ -2257,6 +2285,7 @@ class routerOBP(OPENBRIDGE):
 
                     # Is this a new call stream?
                     if (_target_status[_target['TS']]['TX_STREAM_ID'] != _stream_id):
+                        cancel_generated_voice(_target_status[_target['TS']])
                         # Record the DST TGID and Stream ID
                         _target_status[_target['TS']]['TX_START'] = pkt_time
                         _target_status[_target['TS']]['TX_TGID'] = _target['TGID']
@@ -2294,17 +2323,17 @@ class routerOBP(OPENBRIDGE):
                     # if _dst_id != rule['DST_GROUP']:
                     dmrbits = bitarray(endian='big')
                     dmrbits.frombytes(dmrpkt)
-                    # Create a voice header packet (FULL LC)
-                    if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
+                    # Create a voice header packet (FULL LC) — same-TG: passthrough
+                    if target_requires_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
                         dmrbits = _target_status[_target['TS']]['TX_H_LC'][0:98] + dmrbits[98:166] + _target_status[_target['TS']]['TX_H_LC'][98:197]
-                    # Create a voice terminator packet (FULL LC)
-                    elif _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
+                    # Create a voice terminator packet (FULL LC) — same-TG: passthrough
+                    elif target_requires_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
                         dmrbits = _target_status[_target['TS']]['TX_T_LC'][0:98] + dmrbits[98:166] + _target_status[_target['TS']]['TX_T_LC'][98:197]
                         if CONFIG['REPORTS']['REPORT']:
                             call_duration = pkt_time - _target_status[_target['TS']]['TX_START']
                             systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
                     # Create a Burst B-E packet (Embedded LC) — FreeDMR: only when TG remaps
-                    elif target_requires_emb_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_VOICE and _dtype_vseq in [1,2,3,4]:
+                    elif target_requires_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_VOICE and _dtype_vseq in [1,2,3,4]:
                         dmrbits = dmrbits[0:116] + _target_status[_target['TS']]['TX_EMB_LC'][_dtype_vseq] + dmrbits[148:264]
                     dmrpkt = dmrbits.tobytes()
                     #_tmp_data = b''.join([_tmp_data, dmrpkt, b'\x00\x00']) # Add two bytes of nothing since OBP doesn't include BER & RSSI bytes #_data[53:55]
@@ -2842,7 +2871,8 @@ class routerHBP(HBSYSTEM):
                 'packets': 0,
                 'loss': 0,
                 'crcs': set(),
-                '_allStarMode': False
+                '_allStarMode': False,
+                **hbp_slot_prompt_defaults(),
                 },
             2: {
                 'RX_START':     time(),
@@ -2874,7 +2904,8 @@ class routerHBP(HBSYSTEM):
                 'packets': 0,
                 'loss': 0,
                 'crcs': set(),
-                '_allStarMode': False
+                '_allStarMode': False,
+                **hbp_slot_prompt_defaults(),
                 }
             }
 
@@ -2996,25 +3027,23 @@ class routerHBP(HBSYSTEM):
                         # if _dst_id != rule['DST_GROUP']:
                         dmrbits = bitarray(endian='big')
                         dmrbits.frombytes(dmrpkt)
-                        # Create a voice header packet (FULL LC)
-                        if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
+                        # Create a voice header packet (FULL LC) — same-TG: passthrough
+                        if target_requires_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
                             try:
                                 dmrbits = _target_status[_stream_id]['H_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['H_LC'][98:197]
                             except KeyError:
-                                logger.debug('(%s) KeyError - H_LC, skipping', self._system)
-                                continue
-                        # Create a voice terminator packet (FULL LC)
-                        elif _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
+                                logger.debug('(%s) KeyError - H_LC, sending original bits', self._system)
+                        # Create a voice terminator packet (FULL LC) — same-TG: passthrough
+                        elif target_requires_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
                             try:
                                 dmrbits = _target_status[_stream_id]['T_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['T_LC'][98:197]
                             except KeyError:
-                                logger.debug('(%s) KeyError - T_LC, skipping', self._system)
-                                continue
+                                logger.debug('(%s) KeyError - T_LC, sending original bits', self._system)
                             if CONFIG['REPORTS']['REPORT']:
                                 call_duration = pkt_time - _target_status[_stream_id]['START']
                                 systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
                         # Create a Burst B-E packet (Embedded LC) — FreeDMR: only when TG remaps
-                        elif target_requires_emb_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_VOICE and _dtype_vseq in [1,2,3,4]:
+                        elif target_requires_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_VOICE and _dtype_vseq in [1,2,3,4]:
                             try:
                                 dmrbits = dmrbits[0:116] + _target_status[_stream_id]['EMB_LC'][_dtype_vseq] + dmrbits[148:264]
                             except KeyError:
@@ -3052,6 +3081,7 @@ class routerHBP(HBSYSTEM):
 
                         # Is this a new call stream?
                         if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
+                                cancel_generated_voice(_target_status[_target['TS']])
                                 # Record the DST TGID and Stream ID
                                 _target_status[_target['TS']]['TX_START'] = pkt_time
                                 _target_status[_target['TS']]['TX_TGID'] = _target['TGID']
@@ -3086,17 +3116,17 @@ class routerHBP(HBSYSTEM):
                         # if _dst_id != rule['DST_GROUP']:
                         dmrbits = bitarray(endian='big')
                         dmrbits.frombytes(dmrpkt)
-                        # Create a voice header packet (FULL LC)
-                        if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
+                        # Create a voice header packet (FULL LC) — same-TG: passthrough
+                        if target_requires_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
                             dmrbits = _target_status[_target['TS']]['TX_H_LC'][0:98] + dmrbits[98:166] + _target_status[_target['TS']]['TX_H_LC'][98:197]
-                        # Create a voice terminator packet (FULL LC)
-                        elif _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
+                        # Create a voice terminator packet (FULL LC) — same-TG: passthrough
+                        elif target_requires_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
                             dmrbits = _target_status[_target['TS']]['TX_T_LC'][0:98] + dmrbits[98:166] + _target_status[_target['TS']]['TX_T_LC'][98:197]
                             if CONFIG['REPORTS']['REPORT']:
                                 call_duration = pkt_time - _target_status[_target['TS']]['TX_START']
                                 systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
                         # Create a Burst B-E packet (Embedded LC) — FreeDMR: only when TG remaps
-                        elif target_requires_emb_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_VOICE and _dtype_vseq in [1,2,3,4]:
+                        elif target_requires_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_VOICE and _dtype_vseq in [1,2,3,4]:
                             dmrbits = dmrbits[0:116] + _target_status[_target['TS']]['TX_EMB_LC'][_dtype_vseq] + dmrbits[148:264]
                         try:
                             dmrpkt = dmrbits.tobytes()
@@ -3737,8 +3767,21 @@ class routerHBP(HBSYSTEM):
         #Handle group calls
         if _call_type == 'group' or _call_type == 'vcsbk':
 
+            if self.STATUS[_slot].get('RX_FINISHED_STREAM_ID') == _stream_id:
+                if not self.STATUS[_slot].get('RX_FINISHED_STREAM_LOG'):
+                    logger.debug(
+                        "(%s) HBP *LoopControl* STREAM ID: %s ALREADY FINISHED FROM THIS SOURCE, IGNORING",
+                        self._system,
+                        int_id(_stream_id),
+                    )
+                    self.STATUS[_slot]['RX_FINISHED_STREAM_LOG'] = True
+                return
+
             # Is this a new call stream?
             if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
+                cancel_generated_voice(self.STATUS[_slot])
+                self.STATUS[_slot]['RX_FINISHED_STREAM_ID'] = b'\x00'
+                self.STATUS[_slot]['RX_FINISHED_STREAM_LOG'] = False
                 
                 self.STATUS[_slot]['packets'] = 0
                 self.STATUS[_slot]['loss'] = 0
@@ -3991,6 +4034,8 @@ class routerHBP(HBSYSTEM):
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration, packet_rate, loss)
                 if CONFIG['REPORTS']['REPORT'] and should_report_stream_end(self.STATUS[_slot]):
                    self._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), call_duration).encode(encoding='utf-8', errors='ignore'))
+                self.STATUS[_slot]['RX_FINISHED_STREAM_ID'] = _stream_id
+                self.STATUS[_slot]['RX_FINISHED_STREAM_LOG'] = False
                 
                 #Reset back to False  
                 self.STATUS[_slot]['lastSeq'] = False
