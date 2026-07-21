@@ -595,16 +595,16 @@ DMRE_MAX_PACKET_AGE_S = 15.0
 
 
 def target_requires_lc_rewrite(_dst_id, _target_tgid):
-    """True when destination TG differs — rewrite H_LC/T_LC/EMB for the remap.
+    """True when destination TG differs (remap).
 
-    Same-TG HBP/OBP fanout must pass original VHEAD/VTERM/B-E bursts through.
-    Always rewriting (and KeyError-continue on missing LC) punches holes that
-    thin soft clients (Peanut/DVSwitch/DroidStar) stretch.
+    FreeDMR policy in to_target: always rewrite VHEAD/VTERM (H_LC/T_LC) for every
+    target; only Burst B–E (EMB) is gated by this predicate so same-TG fanout
+    keeps original embedded LC. Used as the EMB gate (see alias below).
     """
     return _dst_id != _target_tgid
 
 
-# Back-compat alias used by older call sites / tests
+# FreeDMR name for the EMB gate; same predicate as remap detection
 target_requires_emb_lc_rewrite = target_requires_lc_rewrite
 
 

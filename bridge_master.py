@@ -104,7 +104,6 @@ from bridge_helpers import (
     should_report_hbp_rx_start,
     should_report_stream_end,
     dmrd_seq_delta,
-    target_requires_lc_rewrite,
     target_requires_emb_lc_rewrite,
     begin_generated_voice,
     generated_voice_cancelled,
@@ -2217,8 +2216,10 @@ class routerOBP(OPENBRIDGE):
                     # MUST TEST FOR NEW STREAM AND IF SO, RE-WRITE THE LC FOR THE TARGET
                     # MUST RE-WRITE DESTINATION TGID IF DIFFERENT
                     # if _dst_id != rule['DST_GROUP']:
+                    # Per-target copy — never mutate shared dmrpkt across fanout legs
+                    _tx_dmrpkt = dmrpkt
                     dmrbits = bitarray(endian='big')
-                    dmrbits.frombytes(dmrpkt)
+                    dmrbits.frombytes(_tx_dmrpkt)
                     if 'H_LC' not in _target_status.get(_stream_id, {}):
                         _src_lc = LC_OPT
                         if _stream_id in self.STATUS and 'LC' in self.STATUS[_stream_id]:
@@ -2227,14 +2228,14 @@ class routerOBP(OPENBRIDGE):
                         _target_status[_stream_id]['H_LC'] = bptc.encode_header_lc(_dst_lc)
                         _target_status[_stream_id]['T_LC'] = bptc.encode_terminator_lc(_dst_lc)
                         _target_status[_stream_id]['EMB_LC'] = bptc.encode_emblc(_dst_lc)
-                    # Create a voice header packet (FULL LC) — same-TG: passthrough
-                    if target_requires_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
+                    # Create a voice header packet (FULL LC) — FreeDMR: always rewrite
+                    if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
                         try:
                             dmrbits = _target_status[_stream_id]['H_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['H_LC'][98:197]
                         except KeyError:
                             logger.debug('(%s) KeyError - H_LC, sending original bits', self._system)
-                    # Create a voice terminator packet (FULL LC) — same-TG: passthrough
-                    elif target_requires_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
+                    # Create a voice terminator packet (FULL LC) — FreeDMR: always rewrite
+                    elif _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
                         try:
                             dmrbits = _target_status[_stream_id]['T_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['T_LC'][98:197]
                         except KeyError:
@@ -2243,14 +2244,14 @@ class routerOBP(OPENBRIDGE):
                             call_duration = pkt_time - _target_status[_stream_id]['START']
                             systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
                     # Create a Burst B-E packet (Embedded LC) — FreeDMR: only when TG remaps
-                    elif target_requires_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_VOICE and _dtype_vseq in [1,2,3,4]:
+                    elif target_requires_emb_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_VOICE and _dtype_vseq in [1,2,3,4]:
                         try:
                             dmrbits = dmrbits[0:116] + _target_status[_stream_id]['EMB_LC'][_dtype_vseq] + dmrbits[148:264]
                         except KeyError:
                             logger.debug('(%s) KeyError - EMB_LC, skipping', self._system)
                             continue
-                    dmrpkt = dmrbits.tobytes()
-                    _tmp_data = b''.join([_tmp_data, dmrpkt])
+                    _tx_dmrpkt = dmrbits.tobytes()
+                    _tmp_data = b''.join([_tmp_data, _tx_dmrpkt])
 
                 else:
                     # BEGIN CONTENTION HANDLING
@@ -2321,23 +2322,25 @@ class routerOBP(OPENBRIDGE):
                     # MUST TEST FOR NEW STREAM AND IF SO, RE-WRITE THE LC FOR THE TARGET
                     # MUST RE-WRITE DESTINATION TGID IF DIFFERENT
                     # if _dst_id != rule['DST_GROUP']:
+                    # Per-target copy — never mutate shared dmrpkt across fanout legs
+                    _tx_dmrpkt = dmrpkt
                     dmrbits = bitarray(endian='big')
-                    dmrbits.frombytes(dmrpkt)
-                    # Create a voice header packet (FULL LC) — same-TG: passthrough
-                    if target_requires_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
+                    dmrbits.frombytes(_tx_dmrpkt)
+                    # Create a voice header packet (FULL LC) — FreeDMR: always rewrite
+                    if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
                         dmrbits = _target_status[_target['TS']]['TX_H_LC'][0:98] + dmrbits[98:166] + _target_status[_target['TS']]['TX_H_LC'][98:197]
-                    # Create a voice terminator packet (FULL LC) — same-TG: passthrough
-                    elif target_requires_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
+                    # Create a voice terminator packet (FULL LC) — FreeDMR: always rewrite
+                    elif _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
                         dmrbits = _target_status[_target['TS']]['TX_T_LC'][0:98] + dmrbits[98:166] + _target_status[_target['TS']]['TX_T_LC'][98:197]
                         if CONFIG['REPORTS']['REPORT']:
                             call_duration = pkt_time - _target_status[_target['TS']]['TX_START']
                             systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
                     # Create a Burst B-E packet (Embedded LC) — FreeDMR: only when TG remaps
-                    elif target_requires_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_VOICE and _dtype_vseq in [1,2,3,4]:
+                    elif target_requires_emb_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_VOICE and _dtype_vseq in [1,2,3,4]:
                         dmrbits = dmrbits[0:116] + _target_status[_target['TS']]['TX_EMB_LC'][_dtype_vseq] + dmrbits[148:264]
-                    dmrpkt = dmrbits.tobytes()
-                    #_tmp_data = b''.join([_tmp_data, dmrpkt, b'\x00\x00']) # Add two bytes of nothing since OBP doesn't include BER & RSSI bytes #_data[53:55]
-                    _tmp_data = b''.join([_tmp_data, dmrpkt])
+                    _tx_dmrpkt = dmrbits.tobytes()
+                    #_tmp_data = b''.join([_tmp_data, _tx_dmrpkt, b'\x00\x00']) # Add two bytes of nothing since OBP doesn't include BER & RSSI bytes #_data[53:55]
+                    _tmp_data = b''.join([_tmp_data, _tx_dmrpkt])
 
                 # Transmit the packet to the destination system
                 systems[_target['SYSTEM']].send_system(_tmp_data,_hops,_ber,_rssi,_source_server, _source_rptr)
@@ -3025,16 +3028,18 @@ class routerHBP(HBSYSTEM):
                         # MUST TEST FOR NEW STREAM AND IF SO, RE-WRITE THE LC FOR THE TARGET
                         # MUST RE-WRITE DESTINATION TGID IF DIFFERENT
                         # if _dst_id != rule['DST_GROUP']:
+                        # Per-target copy — never mutate shared dmrpkt across fanout legs
+                        _tx_dmrpkt = dmrpkt
                         dmrbits = bitarray(endian='big')
-                        dmrbits.frombytes(dmrpkt)
-                        # Create a voice header packet (FULL LC) — same-TG: passthrough
-                        if target_requires_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
+                        dmrbits.frombytes(_tx_dmrpkt)
+                        # Create a voice header packet (FULL LC) — FreeDMR: always rewrite
+                        if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
                             try:
                                 dmrbits = _target_status[_stream_id]['H_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['H_LC'][98:197]
                             except KeyError:
                                 logger.debug('(%s) KeyError - H_LC, sending original bits', self._system)
-                        # Create a voice terminator packet (FULL LC) — same-TG: passthrough
-                        elif target_requires_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
+                        # Create a voice terminator packet (FULL LC) — FreeDMR: always rewrite
+                        elif _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
                             try:
                                 dmrbits = _target_status[_stream_id]['T_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['T_LC'][98:197]
                             except KeyError:
@@ -3043,14 +3048,14 @@ class routerHBP(HBSYSTEM):
                                 call_duration = pkt_time - _target_status[_stream_id]['START']
                                 systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
                         # Create a Burst B-E packet (Embedded LC) — FreeDMR: only when TG remaps
-                        elif target_requires_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_VOICE and _dtype_vseq in [1,2,3,4]:
+                        elif target_requires_emb_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_VOICE and _dtype_vseq in [1,2,3,4]:
                             try:
                                 dmrbits = dmrbits[0:116] + _target_status[_stream_id]['EMB_LC'][_dtype_vseq] + dmrbits[148:264]
                             except KeyError:
                                 logger.debug('(%s) KeyError - EMB_LC, skipping', self._system)
                                 continue
-                        dmrpkt = dmrbits.tobytes()
-                        _tmp_data = b''.join([_tmp_data, dmrpkt])
+                        _tx_dmrpkt = dmrbits.tobytes()
+                        _tmp_data = b''.join([_tmp_data, _tx_dmrpkt])
 
                     else:
                         # BEGIN STANDARD CONTENTION HANDLING
@@ -3114,26 +3119,28 @@ class routerHBP(HBSYSTEM):
                         # MUST TEST FOR NEW STREAM AND IF SO, RE-WRITE THE LC FOR THE TARGET
                         # MUST RE-WRITE DESTINATION TGID IF DIFFERENT
                         # if _dst_id != rule['DST_GROUP']:
+                        # Per-target copy — never mutate shared dmrpkt across fanout legs
+                        _tx_dmrpkt = dmrpkt
                         dmrbits = bitarray(endian='big')
-                        dmrbits.frombytes(dmrpkt)
-                        # Create a voice header packet (FULL LC) — same-TG: passthrough
-                        if target_requires_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
+                        dmrbits.frombytes(_tx_dmrpkt)
+                        # Create a voice header packet (FULL LC) — FreeDMR: always rewrite
+                        if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
                             dmrbits = _target_status[_target['TS']]['TX_H_LC'][0:98] + dmrbits[98:166] + _target_status[_target['TS']]['TX_H_LC'][98:197]
-                        # Create a voice terminator packet (FULL LC) — same-TG: passthrough
-                        elif target_requires_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
+                        # Create a voice terminator packet (FULL LC) — FreeDMR: always rewrite
+                        elif _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
                             dmrbits = _target_status[_target['TS']]['TX_T_LC'][0:98] + dmrbits[98:166] + _target_status[_target['TS']]['TX_T_LC'][98:197]
                             if CONFIG['REPORTS']['REPORT']:
                                 call_duration = pkt_time - _target_status[_target['TS']]['TX_START']
                                 systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
                         # Create a Burst B-E packet (Embedded LC) — FreeDMR: only when TG remaps
-                        elif target_requires_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_VOICE and _dtype_vseq in [1,2,3,4]:
+                        elif target_requires_emb_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_VOICE and _dtype_vseq in [1,2,3,4]:
                             dmrbits = dmrbits[0:116] + _target_status[_target['TS']]['TX_EMB_LC'][_dtype_vseq] + dmrbits[148:264]
                         try:
-                            dmrpkt = dmrbits.tobytes()
+                            _tx_dmrpkt = dmrbits.tobytes()
                         except AttributeError:
                             logger.exception('(%s) Non-fatal AttributeError - dmrbits.tobytes()',self._system)
                             
-                        _tmp_data = b''.join([_tmp_data, dmrpkt, _data[53:55]])
+                        _tmp_data = b''.join([_tmp_data, _tx_dmrpkt, _data[53:55]])
 
                     # Transmit the packet to the destination system
                     systems[_target['SYSTEM']].send_system(_tmp_data,b'',_ber,_rssi,_source_server, _source_rptr)
