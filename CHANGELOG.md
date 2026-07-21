@@ -25,7 +25,7 @@ See [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md) for post-1.5.0 phases. Feature re
 **IPSC repeater selfcare**
 - `[SELF SERVICE]` — MariaDB `Clients` table (`mode = 0`) upsert on register, logout on de-register
 - `ipsc_selfcare_poll()` — apply `TS1_STATIC` / `TS2_STATIC` from dashboard when `modified = 1`
-- Re-register re-applies stored options via `mark_ipsc_options_pending()` on new session (poll applies when `modified = 1`)
+- Re-register re-applies stored options (`modified` set when options non-empty)
 - Hotspot proxy poll excludes IPSC rows (`proxy_db.py`: `mode > 0` only)
 
 **IPSC private / unit voice (`PRIVATE_VOICE 0x81`) — Phase 3, included in 1.5.0**
@@ -238,28 +238,13 @@ Options=TS1_1=23426;TIMER=10;STICKY=1
 
 ---
 
-## Version 1.5.1 (2026-07-15)
+## Unreleased
 
-Selfcare reliability fixes, documentation overhaul, and legacy install cleanup.
+### Selfcare disconnect and apply fixes (post-1.5.0)
 
-### Bug fixes
-
-- **IPSC selfcare reconnect** — `mark_ipsc_options_pending()` re-queues stored MariaDB options on register so static TGs re-apply after power cycle or server reboot (parity with hotspot `login_opt()`)
-- **DISC=1 one-shot** — strip `DISC=1` from in-memory OPTIONS and persist stripped value back to MariaDB after apply (IPSC poll, hotspot DISC poll, HBP RPTO); prevents disconnect re-firing on every reconnect
-- **Hotspot ping-timeout** — fix `master_maintenance_loop` empty-peer check (`not self._peers`); align timeout cleanup with RPTCL (reflectors, SUB_MAP, OPTIONS `_reset`)
-- **DISC=1 remote disconnect** — dashboard/selfcare can disconnect a hotspot or IPSC repeater; applied on RPTO receipt and via MariaDB poll
-- **IPSC selfcare apply** — fix races where settings stuck on "applying"
-- **Hotspot selfcare proxy** — `login_opt()` / `send_opts()` use `self.db_proxy`; guard missing `opt_timer` on RPTO before RPTC
+- **DISC=1 remote disconnect** — dashboard/selfcare can disconnect a hotspot or IPSC repeater; applied immediately on RPTO receipt and via MariaDB poll
+- **IPSC selfcare apply** — fix races where settings stuck on "applying"; reconnect delivery regressions fixed
 - **Dial reflector** — stop pairing numeric talkgroups with dial reflectors on group calls
-
-### Documentation and maintenance
-
-- Selfcare docs: IPSC vs hotspot apply paths, `use_selfservice` key, `POLL_INTERVAL` / `DISC_POLL_INTERVAL`, DISC timing and DB persist
-- `DISC_POLL_INTERVAL` parsed in `config.py` (default 2 s)
-- Remove unused `find_ipsc_slot_for_radio_id` wrapper, `make_clients_tbl()`, test-only `sanitize_dial_reflectors_for_system` from production helpers
-- Full doc overhaul: features, architecture, options, selfcare guides
-- Remove legacy install artifacts (hdstack, systemd-scripts, obsolete docker-configs)
-- Move ops scripts to `scripts/`; update credits for Shane Daley M0VUB (ShaYmez)
 
 See [doc/selfcare.md](doc/selfcare.md) and [doc/options.md](doc/options.md).
 

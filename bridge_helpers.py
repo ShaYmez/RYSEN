@@ -10,8 +10,6 @@ from ipsc_const import is_routing_master
 DIAL_A_TG = 9
 DIAL_A_TG_BYTES = bytes_3(DIAL_A_TG)
 _DIAL_SERVICE_CODES = frozenset([DIAL_A_TG, 4000, 5000])
-PARROT_TG = 9990
-_SERVICE_TG_RANGE = range(9991, 10000)
 
 
 def is_dial_service_code(reflector):
@@ -28,38 +26,6 @@ def is_invalid_dial_reflector(reflector):
         return int(reflector) == DIAL_A_TG
     except (TypeError, ValueError):
         return False
-
-
-def is_parrot_talkgroup(tgid):
-    """TG 9990 — parrot echo (group call on 9990, or dial-a-tg private call to 9990)."""
-    try:
-        return int(tgid) == PARROT_TG
-    except (TypeError, ValueError):
-        return False
-
-
-def is_parrot_bridge(bridge_name):
-    """Conference or dial reflector bridge for parrot (never routes via OpenBridge)."""
-    if not bridge_name:
-        return False
-    if bridge_name[0:1] == '#':
-        return is_parrot_talkgroup(bridge_name[1:])
-    return is_parrot_talkgroup(bridge_name)
-
-
-def is_valid_talkgroup_bridge(bridge_name):
-    """False for dial service codes (9/4000/5000) and parrot/service TG ranges."""
-    if bridge_name[0:1] == '#':
-        return not is_dial_service_code(bridge_name[1:])
-    try:
-        n = int(bridge_name)
-    except (TypeError, ValueError):
-        return True
-    if is_dial_service_code(n):
-        return False
-    if n in _SERVICE_TG_RANGE:
-        return False
-    return n >= 5
 
 
 def build_bridge_index(bridges):
@@ -120,41 +86,35 @@ def to_target_forward_systems(bridge_entries, source_system):
 
 def private_call_may_create_reflector(int_dst_id, bridges):
     """True when a private call would invoke make_single_reflector (routerHBP private path)."""
-    if is_parrot_talkgroup(int_dst_id):
-        return False
     if int_dst_id < 5 or int_dst_id in (8, 9) or int_dst_id > 999999:
         return False
     if 4000 <= int_dst_id <= 5000:
         return False
-    if int_dst_id in _SERVICE_TG_RANGE:
+    if 9991 <= int_dst_id <= 9999:
         return False
     return f'#{int_dst_id}' not in bridges
 
 
-def clear_default_reflectors_for_system(bridges, system):
-    """Deactivate TO_TYPE OFF (#) default dial reflector legs for one MASTER.
-
-    Clears stale auto-linked reflectors left on a proxy slot after the prior
-    hotspot disconnects (DEFAULT_REFLECTOR / DIAL / StartRef), without touching
-    user-activated (TO_TYPE ON) links — those are cleared by reset_dynamic_reflectors().
-    """
+def sanitize_dial_reflectors_for_system(bridges, system):
+    """Deactivate service-code # reflectors for one MASTER. Returns True if state changed."""
     changed = False
     for bridge_name in bridges:
         if bridge_name[0:1] != '#':
             continue
-        if is_dial_service_code(bridge_name[1:]):
-            continue
         for entry in bridges[bridge_name]:
             if entry['SYSTEM'] != system:
                 continue
-            if entry.get('TO_TYPE') != 'OFF':
-                continue
-            if entry.get('ACTIVE'):
-                entry['ACTIVE'] = False
-                entry['TIMER'] = time.time()
+            if is_dial_service_code(bridge_name[1:]):
+                if entry.get('ACTIVE'):
+                    entry['ACTIVE'] = False
+                    changed = True
+                if entry.get('ON'):
+                    entry['ON'] = []
+                    changed = True
+            elif DIAL_A_TG_BYTES in entry.get('ON', []):
+                entry['ON'] = [x for x in entry['ON'] if x != DIAL_A_TG_BYTES]
                 changed = True
     return changed
-
 
 _IPSC_LINK_KEYS = frozenset(['IPSC', 'LINK_IPSC'])
 _SELFCARE_DISC_TRUTHY = frozenset(('1', 'true', 'yes'))
@@ -374,90 +334,6 @@ def reflector_single_mode_wrong_tg(int_dst_id, dst_id_bytes, bridge, entry):
     if reflector_bridge_uses_linked_tg(bridge, int_dst_id, dst_id_bytes, entry.get('ON')):
         return False
     return True
-
-
-def system_has_static_tgs(system_cfg):
-    """True when TS1_STATIC or TS2_STATIC is configured (sticky TG must not run)."""
-    for key in ('TS1_STATIC', 'TS2_STATIC'):
-        val = system_cfg.get(key)
-        if val and str(val).strip() and str(val).strip() not in ('0', 'False'):
-            return True
-    return False
-
-
-def parse_static_tg_list(ts_static):
-    """Normalize TS1_STATIC/TS2_STATIC config value to a list of TG integers."""
-    if not ts_static or ts_static is False:
-        return []
-    text = re.sub(r'\s', '', str(ts_static))
-    if not text or text in ('0', 'False'):
-        return []
-    result = []
-    for part in text.split(','):
-        if not part:
-            continue
-        try:
-            tg = int(part)
-        except (TypeError, ValueError):
-            continue
-        if tg <= 0 or tg >= 16777215:
-            continue
-        result.append(tg)
-    return result
-
-
-def parse_options_static_fields(options_str):
-    """Extract TS1/TS2 static talkgroup lists from a semicolon OPTIONS string."""
-    ts1 = False
-    ts2 = False
-    if not options_str:
-        return ts1, ts2
-    text = options_str
-    if isinstance(text, bytes):
-        text = text.decode('ascii', errors='ignore')
-    text = text.rstrip('\x00')
-    for part in str(text).split(';'):
-        if '=' not in part:
-            continue
-        key, val = part.split('=', 1)
-        key = key.strip()
-        val = val.strip()
-        if key in ('TS1', 'TS1_1'):
-            ts1 = val if val else False
-        elif key in ('TS2', 'TS2_1'):
-            ts2 = val if val else False
-        elif key.startswith('TS1_') and val:
-            ts1 = ','.join([str(ts1), val]) if ts1 and ts1 is not False else val
-        elif key.startswith('TS2_') and val:
-            ts2 = ','.join([str(ts2), val]) if ts2 and ts2 is not False else val
-    return ts1, ts2
-
-
-def bridge_has_active_static_leg(bridges, system, ts, tg):
-    """True when bridge *tg* has a permanent static leg on *system* slot *ts*."""
-    from dmr_utils3.utils import bytes_3
-    tgid_b = bytes_3(tg)
-    for entry in bridges.get(str(tg), ()):
-        if (entry.get('SYSTEM') == system and entry.get('TS') == ts
-                and entry.get('TGID') == tgid_b
-                and entry.get('TO_TYPE') == 'OFF' and entry.get('ACTIVE')):
-            return True
-    return False
-
-
-def is_static_field_keyup_noise(existing_ts_static, proposed_ts_static):
-    """True when a lone TG in OPTIONS likely reflects a keyed talkgroup, not static config.
-
-    Pi-Star/VoxDMR login Options= with comma-separated statics is real config and is not
-    noise. A single TG replacing an established multi-static bundle usually is key-up noise.
-    """
-    old_list = parse_static_tg_list(existing_ts_static)
-    new_list = parse_static_tg_list(proposed_ts_static)
-    if len(new_list) != 1:
-        return False
-    if len(old_list) <= 1:
-        return False
-    return new_list[0] not in old_list
 
 
 def set_reflector_link_owner(entry, rf_src, peer_id):

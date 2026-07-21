@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# RYSEN DMRMaster+ Version 1.5.1
+# RYSEN DMRMaster+ Version 1.5.0
 ###############################################################################
 #   Copyright (C) 2016-2019 Cortney T. Buffington, N0MJS <n0mjs@me.com>
 #
@@ -516,12 +516,11 @@ class OPENBRIDGE(DatagramProtocol):
                                 self._laststrid.append(_stream_id)
                             return
                         
-                    # Discard old packets. Do NOT send_bcsq on age alone — under
-                    # reactor lag catch-up frames look "stale"; BCSQ quenches the
-                    # live stream and clients (BlueDV/Peanut) stretch the holes.
-                    if (int.from_bytes(_timestamp,'big')/1000000000) < (time() - 15):
+                    #Discard old packets
+                    if (int.from_bytes(_timestamp,'big')/1000000000) < (time() - 5):
                         if _stream_id not in self._laststrid:
-                            logger.warning('(%s) Packet from server %s more than 15s old!, discarding',  self._system,int.from_bytes(_source_server,'big'))
+                            logger.warning('(%s) Packet from server %s more than 5s old!, discarding',  self._system,int.from_bytes(_source_server,'big'))
+                            self.send_bcsq(_dst_id,_stream_id)
                             self._laststrid.append(_stream_id)
                         return
                     
@@ -850,7 +849,7 @@ class HBSYSTEM(DatagramProtocol):
             self.transport.write(b''.join([MSTCL, peer]),self._CONFIG['SYSTEMS'][self._system]['PEERS'][peer]['SOCKADDR'])
             # Remove any timed out peers from the configuration
             del self._CONFIG['SYSTEMS'][self._system]['PEERS'][peer]
-        if not self._peers and 'OPTIONS' in self._CONFIG['SYSTEMS'][self._system]:
+        if 'PEERS' not in self._CONFIG['SYSTEMS'][self._system] and 'OPTIONS' in self._CONFIG['SYSTEMS'][self._system]:
             
             if '_default_options' in self._CONFIG['SYSTEMS'][self._system]:
                 logger.info('(%s) Setting default Options: %s',self._system, self._CONFIG['SYSTEMS'][self._system]['_default_options'])
@@ -1238,15 +1237,8 @@ class HBSYSTEM(DatagramProtocol):
                     _remaining, _had_disc = apply_selfcare_options(
                         self._system, _peer_id, _opt_str)
                     if _had_disc:
-                        self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = _remaining
-                        _db = self._CONFIG.get('_SELF_SERVICE_DB')
-                        if _db is not None:
-                            _rid = int(int_id(_peer_id))
-                            _save = _db.save_client_options(_rid, _remaining)
-                            _save.addErrback(
-                                lambda f, _rid=_rid: logger.error(
-                                    '(%s) Selfcare DISC options save failed for %s: %s',
-                                    self._system, _rid, f.getErrorMessage()))
+                        if _remaining:
+                            self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = _remaining
                     else:
                         self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = _opt_str
                 except Exception as exc:

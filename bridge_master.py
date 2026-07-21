@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# RYSEN DMRMaster+ Version 1.5.1
+# RYSEN DMRMaster+ Version 1.5.0
 ###############################################################################
 # Copyright (C) 2020 Simon Adlem, G7RZU <g7rzu@gb7fr.org.uk>  
 # Copyright (C) 2016-2019 Cortney T. Buffington, N0MJS <n0mjs@me.com>
@@ -65,17 +65,15 @@ from ipsc_const import is_routing_master
 from selfcare_db import (
     SelfcareDB,
     find_hotspot_master_peer,
+    find_ipsc_slot_for_radio_id,
     find_ipsc_peer_for_radio_id,
 )
 from bridge_helpers import iter_routing_master_systems as _iter_routing_master_systems
 from bridge_helpers import (
     DIAL_A_TG,
     DIAL_A_TG_BYTES,
-    PARROT_TG,
     is_dial_service_code,
     is_invalid_dial_reflector,
-    is_parrot_talkgroup,
-    is_parrot_bridge,
     reflector_bridge_matches_group_call,
     bridge_transmission_matches_rule,
     reflector_single_mode_wrong_tg,
@@ -87,13 +85,6 @@ from bridge_helpers import (
     strip_disc_from_options,
     deactivate_linked_ipsc_bridge_legs,
     paired_group_route_bridge,
-    clear_default_reflectors_for_system,
-    system_has_static_tgs,
-    is_valid_talkgroup_bridge,
-    parse_static_tg_list,
-    parse_options_static_fields,
-    bridge_has_active_static_leg,
-    is_static_field_keyup_noise,
 )
 # NOTE: 'words' is loaded dynamically via readAMBE() at runtime (see line ~2689)
 #from voice_lib import words
@@ -413,8 +404,6 @@ def activate_ua_bridge_source(bridge_name, system, slot, tmout=None, peer_id=Non
                 _entry['ACTIVE'] = True
                 _changed = True
                 logger.info('(ROUTER) Bridge %s activated for %s TS%s', bridge_name, system, slot)
-            if _entry.get('TO_TYPE') == 'OFF' and _entry.get('ACTIVE'):
-                continue
             _entry['TIMER'] = time() + _timeout_s
             if _entry.get('TO_TYPE') == 'ON':
                 _ua_refreshed = True
@@ -463,8 +452,6 @@ def make_single_bridge(_tgid,_sourcesystem,_slot,_tmout):
 
 #Make static bridge - used for on-the-fly relay bridges
 def make_stat_bridge(_tgid):
-    if is_parrot_talkgroup(int_id(_tgid)):
-        return
     _tgid_s = str(int_id(_tgid))
     BRIDGES[_tgid_s] = []
     for _system in iter_routing_master_systems():
@@ -495,11 +482,9 @@ def is_reflector_private_destination(int_dst_id):
       7 digits  — individual subscribers (and some 7-digit hotspots without SSID)
       9 digits  — hotspots with SSID suffix (intended; not always enforced in field)
     """
-    if is_parrot_talkgroup(int_dst_id):
-        return False
     if int_dst_id in (4000, 5000):
         return True
-    if int_dst_id in range(9991, 10000):
+    if int_dst_id >= 9991 and int_dst_id <= 9999:
         return True
     if int_dst_id >= 5 and int_dst_id not in (8, 9) and int_dst_id <= 999999:
         return True
@@ -529,8 +514,8 @@ def _build_disconnect_say(system):
 
 
 def make_default_reflector(reflector,_tmout,system):
-    if is_dial_service_code(reflector) or is_invalid_dial_reflector(reflector):
-        logger.warning('(REFLECTOR) Ignoring service-code default reflector %s for %s', reflector, system)
+    if is_invalid_dial_reflector(reflector):
+        logger.warning('(REFLECTOR) Ignoring invalid default reflector %s for %s', reflector, system)
         return
     bridge = ''.join(['#',str(reflector)])
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
@@ -547,37 +532,15 @@ def make_default_reflector(reflector,_tmout,system):
         BRIDGES[bridge] = bridgetemp
     _idx_replace_bridge(bridge)
 
-def _ensure_obp_stat_leg(tg_s, tgid_b):
-    """Permanent OBP STAT leg so inbound TS1 (e.g. from OpenBridge) can route to static TGs."""
-    if is_parrot_talkgroup(tg_s):
-        return
-    if not CONFIG['GLOBAL'].get('GEN_STAT_BRIDGES'):
-        return
-    if tg_s not in BRIDGES:
-        return
-    for _system in CONFIG['SYSTEMS']:
-        if _system[0:3] != 'OBP':
-            continue
-        for _entry in BRIDGES[tg_s]:
-            if _entry['SYSTEM'] == _system and _entry.get('TO_TYPE') == 'STAT':
-                return
-        BRIDGES[tg_s].append({
-            'SYSTEM': _system, 'TS': 1, 'TGID': tgid_b,
-            'ACTIVE': True, 'TIMEOUT': '', 'TO_TYPE': 'STAT',
-            'OFF': [], 'ON': [], 'RESET': [], 'TIMER': 0,
-        })
-        logger.info('(OPTIONS) Added OBP STAT leg for static TG %s', tg_s)
-
-
 def make_static_tg(tg, ts, _tmout, system):
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
     tg_s = str(tg)
     tgid_b = bytes_3(tg)
     static_entry = {
         'SYSTEM': system, 'TS': ts, 'TGID': tgid_b,
-        'ACTIVE': True, 'TIMEOUT': 0, 'TO_TYPE': 'OFF',
+        'ACTIVE': True, 'TIMEOUT': _tmout * 60, 'TO_TYPE': 'OFF',
         'OFF': [], 'ON': [tgid_b], 'RESET': [],
-        'TIMER': 0,
+        'TIMER': time() + (_tmout * 60),
     }
     if tg_s not in BRIDGES:
         make_single_bridge(tgid_b, system, ts, _tmout)
@@ -595,23 +558,6 @@ def make_static_tg(tg, ts, _tmout, system):
                     tg_s, ts, system)
     BRIDGES[tg_s] = bridgetemp
     _idx_replace_bridge(tg_s)
-    _ensure_obp_stat_leg(tg_s, tgid_b)
-
-
-def purge_invalid_bridges():
-    """Remove bogus bridge keys (4000 disconnect, 9 dial channel, etc.)."""
-    _removed = []
-    for _bridge in list(BRIDGES.keys()):
-        if is_valid_talkgroup_bridge(_bridge):
-            continue
-        _idx_remove_bridge(_bridge)
-        del BRIDGES[_bridge]
-        _removed.append(_bridge)
-    if _removed:
-        rebuild_bridge_index()
-        logger.info('(ROUTER) Purged invalid bridge keys: %s', _removed)
-    return _removed
-
 
 def reset_static_tg(tg,ts,_tmout,system):
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
@@ -628,52 +574,8 @@ def reset_static_tg(tg,ts,_tmout,system):
     BRIDGES[str(tg)] = bridgetemp
     _idx_replace_bridge(str(tg))
 
-
-def ensure_static_tgs_for_system(system, tmout=None):
-    """Idempotent: create any missing OFF/ACTIVE static legs from CONFIG TS1/TS2_STATIC."""
-    if system not in CONFIG['SYSTEMS']:
-        return 0
-    if not is_routing_master(CONFIG['SYSTEMS'][system]['MODE']):
-        return 0
-    if not system_has_static_tgs(CONFIG['SYSTEMS'][system]):
-        return 0
-    if tmout is None:
-        tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
-    repaired = 0
-    for tg in parse_static_tg_list(CONFIG['SYSTEMS'][system].get('TS1_STATIC')):
-        if not bridge_has_active_static_leg(BRIDGES, system, 1, tg):
-            make_static_tg(tg, 1, tmout, system)
-            repaired += 1
-            logger.info('(OPTIONS) Repaired missing static TG %s TS1 for %s', tg, system)
-    for tg in parse_static_tg_list(CONFIG['SYSTEMS'][system].get('TS2_STATIC')):
-        if not bridge_has_active_static_leg(BRIDGES, system, 2, tg):
-            make_static_tg(tg, 2, tmout, system)
-            repaired += 1
-            logger.info('(OPTIONS) Repaired missing static TG %s TS2 for %s', tg, system)
-    if repaired:
-        notify_bridge_table_updated()
-    return repaired
-
-
-def reapply_static_tgs_for_system(system, tmout=None):
-    """Re-create static TG bridge legs for one routing master (after bridge reset)."""
-    return ensure_static_tgs_for_system(system, tmout)
-
-
-def repair_static_tgs_all_systems():
-    """Ensure static legs exist for every routing master with TS1/TS2_STATIC configured."""
-    for _system in CONFIG['SYSTEMS']:
-        if not CONFIG['SYSTEMS'][_system].get('ENABLED'):
-            continue
-        ensure_static_tgs_for_system(_system)
-
-
 def reset_default_reflector(reflector,_tmout,system):
-    try:
-        reflector = int(reflector)
-    except (TypeError, ValueError):
-        return
-    if reflector <= 0 or is_invalid_dial_reflector(reflector):
+    if is_invalid_dial_reflector(reflector):
         return
     bridge = ''.join(['#',str(reflector)])
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
@@ -690,8 +592,6 @@ def reset_default_reflector(reflector,_tmout,system):
     _idx_replace_bridge(bridge)
 
 def make_single_reflector(_tgid,_tmout,_sourcesystem):
-    if is_parrot_talkgroup(int_id(_tgid)):
-        return
     if is_invalid_dial_reflector(int_id(_tgid)):
         logger.warning('(REFLECTOR) Refusing to create invalid dial reflector #9 for %s', _sourcesystem)
         return
@@ -712,8 +612,9 @@ def make_single_reflector(_tgid,_tmout,_sourcesystem):
     # Keep routing index in sync
     _idx_add_bridge(_bridge)
 
-def remove_bridge_system(system, new_timeout_s=None, preserve_static_legs=True):
+def remove_bridge_system(system):
     _bridgestemp = {}
+    _bridgetemp = {}
     for _bridge in BRIDGES:
         for _bridgesystem in BRIDGES[_bridge]:
             if _bridgesystem['SYSTEM'] != system:
@@ -723,59 +624,31 @@ def remove_bridge_system(system, new_timeout_s=None, preserve_static_legs=True):
             else:
                 if _bridge not in _bridgestemp:
                     _bridgestemp[_bridge] = []
-                if (preserve_static_legs
-                        and _bridgesystem['TO_TYPE'] == 'OFF' and _bridgesystem['ACTIVE'] == True):
-                    _timeout = _bridgesystem['TIMEOUT']
-                    if new_timeout_s is not None and isinstance(_timeout, (int, float)):
-                        _timeout = new_timeout_s
-                    _bridgestemp[_bridge].append({
-                        'SYSTEM': system,
-                        'TS': _bridgesystem['TS'],
-                        'TGID': _bridgesystem['TGID'],
-                        'ACTIVE': True,
-                        'TIMEOUT': 0,
-                        'TO_TYPE': 'OFF',
-                        'OFF': list(_bridgesystem['OFF']),
-                        'ON': list(_bridgesystem['ON']),
-                        'RESET': list(_bridgesystem['RESET']),
-                        'TIMER': 0,
-                    })
-                else:
-                    _timeout = _bridgesystem['TIMEOUT']
-                    if (new_timeout_s is not None and isinstance(_timeout, (int, float))):
-                        _timeout = new_timeout_s
-                    _timer = time() + _timeout if isinstance(_timeout, (int, float)) and _timeout else time()
-                    _bridgestemp[_bridge].append({
-                        'SYSTEM': system,
-                        'TS': _bridgesystem['TS'],
-                        'TGID': _bridgesystem['TGID'],
-                        'ACTIVE': False,
-                        'TIMEOUT': _timeout,
-                        'TO_TYPE': _bridgesystem['TO_TYPE'],
-                        'OFF': list(_bridgesystem['OFF']),
-                        'ON': (list(_bridgesystem['ON']) if _bridgesystem['ON']
-                               else ([] if _bridge[0:1] == '#' else [_bridgesystem['TGID']])),
-                        'RESET': list(_bridgesystem['RESET']),
-                        'TIMER': _timer,
-                    })
+                _bridgestemp[_bridge].append({
+                    'SYSTEM': system,
+                    'TS': _bridgesystem['TS'],
+                    'TGID': _bridgesystem['TGID'],
+                    'ACTIVE': False,
+                    'TIMEOUT': _bridgesystem['TIMEOUT'],
+                    'TO_TYPE': _bridgesystem['TO_TYPE'],
+                    'OFF': list(_bridgesystem['OFF']),
+                    'ON': (list(_bridgesystem['ON']) if _bridgesystem['ON']
+                           else ([] if _bridge[0:1] == '#' else [_bridgesystem['TGID']])),
+                    'RESET': list(_bridgesystem['RESET']),
+                    'TIMER': time() + _bridgesystem['TIMEOUT'],
+                })
             
     BRIDGES.update(_bridgestemp)
     # Entries for the system changed across ALL bridges; cheapest correct option is a full rebuild
     rebuild_bridge_index()
 
 
-def clear_default_reflectors(system):
-    """Deactivate stale default (TO_TYPE OFF) dial reflectors on one MASTER slot."""
-    if clear_default_reflectors_for_system(BRIDGES, system):
-        rebuild_bridge_index()
-        logger.info('(REFLECTOR) Cleared stale default reflector(s) for %s', system)
-
-
 def reset_dynamic_reflectors(system):
     """Deactivate dial-a-tg reflector links (TO_TYPE ON, bridge name #...) for one MASTER.
 
-    Default reflector bridges (TO_TYPE OFF) are cleared by clear_default_reflectors().
-  """
+    Static/default reflector bridges (TO_TYPE OFF from StartRef/DIAL) are not changed.
+    Default reflector is re-applied via options_config when the peer sends OPTIONS.
+    """
     _changed = False
     for _bridge in BRIDGES:
         if _bridge[0:1] != '#':
@@ -810,7 +683,6 @@ def disconnect_dial_reflectors(system):
                 logger.info('(REFLECTOR) Disconnect (4000): deactivated %s for %s', _bridge, system)
     if _changed:
         rebuild_bridge_index()
-    purge_invalid_bridges()
 
 
 def deactivate_user_activated_bridges(system):
@@ -998,8 +870,7 @@ def rule_timer_loop():
                     # scan for every active bridge entry on non-sticky systems.
                     if (_bridge[0:1] != '#' and
                             is_routing_master(CONFIG['SYSTEMS'][_system['SYSTEM']]['MODE']) and
-                            _system['SYSTEM'] in _sticky_enabled_systems and
-                            not system_has_static_tgs(CONFIG['SYSTEMS'][_system['SYSTEM']])):
+                            _system['SYSTEM'] in _sticky_enabled_systems):
                         # Check if any subscriber has this TG as their sticky TG
                         for _subscriber in SUB_MAP:
                             try:
@@ -1110,8 +981,6 @@ def statTrimmer():
                 _bridge_stat = True
             if _system['TO_TYPE'] == 'ON' and _system['ACTIVE']:
                 _in_use = True
-            elif _system['TO_TYPE'] == 'OFF' and _system['ACTIVE']:
-                _in_use = True
             elif _system['TO_TYPE'] == 'OFF' and not _system['ACTIVE']:
                 _in_use = True
         if _bridge_stat and not _in_use:
@@ -1119,10 +988,7 @@ def statTrimmer():
     for _bridgerem in _remove_bridges:
         _idx_remove_bridge(_bridgerem)
         del BRIDGES[_bridgerem]
-        logger.info('(ROUTER) STAT bridge %s removed (idle, no active legs)', _bridgerem)
-    if _remove_bridges:
-        rebuild_bridge_index()
-    repair_static_tgs_all_systems()
+        logger.debug('(ROUTER) STAT bridge %s removed',_bridgerem)
     if CONFIG['REPORTS']['REPORT']:
         report_server.send_clients(b'bridge updated')
 
@@ -1503,13 +1369,8 @@ def options_config():
     logger.debug('(OPTIONS) Running options parser')
     for _system in CONFIG['SYSTEMS']:
         if '_reset' in  CONFIG['SYSTEMS'][_system] and CONFIG['SYSTEMS'][_system]['_reset']:
-            logger.info('(OPTIONS) Bridge reset for %s - no peers', _system)
-            _opt_str = CONFIG['SYSTEMS'][_system].get('OPTIONS', '')
-            if _opt_str:
-                _ts1, _ts2 = parse_options_static_fields(_opt_str)
-                CONFIG['SYSTEMS'][_system]['TS1_STATIC'] = _ts1 if _ts1 else False
-                CONFIG['SYSTEMS'][_system]['TS2_STATIC'] = _ts2 if _ts2 else False
-            remove_bridge_system(_system, preserve_static_legs=False)
+            logger.debug('(OPTIONS) Bridge reset for %s - no peers',_system)
+            remove_bridge_system(_system)
             CONFIG['SYSTEMS'][_system]['_reset'] = False
             continue
         try:
@@ -1657,12 +1518,8 @@ def options_config():
                         
                     if 'DEFAULT_REFLECTOR' not in _options:
                         _options['DEFAULT_REFLECTOR'] = 0
-                    # BlueDV often sends StartRef=4000 (disconnect) as "idle" —
-                    # never build a #4000/#5000/#9 reflector (service codes).
-                    if is_dial_service_code(_options['DEFAULT_REFLECTOR']) or is_invalid_dial_reflector(_options['DEFAULT_REFLECTOR']):
-                        logger.info(
-                            '(OPTIONS) %s DEFAULT_REFLECTOR=%s is a service code, treating as 0',
-                            _system, _options['DEFAULT_REFLECTOR'])
+                    if is_invalid_dial_reflector(_options['DEFAULT_REFLECTOR']):
+                        logger.warning('(OPTIONS) %s DEFAULT_REFLECTOR=9 is invalid (dial-a-tg channel), treating as 0', _system)
                         _options['DEFAULT_REFLECTOR'] = 0
                     
                     if 'OVERRIDE_IDENT_TG' not in _options:
@@ -1708,21 +1565,6 @@ def options_config():
                         if re.search(r"[^\d,]", _options['TS2_STATIC']):
                             logger.debug('(OPTIONS) %s - TS2_STATIC contains characters other than numbers and comma, ignoring',_system)
                             continue
-
-                    if is_static_field_keyup_noise(
-                            CONFIG['SYSTEMS'][_system].get('TS1_STATIC'), _options['TS1_STATIC']):
-                        logger.info(
-                            '(OPTIONS) %s ignoring TS1=%s (key-up noise vs static bundle %s)',
-                            _system, _options['TS1_STATIC'],
-                            CONFIG['SYSTEMS'][_system].get('TS1_STATIC'))
-                        _options['TS1_STATIC'] = CONFIG['SYSTEMS'][_system]['TS1_STATIC']
-                    if is_static_field_keyup_noise(
-                            CONFIG['SYSTEMS'][_system].get('TS2_STATIC'), _options['TS2_STATIC']):
-                        logger.info(
-                            '(OPTIONS) %s ignoring TS2=%s (key-up noise vs static bundle %s)',
-                            _system, _options['TS2_STATIC'],
-                            CONFIG['SYSTEMS'][_system].get('TS2_STATIC'))
-                        _options['TS2_STATIC'] = CONFIG['SYSTEMS'][_system]['TS2_STATIC']
                     
                     if isinstance(_options['DEFAULT_REFLECTOR'], str) and not _options['DEFAULT_REFLECTOR'].isdigit():
                         logger.debug('(OPTIONS) %s - DEFAULT_REFLECTOR is not an integer, ignoring',_system)
@@ -1741,10 +1583,8 @@ def options_config():
                     
                     if int(_options['DEFAULT_UA_TIMER']) != CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']:
                         logger.debug('(OPTIONS) %s Updating DEFAULT_UA_TIMER for existing bridges.',_system)
-                        remove_bridge_system(_system, new_timeout_s=_tmout * 60)
+                        remove_bridge_system(_system)
                         for _bridge in BRIDGES:
-                            if not is_valid_talkgroup_bridge(_bridge):
-                                continue
                             ts1 = False 
                             ts2 = False
                             for i,e in enumerate(BRIDGES[_bridge]):
@@ -1763,15 +1603,15 @@ def options_config():
                         # Direct appends to BRIDGES above bypass the individual index helpers;
                         # rebuild the full index to restore consistency.
                         rebuild_bridge_index()
-                    
+            
                     if int(_options['DEFAULT_REFLECTOR']) != CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR']:
                         if int(_options['DEFAULT_REFLECTOR']) > 0:
                             logger.debug('(OPTIONS) %s default reflector changed, updating',_system) 
                             reset_default_reflector(CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR'],_tmout,_system)
                             make_default_reflector(int(_options['DEFAULT_REFLECTOR']),_tmout,_system)
                         else:
-                            logger.debug('(OPTIONS) %s default reflector disabled, updating',_system)
-                            reset_default_reflector(CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR'],_tmout,_system)
+                            logger.debug('(OPTIONS) %s default reflector disabled, updating',_system) 
+                            reset_default_reflector(int(_options['DEFAULT_REFLECTOR']),_tmout,_system)
                     
                     ts1 = []
                     if _options['TS1_STATIC'] != CONFIG['SYSTEMS'][_system]['TS1_STATIC']:
@@ -1816,7 +1656,6 @@ def options_config():
                     CONFIG['SYSTEMS'][_system]['TS2_STATIC'] = _options['TS2_STATIC']
                     CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR'] = int(_options['DEFAULT_REFLECTOR'])
                     CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER'] = int(_options['DEFAULT_UA_TIMER'])
-                    ensure_static_tgs_for_system(_system, _tmout)
         except Exception as e:
             logger.exception('(OPTIONS) caught exception: %s',e)
             continue
@@ -1852,9 +1691,8 @@ def ipsc_selfcare_poll():
                 continue
             CONFIG['SYSTEMS'][slot]['OPTIONS'] = opt_str
             remaining, had_disc = apply_selfcare_options(slot, peer_id, opt_str)
-            if had_disc:
+            if remaining:
                 CONFIG['SYSTEMS'][slot]['OPTIONS'] = remaining
-                yield _selfcare_db.save_client_options(int_id_val, remaining)
             try:
                 if remaining or not had_disc:
                     options_config()
@@ -1865,54 +1703,9 @@ def ipsc_selfcare_poll():
                 continue
             yield _selfcare_db.clear_modified(int_id_val)
             logger.info('(SELF SERVICE) Applied options for IPSC %s on %s: %s',
-                        int_id_val, slot, remaining if had_disc else opt_str)
+                        int_id_val, slot, opt_str)
     except Exception as err:
         logger.exception('(SELF SERVICE) poll error: %s', err)
-
-
-@inlineCallbacks
-def hotspot_selfcare_static_reconcile():
-    """Repair selfcare static bundle after key-up noise overwrote CONFIG (not peer login Options=)."""
-    ss = CONFIG.get('SELF SERVICE', {})
-    if not ss.get('ENABLED') or _selfcare_db is None:
-        return
-    try:
-        for system, syscfg in CONFIG['SYSTEMS'].items():
-            if syscfg.get('MODE') != 'MASTER' or not syscfg.get('ENABLED'):
-                continue
-            connected = [(pid, p) for pid, p in (syscfg.get('PEERS') or {}).items()
-                         if p.get('CONNECTION') == 'YES']
-            if len(connected) != 1:
-                continue
-            peer_id, _peer = connected[0]
-            rows = yield _selfcare_db.select_hotspot_options(peer_id)
-            if not rows:
-                continue
-            options = rows[0][0]
-            opt_str = (options.decode('utf-8', errors='ignore')
-                       if isinstance(options, bytes) else str(options))
-            if not opt_str.strip():
-                continue
-            db_ts1, db_ts2 = parse_options_static_fields(opt_str)
-            cfg_ts1 = syscfg.get('TS1_STATIC') or False
-            cfg_ts2 = syscfg.get('TS2_STATIC') or False
-            if not is_static_field_keyup_noise(db_ts2, cfg_ts2):
-                if not is_static_field_keyup_noise(db_ts1, cfg_ts1):
-                    continue
-            if (parse_static_tg_list(db_ts1) == parse_static_tg_list(cfg_ts1)
-                    and parse_static_tg_list(db_ts2) == parse_static_tg_list(cfg_ts2)):
-                continue
-            logger.info(
-                '(SELF SERVICE) Hotspot static key-up noise on %s — restoring selfcare statics (cfg TS2=%s, db TS2=%s)',
-                system, cfg_ts2, db_ts2)
-            CONFIG['SYSTEMS'][system]['OPTIONS'] = opt_str
-            try:
-                options_config()
-            except Exception:
-                logger.exception(
-                    '(SELF SERVICE) options_config failed during hotspot reconcile for %s', system)
-    except Exception as err:
-        logger.exception('(SELF SERVICE) hotspot static reconcile error: %s', err)
 
 
 @inlineCallbacks
@@ -1937,9 +1730,8 @@ def hotspot_selfcare_disc_poll():
                     int_id_val)
                 continue
             remaining, had_disc = apply_selfcare_options(system, peer_id, opt_str)
-            CONFIG['SYSTEMS'][system]['OPTIONS'] = remaining
-            yield _selfcare_db.save_client_options(int_id_val, remaining)
             if remaining:
+                CONFIG['SYSTEMS'][system]['OPTIONS'] = remaining
                 try:
                     options_config()
                 except Exception:
@@ -1982,7 +1774,7 @@ class routerOBP(OPENBRIDGE):
                     #logger.debug("(DEDUP) OBP Source Skipping system %s TS: %s",_target['SYSTEM'],_target['TS'])
                     continue
                 if _target_system['MODE'] == 'OPENBRIDGE':
-                    if _noOBP == True or is_parrot_bridge(_bridge):
+                    if _noOBP == True:
                         continue
                     #We want to ignore this system and TS combination if it's called again for this packet
                     _sysIgnore.append((_target['SYSTEM'],_target['TS']))
@@ -2232,12 +2024,6 @@ class routerOBP(OPENBRIDGE):
         _pkt_crc = _h.digest()
         
         #_pkt_crc = _hash
-
-        _int_dst_id = int_id(_dst_id)
-
-        # Parrot (TG 9990) is HBP/PEER only — never bridge through OpenBridge.
-        if is_parrot_talkgroup(_int_dst_id):
-            return
 
         # Match UNIT data, SMS/GPS, and send it to the dst_id if it is in SUB_MAP
         if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or _dtype_vseq == 8 or ((_stream_id not in self.STATUS) and _dtype_vseq == 3)):
@@ -2551,55 +2337,49 @@ class routerOBP(OPENBRIDGE):
             
             #Create STAT bridge for unknown TG
             if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:
-                if (int_id(_dst_id) >= 5 and int_id(_dst_id) != 9
-                        and not is_dial_service_code(int_id(_dst_id))
-                        and not is_parrot_talkgroup(int_id(_dst_id))
-                        and is_valid_talkgroup_bridge(str(int_id(_dst_id)))
-                        and (str(int_id(_dst_id)) not in BRIDGES)):
+                if int_id(_dst_id) >= 5 and int_id(_dst_id) != 9 and (str(int_id(_dst_id)) not in BRIDGES):
                     logger.debug('(%s) Bridge for STAT TG %s does not exist. Creating',self._system, int_id(_dst_id))
                     make_stat_bridge(_dst_id)
 
             # Activate this OBP leg on an existing conference bridge (same as HBP on call start)
             _int_dst = int_id(_dst_id)
             if (_int_dst >= 5 and _int_dst != 9 and _int_dst not in (4000, 5000)
-                    and not is_parrot_talkgroup(_int_dst)
                     and not (_int_dst >= 9991 and _int_dst <= 9999)
                     and str(_int_dst) in BRIDGES):
                 activate_ua_bridge_source(str(_int_dst), self._system, _slot, peer_id=_peer_id)
             
-            if not is_dial_service_code(_int_dst):
-                # --- OPTIMISED ROUTING: use BRIDGE_IDX for O(1) lookup instead of O(N*M) full scan ---
-                _sysIgnore = deque()
-                _lookup_key = (self._system, _slot, _dst_id)
-                _candidate_bridges = BRIDGE_IDX.get(_lookup_key)
-                _ROUTE_STATS['packets'] += 1
-                if _candidate_bridges is None:
-                    # Index miss - fall back to full scan and schedule a rebuild.
-                    # This should never happen in normal operation; log at WARNING.
-                    logger.warning('(%s) OBP BRIDGE_IDX miss for key (%s, %s, %s) '
-                                   '- falling back to full scan and rebuilding index',
-                                   self._system, self._system, _slot, int_id(_dst_id))
-                    _ROUTE_STATS['index_misses'] += 1
-                    _ROUTE_STATS['fallbacks'] += 1
-                    rebuild_bridge_index()
-                    _candidate_bridges = BRIDGE_IDX.get(_lookup_key, set())
-                    # Full-scan fallback for safety
-                    for _bridge in BRIDGES:
-                        for _system in BRIDGES[_bridge]:
-                            if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
-                                _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore,_hops, _source_server, _ber, _rssi, _source_rptr)
-                else:
-                    _ROUTE_STATS['index_hits'] += 1
-                    for _orig_bridge in list(_candidate_bridges):
-                        if _orig_bridge not in BRIDGES:
-                            # Stale index entry - skip and schedule a rebuild
-                            logger.debug('(%s) OBP BRIDGE_IDX stale entry for bridge %s, skipping',
-                                         self._system, _orig_bridge)
-                            continue
-                        for _system in BRIDGES[_orig_bridge]:
-                            if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
-                                _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_orig_bridge,_system,False,_sysIgnore,_hops, _source_server, _ber, _rssi, _source_rptr)
-                _log_route_stats()
+            # --- OPTIMISED ROUTING: use BRIDGE_IDX for O(1) lookup instead of O(N*M) full scan ---
+            _sysIgnore = deque()
+            _lookup_key = (self._system, _slot, _dst_id)
+            _candidate_bridges = BRIDGE_IDX.get(_lookup_key)
+            _ROUTE_STATS['packets'] += 1
+            if _candidate_bridges is None:
+                # Index miss - fall back to full scan and schedule a rebuild.
+                # This should never happen in normal operation; log at WARNING.
+                logger.warning('(%s) OBP BRIDGE_IDX miss for key (%s, %s, %s) '
+                               '- falling back to full scan and rebuilding index',
+                               self._system, self._system, _slot, int_id(_dst_id))
+                _ROUTE_STATS['index_misses'] += 1
+                _ROUTE_STATS['fallbacks'] += 1
+                rebuild_bridge_index()
+                _candidate_bridges = BRIDGE_IDX.get(_lookup_key, set())
+                # Full-scan fallback for safety
+                for _bridge in BRIDGES:
+                    for _system in BRIDGES[_bridge]:
+                        if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
+                            _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore,_hops, _source_server, _ber, _rssi, _source_rptr)
+            else:
+                _ROUTE_STATS['index_hits'] += 1
+                for _orig_bridge in list(_candidate_bridges):
+                    if _orig_bridge not in BRIDGES:
+                        # Stale index entry - skip and schedule a rebuild
+                        logger.debug('(%s) OBP BRIDGE_IDX stale entry for bridge %s, skipping',
+                                     self._system, _orig_bridge)
+                        continue
+                    for _system in BRIDGES[_orig_bridge]:
+                        if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
+                            _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_orig_bridge,_system,False,_sysIgnore,_hops, _source_server, _ber, _rssi, _source_rptr)
+            _log_route_stats()
 
 
             # Final actions - Is this a voice terminator?
@@ -2690,20 +2470,6 @@ class routerHBP(HBSYSTEM):
                 }
             }
 
-    def master_maintenance_loop(self):
-        """Clear reflectors/SUB_MAP on ping timeout (parity with RPTCL path)."""
-        _ping_deadline = (
-            self._CONFIG['GLOBAL']['PING_TIME'] * self._CONFIG['GLOBAL']['MAX_MISSED'])
-        _now = time()
-        for _peer_id in list(self._peers):
-            _this_peer = self._peers[_peer_id]
-            if _this_peer['LAST_PING'] + _ping_deadline < _now:
-                clear_default_reflectors(self._system)
-                reset_dynamic_reflectors(self._system)
-                clear_sub_map_for_system(self._system)
-                clear_sub_map_for_peer(_peer_id)
-        HBSYSTEM.master_maintenance_loop(self)
-
     def master_datagramReceived(self, _data, _sockaddr):
         _command = _data[:4]
         if _command == RPTC:
@@ -2712,8 +2478,6 @@ class routerHBP(HBSYSTEM):
                 if (_peer_id in self._peers
                         and self._peers[_peer_id]['CONNECTION'] == 'YES'
                         and self._peers[_peer_id]['SOCKADDR'] == _sockaddr):
-                    clear_default_reflectors(self._system)
-                    reset_dynamic_reflectors(self._system)
                     clear_sub_map_for_system(self._system)
                     clear_sub_map_for_peer(_peer_id)
             elif len(_data) >= 8:
@@ -2721,7 +2485,6 @@ class routerHBP(HBSYSTEM):
                 if (_peer_id in self._peers
                         and self._peers[_peer_id]['CONNECTION'] == 'WAITING_CONFIG'
                         and self._peers[_peer_id]['SOCKADDR'] == _sockaddr):
-                    clear_default_reflectors(self._system)
                     reset_dynamic_reflectors(self._system)
                     sanitize_dial_reflectors(self._system)
                     clear_sub_map_for_system(self._system)
@@ -2741,7 +2504,7 @@ class routerHBP(HBSYSTEM):
                         #logger.debug("(DEDUP) HBP Source - Skipping system %s TS: %s",_target['SYSTEM'],_target['TS'])
                         continue
                     if _target_system['MODE'] == 'OPENBRIDGE':
-                        if _noOBP == True or is_parrot_bridge(_bridge):
+                        if _noOBP == True:
                             continue
                         #We want to ignore this system and TS combination if it's called again for this packet
                         _sysIgnore.append((_target['SYSTEM'],_target['TS']))
@@ -2997,11 +2760,6 @@ class routerHBP(HBSYSTEM):
             reactor.callInThread(playFileOnRequest, self, int_dst_id)
             return None
 
-        elif is_parrot_talkgroup(int_dst_id):
-            # Parrot uses echo playback — no "linked to …" dial-a-tg announcement.
-            self.STATUS[slot]['_stopTgAnnounce'] = True
-            return None
-
         elif not self.STATUS[slot]['_stopTgAnnounce']:
             logger.info('(%s) Reflector: voice called (linking)  "linked to %s"', self._system, int_dst_id)
             if not _ipsc:
@@ -3043,8 +2801,8 @@ class routerHBP(HBSYSTEM):
         self.STATUS[slot]['_allStarMode'] = False
         logger.info('(%s) Reset all star mode -> dial mode', self._system)
 
-    def _relay_unit_voice_packet(self, _dst_id, _slot, _bits, _data, dmrpkt, _peer_id=None):
-        """Forward one unit-voice DMRD frame toward a destination system (parrot echo path)."""
+    def _forward_unit_voice(self, _dst_id, _slot, _bits, _data, dmrpkt, _stream_id, _peer_id):
+        """Bridge unit (private) voice DMRD to SUB_MAP destination, hotspot peer, or IPSC."""
         _int_dst_id = int_id(_dst_id)
 
         def _send(_d_system, _d_slot):
@@ -3096,24 +2854,6 @@ class routerHBP(HBSYSTEM):
                             or str(_int_peer)[:7] == str(_int_dst_id)[:7]):
                         if _send(_d_system, _slot):
                             return
-
-    def _forward_unit_voice(self, _dst_id, _slot, _bits, _data, dmrpkt, _stream_id, _peer_id):
-        """Bridge unit (private) voice DMRD to SUB_MAP destination, hotspot peer, or IPSC."""
-        self._relay_unit_voice_packet(_dst_id, _slot, _bits, _data, dmrpkt, _peer_id)
-
-    def _forward_parrot_unit_voice(self, _dst_id, _slot, _bits, _data, dmrpkt):
-        """Send unit-voice to the PARROT playback peer (private call to TG 9990)."""
-        if 'PARROT' not in systems or not CONFIG['SYSTEMS'].get('PARROT', {}).get('ENABLED'):
-            logger.warning('(%s) Parrot private call but PARROT system is not enabled', self._system)
-            return
-        _target_slot = 2
-        _send_bits = _bits ^ (1 << 7) if _slot != _target_slot else _bits
-        _tmp_data = b''.join([
-            _data[:15], _send_bits.to_bytes(1, 'big'), _data[16:20], dmrpkt,
-        ])
-        systems['PARROT'].send_system(_tmp_data)
-        logger.debug('(%s) Parrot unit voice forwarded to PARROT DST %s',
-                     self._system, int_id(_dst_id))
             
     def sendDataToOBP(self,_target,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,_hops = b'',_ber = b'\x00', _rssi = b'\x00',_source_server = b'\x00\x00\x00\x00', _source_rptr = b'\x00\x00\x00\x00'):
  #       _sysIgnore = sysIgnore
@@ -3214,6 +2954,12 @@ class routerHBP(HBSYSTEM):
             #_bits = header(_slot,'unit',_bits)
             #logger.info('(%s) Type Rewrite - GPS data from ID: %s,  on TG 900999 rewritten to unit call to ID 900999 : bits %s',self._system,int_id(_rf_src),_bits)
             #_call_type == 'unit'
+       
+        #Rewrite incoming loro request to group call
+        #if _call_type == 'unit' and _int_dst_id == 9990:
+            #_bits = header(_slot,'group',_bits)
+            #logger.info('(%s) Type Rewrite - Echo data from ID: %s,  on PC 9990 rewritten to group call to TG 9990',self._system,int_id(_rf_src))
+            #_call_type == 'group'
        
        
         if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or _dtype_vseq == 8 or (_stream_id != self.STATUS[_slot]['RX_STREAM_ID'] and _dtype_vseq == 3)):
@@ -3364,155 +3110,126 @@ class routerHBP(HBSYSTEM):
             
                 
         
-        #Handle  private voice calls (for reflectors and parrot)
-        elif _call_type == 'unit' and not _data_call:
-            if self._system == 'PARROT':
-                self._relay_unit_voice_packet(_dst_id, _slot, _bits, _data, dmrpkt, _peer_id)
-                self.STATUS[_slot]['RX_PEER']      = _peer_id
-                self.STATUS[_slot]['RX_SEQ']       = _seq
-                self.STATUS[_slot]['RX_RFS']       = _rf_src
-                self.STATUS[_slot]['RX_TYPE']      = _dtype_vseq
-                self.STATUS[_slot]['RX_TGID']      = _dst_id
-                self.STATUS[_slot]['RX_TIME']      = pkt_time
-                self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
-                self.STATUS[_slot]['VOICE_STREAM'] = _voice_call
-                self.STATUS[_slot]['packets'] = self.STATUS[_slot]['packets'] + 1
-
-            elif is_parrot_talkgroup(_int_dst_id):
-                if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
-                    self.STATUS[_slot]['packets'] = 0
-                    self.STATUS[_slot]['crcs'] = set()
-                    logger.info('(%s) Parrot: Private call from %s to %s',
-                                self._system, int_id(_rf_src), _int_dst_id)
-                self._forward_parrot_unit_voice(_dst_id, _slot, _bits, _data, dmrpkt)
-                self.STATUS[_slot]['RX_PEER']      = _peer_id
-                self.STATUS[_slot]['RX_SEQ']       = _seq
-                self.STATUS[_slot]['RX_RFS']       = _rf_src
-                self.STATUS[_slot]['RX_TYPE']      = _dtype_vseq
-                self.STATUS[_slot]['RX_TGID']      = _dst_id
-                self.STATUS[_slot]['RX_TIME']      = pkt_time
-                self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
-                self.STATUS[_slot]['VOICE_STREAM'] = _voice_call
-                self.STATUS[_slot]['packets'] = self.STATUS[_slot]['packets'] + 1
-
-            elif not self.STATUS[_slot]['_allStarMode']:
-                if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
+        #Handle  private voice calls (for reflectors)
+        elif _call_type == 'unit' and not _data_call and not self.STATUS[_slot]['_allStarMode']:
+            if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
                 
-                    self.STATUS[_slot]['packets'] = 0
-                    self.STATUS[_slot]['crcs'] = set()
+                self.STATUS[_slot]['packets'] = 0
+                self.STATUS[_slot]['crcs'] = set()
                 
-                    self.STATUS[_slot]['_stopTgAnnounce'] = False
-                    self.STATUS[_slot]['_reflect_announced'] = None
-                    self._cancel_reflector_timers(_slot)
+                self.STATUS[_slot]['_stopTgAnnounce'] = False
+                self.STATUS[_slot]['_reflect_announced'] = None
+                self._cancel_reflector_timers(_slot)
                 
-                    logger.info('(%s) Reflector: Private call from %s to %s',self._system, int_id(_rf_src), _int_dst_id)
-                    if _int_dst_id == 4000:
-                        disconnect_dial_reflectors(self._system)
-                        clear_subscriber_on_disconnect(self._system, _rf_src, _peer_id)
-                    if _int_dst_id >= 5 and _int_dst_id != 8  and _int_dst_id != 9 and _int_dst_id <= 999999:
-                        _bridgename = ''.join(['#',str(_int_dst_id)])
-                        if _bridgename not in BRIDGES and not (_int_dst_id >= 4000 and _int_dst_id <= 5000) and not (_int_dst_id >=9991 and _int_dst_id <= 9999):
-                                logger.info('(%s) [A] Reflector for TG %s does not exist. Creating as User Activated. Timeout: %s',self._system, _int_dst_id,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
-                                make_single_reflector(_dst_id,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'],self._system)
+                logger.info('(%s) Reflector: Private call from %s to %s',self._system, int_id(_rf_src), _int_dst_id)
+                if _int_dst_id == 4000:
+                    disconnect_dial_reflectors(self._system)
+                    clear_subscriber_on_disconnect(self._system, _rf_src, _peer_id)
+                if _int_dst_id >= 5 and _int_dst_id != 8  and _int_dst_id != 9 and _int_dst_id <= 999999:
+                    _bridgename = ''.join(['#',str(_int_dst_id)])
+                    if _bridgename not in BRIDGES and not (_int_dst_id >= 4000 and _int_dst_id <= 5000) and not (_int_dst_id >=9991 and _int_dst_id <= 9999):
+                            logger.info('(%s) [A] Reflector for TG %s does not exist. Creating as User Activated. Timeout: %s',self._system, _int_dst_id,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
+                            make_single_reflector(_dst_id,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'],self._system)
                     
-                        if (_int_dst_id > 5 and _int_dst_id != 9 and not is_dial_service_code(_int_dst_id)
-                                and not (_int_dst_id >=9991 and _int_dst_id <= 9999)):
-                            for _bridge in BRIDGES:
-                                if _bridge[0:1] != '#':
-                                    continue
-                                for _system in BRIDGES[_bridge]:
-                                    _dehash_bridge = _bridge[1:]
-                                    if _system['SYSTEM'] == self._system:
-                                        # TGID matches a rule source, reset its timer
-                                        if (bridge_transmission_matches_rule(
-                                                _bridge, _int_dst_id, _dst_id, _slot, _system)
-                                                and reflector_timer_reset_allowed(
-                                                    _bridge, _system, _rf_src, _peer_id)
-                                                and ((_system['TO_TYPE'] == 'ON' and (_system['ACTIVE'] == True))
-                                                     or (_system['TO_TYPE'] == 'OFF' and _system['ACTIVE'] == False))):
-                                            _system['TIMER'] = pkt_time + _system['TIMEOUT']
-                                            logger.info('(%s) [B] Transmission match for Reflector: %s. Reset timeout to %s', self._system, _bridge, _system['TIMER'])
-                                
-                                    # TGID matches an ACTIVATION trigger
-                                    if (not is_dial_service_code(_int_dst_id)
-                                            and _int_dst_id == int(_dehash_bridge) and _system['SYSTEM'] == self._system and  _slot == _system['TS']):
-                                        # Set the matching rule as ACTIVE
-                                        if _system['ACTIVE'] == False:
-                                            _system['ACTIVE'] = True
-                                            _system['TIMER'] = pkt_time + _system['TIMEOUT']
-                                            set_reflector_link_owner(_system, _rf_src, _peer_id)
-                                            logger.info('(%s) [C] Reflector: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
-                                            # Cancel the timer if we've enabled an "OFF" type timeout
-                                            if _system['TO_TYPE'] == 'OFF':
-                                                _system['TIMER'] = pkt_time
-                                                logger.info('(%s) [D] Reflector: %s has an "OFF" timer and set to "ON": timeout timer cancelled', self._system, _bridge)
-                                    # Reset the timer for the rule (linked private call only)
-                                    if (_system['SYSTEM'] == self._system
-                                            and not is_dial_service_code(_int_dst_id)
-                                            and _int_dst_id == int(_dehash_bridge)
-                                            and _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON'):
+                    if (_int_dst_id > 5 and _int_dst_id != 9 and not is_dial_service_code(_int_dst_id)
+                            and not (_int_dst_id >=9991 and _int_dst_id <= 9999)):
+                        for _bridge in BRIDGES:
+                            if _bridge[0:1] != '#':
+                                continue
+                            for _system in BRIDGES[_bridge]:
+                                _dehash_bridge = _bridge[1:]
+                                if _system['SYSTEM'] == self._system:
+                                    # TGID matches a rule source, reset its timer
+                                    if (bridge_transmission_matches_rule(
+                                            _bridge, _int_dst_id, _dst_id, _slot, _system)
+                                            and reflector_timer_reset_allowed(
+                                                _bridge, _system, _rf_src, _peer_id)
+                                            and ((_system['TO_TYPE'] == 'ON' and (_system['ACTIVE'] == True))
+                                                 or (_system['TO_TYPE'] == 'OFF' and _system['ACTIVE'] == False))):
                                         _system['TIMER'] = pkt_time + _system['TIMEOUT']
-                                        logger.info('(%s) [E] Reflector: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
+                                        logger.info('(%s) [B] Transmission match for Reflector: %s. Reset timeout to %s', self._system, _bridge, _system['TIMER'])
+                            
+                                # TGID matches an ACTIVATION trigger
+                                if (not is_dial_service_code(_int_dst_id)
+                                        and _int_dst_id == int(_dehash_bridge) and _system['SYSTEM'] == self._system and  _slot == _system['TS']):
+                                    # Set the matching rule as ACTIVE
+                                    if _system['ACTIVE'] == False:
+                                        _system['ACTIVE'] = True
+                                        _system['TIMER'] = pkt_time + _system['TIMEOUT']
+                                        set_reflector_link_owner(_system, _rf_src, _peer_id)
+                                        logger.info('(%s) [C] Reflector: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
+                                        # Cancel the timer if we've enabled an "OFF" type timeout
+                                        if _system['TO_TYPE'] == 'OFF':
+                                            _system['TIMER'] = pkt_time
+                                            logger.info('(%s) [D] Reflector: %s has an "OFF" timer and set to "ON": timeout timer cancelled', self._system, _bridge)
+                                # Reset the timer for the rule (linked private call only)
+                                if (_system['SYSTEM'] == self._system
+                                        and not is_dial_service_code(_int_dst_id)
+                                        and _int_dst_id == int(_dehash_bridge)
+                                        and _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON'):
+                                    _system['TIMER'] = pkt_time + _system['TIMEOUT']
+                                    logger.info('(%s) [E] Reflector: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
 
-                                    # TGID matches an DE-ACTIVATION trigger
-                                    #Single TG mode
-                                    if (_dst_id in _system['OFF']  or _dst_id in _system['RESET'] or (_int_dst_id != int(_dehash_bridge)) and _system['SYSTEM'] == self._system and _slot == _system['TS']):
-                                            # Set the matching rule as ACTIVE
-                                            #Single TG mode
-                                            if _dst_id in _system['OFF'] or _int_dst_id != int(_dehash_bridge) :
-                                                if _system['ACTIVE'] == True:
-                                                    _system['ACTIVE'] = False
-                                                    clear_reflector_link_owner(_system)
-                                                    logger.info('(%s) [F] Reflector: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
-                                                    # Cancel the timer if we've enabled an "ON" type timeout
-                                                    if _system['TO_TYPE'] == 'ON':
-                                                        _system['TIMER'] = pkt_time
-                                                        logger.info('(%s) [G] Reflector: %s has ON timer and set to "OFF": timeout timer cancelled', self._system, _bridge)
-                                            # Reset the timer for the rule
-                                            if _system['ACTIVE'] == False and _system['TO_TYPE'] == 'OFF':
-                                                _system['TIMER'] = pkt_time + _system['TIMEOUT']
-                                                logger.info('(%s) [H] Reflector: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
-                                            # Cancel the timer if we've enabled an "ON" type timeout
-                                            if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON' and _dst_id in _system['OFF']:
-                                                _system['TIMER'] = pkt_time
-                                                logger.info('(%s) [I] Reflector: %s has ON timer and set to "OFF": timeout timer cancelled', self._system, _bridge)
-                            deactivate_other_dynamic_reflectors(self._system, _bridgename, _slot)
+                                # TGID matches an DE-ACTIVATION trigger
+                                #Single TG mode
+                                if (_dst_id in _system['OFF']  or _dst_id in _system['RESET'] or (_int_dst_id != int(_dehash_bridge)) and _system['SYSTEM'] == self._system and _slot == _system['TS']):
+                                        # Set the matching rule as ACTIVE
+                                        #Single TG mode
+                                        if _dst_id in _system['OFF'] or _int_dst_id != int(_dehash_bridge) :
+                                            if _system['ACTIVE'] == True:
+                                                _system['ACTIVE'] = False
+                                                clear_reflector_link_owner(_system)
+                                                logger.info('(%s) [F] Reflector: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
+                                                # Cancel the timer if we've enabled an "ON" type timeout
+                                                if _system['TO_TYPE'] == 'ON':
+                                                    _system['TIMER'] = pkt_time
+                                                    logger.info('(%s) [G] Reflector: %s has ON timer and set to "OFF": timeout timer cancelled', self._system, _bridge)
+                                        # Reset the timer for the rule
+                                        if _system['ACTIVE'] == False and _system['TO_TYPE'] == 'OFF':
+                                            _system['TIMER'] = pkt_time + _system['TIMEOUT']
+                                            logger.info('(%s) [H] Reflector: %s, timeout timer reset to: %s', self._system, _bridge, _system['TIMER'] - pkt_time)
+                                        # Cancel the timer if we've enabled an "ON" type timeout
+                                        if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON' and _dst_id in _system['OFF']:
+                                            _system['TIMER'] = pkt_time
+                                            logger.info('(%s) [I] Reflector: %s has ON timer and set to "OFF": timeout timer cancelled', self._system, _bridge)
+                        deactivate_other_dynamic_reflectors(self._system, _bridgename, _slot)
 
-                    if (CONFIG['SYSTEMS'][self._system]['MODE'] == 'IPSC'
-                            and is_reflector_private_destination(_int_dst_id)):
-                        self._schedule_reflector_fallback(
-                            _int_dst_id, _rf_src, _peer_id, _slot, _stream_id, _lang)
+                if (CONFIG['SYSTEMS'][self._system]['MODE'] == 'IPSC'
+                        and is_reflector_private_destination(_int_dst_id)):
+                    self._schedule_reflector_fallback(
+                        _int_dst_id, _rf_src, _peer_id, _slot, _stream_id, _lang)
             
-                if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
-                    _reset = reset_dial_reflector_timers_on_user_activity(
-                        BRIDGES, self._system, _rf_src, _peer_id, _slot, pkt_time,
-                        _int_dst_id, group_call=False)
-                    for _rb in _reset:
-                        logger.info('(%s) [P] Dial-a-tg timer reset on private call end: %s', self._system, _rb)
-                    if _reset:
-                        notify_bridge_table_updated()
-                    _say = self._build_reflector_announce_say(_int_dst_id, _slot, _lang)
-                    if _say:
-                        logger.info('(%s) IPSC reflector: PTT released, speech in 1s', self._system)
-                        self._play_reflector_announcement(
-                            _say, _rf_src, _peer_id, _slot, _stream_id, _int_dst_id)
-
-                if (not is_reflector_private_destination(_int_dst_id)
-                        and _int_dst_id not in (8, 9)):
-                    self._forward_unit_voice(
-                        _dst_id, _slot, _bits, _data, dmrpkt, _stream_id, _peer_id)
-
-                # Mark status variables for use later
-                self.STATUS[_slot]['RX_PEER']      = _peer_id
-                self.STATUS[_slot]['RX_SEQ']       = _seq
-                self.STATUS[_slot]['RX_RFS']       = _rf_src
-                self.STATUS[_slot]['RX_TYPE']      = _dtype_vseq
-                self.STATUS[_slot]['RX_TGID']      = _dst_id
-                self.STATUS[_slot]['RX_TIME']      = pkt_time
-                self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
-                self.STATUS[_slot]['VOICE_STREAM'] = _voice_call
             
-                self.STATUS[_slot]['packets'] = self.STATUS[_slot]['packets'] +1                
+            if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
+                _reset = reset_dial_reflector_timers_on_user_activity(
+                    BRIDGES, self._system, _rf_src, _peer_id, _slot, pkt_time,
+                    _int_dst_id, group_call=False)
+                for _rb in _reset:
+                    logger.info('(%s) [P] Dial-a-tg timer reset on private call end: %s', self._system, _rb)
+                if _reset:
+                    notify_bridge_table_updated()
+                _say = self._build_reflector_announce_say(_int_dst_id, _slot, _lang)
+                if _say:
+                    logger.info('(%s) IPSC reflector: PTT released, speech in 1s', self._system)
+                    self._play_reflector_announcement(
+                        _say, _rf_src, _peer_id, _slot, _stream_id, _int_dst_id)
+
+            if (not is_reflector_private_destination(_int_dst_id)
+                    and _int_dst_id not in (8, 9)):
+                self._forward_unit_voice(
+                    _dst_id, _slot, _bits, _data, dmrpkt, _stream_id, _peer_id)
+
+            # Mark status variables for use later
+            self.STATUS[_slot]['RX_PEER']      = _peer_id
+            self.STATUS[_slot]['RX_SEQ']       = _seq
+            self.STATUS[_slot]['RX_RFS']       = _rf_src
+            self.STATUS[_slot]['RX_TYPE']      = _dtype_vseq
+            self.STATUS[_slot]['RX_TGID']      = _dst_id
+            self.STATUS[_slot]['RX_TIME']      = pkt_time
+            self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
+            self.STATUS[_slot]['VOICE_STREAM'] = _voice_call
+            
+            self.STATUS[_slot]['packets'] = self.STATUS[_slot]['packets'] +1                
         
         #Handle group calls
         if _call_type == 'group' or _call_type == 'vcsbk':
@@ -3560,9 +3277,6 @@ class routerHBP(HBSYSTEM):
                     self.STATUS[_slot]['RX_LC'] = b''.join([LC_OPT,_dst_id,_rf_src])
 
             #Create default bridge for unknown TG
-                if int_id(_dst_id) == 4000:
-                    disconnect_dial_reflectors(self._system)
-                    clear_subscriber_on_disconnect(self._system, _rf_src, _peer_id)
                 if int_id(_dst_id) >= 5 and int_id(_dst_id) != 9 and int_id(_dst_id) != 4000 and int_id(_dst_id) != 5000  and (str(int_id(_dst_id)) not in BRIDGES):
                     logger.info('(%s) Bridge for TG %s does not exist. Creating as User Activated. Timeout %s',self._system, int_id(_dst_id),CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
                     make_single_bridge(_dst_id,self._system,_slot,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
@@ -3591,8 +3305,7 @@ class routerHBP(HBSYSTEM):
                     
                     # Check if we should log sticky TG change based on per-peer or system-wide setting
                     _sticky_enabled = False
-                    if (is_routing_master(CONFIG['SYSTEMS'][self._system]['MODE']) and
-                        not system_has_static_tgs(CONFIG['SYSTEMS'][self._system]) and
+                    if (is_routing_master(CONFIG['SYSTEMS'][self._system]['MODE']) and 
                         'PEERS' in CONFIG['SYSTEMS'][self._system] and
                         _peer_id in CONFIG['SYSTEMS'][self._system]['PEERS']):
                         # Priority 1: Check peer-specific STICKY setting
@@ -3620,12 +3333,9 @@ class routerHBP(HBSYSTEM):
                     if CONFIG['REPORTS']['REPORT']:
                         self._report.send_bridgeEvent('VCSBK 3/4 DATA BLOCK,DATA,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
                         
-            # HBP rate limit: require ~1s of call age so reactor-lag catch-up
-            # bursts are not mistaken for sustained over-rate (holes → stretch).
-            _call_age = pkt_time - self.STATUS[_slot]['RX_START']
-            if (self.STATUS[_slot]['packets'] > 18
-                    and _call_age > 1.0
-                    and (self.STATUS[_slot]['packets'] / _call_age) > 25):
+            #Packet rate limit
+            #Rate drop
+            if self.STATUS[_slot]['packets'] > 18 and (self.STATUS[_slot]['packets'] / (pkt_time - self.STATUS[_slot]['RX_START']) > 25):
                 logger.warning("(%s) *PacketControl* RATE DROP! Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
                 self.STATUS[_slot]['LAST'] = pkt_time
                 return
@@ -3692,49 +3402,48 @@ class routerHBP(HBSYSTEM):
             self.STATUS[_slot]['lastSeq'] = _seq
             #Save this packet
             self.STATUS[_slot]['lastData'] = _data
-
-            if not is_dial_service_code(int_id(_dst_id)):
-                # --- OPTIMISED ROUTING: use BRIDGE_IDX for O(1) lookup instead of O(N*M) full scan ---
-                _sysIgnore = deque()
-                _lookup_key = (self._system, _slot, _dst_id)
-                _candidate_bridges = BRIDGE_IDX.get(_lookup_key)
-                _ROUTE_STATS['packets'] += 1
-                if _candidate_bridges is None:
-                    # Index miss - fall back to full scan and schedule a rebuild.
-                    # This should never happen in normal operation; log at WARNING.
-                    logger.warning('(%s) HBP BRIDGE_IDX miss for key (%s, %s, %s) '
-                                   '- falling back to full scan and rebuilding index',
-                                   self._system, self._system, _slot, int_id(_dst_id))
-                    _ROUTE_STATS['index_misses'] += 1
-                    _ROUTE_STATS['fallbacks'] += 1
-                    rebuild_bridge_index()
-                    _candidate_bridges = BRIDGE_IDX.get(_lookup_key, set())
-                    # Full-scan fallback for safety
-                    for _bridge in BRIDGES:
-                        for _system in BRIDGES[_bridge]:
-                            if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
-                                _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi, _source_rptr)
-                                _paired_bridge = paired_group_route_bridge(
-                                    _bridge, BRIDGES, _dst_id)
-                                if _paired_bridge:
-                                    _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_paired_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi,_source_rptr)
-                else:
-                    _ROUTE_STATS['index_hits'] += 1
-                    for _orig_bridge in list(_candidate_bridges):
-                        if _orig_bridge not in BRIDGES:
-                            # Stale index entry - skip
-                            logger.debug('(%s) HBP BRIDGE_IDX stale entry for bridge %s, skipping',
-                                         self._system, _orig_bridge)
-                            continue
-                        for _system in BRIDGES[_orig_bridge]:
-                            if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
-                                _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_orig_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi, _source_rptr)
-                                # Also route to paired reflector/TG bridge on dial-a-tg (TG 9) only
-                                _paired_bridge = paired_group_route_bridge(
-                                    _orig_bridge, BRIDGES, _dst_id)
-                                if _paired_bridge:
-                                    _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_paired_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi,_source_rptr)
-                _log_route_stats()
+                          
+            # --- OPTIMISED ROUTING: use BRIDGE_IDX for O(1) lookup instead of O(N*M) full scan ---
+            _sysIgnore = deque()
+            _lookup_key = (self._system, _slot, _dst_id)
+            _candidate_bridges = BRIDGE_IDX.get(_lookup_key)
+            _ROUTE_STATS['packets'] += 1
+            if _candidate_bridges is None:
+                # Index miss - fall back to full scan and schedule a rebuild.
+                # This should never happen in normal operation; log at WARNING.
+                logger.warning('(%s) HBP BRIDGE_IDX miss for key (%s, %s, %s) '
+                               '- falling back to full scan and rebuilding index',
+                               self._system, self._system, _slot, int_id(_dst_id))
+                _ROUTE_STATS['index_misses'] += 1
+                _ROUTE_STATS['fallbacks'] += 1
+                rebuild_bridge_index()
+                _candidate_bridges = BRIDGE_IDX.get(_lookup_key, set())
+                # Full-scan fallback for safety
+                for _bridge in BRIDGES:
+                    for _system in BRIDGES[_bridge]:
+                        if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
+                            _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi, _source_rptr)
+                            _paired_bridge = paired_group_route_bridge(
+                                _bridge, BRIDGES, _dst_id)
+                            if _paired_bridge:
+                                _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_paired_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi,_source_rptr)
+            else:
+                _ROUTE_STATS['index_hits'] += 1
+                for _orig_bridge in list(_candidate_bridges):
+                    if _orig_bridge not in BRIDGES:
+                        # Stale index entry - skip
+                        logger.debug('(%s) HBP BRIDGE_IDX stale entry for bridge %s, skipping',
+                                     self._system, _orig_bridge)
+                        continue
+                    for _system in BRIDGES[_orig_bridge]:
+                        if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
+                            _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_orig_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi, _source_rptr)
+                            # Also route to paired reflector/TG bridge on dial-a-tg (TG 9) only
+                            _paired_bridge = paired_group_route_bridge(
+                                _orig_bridge, BRIDGES, _dst_id)
+                            if _paired_bridge:
+                                _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_paired_bridge,_system,False,_sysIgnore,_source_server,_ber,_rssi,_source_rptr)
+            _log_route_stats()
 
             # Final actions - Is this a voice terminator?
             if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
@@ -3821,9 +3530,7 @@ class routerHBP(HBSYSTEM):
                                             or reflector_single_mode_wrong_tg(
                                                 _int_dst_id, _dst_id, _bridge, _system)):
                                     #if _dst_id in _system['OFF']:
-                                        if (_system['TO_TYPE'] == 'OFF' and _system['ACTIVE'] == True):
-                                            pass  # static / default reflector — never torn down by wrong-TG traffic
-                                        elif _system['ACTIVE'] == True:
+                                        if _system['ACTIVE'] == True:
                                             _system['ACTIVE'] = False
                                             if _bridge[0:1] == '#':
                                                 clear_reflector_link_owner(_system)
@@ -3892,7 +3599,6 @@ class routerIPSC(IpscMasterMixin, routerHBP):
 
     def _remove_ipsc_peer(self, peer_id):
         """Clear dial-a-tg state when a repeater drops off (parity with HBP RPTCL)."""
-        clear_default_reflectors(self._system)
         reset_dynamic_reflectors(self._system)
         sanitize_dial_reflectors(self._system)
         clear_sub_map_for_peer(peer_id)
@@ -3927,8 +3633,6 @@ class bridgeReportFactory(reportFactory):
     def _safe_bridges_payload(cls):
         safe_bridges = {}
         for bridge, systems in BRIDGES.items():
-            if not is_valid_talkgroup_bridge(bridge):
-                continue
             if not isinstance(systems, (list, tuple, deque)):
                 logger.warning('(REPORT) Skipping malformed bridge %s payload type: %s', bridge, type(systems))
                 continue
@@ -3940,24 +3644,17 @@ class bridgeReportFactory(reportFactory):
                 if 'SYSTEM' not in bridge_system or 'TS' not in bridge_system or 'TGID' not in bridge_system:
                     logger.warning('(REPORT) Skipping incomplete bridge entry in %s: %s', bridge, bridge_system)
                     continue
-                _to_type = bridge_system.get('TO_TYPE', 'NONE')
-                _active = bool(bridge_system.get('ACTIVE', False))
-                _timeout = bridge_system.get('TIMEOUT', '')
-                _timer = bridge_system.get('TIMER', time())
-                if _to_type == 'OFF' and _active:
-                    _timeout = 0
-                    _timer = 0
                 safe_systems.append({
                     'SYSTEM': bridge_system['SYSTEM'],
                     'TS': bridge_system['TS'],
                     'TGID': bridge_system['TGID'],
-                    'ACTIVE': _active,
-                    'TIMEOUT': _timeout,
-                    'TO_TYPE': _to_type,
+                    'ACTIVE': bool(bridge_system.get('ACTIVE', False)),
+                    'TIMEOUT': bridge_system.get('TIMEOUT', ''),
+                    'TO_TYPE': bridge_system.get('TO_TYPE', 'NONE'),
                     'OFF': cls._clean_trigger_list(bridge_system.get('OFF')),
                     'ON': cls._clean_trigger_list(bridge_system.get('ON')),
                     'RESET': cls._clean_trigger_list(bridge_system.get('RESET')),
-                    'TIMER': _timer,
+                    'TIMER': bridge_system.get('TIMER', time())
                 })
             safe_bridges[str(bridge)] = safe_systems
         return safe_bridges
@@ -4186,9 +3883,24 @@ if __name__ == '__main__':
     for system in CONFIG['SYSTEMS']:
         if not is_routing_master(CONFIG['SYSTEMS'][system]['MODE']):
             continue
-        reapply_static_tgs_for_system(system)
-
-    purge_invalid_bridges()
+        _tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
+        ts1 = []
+        ts2 = []
+        if CONFIG['SYSTEMS'][system]['TS1_STATIC']:
+            ts1 = CONFIG['SYSTEMS'][system]['TS1_STATIC'].split(',')
+        if CONFIG['SYSTEMS'][system]['TS2_STATIC']:
+            ts2 = CONFIG['SYSTEMS'][system]['TS2_STATIC'].split(',')
+            
+        for tg in ts1:
+                if not tg:
+                    continue
+                tg = int(tg)
+                make_static_tg(tg,1,_tmout,system)
+        for tg in ts2:
+                if not tg:
+                    continue
+                tg = int(tg)
+                make_static_tg(tg,2,_tmout,system)
 
     # INITIALIZE THE REPORTING LOOP
     if CONFIG['REPORTS']['REPORT']:
@@ -4284,11 +3996,6 @@ if __name__ == '__main__':
         hs_disc.addErrback(loopingErrHandle)
         logger.info('(SELF SERVICE) Hotspot DISC=1 poll every %ss',
                     ss.get('DISC_POLL_INTERVAL', 2))
-        hs_static_task = task.LoopingCall(hotspot_selfcare_static_reconcile)
-        hs_static = hs_static_task.start(ss.get('POLL_INTERVAL', 5))
-        hs_static.addErrback(loopingErrHandle)
-        logger.info('(SELF SERVICE) Hotspot static reconcile poll every %ss',
-                    ss.get('POLL_INTERVAL', 5))
         
     #STAT trimmer - once every 10 mins (roughly - shifted so all timed tasks don't run at once
     if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:

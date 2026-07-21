@@ -29,7 +29,7 @@ from datetime import datetime
 
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Simon Adlem - G7RZU'
-__verion__     = '1.5.1'
+__verion__     = '1.5.0'
 __copyright__  = 'Copyright (c) Simon Adlem, G7RZU 2020,2021,2022'
 __credits__    = 'Shane, M0VUB'
 __license__    = 'GNU GPLv3'

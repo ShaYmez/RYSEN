@@ -3,7 +3,7 @@
 #   Edited by (C) 2022 Shane Daley, M0VUB <support@gb7nr.co.uk>
 #   Further Developed (C) 2026 by Shane Daley, M0VUB <shane@freestar.network>
 #
-#   RYSEN v1.5.1 on master — pulls shaymez/rysen:latest (see docker-compose_install.sh).
+#   RYSEN v1.5.0 on master — pulls shaymez/rysen:latest (see docker-compose_install.sh).
 #   Pair dashboard with RYSEN-MONITOR v1.5.0 (https://github.com/ShaYmez/RYSEN-MONITOR).
 ###############################################################################
 

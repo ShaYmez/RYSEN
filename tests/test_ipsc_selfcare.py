@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 import unittest
-from unittest.mock import MagicMock
-
-from twisted.internet.defer import succeed
+from unittest.mock import MagicMock, patch
 
 from selfcare_db import (
     IPSC_CLIENT_MODE,
     build_ipsc_seed_options,
-    find_ipsc_peer_for_radio_id,
+    find_ipsc_slot_for_radio_id,
 )
 from ipsc_master import IpscMasterMixin
 from ipsc_const import MASTER_REG_REQ
@@ -47,10 +45,8 @@ class TestSelfcareHelpers(unittest.TestCase):
                 'PEERS': {},
             },
         }
-        slot, _ = find_ipsc_peer_for_radio_id(systems, 235287)
-        self.assertEqual(slot, 'IPSC-0')
-        slot, _ = find_ipsc_peer_for_radio_id(systems, 999999)
-        self.assertIsNone(slot)
+        self.assertEqual(find_ipsc_slot_for_radio_id(systems, 235287), 'IPSC-0')
+        self.assertIsNone(find_ipsc_slot_for_radio_id(systems, 999999))
 
     def test_find_ipsc_slot_matches_peer_id_when_radio_id_missing(self):
         systems = {
@@ -62,8 +58,7 @@ class TestSelfcareHelpers(unittest.TestCase):
                 },
             },
         }
-        slot, _ = find_ipsc_peer_for_radio_id(systems, 235287)
-        self.assertEqual(slot, 'IPSC-0')
+        self.assertEqual(find_ipsc_slot_for_radio_id(systems, 235287), 'IPSC-0')
 
     def test_find_ipsc_peer_for_radio_id(self):
         systems = {
@@ -88,8 +83,7 @@ class TestSelfcareHelpers(unittest.TestCase):
                 'PEERS': {PEER_ID: {'RADIO_ID': '235287'}},
             },
         }
-        slot, _ = find_ipsc_peer_for_radio_id(systems, 235287)
-        self.assertIsNone(slot)
+        self.assertIsNone(find_ipsc_slot_for_radio_id(systems, 235287))
 
 
 class _StubIpscSelfcare(IpscMasterMixin):
@@ -98,12 +92,9 @@ class _StubIpscSelfcare(IpscMasterMixin):
         self._system = 'IPSC-0'
         self._peers = {}
         self._ipsc_peers = {}
-        db = MagicMock()
-        db.upsert_ipsc_client.return_value = succeed(None)
-        db.mark_ipsc_options_pending.return_value = succeed(None)
         self._CONFIG = {
             'SELF SERVICE': {'ENABLED': selfcare_enabled},
-            '_SELF_SERVICE_DB': db,
+            '_SELF_SERVICE_DB': MagicMock(),
             '_PEER_IDS': {235287: 'GB7NR'},
             'GLOBAL': {'REG_ACL': acl_build('PERMIT:ALL', const.PEER_MAX)},
         }
@@ -170,37 +161,11 @@ class TestIpscSelfcareHooks(unittest.TestCase):
         second_call = stub._CONFIG['_SELF_SERVICE_DB'].upsert_ipsc_client.call_args_list[1]
         self.assertIsNone(second_call[0][4])
 
-    def test_register_marks_options_pending_on_new_session(self):
-        stub = _StubIpscSelfcare(selfcare_enabled=True)
-        stub._on_reg_req(self._reg_packet(), HOST, PORT)
-        db = stub._CONFIG['_SELF_SERVICE_DB']
-        db.mark_ipsc_options_pending.assert_called_once_with(235287)
-
-    def test_reregister_while_connected_does_not_remark_options(self):
-        stub = _StubIpscSelfcare(selfcare_enabled=True)
-        pkt = self._reg_packet()
-        stub._on_reg_req(pkt, HOST, PORT)
-        stub._on_reg_req(pkt, HOST, PORT)
-        db = stub._CONFIG['_SELF_SERVICE_DB']
-        db.mark_ipsc_options_pending.assert_called_once_with(235287)
-
-    def test_reconnect_after_deregister_remarks_options(self):
-        stub = _StubIpscSelfcare(selfcare_enabled=True)
-        pkt = self._reg_packet()
-        stub._on_reg_req(pkt, HOST, PORT)
-        stub._on_de_reg_req(bytes([0x9a]) + PEER_ID, HOST, PORT)
-        stub._on_reg_req(pkt, HOST, PORT)
-        db = stub._CONFIG['_SELF_SERVICE_DB']
-        self.assertEqual(db.mark_ipsc_options_pending.call_count, 2)
-        db.mark_ipsc_options_pending.assert_any_call(235287)
-
-    def test_mark_ipsc_options_pending_sql(self):
+    def test_upsert_sql_does_not_reflag_modified_on_reconnect(self):
         with open('selfcare_db.py', encoding='utf-8') as fh:
             source = fh.read()
-        self.assertIn('def mark_ipsc_options_pending', source)
-        self.assertIn('SET modified = 1', source)
-        self.assertIn("AND options NOT LIKE '%%DISC=1%%'", source)
-        self.assertIn('def save_client_options', source)
+        self.assertNotIn('modified = IF(options IS NOT NULL AND TRIM(options)', source)
+        self.assertIn('flag_modified = 1 if seed_options else 0', source)
 
 
 class TestOptionsConfigIpscMode(unittest.TestCase):

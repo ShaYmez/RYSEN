@@ -143,7 +143,7 @@ In `proxy.cfg` (if using the selfcare hotspot proxy):
 
 ```
 [SELF SERVICE]
-use_selfservice = True
+USE_SELFSERVICE = True
 ```
 
 ### Existing MariaDB data

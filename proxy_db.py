@@ -24,7 +24,7 @@ from twisted.internet.defer import inlineCallbacks
 
 
 __author__     = 'Christian Quiroz, OA4DOA'
-__version__    = '1.5.1'
+__version__    = '1.5.0'
 __copyright__  = 'Copyright (c) 2021-2022 Christian Quiroz, OA4DOA'
 __license__    = 'GNU GPLv3'
 __maintainer__ = 'Christian Quiroz, OA4DOA'
@@ -36,6 +36,26 @@ class ProxyDB:
         self.db_name = db_name
         self.dbpool = adbapi.ConnectionPool("MySQLdb", host, user, psswd, db_name,
                                             port=port, charset="utf8mb4")
+
+    @inlineCallbacks
+    def make_clients_tbl(self):
+        try:
+            yield self.dbpool.runOperation(
+                ''' CREATE TABLE IF NOT EXISTS Clients(
+                int_id INT UNIQUE PRIMARY KEY NOT NULL,
+                dmr_id TINYBLOB NOT NULL,
+                callsign VARCHAR(10) NOT NULL,
+                host VARCHAR(15),
+                options VARCHAR(100),
+                opt_rcvd TINYINT(1) DEFAULT False NOT NULL,
+                mode TINYINT(1) DEFAULT 4 NOT NULL,
+                logged_in TINYINT(1) DEFAULT False NOT NULL,
+                modified TINYINT(1) DEFAULT False NOT NULL,
+                psswd BLOB(256),
+                last_seen INT NOT NULL) CHARSET=utf8mb4''')
+
+        except Exception as err:
+            print(f"make_clientss_tbl error: {err}")
 
     @inlineCallbacks
     def test_db(self, _reactor):
@@ -89,7 +109,7 @@ class ProxyDB:
                 yield self.dbpool.runOperation("UPDATE Clients SET logged_in=False, opt_rcvd=False")
             elif actn == "opt_rcvd":
                 yield self.dbpool.runOperation(
-                    "UPDATE Clients SET opt_rcvd = True WHERE dmr_id = %s",
+                    "UPDATE Clients SET opt_rcvd = True, options = NULL WHERE dmr_id = %s",
                     (dmr_id,))
             elif actn == "last_seen":
                 yield self.dbpool.runOperation(
