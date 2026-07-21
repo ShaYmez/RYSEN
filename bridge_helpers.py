@@ -607,6 +607,44 @@ def target_requires_lc_rewrite(_dst_id, _target_tgid):
 # FreeDMR name for the EMB gate; same predicate as remap detection
 target_requires_emb_lc_rewrite = target_requires_lc_rewrite
 
+# Soft-client half-duplex: mute bridged TX to a peer while it owns slot RX
+# (and briefly after). Matches STREAM_TO without importing const here.
+HBP_PEER_TX_MUTE_S = 0.360
+
+
+def hbp_peer_is_slot_rx_owner(slot_status, peer_id, now=None, mute_s=HBP_PEER_TX_MUTE_S):
+    """True when peer owns (or just owned) this HBP slot's RX — do not TX to them.
+
+    Prevents BlueDV/DV3000 RX/TX interleave while the soft client is keyed, and
+    a short post-unkey mute so AMBE sticks are not fed bridged audio mid-hang.
+    """
+    if not slot_status or not peer_id:
+        return False
+    if now is None:
+        now = time.time()
+
+    rx_peer = slot_status.get('RX_PEER')
+    rx_rfs = slot_status.get('RX_RFS')
+    owns = False
+    if rx_peer and rx_peer == peer_id:
+        owns = True
+    elif rx_rfs:
+        # HBP peer keys are 4-byte; subscriber RFS is 3-byte
+        if peer_id[-3:] == rx_rfs or (len(peer_id) >= 4 and peer_id[1:4] == rx_rfs):
+            owns = True
+    if not owns:
+        return False
+
+    rx_time = slot_status.get('RX_TIME') or 0
+    rx_type = slot_status.get('RX_TYPE')
+    # Active RX (anything other than VTERM) — VTERM == 0x2 in HBP framing
+    if rx_type != 0x2:
+        return True
+    try:
+        return (now - rx_time) < mute_s
+    except TypeError:
+        return False
+
 
 def begin_generated_voice(slot):
     """Mark HBP slot as playing a voice-ident / prompt; return cancel token."""

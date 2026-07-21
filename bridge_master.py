@@ -3084,8 +3084,11 @@ class routerHBP(HBSYSTEM):
                                 logger.info('(%s) Call not routed for subscriber %s, call route in progress on target: HBSystem: %s, TS: %s, TGID: %s, SUB: %s', self._system, int_id(_rf_src), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']), int_id(_target_status[_target['TS']]['TX_RFS']))
                             continue
 
-                        # Is this a new call stream?
-                        if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
+                        # Is this a new call stream on the *target*?
+                        # Match OBP: key off target TX_STREAM_ID, not source RX_STREAM_ID.
+                        # Source RX_STREAM_ID is assigned after to_target, so the old gate
+                        # skipped LC regen after hangtime and left stale TX_H_LC (DV3000 stretch).
+                        if (_target_status[_target['TS']]['TX_STREAM_ID'] != _stream_id):
                                 cancel_generated_voice(_target_status[_target['TS']])
                                 # Record the DST TGID and Stream ID
                                 _target_status[_target['TS']]['TX_START'] = pkt_time
