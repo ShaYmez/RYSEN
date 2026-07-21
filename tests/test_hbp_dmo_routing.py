@@ -120,8 +120,9 @@ class TestObpStaticContention(unittest.TestCase):
     def test_obp_to_target_locks_live_static_tx(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
             source = fh.read()
-        self.assertIn('hbp_tx_stream_locked', source)
+        self.assertIn('hbp_static_tx_may_arm', source)
         self.assertIn('TX stream locked', source)
+        self.assertIn('waiting for VHEAD', source)
 
 
 if __name__ == '__main__':

@@ -97,6 +97,8 @@ from bridge_helpers import (
     bridge_has_active_static_leg,
     is_permanent_static_leg,
     hbp_tx_stream_locked,
+    hbp_static_tx_may_arm,
+    clear_hbp_tx_stream,
     obp_allows_static_stream_takeover,
     system_slot_has_off_leg,
     is_static_field_keyup_noise,
@@ -1360,6 +1362,7 @@ def stream_trimmer_loop():
                         system, int_id(_slot['TX_STREAM_ID']), int_id(_slot['TX_RFS']), int_id(_slot['TX_TGID']), slot, _slot['TX_TIME'] - _slot['TX_START'])
                     if CONFIG['REPORTS']['REPORT']:
                         systems[system]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(_slot['TX_STREAM_ID']), int_id(_slot['TX_PEER']), int_id(_slot['TX_RFS']), slot, int_id(_slot['TX_TGID']), _slot['TX_TIME'] - _slot['TX_START']).encode(encoding='utf-8', errors='ignore'))
+                    clear_hbp_tx_stream(_slot)
 
         # OBP systems
         # We can't delete items from a dicationry that's being iterated, so we have to make a temporarly list of entrys to remove later
@@ -2272,18 +2275,30 @@ class routerOBP(OPENBRIDGE):
                             self.STATUS[_stream_id]['CONTENTION'] = True
                             logger.info('(%s) Call not routed to TGID%s, target in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']))
                         continue
-                    # Permanent static DMO: lock live TX_STREAM_ID (no mid-call flip);
-                    # skip classic STREAM_TO only when idle so kerchunk recovery remains.
+                    # Permanent static DMO: arm/take over only on VHEAD when idle
+                    # or unlocked; never rebuild TX LC mid-voice (jumbles BlueDV/Peanut).
                     _slot_st = _target_status[_target['TS']]
                     if is_permanent_static_leg(_target):
-                        if hbp_tx_stream_locked(_slot_st, _stream_id, pkt_time, STREAM_TO):
+                        _is_vhead = (_frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD)
+                        if not hbp_static_tx_may_arm(
+                                _slot_st, _stream_id, pkt_time, STREAM_TO, _is_vhead):
                             if _stream_id in self.STATUS and self.STATUS[_stream_id].get('CONTENTION') == False:
                                 self.STATUS[_stream_id]['CONTENTION'] = True
-                                logger.info(
-                                    '(%s) Call not routed to static TGID%s, TX stream locked: '
-                                    'HBSystem: %s, TS: %s, live STREAM: %s',
-                                    self._system, int_id(_target['TGID']), _target['SYSTEM'],
-                                    _target['TS'], int_id(_slot_st.get('TX_STREAM_ID') or b'\x00'))
+                                _live = _slot_st.get('TX_STREAM_ID') or b'\x00'
+                                if (_live != b'\x00' and _live != _stream_id
+                                        and hbp_tx_stream_locked(
+                                            _slot_st, _stream_id, pkt_time, STREAM_TO)):
+                                    logger.info(
+                                        '(%s) Call not routed to static TGID%s, TX stream locked: '
+                                        'HBSystem: %s, TS: %s, live STREAM: %s',
+                                        self._system, int_id(_target['TGID']), _target['SYSTEM'],
+                                        _target['TS'], int_id(_live))
+                                else:
+                                    logger.info(
+                                        '(%s) Call not routed to static TGID%s, waiting for VHEAD: '
+                                        'HBSystem: %s, TS: %s, live STREAM: %s',
+                                        self._system, int_id(_target['TGID']), _target['SYSTEM'],
+                                        _target['TS'], int_id(_live))
                             continue
                     else:
                         if (_target['TGID'] == _target_status[_target['TS']]['RX_TGID']) and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < STREAM_TO):
@@ -2345,6 +2360,7 @@ class routerOBP(OPENBRIDGE):
                         if CONFIG['REPORTS']['REPORT']:
                             call_duration = pkt_time - _target_status[_target['TS']]['TX_START']
                             systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
+                        clear_hbp_tx_stream(_target_status[_target['TS']])
                     # Create a Burst B-E packet (Embedded LC)
                     elif _dtype_vseq in [1,2,3,4]:
                         dmrbits = dmrbits[0:116] + _target_status[_target['TS']]['TX_EMB_LC'][_dtype_vseq] + dmrbits[148:264]
@@ -3087,17 +3103,32 @@ class routerHBP(HBSYSTEM):
                             if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
                                 logger.info('(%s) Call not routed to TGID%s, target in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']))
                             continue
-                        if (_target['TGID'] == _target_status[_target['TS']]['RX_TGID']) and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < STREAM_TO):
-                            if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
-                                logger.info('(%s) Call not routed to TGID%s, matching call already active on target: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
-                            continue
-                        if (_target['TGID'] == _target_status[_target['TS']]['TX_TGID']) and (_rf_src != _target_status[_target['TS']]['TX_RFS']) and ((pkt_time - _target_status[_target['TS']]['TX_TIME']) < STREAM_TO):
-                            if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
-                                logger.info('(%s) Call not routed for subscriber %s, call route in progress on target: HBSystem: %s, TS: %s, TGID: %s, SUB: %s', self._system, int_id(_rf_src), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']), int_id(_target_status[_target['TS']]['TX_RFS']))
-                            continue
+                        # Permanent static DMO: VHEAD-only arm/takeover (same as OBP→HBP)
+                        if is_permanent_static_leg(_target):
+                            _slot_st = _target_status[_target['TS']]
+                            _is_vhead = (_frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD)
+                            if not hbp_static_tx_may_arm(
+                                    _slot_st, _stream_id, pkt_time, STREAM_TO, _is_vhead):
+                                if (_frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD
+                                        and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id):
+                                    logger.info(
+                                        '(%s) Call not routed to static TGID%s, TX stream locked '
+                                        'or waiting for VHEAD: HBSystem: %s, TS: %s',
+                                        self._system, int_id(_target['TGID']),
+                                        _target['SYSTEM'], _target['TS'])
+                                continue
+                        else:
+                            if (_target['TGID'] == _target_status[_target['TS']]['RX_TGID']) and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < STREAM_TO):
+                                if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
+                                    logger.info('(%s) Call not routed to TGID%s, matching call already active on target: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
+                                continue
+                            if (_target['TGID'] == _target_status[_target['TS']]['TX_TGID']) and (_rf_src != _target_status[_target['TS']]['TX_RFS']) and ((pkt_time - _target_status[_target['TS']]['TX_TIME']) < STREAM_TO):
+                                if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
+                                    logger.info('(%s) Call not routed for subscriber %s, call route in progress on target: HBSystem: %s, TS: %s, TGID: %s, SUB: %s', self._system, int_id(_rf_src), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']), int_id(_target_status[_target['TS']]['TX_RFS']))
+                                continue
 
                         # Is this a new call stream?
-                        if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
+                        if (_target_status[_target['TS']]['TX_STREAM_ID'] != _stream_id):
                                 # Record the DST TGID and Stream ID
                                 _target_status[_target['TS']]['TX_START'] = pkt_time
                                 _target_status[_target['TS']]['TX_TGID'] = _target['TGID']
@@ -3141,6 +3172,7 @@ class routerHBP(HBSYSTEM):
                             if CONFIG['REPORTS']['REPORT']:
                                 call_duration = pkt_time - _target_status[_target['TS']]['TX_START']
                                 systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
+                            clear_hbp_tx_stream(_target_status[_target['TS']])
                         # Create a Burst B-E packet (Embedded LC)
                         elif _dtype_vseq in [1,2,3,4]:
                             dmrbits = dmrbits[0:116] + _target_status[_target['TS']]['TX_EMB_LC'][_dtype_vseq] + dmrbits[148:264]

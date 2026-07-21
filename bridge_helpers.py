@@ -498,6 +498,29 @@ def hbp_tx_stream_locked(slot_status, stream_id, pkt_time, stream_to):
         return False
 
 
+def hbp_static_tx_may_arm(slot_status, stream_id, pkt_time, stream_to, is_vhead):
+    """Allow arm/takeover of permanent-static HBP TX only on VHEAD when idle/unlocked.
+
+    Same stream_id always continues. A new/idle arm or mid-call takeover after
+    STREAM_TO unlock requires a voice header so TX_H_LC/EMB_LC are rebuilt in
+    sync with SEQ — voice-first takeover jumbles DMO (BlueDV/Peanut).
+    """
+    tx_sid = (slot_status or {}).get('TX_STREAM_ID') or b'\x00'
+    if tx_sid == stream_id:
+        return True
+    if not is_vhead:
+        return False
+    if tx_sid == b'\x00':
+        return True
+    return not hbp_tx_stream_locked(slot_status, stream_id, pkt_time, stream_to)
+
+
+def clear_hbp_tx_stream(slot_status):
+    """Reset TX_STREAM_ID so the next static arm requires a fresh VHEAD."""
+    if slot_status is not None:
+        slot_status['TX_STREAM_ID'] = b'\x00'
+
+
 def obp_allows_static_stream_takeover(target, slot_status=None, stream_id=None,
                                      pkt_time=None, stream_to=None):
     """Whether OBP→HBP may skip classic STREAM_TO on a permanent static leg.
