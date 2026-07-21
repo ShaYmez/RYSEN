@@ -73,6 +73,31 @@ class SelfcareDB:
             raise RuntimeError(f'upsert_ipsc_client error: {err}') from err
 
     @inlineCallbacks
+    def mark_ipsc_options_pending(self, int_id):
+        """Re-queue stored selfcare options for apply after reconnect (parity with hotspot login_opt)."""
+        try:
+            yield self.dbpool.runOperation(
+                'UPDATE Clients SET modified = 1 '
+                'WHERE int_id = %s AND mode = %s '
+                "AND options IS NOT NULL AND TRIM(options) != '' "
+                "AND options NOT LIKE '%%DISC=1%%'",
+                (int_id, IPSC_CLIENT_MODE),
+            )
+        except Exception as err:
+            raise RuntimeError(f'mark_ipsc_options_pending error: {err}') from err
+
+    @inlineCallbacks
+    def save_client_options(self, int_id, options_str):
+        """Persist stripped selfcare options after one-shot DISC apply."""
+        try:
+            yield self.dbpool.runOperation(
+                'UPDATE Clients SET options = %s WHERE int_id = %s',
+                (options_str, int_id),
+            )
+        except Exception as err:
+            raise RuntimeError(f'save_client_options error: {err}') from err
+
+    @inlineCallbacks
     def logout_ipsc_client(self, int_id):
         try:
             yield self.dbpool.runOperation(
@@ -86,6 +111,14 @@ class SelfcareDB:
         return self.dbpool.runQuery(
             'SELECT int_id, options FROM Clients WHERE modified = 1 AND mode = %s',
             (IPSC_CLIENT_MODE,),
+        )
+
+    def select_hotspot_options(self, dmr_id):
+        """Stored selfcare OPTIONS for a connected hotspot (mode > 0)."""
+        return self.dbpool.runQuery(
+            'SELECT options FROM Clients WHERE dmr_id = %s AND mode > 0 '
+            "AND options IS NOT NULL AND TRIM(options) != ''",
+            (dmr_id,),
         )
 
     @inlineCallbacks
@@ -112,7 +145,7 @@ class SelfcareDB:
         return self.dbpool.runQuery(
             'SELECT int_id, options FROM Clients '
             'WHERE modified = 1 AND logged_in = 1 AND mode > 0 '
-            "AND options LIKE '%DISC=1%'",
+            "AND options LIKE '%%DISC=1%%'",
         )
 
     @inlineCallbacks
@@ -150,12 +183,6 @@ def build_ipsc_seed_options(system_cfg):
     if not parts:
         return None
     return ';'.join(parts) + ';'
-
-
-def find_ipsc_slot_for_radio_id(config_systems, radio_id):
-    """Return IPSC-N slot name where connected peer RADIO_ID matches radio_id."""
-    slot, _peer_id = find_ipsc_peer_for_radio_id(config_systems, radio_id)
-    return slot
 
 
 def find_ipsc_peer_for_radio_id(config_systems, radio_id):

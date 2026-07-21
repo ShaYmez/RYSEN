@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# RYSEN DMRMaster+ Version 1.5.0
+# RYSEN DMRMaster+ Version 1.5.1
 ###############################################################################
 #   Copyright (C) 2016-2019 Cortney T. Buffington, N0MJS <n0mjs@me.com>
 #
@@ -49,6 +49,7 @@ from dmr_utils3.utils import int_id, bytes_3, bytes_4, get_alias, mk_id_dict
 from ipsc_peer_meta import (
     lookup_peer_alias, callsign_bytes, parse_ipsc_peer_status, ipsc_peer_display_fields,
 )
+from bridge_helpers import DMRE_MAX_PACKET_AGE_S
 
 # Imports for the reporting server
 import pickle
@@ -237,7 +238,7 @@ class OPENBRIDGE(DatagramProtocol):
 
     def send_system(self, _packet, _hops = b'', _ber = b'\x00', _rssi = b'\x00', _source_server = b'\x00\x00\x00\x00', _source_rptr = b'\x00\x00\x00\x00'):                      
         #Don't do anything if we are STUNned
-        if 'STUN' in self._CONFIG:
+        if self._config.get('_STUN'):
             logger.info('(%s) Bridge STUNned, discarding', self._system)
             return
         
@@ -392,7 +393,7 @@ class OPENBRIDGE(DatagramProtocol):
                         return
                     
                     #Don't do anything if we are STUNned
-                    if 'STUN' in self._CONFIG:
+                    if self._config.get('_STUN'):
                             if _stream_id not in self._laststrid:
                                 logger.warning('(%s) Bridge STUNned, discarding', self._system)
                                 self._laststrid.append(_stream_id)
@@ -510,17 +511,17 @@ class OPENBRIDGE(DatagramProtocol):
                     #logger.debug('(%s) DMRD - Seqence: %s, RF Source: %s, Destination ID: %s', self._system, int_id(_seq), int_id(_rf_src), int_id(_dst_id))
                     
                     #Don't do anything if we are STUNned
-                    if 'STUN' in self._CONFIG:
+                    if self._config.get('_STUN'):
                             if _stream_id not in self._laststrid:
                                 logger.warning('(%s) Bridge STUNned, discarding', self._system)
                                 self._laststrid.append(_stream_id)
                             return
                         
-                    #Discard old packets
-                    if (int.from_bytes(_timestamp,'big')/1000000000) < (time() - 5):
+                    # Discard old packets. Do NOT send_bcsq on age alone — under
+                    # reactor lag that quenches live streams and worsens audio.
+                    if (int.from_bytes(_timestamp,'big')/1000000000) < (time() - DMRE_MAX_PACKET_AGE_S):
                         if _stream_id not in self._laststrid:
-                            logger.warning('(%s) Packet from server %s more than 5s old!, discarding',  self._system,int.from_bytes(_source_server,'big'))
-                            self.send_bcsq(_dst_id,_stream_id)
+                            logger.warning('(%s) Packet from server %s more than %.0fs old!, discarding',  self._system,int.from_bytes(_source_server,'big'), DMRE_MAX_PACKET_AGE_S)
                             self._laststrid.append(_stream_id)
                         return
                     
@@ -644,7 +645,7 @@ class OPENBRIDGE(DatagramProtocol):
                     #logger.debug('(%s) DMRD - Seqence: %s, RF Source: %s, Destination ID: %s', self._system, int_id(_seq), int_id(_rf_src), int_id(_dst_id))
                     
                     #Don't do anything if we are STUNned
-                    if 'STUN' in self._CONFIG:
+                    if self._config.get('_STUN'):
                             if _stream_id not in self._laststrid:
                                 logger.warning('(%s) Bridge STUNned, discarding', self._system)
                                 self._laststrid.append(_stream_id)
@@ -755,7 +756,7 @@ class OPENBRIDGE(DatagramProtocol):
                     _hash = _packet[4:]
                     _ckhs = hmac_new(self._config['PASSPHRASE'],_packet[4:],sha1).digest()
                     if compare_digest(_hash, _ckhs):
-                        logger.trace('(%s) *BridgeControl*  BCST STUN request received for TGID: %s, Stream ID: %s',self._system,int_id(_tgid), int_id(_stream_id))
+                        logger.trace('(%s) *BridgeControl*  BCST STUN request received', self._system)
                         self._config['_STUN'] = True
                     else:
                         h,p = _sockaddr
@@ -849,7 +850,7 @@ class HBSYSTEM(DatagramProtocol):
             self.transport.write(b''.join([MSTCL, peer]),self._CONFIG['SYSTEMS'][self._system]['PEERS'][peer]['SOCKADDR'])
             # Remove any timed out peers from the configuration
             del self._CONFIG['SYSTEMS'][self._system]['PEERS'][peer]
-        if 'PEERS' not in self._CONFIG['SYSTEMS'][self._system] and 'OPTIONS' in self._CONFIG['SYSTEMS'][self._system]:
+        if not self._peers and 'OPTIONS' in self._CONFIG['SYSTEMS'][self._system]:
             
             if '_default_options' in self._CONFIG['SYSTEMS'][self._system]:
                 logger.info('(%s) Setting default Options: %s',self._system, self._CONFIG['SYSTEMS'][self._system]['_default_options'])
@@ -1237,8 +1238,15 @@ class HBSYSTEM(DatagramProtocol):
                     _remaining, _had_disc = apply_selfcare_options(
                         self._system, _peer_id, _opt_str)
                     if _had_disc:
-                        if _remaining:
-                            self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = _remaining
+                        self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = _remaining
+                        _db = self._CONFIG.get('_SELF_SERVICE_DB')
+                        if _db is not None:
+                            _rid = int(int_id(_peer_id))
+                            _save = _db.save_client_options(_rid, _remaining)
+                            _save.addErrback(
+                                lambda f, _rid=_rid: logger.error(
+                                    '(%s) Selfcare DISC options save failed for %s: %s',
+                                    self._system, _rid, f.getErrorMessage()))
                     else:
                         self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = _opt_str
                 except Exception as exc:

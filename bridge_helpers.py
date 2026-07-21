@@ -10,6 +10,8 @@ from ipsc_const import is_routing_master
 DIAL_A_TG = 9
 DIAL_A_TG_BYTES = bytes_3(DIAL_A_TG)
 _DIAL_SERVICE_CODES = frozenset([DIAL_A_TG, 4000, 5000])
+PARROT_TG = 9990
+_SERVICE_TG_RANGE = range(9991, 10000)
 
 
 def is_dial_service_code(reflector):
@@ -26,6 +28,38 @@ def is_invalid_dial_reflector(reflector):
         return int(reflector) == DIAL_A_TG
     except (TypeError, ValueError):
         return False
+
+
+def is_parrot_talkgroup(tgid):
+    """TG 9990 — parrot echo (group call on 9990, or dial-a-tg private call to 9990)."""
+    try:
+        return int(tgid) == PARROT_TG
+    except (TypeError, ValueError):
+        return False
+
+
+def is_parrot_bridge(bridge_name):
+    """Conference or dial reflector bridge for parrot (never routes via OpenBridge)."""
+    if not bridge_name:
+        return False
+    if bridge_name[0:1] == '#':
+        return is_parrot_talkgroup(bridge_name[1:])
+    return is_parrot_talkgroup(bridge_name)
+
+
+def is_valid_talkgroup_bridge(bridge_name):
+    """False for dial service codes (9/4000/5000) and parrot/service TG ranges."""
+    if bridge_name[0:1] == '#':
+        return not is_dial_service_code(bridge_name[1:])
+    try:
+        n = int(bridge_name)
+    except (TypeError, ValueError):
+        return True
+    if is_dial_service_code(n):
+        return False
+    if n in _SERVICE_TG_RANGE:
+        return False
+    return n >= 5
 
 
 def build_bridge_index(bridges):
@@ -86,35 +120,41 @@ def to_target_forward_systems(bridge_entries, source_system):
 
 def private_call_may_create_reflector(int_dst_id, bridges):
     """True when a private call would invoke make_single_reflector (routerHBP private path)."""
+    if is_parrot_talkgroup(int_dst_id):
+        return False
     if int_dst_id < 5 or int_dst_id in (8, 9) or int_dst_id > 999999:
         return False
     if 4000 <= int_dst_id <= 5000:
         return False
-    if 9991 <= int_dst_id <= 9999:
+    if int_dst_id in _SERVICE_TG_RANGE:
         return False
     return f'#{int_dst_id}' not in bridges
 
 
-def sanitize_dial_reflectors_for_system(bridges, system):
-    """Deactivate service-code # reflectors for one MASTER. Returns True if state changed."""
+def clear_default_reflectors_for_system(bridges, system):
+    """Deactivate TO_TYPE OFF (#) default dial reflector legs for one MASTER.
+
+    Clears stale auto-linked reflectors left on a proxy slot after the prior
+    hotspot disconnects (DEFAULT_REFLECTOR / DIAL / StartRef), without touching
+    user-activated (TO_TYPE ON) links — those are cleared by reset_dynamic_reflectors().
+    """
     changed = False
     for bridge_name in bridges:
         if bridge_name[0:1] != '#':
             continue
+        if is_dial_service_code(bridge_name[1:]):
+            continue
         for entry in bridges[bridge_name]:
             if entry['SYSTEM'] != system:
                 continue
-            if is_dial_service_code(bridge_name[1:]):
-                if entry.get('ACTIVE'):
-                    entry['ACTIVE'] = False
-                    changed = True
-                if entry.get('ON'):
-                    entry['ON'] = []
-                    changed = True
-            elif DIAL_A_TG_BYTES in entry.get('ON', []):
-                entry['ON'] = [x for x in entry['ON'] if x != DIAL_A_TG_BYTES]
+            if entry.get('TO_TYPE') != 'OFF':
+                continue
+            if entry.get('ACTIVE'):
+                entry['ACTIVE'] = False
+                entry['TIMER'] = time.time()
                 changed = True
     return changed
+
 
 _IPSC_LINK_KEYS = frozenset(['IPSC', 'LINK_IPSC'])
 _SELFCARE_DISC_TRUTHY = frozenset(('1', 'true', 'yes'))
@@ -336,6 +376,90 @@ def reflector_single_mode_wrong_tg(int_dst_id, dst_id_bytes, bridge, entry):
     return True
 
 
+def system_has_static_tgs(system_cfg):
+    """True when TS1_STATIC or TS2_STATIC is configured (sticky TG must not run)."""
+    for key in ('TS1_STATIC', 'TS2_STATIC'):
+        val = system_cfg.get(key)
+        if val and str(val).strip() and str(val).strip() not in ('0', 'False'):
+            return True
+    return False
+
+
+def parse_static_tg_list(ts_static):
+    """Normalize TS1_STATIC/TS2_STATIC config value to a list of TG integers."""
+    if not ts_static or ts_static is False:
+        return []
+    text = re.sub(r'\s', '', str(ts_static))
+    if not text or text in ('0', 'False'):
+        return []
+    result = []
+    for part in text.split(','):
+        if not part:
+            continue
+        try:
+            tg = int(part)
+        except (TypeError, ValueError):
+            continue
+        if tg <= 0 or tg >= 16777215:
+            continue
+        result.append(tg)
+    return result
+
+
+def parse_options_static_fields(options_str):
+    """Extract TS1/TS2 static talkgroup lists from a semicolon OPTIONS string."""
+    ts1 = False
+    ts2 = False
+    if not options_str:
+        return ts1, ts2
+    text = options_str
+    if isinstance(text, bytes):
+        text = text.decode('ascii', errors='ignore')
+    text = text.rstrip('\x00')
+    for part in str(text).split(';'):
+        if '=' not in part:
+            continue
+        key, val = part.split('=', 1)
+        key = key.strip()
+        val = val.strip()
+        if key in ('TS1', 'TS1_1'):
+            ts1 = val if val else False
+        elif key in ('TS2', 'TS2_1'):
+            ts2 = val if val else False
+        elif key.startswith('TS1_') and val:
+            ts1 = ','.join([str(ts1), val]) if ts1 and ts1 is not False else val
+        elif key.startswith('TS2_') and val:
+            ts2 = ','.join([str(ts2), val]) if ts2 and ts2 is not False else val
+    return ts1, ts2
+
+
+def bridge_has_active_static_leg(bridges, system, ts, tg):
+    """True when bridge *tg* has a permanent static leg on *system* slot *ts*."""
+    from dmr_utils3.utils import bytes_3
+    tgid_b = bytes_3(tg)
+    for entry in bridges.get(str(tg), ()):
+        if (entry.get('SYSTEM') == system and entry.get('TS') == ts
+                and entry.get('TGID') == tgid_b
+                and entry.get('TO_TYPE') == 'OFF' and entry.get('ACTIVE')):
+            return True
+    return False
+
+
+def is_static_field_keyup_noise(existing_ts_static, proposed_ts_static):
+    """True when a lone TG in OPTIONS likely reflects a keyed talkgroup, not static config.
+
+    Pi-Star/VoxDMR login Options= with comma-separated statics is real config and is not
+    noise. A single TG replacing an established multi-static bundle usually is key-up noise.
+    """
+    old_list = parse_static_tg_list(existing_ts_static)
+    new_list = parse_static_tg_list(proposed_ts_static)
+    if len(new_list) != 1:
+        return False
+    if len(old_list) <= 1:
+        return False
+    return new_list[0] not in old_list
+
+
 def set_reflector_link_owner(entry, rf_src, peer_id):
     """Record who owns an active dial-a-tg link (timer resets only on their PTT)."""
     entry['LINKER'] = rf_src
@@ -368,7 +492,11 @@ def dial_reflector_user_activity_counts(int_dst_id, bridge, group_call=False):
         return False
     linked = reflector_bridge_linked_int(bridge)
     if group_call:
-        return int_dst_id == 9
+        if int_dst_id == 9:
+            return True
+        if linked is not None and int_dst_id == linked:
+            return True
+        return False
     if int_dst_id == 5000:
         return True
     if linked is not None and int_dst_id == linked:
@@ -405,3 +533,224 @@ def reset_dial_reflector_timers_on_user_activity(bridges, system, rf_src, peer_i
             entry['TIMER'] = pkt_time + timeout
             reset_bridges.append(bridge)
     return reset_bridges
+
+
+# Outbound collision actions for inbound OBP RX (never reclaim/promote to CALL START).
+OBP_OUTBOUND_ECHO = 'echo'
+OBP_OUTBOUND_REPLACE = 'replace'
+
+# Cumulative wall-clock OBP RATE DROP deletes lag catch-up frames on the winning
+# path (armed mid-2026 when the formula was fixed). Historically inert for years;
+# LoopControl / echo-drop handle mesh. Keep False unless a true flood needs a
+# lag-aware / sliding-window limiter later.
+OBP_RATE_DROP_ENABLED = False
+
+# Same catch-up poison as OBP RATE DROP; disable so hotspot RX survives lag bursts.
+HBP_RATE_DROP_ENABLED = False
+
+# DMRE packet age (seconds). 5s sits inside typical UK reactor lag and false-triggers.
+DMRE_MAX_PACKET_AGE_S = 15.0
+
+
+def dmrd_seq_delta(seq, last_seq):
+    """Unsigned 8-bit DMRD sequence delta, or None if last_seq is unset."""
+    if last_seq is False or last_seq is None:
+        return None
+    return (seq - last_seq) % 256
+
+
+def obp_target_already_has_inbound(target_status, stream_id, dst_id):
+    """True if OBP STATUS already has this stream as inbound (not our outbound TX).
+
+    Skipping TX to those peers avoids mesh re-fanout CPU when they already heard
+    the call on another path (LoopControl loser / parallel ingress).
+    """
+    if not target_status or stream_id not in target_status:
+        return False
+    st = target_status[stream_id]
+    if st.get('_outbound'):
+        return False
+    if '1ST' not in st:
+        return False
+    return st.get('TGID') == dst_id
+
+
+def group_call_end_bridge_candidates(bridges, int_dst_id):
+    """Bridges that in-band call-end signalling may touch — not a full table scan.
+
+    Dial-a-tg channel (TG 9) still considers all # reflector bridges.
+    """
+    if not bridges:
+        return []
+    if int_dst_id == DIAL_A_TG:
+        return [b for b in bridges if b[:1] == '#']
+    out = []
+    tg_s = str(int_dst_id)
+    if tg_s in bridges:
+        out.append(tg_s)
+    hash_b = '#' + tg_s
+    if hash_b in bridges:
+        out.append(hash_b)
+    return out
+
+
+def earliest_obp_owner(hr_times):
+    """Return the OBP system name with the earliest 1ST, or None if empty."""
+    if not hr_times:
+        return None
+    return min(hr_times, key=hr_times.get)
+
+
+def should_report_obp_rx_start(system, hbp_owner, hr_times):
+    """True if this OBP system should emit GROUP VOICE START RX.
+
+    Matches LoopControl: any HBP owner wins; else earliest inbound OBP 1ST wins.
+    """
+    if hbp_owner:
+        return False
+    winner = earliest_obp_owner(hr_times)
+    if winner is None:
+        return True
+    return system == winner
+
+
+def should_report_hbp_rx_start(hbp_owner, obp_already_inbound):
+    """True if this HBP should emit START RX (no other HBP / inbound OBP owner)."""
+    if hbp_owner or obp_already_inbound:
+        return False
+    return True
+
+
+def should_report_stream_end(status):
+    """False when LOOPLOG or _outbound — no START was meant for the dash."""
+    if not status:
+        return True
+    if status.get('LOOPLOG') or status.get('_outbound'):
+        return False
+    return True
+
+
+def classify_obp_outbound_collision(status_entry, dst_id):
+    """Classify inbound RX against an existing OBP STATUS entry.
+
+    Returns:
+      'echo' — STATUS is _outbound with same TGID; mesh/TX echo — do not route.
+      'replace' — STATUS is _outbound with different TGID; delete then create fresh inbound.
+      None — not an outbound collision (normal new stream or continuation).
+
+    Production must NEVER reclaim/promote outbound into CALL START (MAX HOPS meltdown).
+    """
+    if not status_entry or not status_entry.get('_outbound'):
+        return None
+    if status_entry.get('TGID') == dst_id:
+        return OBP_OUTBOUND_ECHO
+    return OBP_OUTBOUND_REPLACE
+
+
+def ensure_obp_inbound_status_keys(st, perf_counter_fn=None):
+    """Backfill inbound-only keys on continuation STATUS (safe if already present)."""
+    if 'packets' not in st:
+        st['packets'] = 0
+    if 'loss' not in st:
+        st['loss'] = 0
+    if 'lastSeq' not in st:
+        st['lastSeq'] = False
+    if 'lastData' not in st:
+        st['lastData'] = False
+    if 'crcs' not in st:
+        st['crcs'] = set()
+    if '1ST' not in st:
+        _pc = perf_counter_fn if perf_counter_fn is not None else time.perf_counter
+        st['1ST'] = _pc()
+    return st
+
+
+def report_include_bridge_leg(to_type, active):
+    """Whether a bridge leg belongs in the monitor report payload.
+
+    Idle UA ON legs dominate GEN_STAT meshes and inflate BRIDGE_SND pickles;
+    static OFF+ACTIVE and live/STAT/NONE legs are kept.
+    """
+    if to_type == 'ON' and not active:
+        return False
+    return True
+
+
+def clean_report_trigger_list(value):
+    """Normalise ON/OFF/RESET trigger lists for report pickle; empty -> []."""
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    # deque and other sequences
+    try:
+        return list(value)
+    except TypeError:
+        return [value]
+
+
+def build_report_bridge_leg(bridge_system, now_fn=None):
+    """Build one slim report leg dict, or None if the leg should be omitted."""
+    if not isinstance(bridge_system, dict):
+        return None
+    if 'SYSTEM' not in bridge_system or 'TS' not in bridge_system or 'TGID' not in bridge_system:
+        return None
+    _to_type = bridge_system.get('TO_TYPE', 'NONE')
+    _active = bool(bridge_system.get('ACTIVE', False))
+    if not report_include_bridge_leg(_to_type, _active):
+        return None
+    _now = now_fn if now_fn is not None else time.time
+    _timeout = bridge_system.get('TIMEOUT', '')
+    _timer = bridge_system.get('TIMER', _now())
+    if _to_type == 'OFF' and _active:
+        _timeout = 0
+        _timer = 0
+    leg = {
+        'SYSTEM': bridge_system['SYSTEM'],
+        'TS': bridge_system['TS'],
+        'TGID': bridge_system['TGID'],
+        'ACTIVE': _active,
+        'TIMEOUT': _timeout,
+        'TO_TYPE': _to_type,
+        'TIMER': _timer,
+    }
+    for key in ('OFF', 'ON', 'RESET'):
+        cleaned = clean_report_trigger_list(bridge_system.get(key))
+        if cleaned:
+            leg[key] = cleaned
+    return leg
+
+
+STAT_TRIMMER_INTERVAL_S = 600
+
+
+_OBP_RECLAIM_CLEAR_KEYS = (
+    'LOOPLOG', '_bcsq', '_finlog', '_fin', 'H_LC', 'T_LC', 'EMB_LC',
+)
+
+
+def reclaim_obp_inbound_stream(status, stream_id, pkt_time, rf_src, dst_id, peer_id):
+    """Unit-test helper only — MUST remain unwired in production.
+
+    Reclaim on VHEAD promoted mesh echoes into CALL START, skipped LoopControl,
+    and inflated hops to MAX HOPS. Use classify_obp_outbound_collision instead:
+    same-TG echo drop, or delete+fresh create on different TGID.
+    """
+    st = status.get(stream_id)
+    if not st or not st.get('_outbound'):
+        return False
+    st.pop('_outbound', None)
+    st['START'] = pkt_time
+    st['CONTENTION'] = False
+    st['RFS'] = rf_src
+    st['TGID'] = dst_id
+    st['RX_PEER'] = peer_id
+    st['1ST'] = time.perf_counter()
+    st['lastSeq'] = False
+    st['lastData'] = False
+    st['packets'] = 0
+    st['loss'] = 0
+    st['crcs'] = set()
+    for _k in _OBP_RECLAIM_CLEAR_KEYS:
+        st.pop(_k, None)
+    return True

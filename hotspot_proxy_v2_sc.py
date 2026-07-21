@@ -34,7 +34,7 @@ from proxy_db import ProxyDB
 
 # Does anybody read this stuff? There's a PEP somewhere that says I should do this.
 __author__     = 'Simon Adlem - G7RZU'
-__verion__     = '1.5.0'
+__verion__     = '1.5.1'
 __copyright__  = 'Copyright (c) Simon Adlem, G7RZU 2020,2021,2022'
 __credits__    = 'Christian, OA4DOA; Shane, M0VUB'
 __license__    = 'GNU GPLv3'
@@ -122,7 +122,6 @@ class Proxy(DatagramProtocol):
         RPTL    = b'RPTL'
         RPTPING = b'RPTPING'
         RPTCL   = b'RPTCL'
-        RPTL    = b'RPTL'
         RPTACK  = b'RPTACK'
         RPTK    = b'RPTK'
         RPTC    = b'RPTC'
@@ -225,9 +224,10 @@ class Proxy(DatagramProtocol):
                             print(f'Password stored for: {int_id(_peer_id)}')
                             return
                     self.db_proxy.updt_tbl('opt_rcvd', _peer_id)
-                    # Options send by peer overrides Self Service options
-                    if self.peerTrack[_peer_id]['opt_timer'].active():
-                        self.peerTrack[_peer_id]['opt_timer'].cancel()
+                    # Login Options= from Pi-Star/VoxDMR override pending selfcare login_opt.
+                    _opt_timer = self.peerTrack[_peer_id].get('opt_timer')
+                    if _opt_timer is not None and _opt_timer.active():
+                        _opt_timer.cancel()
                         print(f'Options received from: {int_id(_peer_id)}')
 
             elif _command == RPTP:              # RPTPing -- peer is pinging us
@@ -275,7 +275,7 @@ class Proxy(DatagramProtocol):
     @inlineCallbacks
     def login_opt(self, _peer_id):
         try:
-            res = yield db_proxy.slct_opt(_peer_id)
+            res = yield self.db_proxy.slct_opt(_peer_id)
             options = res[0][0]
             if options:
                 bytes_pkt = b''.join((b'RPTO', _peer_id, options.encode()))
@@ -288,7 +288,7 @@ class Proxy(DatagramProtocol):
     @inlineCallbacks
     def send_opts(self):
         try:
-            results = yield db_proxy.slct_db()
+            results = yield self.db_proxy.slct_db()
             for item in results:
                 _peer_id, options = item
                 if _peer_id not in self.peerTrack or not options:
@@ -482,7 +482,7 @@ if __name__ == '__main__':
         for delete in _dellist:
             IPBlackList.pop(delete)
             if ClientInfo:
-                print('Remove dynamic blacklist entry for {}').format(delete)
+                print(f'Remove dynamic blacklist entry for {delete}')
 
 
     if Stats == True:

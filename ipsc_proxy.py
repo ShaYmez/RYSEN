@@ -31,7 +31,7 @@ from dmr_utils3.utils import int_id
 from ipsc_const import PRCL, PRIN, peer_id_from_packet
 
 __author__ = 'Shane Daley M0VUB'
-__version__ = '1.5.0'
+__version__ = '1.5.1'
 
 
 def is_ipv4_address(ip):

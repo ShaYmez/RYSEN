@@ -72,13 +72,51 @@ Parsed from each peer's RPTO OPTIONS, not the system stanza.
 
 Priority for sticky TGs: **static TGs** (`TS1_STATIC`/`TS2_STATIC`) > **peer STICKY** > **system `STICKY_TG`** > default timeout.
 
+When either `TS1_STATIC` or `TS2_STATIC` is configured (in `rysen.cfg` or via OPTIONS/selfcare), **sticky TG logic is disabled** for that system. UA talkgroups then expire per `DEFAULT_UA_TIMER` / `RelinkTime` / `TIMER` as usual. Sticky is only active when no static talkgroups are set.
+
+**Service codes are not talkgroups:** TG `9` (dial-a-tg channel), `4000` (disconnect), and `5000` (status) must never appear as bridge keys on the static-TG monitor page. RYSEN excludes them from `GEN_STAT` bridge creation and purges bogus `4000`/`5000`/`9` bridge entries at startup.
+
+**Static monitor timer:** Permanent static legs (`TO_TYPE=OFF`, `ACTIVE=True`) report `TIMER=0` / `TIMEOUT=0` to RYSEN-MONITOR (no countdown). Only UA legs (`TO_TYPE=ON`) use the relink timer.
+
+Use sticky when hotspots have **no** static TGs and you want the last keyed TG to stay linked until the user keys another TG or disconnects. With static TGs configured, rely on `RelinkTime` / `TIMER` for UA timeout instead — `STICKY=1` in OPTIONS is ignored.
+
+## SINGLE_MODE and GROUP_HANGTIME
+
+These control different things. Do not confuse them with `DEFAULT_UA_TIMER` / `RelinkTime` (minutes), which only governs how long **user-activated** bridge legs stay registered on the server.
+
+| Setting | Where | Unit | Role |
+|---------|-------|------|------|
+| `GROUP_HANGTIME` | `rysen.cfg` system stanza | Seconds | **Slot contention** — real-time isolation on a timeslot |
+| `SINGLE_MODE` | `rysen.cfg` or `SINGLE=` in OPTIONS | On/Off | **UA bridge lifecycle** — deactivates other UA/dial-a-tg legs after wrong-TG traffic |
+| `DEFAULT_UA_TIMER` / `RelinkTime` | cfg or OPTIONS | Minutes | **UA relink timer** — server-side expiry for keyed (non-static) talkgroups |
+
+### GROUP_HANGTIME — one TG on the wire at a time
+
+When several talkgroups share a timeslot (multiple statics, static + UA, dial-a-tg, hotspots), `GROUP_HANGTIME` enforces **temporary slot isolation** during routing:
+
+- While TG 235 is active (or in hang-time) on TS1, traffic for TG 23426 on the same slot is **not forwarded** to that target.
+- After hang-time expires, or when a new PTT on a different TG wins contention, the new TG can take the slot.
+- Applies equally to static TGs, UA bridges, dial-a-tg (`#` reflectors), and hotspots.
+
+This is the “break-in / override” behaviour on a standard DMR setup. It is independent of bridge `ACTIVE` state on the server.
+
+### SINGLE_MODE — UA bridge leg management
+
+When `SINGLE_MODE: True`, after a group call ends (VTERM), bridge legs with `TO_TYPE='ON'` (user-activated and dial-a-tg links) are **deactivated** if the traffic was on a “wrong” talkgroup for that bridge entry.
+
+- Keying UA TG 121 deactivates other UA legs on that system; TG 121 remains until `RelinkTime` expires.
+- **Static talkgroups** (`TO_TYPE='OFF'`, always-on) are **not** deactivated by wrong-TG traffic — they stay bridged permanently.
+- **Default reflector** legs use the same always-on pattern and are also protected.
+
+`SINGLE_MODE` does **not** replace `GROUP_HANGTIME`. Statics remain registered; slot priority during live QSOs is still enforced by hang-time contention in the routing path.
+
 ## Selfcare keys
 
 | Key | Meaning |
 |-----|---------|
-| `DISC=1` | One-shot remote disconnect request from dashboard; stripped after apply |
+| `DISC=1` | One-shot remote disconnect from dashboard; stripped from memory and MariaDB after apply |
 
-See [selfcare.md](selfcare.md).
+See [selfcare.md](selfcare.md) for IPSC vs hotspot DISC timing.
 
 ## Ignored keys
 
@@ -102,6 +140,7 @@ See [selfcare.md](selfcare.md).
 ```
 TS1_1=23426;TIMER=10;STICKY=1
 ```
+(With `TS1_1` set, sticky is disabled server-side; `RelinkTime`/`TIMER` controls UA expiry.)
 
 **Hotspot linked to IPSC repeater on TS2:**
 ```

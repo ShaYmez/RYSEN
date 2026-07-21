@@ -26,5 +26,12 @@ class TestMakeStaticTg(unittest.TestCase):
                       source)
 
 
+    def test_ensure_static_helpers_exist(self):
+        with open('bridge_master.py', encoding='utf-8') as fh:
+            source = fh.read()
+        self.assertIn('def ensure_static_tgs_for_system(system, tmout=None):', source)
+        self.assertIn('def repair_static_tgs_all_systems():', source)
+
+
 if __name__ == '__main__':
     unittest.main()

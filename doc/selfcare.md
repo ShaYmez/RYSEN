@@ -4,10 +4,10 @@ RYSEN selfcare lets operators change repeater and hotspot settings from [RYSEN-M
 
 ## Overview
 
-| Client type | DB `mode` | RYSEN component | Poll function |
-|-------------|-----------|-----------------|---------------|
-| IPSC repeater | `0` | `selfcare_db.py` | `ipsc_selfcare_poll()` |
-| Hotspot | `> 0` | `proxy_db.py` | Hotspot proxy selfcare poll |
+| Client type | DB `mode` | RYSEN component | Apply path |
+|-------------|-----------|-----------------|------------|
+| IPSC repeater | `0` | `selfcare_db.py` | `ipsc_selfcare_poll()` (default 5 s) |
+| Hotspot | `> 0` | `proxy_db.py` + `hotspot_proxy_v2_sc.py` | Proxy `login_opt()` / `send_opts()` → RPTO; DISC via `hotspot_selfcare_disc_poll()` (default 2 s) |
 
 Hotspot proxy poll **excludes** IPSC rows (`mode = 0`).
 
@@ -29,7 +29,7 @@ Credentials must match across three places:
 
 | File | Read by | Keys |
 |------|---------|------|
-| `rysen.cfg` `[SELF SERVICE]` | rysen (IPSC) | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`, `ENABLED` |
+| `rysen.cfg` `[SELF SERVICE]` | rysen (IPSC) | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`, `ENABLED`, `POLL_INTERVAL`, `DISC_POLL_INTERVAL` |
 | `proxy.cfg` `[SELF SERVICE]` | hotspot proxy | `server`, `port`, `username`, `password`, `db_name`, `use_selfservice` |
 | `docker-compose.yml` | mariadb + proxy containers | `MYSQL_*`, `DB_*` env vars |
 
@@ -42,7 +42,14 @@ Enable in config:
 ENABLED: True
 ```
 
-(hotspot proxy: `USE_SELFSERVICE = True` in `proxy.cfg`)
+(hotspot proxy: `use_selfservice = True` in `proxy.cfg` `[SELF SERVICE]`)
+
+Optional poll intervals in `rysen.cfg` `[SELF SERVICE]`:
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `POLL_INTERVAL` | `5` | IPSC selfcare apply poll (seconds) |
+| `DISC_POLL_INTERVAL` | `2` | Hotspot `DISC=1` server-side poll (seconds) |
 
 ## IPSC repeater selfcare
 
@@ -51,7 +58,7 @@ When a Motorola repeater registers (`MODE: IPSC`):
 1. Row upserted in `Clients` table (`mode = 0`)
 2. On dashboard edit, `modified = 1` with OPTIONS string
 3. `ipsc_selfcare_poll()` applies `TS1_STATIC` / `TS2_STATIC` via `options_config()`
-4. Re-register re-applies stored options
+4. On re-register after disconnect or server reboot, `mark_ipsc_options_pending()` sets `modified = 1` from stored DB options so the poll re-applies them (parity with hotspot `login_opt()`)
 
 **Multi-static TG example:**
 ```
@@ -64,7 +71,11 @@ On first register, seed options are built from `TS1_STATIC`/`TS2_STATIC` in `rys
 
 ## Hotspot selfcare
 
-The selfcare hotspot proxy (`hotspot_proxy_v2_sc.py`) polls MariaDB for hotspot rows (`mode > 0`) and pushes OPTIONS to the master via RPTO.
+The selfcare hotspot proxy (`hotspot_proxy_v2_sc.py`) polls MariaDB for hotspot rows (`mode > 0`):
+
+- **`login_opt()`** — 10 s after RPTC login, sends stored `options` to the master via RPTO (reconnect re-apply)
+- **`send_opts()`** — pushes non-DISC option updates when `modified = 1`
+- **`hotspot_selfcare_disc_poll()`** (in `bridge_master.py`) — applies `DISC=1` from MariaDB without waiting for proxy RPTO
 
 Common OPTIONS fields: `TS1=`, `TS2=`, `RelinkTime=`, `STICKY=`, `IPSC=`.
 
@@ -72,11 +83,15 @@ Common OPTIONS fields: `TS1=`, `TS2=`, `RelinkTime=`, `STICKY=`, `IPSC=`.
 
 Dashboard can request a disconnect by setting `DISC=1` in the OPTIONS string.
 
-- Applied immediately when RPTO is received
-- Also polled from MariaDB within seconds for hotspot rows
-- `DISC=1` is stripped after apply (one-shot flag)
+| Path | How DISC is applied |
+|------|---------------------|
+| Hotspot RPTO | Immediately when master receives RPTO from proxy or firmware |
+| Hotspot MariaDB | `hotspot_selfcare_disc_poll()` (default every 2 s) |
+| IPSC repeater | `ipsc_selfcare_poll()` only — no RPTO path (default every 5 s) |
 
-Example: `TS2=2350;DISC=1;`
+After apply, `DISC=1` is stripped from in-memory OPTIONS **and** persisted back to MariaDB (one-shot). Reconnect will not re-fire disconnect.
+
+Example: `TS2=2350;DISC=1;` → stored as `TS2=2350;` after apply.
 
 ## RYSEN-MONITOR
 
