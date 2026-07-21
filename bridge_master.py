@@ -2612,30 +2612,28 @@ class routerOBP(OPENBRIDGE):
                 else:
                     self.STATUS[_stream_id]['LC'] = b''.join([LC_OPT,_dst_id,_rf_src])
 
-                # Gate START RX + first-packet route on LoopControl ownership (multi-OBP mesh).
-                # Losers skip dash START and do not route pkt1 into HBP/DMO (duplicate/
-                # late frames caused RX stretch on BlueDV). Continuations still LC-drop below.
+                # Gate START RX report on LoopControl ownership (multi-OBP mesh).
+                # Report-only: losers skip START for the dash but still route the
+                # first packet (FreeDMR parity); continuation LoopControl ignores them.
                 _hbp_active, _hbp_sys = _find_hbp_stream_rx_owner(_stream_id, exclude=self._system)
                 _hr_times = _obp_loop_hr_times(_stream_id, _dst_id)
                 _report_start = should_report_obp_rx_start(
                     self._system, _hbp_sys if _hbp_active else None, _hr_times)
                 if not _report_start:
                     self.STATUS[_stream_id]['LOOPLOG'] = True
-                    self.STATUS[_stream_id]['LAST'] = pkt_time
-                    self.STATUS[_stream_id]['packets'] = 1
                     logger.debug(
                         "(%s) OBP *LoopControl* START RX suppressed STREAM ID: %s TG: %s "
                         "(HBP=%s hr=%s)",
                         self._system, int_id(_stream_id), int_id(_dst_id),
                         _hbp_sys if _hbp_active else None, list(_hr_times))
-                    return
-                _inthops = 0
-                if _hops:
-                    _inthops = int.from_bytes(_hops,'big')
-                logger.info('(%s) *CALL START* STREAM ID: %s, SUB: %s (%s), RPTR: %s (%s), PEER: %s (%s) TGID %s (%s), TS %s, SRC: %s, HOPS %s',
-                        self._system, int_id(_stream_id),get_alias(_rf_src, subscriber_ids),int_id(_rf_src),self.get_rptr(_source_rptr), int_id(_source_rptr),  get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot,int_id(_source_server),_inthops)
-                if CONFIG['REPORTS']['REPORT']:
-                    self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                else:
+                    _inthops = 0 
+                    if _hops:
+                        _inthops = int.from_bytes(_hops,'big')
+                    logger.info('(%s) *CALL START* STREAM ID: %s, SUB: %s (%s), RPTR: %s (%s), PEER: %s (%s) TGID %s (%s), TS %s, SRC: %s, HOPS %s', 
+                            self._system, int_id(_stream_id),get_alias(_rf_src, subscriber_ids),int_id(_rf_src),self.get_rptr(_source_rptr), int_id(_source_rptr),  get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot,int_id(_source_server),_inthops)
+                    if CONFIG['REPORTS']['REPORT']:
+                        self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
                 # Count the creating packet (parity with HBP / OBP unit)
                 self.STATUS[_stream_id]['packets'] = 1
 
@@ -3776,9 +3774,7 @@ class routerHBP(HBSYSTEM):
                             self._report.send_bridgeEvent('DATA HEADER,DATA,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
                     
                     else:
-                        # Gate START RX + first-packet route on LoopControl ownership.
-                        # Losers skip dash START and do not route pkt1 (avoids HBP/DMO
-                        # duplicate inject when another HBP/OBP already owns the stream).
+                        # Gate START RX report on LoopControl ownership (report-only).
                         _hbp_active, _hbp_sys = _find_hbp_stream_rx_owner(_stream_id, exclude=self._system)
                         _obp_first = False
                         for _obp_system in _OBP_SYSTEMS:
@@ -3793,17 +3789,16 @@ class routerHBP(HBSYSTEM):
                             _hbp_sys if _hbp_active else None, _obp_first)
                         if not _report_start:
                             self.STATUS[_slot]['LOOPLOG'] = True
-                            self.STATUS[_slot]['RX_TIME'] = pkt_time
                             logger.debug(
                                 "(%s) HBP *LoopControl* START RX suppressed STREAM ID: %s TG: %s "
                                 "(HBP=%s OBP=%s)",
                                 self._system, int_id(_stream_id), int_id(_dst_id),
                                 _hbp_sys if _hbp_active else None, _obp_first)
-                            return
-                        logger.info('(%s) *CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
-                            self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
-                        if CONFIG['REPORTS']['REPORT']:
-                            self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                        else:
+                            logger.info('(%s) *CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
+                                self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+                            if CONFIG['REPORTS']['REPORT']:
+                                self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
                 else:
                     logger.info('(%s) *VCSBK* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s _dtype_vseq: %s', 
                             self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, _dtype_vseq)
