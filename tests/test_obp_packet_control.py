@@ -43,27 +43,40 @@ class TestObpRateDropDisabled(unittest.TestCase):
         self.assertIn('dmrd_seq_delta', source)
 
 
-class TestStartGateReportOnly(unittest.TestCase):
+class TestStartGateOwnsFirstPacket(unittest.TestCase):
+    """LoopControl losers must not route creating packet (DMO RX stretch fix)."""
 
-    def test_obp_suppress_does_not_early_return(self):
+    def test_obp_suppress_returns_before_route(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
             source = fh.read()
-        self.assertIn('Report-only: losers skip START', source)
+        self.assertIn('do not route pkt1 into HBP/DMO', source)
         idx = source.find('OBP *LoopControl* START RX suppressed')
         self.assertGreater(idx, 0)
-        # No return between suppress log args and the CALL START else branch
-        before_else = source[idx:source.find('\n                else:', idx)]
-        self.assertNotIn('\n                    return\n', before_else)
-        self.assertNotIn('\n                    return\r\n', before_else)
+        # return must follow suppress log before CALL START / to_target fallthrough
+        window = source[idx:idx + 500]
+        self.assertIn('return', window)
+        ret_idx = window.find('return')
+        # CALL START for winners comes after the return branch ends
+        self.assertLess(ret_idx, window.find('*CALL START*') if '*CALL START*' in window else len(window))
 
-    def test_hbp_suppress_does_not_early_return(self):
+    def test_hbp_suppress_returns_before_route(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
             source = fh.read()
         idx = source.find('HBP *LoopControl* START RX suppressed')
         self.assertGreater(idx, 0)
-        window = source[idx:idx + 350]
-        self.assertNotIn('return\n', window.split('else:')[0] if 'else:' in window else window)
+        window = source[idx:idx + 400]
+        self.assertIn('return', window)
+        # No fall-through to CALL START on the suppress path
+        before_call = window.split('*CALL START*')[0] if '*CALL START*' in window else window
+        self.assertIn('\n                            return\n', before_call.replace('\r\n', '\n'))
 
+    def test_rate_drop_still_disabled(self):
+        self.assertFalse(OBP_RATE_DROP_ENABLED)
+        self.assertFalse(HBP_RATE_DROP_ENABLED)
+        with open('bridge_master.py', encoding='utf-8') as fh:
+            source = fh.read()
+        self.assertNotIn('FreeDMR parity', source)
+        self.assertNotIn('still route the\n                # first packet', source)
 
 if __name__ == '__main__':
     unittest.main()
