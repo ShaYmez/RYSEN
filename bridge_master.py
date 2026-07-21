@@ -74,6 +74,9 @@ from bridge_helpers import (
     PARROT_TG,
     is_dial_service_code,
     is_invalid_dial_reflector,
+    normalize_default_reflector,
+    normalize_static_tg_csv,
+    parse_options_static_fields,
     is_parrot_talkgroup,
     is_parrot_bridge,
     reflector_bridge_matches_group_call,
@@ -91,7 +94,6 @@ from bridge_helpers import (
     system_has_static_tgs,
     is_valid_talkgroup_bridge,
     parse_static_tg_list,
-    parse_options_static_fields,
     bridge_has_active_static_leg,
     is_static_field_keyup_noise,
     classify_obp_outbound_collision,
@@ -1774,12 +1776,33 @@ def options_config():
                     
                     if 'TS2_STATIC' not in _options:
                         _options['TS2_STATIC'] = False
+
+                    # Align with shared BlueDV/DMR+ static parser (drops empty TS2_N=)
+                    _ts1_parsed, _ts2_parsed = parse_options_static_fields(
+                        CONFIG['SYSTEMS'][_system]['OPTIONS'])
+                    if _ts1_parsed is not False:
+                        _options['TS1_STATIC'] = _ts1_parsed
+                    else:
+                        _options['TS1_STATIC'] = normalize_static_tg_csv(
+                            _options.get('TS1_STATIC', False))
+                    if _ts2_parsed is not False:
+                        _options['TS2_STATIC'] = _ts2_parsed
+                    else:
+                        _options['TS2_STATIC'] = normalize_static_tg_csv(
+                            _options.get('TS2_STATIC', False))
                         
                     if 'DEFAULT_REFLECTOR' not in _options:
                         _options['DEFAULT_REFLECTOR'] = 0
-                    if is_invalid_dial_reflector(_options['DEFAULT_REFLECTOR']):
-                        logger.debug('(OPTIONS) %s DEFAULT_REFLECTOR=9 is invalid (dial-a-tg channel), treating as 0', _system)
-                        _options['DEFAULT_REFLECTOR'] = 0
+                    try:
+                        _raw_reflector = int(_options['DEFAULT_REFLECTOR'] or 0)
+                    except (TypeError, ValueError):
+                        _raw_reflector = 0
+                    _options['DEFAULT_REFLECTOR'] = normalize_default_reflector(_raw_reflector)
+                    if _raw_reflector and _options['DEFAULT_REFLECTOR'] == 0:
+                        logger.info(
+                            '(OPTIONS) %s StartRef/DEFAULT_REFLECTOR=%s is a dial service '
+                            'code (9/4000/5000), treating as 0 (no default reflector)',
+                            _system, _raw_reflector)
                     
                     if 'OVERRIDE_IDENT_TG' not in _options:
                         _options['OVERRIDE_IDENT_TG'] = False
