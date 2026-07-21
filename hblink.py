@@ -516,11 +516,12 @@ class OPENBRIDGE(DatagramProtocol):
                                 self._laststrid.append(_stream_id)
                             return
                         
-                    #Discard old packets
-                    if (int.from_bytes(_timestamp,'big')/1000000000) < (time() - 5):
+                    # Discard old packets. Do NOT send_bcsq on age alone — under
+                    # reactor lag catch-up frames look "stale"; BCSQ quenches the
+                    # live stream and clients (BlueDV/Peanut) stretch the holes.
+                    if (int.from_bytes(_timestamp,'big')/1000000000) < (time() - 15):
                         if _stream_id not in self._laststrid:
-                            logger.warning('(%s) Packet from server %s more than 5s old!, discarding',  self._system,int.from_bytes(_source_server,'big'))
-                            self.send_bcsq(_dst_id,_stream_id)
+                            logger.warning('(%s) Packet from server %s more than 15s old!, discarding',  self._system,int.from_bytes(_source_server,'big'))
                             self._laststrid.append(_stream_id)
                         return
                     

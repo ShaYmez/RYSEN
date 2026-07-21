@@ -529,8 +529,8 @@ def _build_disconnect_say(system):
 
 
 def make_default_reflector(reflector,_tmout,system):
-    if is_invalid_dial_reflector(reflector):
-        logger.warning('(REFLECTOR) Ignoring invalid default reflector %s for %s', reflector, system)
+    if is_dial_service_code(reflector) or is_invalid_dial_reflector(reflector):
+        logger.warning('(REFLECTOR) Ignoring service-code default reflector %s for %s', reflector, system)
         return
     bridge = ''.join(['#',str(reflector)])
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
@@ -1657,8 +1657,12 @@ def options_config():
                         
                     if 'DEFAULT_REFLECTOR' not in _options:
                         _options['DEFAULT_REFLECTOR'] = 0
-                    if is_invalid_dial_reflector(_options['DEFAULT_REFLECTOR']):
-                        logger.warning('(OPTIONS) %s DEFAULT_REFLECTOR=9 is invalid (dial-a-tg channel), treating as 0', _system)
+                    # BlueDV often sends StartRef=4000 (disconnect) as "idle" —
+                    # never build a #4000/#5000/#9 reflector (service codes).
+                    if is_dial_service_code(_options['DEFAULT_REFLECTOR']) or is_invalid_dial_reflector(_options['DEFAULT_REFLECTOR']):
+                        logger.info(
+                            '(OPTIONS) %s DEFAULT_REFLECTOR=%s is a service code, treating as 0',
+                            _system, _options['DEFAULT_REFLECTOR'])
                         _options['DEFAULT_REFLECTOR'] = 0
                     
                     if 'OVERRIDE_IDENT_TG' not in _options:
@@ -3616,9 +3620,12 @@ class routerHBP(HBSYSTEM):
                     if CONFIG['REPORTS']['REPORT']:
                         self._report.send_bridgeEvent('VCSBK 3/4 DATA BLOCK,DATA,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
                         
-            #Packet rate limit
-            #Rate drop
-            if self.STATUS[_slot]['packets'] > 18 and (self.STATUS[_slot]['packets'] / (pkt_time - self.STATUS[_slot]['RX_START']) > 25):
+            # HBP rate limit: require ~1s of call age so reactor-lag catch-up
+            # bursts are not mistaken for sustained over-rate (holes → stretch).
+            _call_age = pkt_time - self.STATUS[_slot]['RX_START']
+            if (self.STATUS[_slot]['packets'] > 18
+                    and _call_age > 1.0
+                    and (self.STATUS[_slot]['packets'] / _call_age) > 25):
                 logger.warning("(%s) *PacketControl* RATE DROP! Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
                 self.STATUS[_slot]['LAST'] = pkt_time
                 return
