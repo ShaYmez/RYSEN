@@ -480,13 +480,37 @@ def is_permanent_static_leg(target):
     return target.get('TO_TYPE') == 'OFF' and bool(target.get('ACTIVE'))
 
 
-def obp_allows_static_stream_takeover(target):
-    """OBP→HBP: permanent static DMO legs accept a new stream_id / RFS.
+def hbp_tx_stream_locked(slot_status, stream_id, pkt_time, stream_to):
+    """True when a different stream_id must not take over live HBP TX.
 
-    Same-TG STREAM_TO contention must not black-hole mesh feeds into PA7LIM
-    after a local kerchunk or half-open TX on the same static TG.
+    Locks mid-call inject into permanent static DMO (and any caller that uses
+    this check): same talker with a remapped stream_id cannot flip TX_STREAM_ID
+    while the prior TX is still within STREAM_TO.
     """
-    return is_permanent_static_leg(target)
+    if not slot_status:
+        return False
+    tx_sid = slot_status.get('TX_STREAM_ID') or b'\x00'
+    if tx_sid == b'\x00' or tx_sid == stream_id:
+        return False
+    try:
+        return (float(pkt_time) - float(slot_status.get('TX_TIME') or 0)) < float(stream_to)
+    except (TypeError, ValueError):
+        return False
+
+
+def obp_allows_static_stream_takeover(target, slot_status=None, stream_id=None,
+                                     pkt_time=None, stream_to=None):
+    """Whether OBP→HBP may skip classic STREAM_TO on a permanent static leg.
+
+    Idle-only: allow takeover when there is no live conflicting TX_STREAM_ID.
+    When slot_status/stream_id are omitted (legacy), returns whether the target
+    is a permanent static leg (caller must apply hbp_tx_stream_locked separately).
+    """
+    if not is_permanent_static_leg(target):
+        return False
+    if slot_status is None or stream_id is None or pkt_time is None or stream_to is None:
+        return True
+    return not hbp_tx_stream_locked(slot_status, stream_id, pkt_time, stream_to)
 
 
 def bridge_has_active_static_leg(bridges, system, ts, tg):
@@ -497,6 +521,17 @@ def bridge_has_active_static_leg(bridges, system, ts, tg):
         if (entry.get('SYSTEM') == system and entry.get('TS') == ts
                 and entry.get('TGID') == tgid_b
                 and is_permanent_static_leg(entry)):
+            return True
+    return False
+
+
+def system_slot_has_off_leg(bridges, bridge_name, system, ts):
+    """True when bridge already has a TO_TYPE OFF leg on (system, ts)."""
+    if bridge_name not in bridges:
+        return False
+    for entry in bridges[bridge_name]:
+        if (entry.get('SYSTEM') == system and entry.get('TS') == ts
+                and entry.get('TO_TYPE') == 'OFF'):
             return True
     return False
 
