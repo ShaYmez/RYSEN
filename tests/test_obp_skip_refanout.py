@@ -54,8 +54,8 @@ class TestGroupCallEndCandidates(unittest.TestCase):
 
 class TestAudioSafetyFlags(unittest.TestCase):
 
-    def test_hbp_rate_drop_disabled(self):
-        self.assertFalse(HBP_RATE_DROP_ENABLED)
+    def test_hbp_rate_drop_enabled_freedmr(self):
+        self.assertTrue(HBP_RATE_DROP_ENABLED)
 
     def test_age_threshold(self):
         self.assertEqual(DMRE_MAX_PACKET_AGE_S, 15.0)

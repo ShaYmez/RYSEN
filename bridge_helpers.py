@@ -581,14 +581,18 @@ def reset_dial_reflector_timers_on_user_activity(bridges, system, rf_src, peer_i
 OBP_OUTBOUND_ECHO = 'echo'
 OBP_OUTBOUND_REPLACE = 'replace'
 
-# Cumulative wall-clock OBP RATE DROP deletes lag catch-up frames on the winning
-# path (armed mid-2026 when the formula was fixed). Historically inert for years;
-# LoopControl / echo-drop handle mesh. Keep False unless a true flood needs a
-# lag-aware / sliding-window limiter later.
-OBP_RATE_DROP_ENABLED = False
+# FreeDMR always rate-drops catch-up bursts so soft clients (BlueDV/Peanut)
+# do not accumulate playout delay. Defaults True to match upstream FreeDMR.
+# Emergency off: set either flag False.
+OBP_RATE_DROP_ENABLED = True
+OBP_RATE_DROP_MIN_DURATION = 2.0
+OBP_RATE_DROP_MIN_PACKETS = 50
+OBP_RATE_DROP_MAX_PPS = 50
 
-# Same catch-up poison as OBP RATE DROP; disable so hotspot RX survives lag bursts.
-HBP_RATE_DROP_ENABLED = False
+# FreeDMR HBP: packets > 18 and packets/duration > 25
+HBP_RATE_DROP_ENABLED = True
+HBP_RATE_DROP_MIN_PACKETS = 18
+HBP_RATE_DROP_MAX_PPS = 25
 
 # DMRE packet age (seconds). 5s sits inside typical UK reactor lag and false-triggers.
 DMRE_MAX_PACKET_AGE_S = 15.0
@@ -607,17 +611,19 @@ def target_requires_lc_rewrite(_dst_id, _target_tgid):
 # FreeDMR name for the EMB gate; same predicate as remap detection
 target_requires_emb_lc_rewrite = target_requires_lc_rewrite
 
-# Soft-client half-duplex: mute bridged TX to a peer while it owns slot RX
-# (and briefly after). Matches STREAM_TO without importing const here.
+# Soft-client half-duplex mute — FreeDMR send_peers has no equivalent.
+# Default off to stay on the FreeDMR track; enable only if mid-QSO sticky returns.
+HBP_PEER_TX_MUTE_ENABLED = False
 HBP_PEER_TX_MUTE_S = 0.360
 
 
 def hbp_peer_is_slot_rx_owner(slot_status, peer_id, now=None, mute_s=HBP_PEER_TX_MUTE_S):
     """True when peer owns (or just owned) this HBP slot's RX — do not TX to them.
 
-    Prevents BlueDV/DV3000 RX/TX interleave while the soft client is keyed, and
-    a short post-unkey mute so AMBE sticks are not fed bridged audio mid-hang.
+    Only used when HBP_PEER_TX_MUTE_ENABLED is True (off by default = FreeDMR).
     """
+    if not HBP_PEER_TX_MUTE_ENABLED:
+        return False
     if not slot_status or not peer_id:
         return False
     if now is None:

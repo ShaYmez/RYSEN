@@ -114,7 +114,12 @@ from bridge_helpers import (
     group_call_end_bridge_candidates,
     STAT_TRIMMER_INTERVAL_S,
     OBP_RATE_DROP_ENABLED,
+    OBP_RATE_DROP_MIN_DURATION,
+    OBP_RATE_DROP_MIN_PACKETS,
+    OBP_RATE_DROP_MAX_PPS,
     HBP_RATE_DROP_ENABLED,
+    HBP_RATE_DROP_MIN_PACKETS,
+    HBP_RATE_DROP_MAX_PPS,
     OBP_OUTBOUND_ECHO,
     OBP_OUTBOUND_REPLACE,
 )
@@ -2708,14 +2713,19 @@ class routerOBP(OPENBRIDGE):
                         self.STATUS[_stream_id]['_bcsq'] = True
                     return
                 
-                # OBP cumulative RATE DROP is disabled: wall-clock pps punishes
-                # reactor-lag catch-up on the winning leg (see OBP_RATE_DROP_ENABLED).
+                # FreeDMR OBP RATE DROP — discard catch-up bursts (soft-client playout)
                 if OBP_RATE_DROP_ENABLED:
-                    _call_age = pkt_time - self.STATUS[_stream_id]['START']
-                    if (self.STATUS[_stream_id]['packets'] > 18
-                            and _call_age > 1.0
-                            and (self.STATUS[_stream_id]['packets'] / _call_age) > 35):
-                        logger.warning("(%s) *PacketControl* RATE DROP! Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
+                    call_duration = pkt_time - self.STATUS[_stream_id]['START']
+                    packet_rate = 0
+                    if call_duration:
+                        packet_rate = self.STATUS[_stream_id]['packets'] / call_duration
+                    if (call_duration >= OBP_RATE_DROP_MIN_DURATION
+                            and self.STATUS[_stream_id]['packets'] > OBP_RATE_DROP_MIN_PACKETS
+                            and packet_rate > OBP_RATE_DROP_MAX_PPS):
+                        logger.warning(
+                            "(%s) *PacketControl* RATE DROP! Stream ID: %s TGID: %s PACKETS: %s DURATION: %.2f RATE: %.2f/s",
+                            self._system, int_id(_stream_id), int_id(_dst_id),
+                            self.STATUS[_stream_id]['packets'], call_duration, packet_rate)
                         return
                 
                 #Duplicate handling#
@@ -3915,12 +3925,12 @@ class routerHBP(HBSYSTEM):
                     if CONFIG['REPORTS']['REPORT']:
                         self._report.send_bridgeEvent('VCSBK 3/4 DATA BLOCK,DATA,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
                         
-            # HBP RATE DROP disabled: same lag catch-up poison as OBP (see HBP_RATE_DROP_ENABLED).
+            # FreeDMR HBP RATE DROP — discard catch-up bursts (soft-client playout)
             if HBP_RATE_DROP_ENABLED:
-                _call_age = pkt_time - self.STATUS[_slot]['RX_START']
-                if (self.STATUS[_slot]['packets'] > 18
-                        and _call_age > 1.0
-                        and (self.STATUS[_slot]['packets'] / _call_age) > 25):
+                call_duration = pkt_time - self.STATUS[_slot]['RX_START']
+                if (call_duration
+                        and self.STATUS[_slot]['packets'] > HBP_RATE_DROP_MIN_PACKETS
+                        and (self.STATUS[_slot]['packets'] / call_duration) > HBP_RATE_DROP_MAX_PPS):
                     logger.warning("(%s) *PacketControl* RATE DROP! Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
                     self.STATUS[_slot]['LAST'] = pkt_time
                     return

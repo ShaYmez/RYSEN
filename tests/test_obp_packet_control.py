@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
-"""PacketControl: wrap-aware SEQ and disabled OBP RATE DROP."""
+"""PacketControl: wrap-aware SEQ and FreeDMR RATE DROP defaults."""
 import unittest
 
-from bridge_helpers import OBP_RATE_DROP_ENABLED, HBP_RATE_DROP_ENABLED, dmrd_seq_delta
+from bridge_helpers import (
+    OBP_RATE_DROP_ENABLED,
+    OBP_RATE_DROP_MIN_DURATION,
+    OBP_RATE_DROP_MIN_PACKETS,
+    OBP_RATE_DROP_MAX_PPS,
+    HBP_RATE_DROP_ENABLED,
+    HBP_RATE_DROP_MIN_PACKETS,
+    HBP_RATE_DROP_MAX_PPS,
+    dmrd_seq_delta,
+)
 
 
 class TestDmrdSeqDelta(unittest.TestCase):
@@ -27,19 +36,32 @@ class TestDmrdSeqDelta(unittest.TestCase):
         self.assertGreater(dmrd_seq_delta(3, 5), 127)
 
 
-class TestObpRateDropDisabled(unittest.TestCase):
+class TestFreeDmrRateDrop(unittest.TestCase):
 
-    def test_flag_is_false(self):
-        self.assertFalse(OBP_RATE_DROP_ENABLED)
-        self.assertFalse(HBP_RATE_DROP_ENABLED)
+    def test_flags_default_true(self):
+        self.assertTrue(OBP_RATE_DROP_ENABLED)
+        self.assertTrue(HBP_RATE_DROP_ENABLED)
 
-    def test_bridge_master_gates_on_flag(self):
+    def test_freedmr_obp_thresholds(self):
+        self.assertEqual(OBP_RATE_DROP_MIN_DURATION, 2.0)
+        self.assertEqual(OBP_RATE_DROP_MIN_PACKETS, 50)
+        self.assertEqual(OBP_RATE_DROP_MAX_PPS, 50)
+
+    def test_freedmr_hbp_thresholds(self):
+        self.assertEqual(HBP_RATE_DROP_MIN_PACKETS, 18)
+        self.assertEqual(HBP_RATE_DROP_MAX_PPS, 25)
+
+    def test_bridge_master_uses_freedmr_predicates(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
             source = fh.read()
-        self.assertIn('OBP_RATE_DROP_ENABLED', source)
         self.assertIn('if OBP_RATE_DROP_ENABLED:', source)
         self.assertIn('if HBP_RATE_DROP_ENABLED:', source)
-        # Must not unconditionally RATE DROP on OBP continuation
+        self.assertIn('OBP_RATE_DROP_MIN_DURATION', source)
+        self.assertIn('OBP_RATE_DROP_MAX_PPS', source)
+        self.assertIn('HBP_RATE_DROP_MIN_PACKETS', source)
+        self.assertIn('HBP_RATE_DROP_MAX_PPS', source)
+        # Must not use the old RYSEN-only >35 / >1.0s OBP gate
+        self.assertNotIn('> 35)', source)
         self.assertIn('dmrd_seq_delta', source)
 
 

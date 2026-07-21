@@ -49,7 +49,7 @@ from dmr_utils3.utils import int_id, bytes_3, bytes_4, get_alias, mk_id_dict
 from ipsc_peer_meta import (
     lookup_peer_alias, callsign_bytes, parse_ipsc_peer_status, ipsc_peer_display_fields,
 )
-from bridge_helpers import DMRE_MAX_PACKET_AGE_S, hbp_peer_is_slot_rx_owner
+from bridge_helpers import DMRE_MAX_PACKET_AGE_S, HBP_PEER_TX_MUTE_ENABLED, hbp_peer_is_slot_rx_owner
 
 # Imports for the reporting server
 import pickle
@@ -895,14 +895,15 @@ class HBSYSTEM(DatagramProtocol):
         logger.info('(%s) hostname resolution error: %s',self._system,failure)
 
     def send_peers(self, _packet, _hops = b'', _ber = b'\x00', _rssi = b'\x00',_source_server = b'\x00\x00\x00\x00', _source_rptr = b'\x00\x00\x00\x00'):
-        # Soft-client half-duplex: do not bridge TX to the peer that owns this slot's RX
+        # Optional half-duplex mute (off by default = FreeDMR send_peers to all peers)
         _slot = None
-        if _packet[:4] == DMRD and len(_packet) > 15:
-            _slot = 2 if (_packet[15] & 0x80) else 1
-        _now = time()
+        _now = None
         _slot_status = None
-        if _slot is not None and hasattr(self, 'STATUS'):
-            _slot_status = self.STATUS.get(_slot)
+        if HBP_PEER_TX_MUTE_ENABLED and _packet[:4] == DMRD and len(_packet) > 15:
+            _slot = 2 if (_packet[15] & 0x80) else 1
+            _now = time()
+            if hasattr(self, 'STATUS'):
+                _slot_status = self.STATUS.get(_slot)
         for _peer in self._peers:
             if _slot_status is not None and hbp_peer_is_slot_rx_owner(_slot_status, _peer, _now):
                 continue

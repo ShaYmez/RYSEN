@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Sticky mid-QSO stretch: HBP LC regen gate + soft-peer TX mute."""
+"""Sticky mid-QSO stretch: HBP LC regen gate + soft-peer TX mute (off by default)."""
 import re
 import time
 import unittest
+from unittest.mock import patch
 
 from bridge_helpers import (
+    HBP_PEER_TX_MUTE_ENABLED,
     HBP_PEER_TX_MUTE_S,
     hbp_peer_is_slot_rx_owner,
 )
@@ -50,14 +52,23 @@ class TestHbpPeerTxMute(unittest.TestCase):
             'RX_TIME': rx_time if rx_time is not None else time.time(),
         }
 
-    def test_active_rx_owner_muted(self):
+    def test_mute_disabled_by_default_freedmr(self):
+        self.assertFalse(HBP_PEER_TX_MUTE_ENABLED)
+        peer = (234587567).to_bytes(4, 'big')
+        slot = self._slot(peer, rx_type=0x0)
+        # FreeDMR send_peers: never mute
+        self.assertFalse(hbp_peer_is_slot_rx_owner(slot, peer))
+
+    @patch('bridge_helpers.HBP_PEER_TX_MUTE_ENABLED', True)
+    def test_active_rx_owner_muted_when_enabled(self):
         peer = (234587567).to_bytes(4, 'big')
         other = (234587568).to_bytes(4, 'big')
         slot = self._slot(peer, rx_type=0x0)
         self.assertTrue(hbp_peer_is_slot_rx_owner(slot, peer))
         self.assertFalse(hbp_peer_is_slot_rx_owner(slot, other))
 
-    def test_vterm_within_mute_window(self):
+    @patch('bridge_helpers.HBP_PEER_TX_MUTE_ENABLED', True)
+    def test_vterm_within_mute_window_when_enabled(self):
         peer = (234587567).to_bytes(4, 'big')
         now = 1000.0
         slot = self._slot(peer, rx_type=0x2, rx_time=now - 0.1)
@@ -65,7 +76,8 @@ class TestHbpPeerTxMute(unittest.TestCase):
         slot['RX_TIME'] = now - (HBP_PEER_TX_MUTE_S + 0.05)
         self.assertFalse(hbp_peer_is_slot_rx_owner(slot, peer, now=now))
 
-    def test_rfs_match_on_3byte_tail(self):
+    @patch('bridge_helpers.HBP_PEER_TX_MUTE_ENABLED', True)
+    def test_rfs_match_on_3byte_tail_when_enabled(self):
         peer = (234587567).to_bytes(4, 'big')
         slot = {
             'RX_PEER': b'\x00\x00\x00\x00',
@@ -75,11 +87,11 @@ class TestHbpPeerTxMute(unittest.TestCase):
         }
         self.assertTrue(hbp_peer_is_slot_rx_owner(slot, peer))
 
-    def test_send_peers_imports_mute_helper(self):
+    def test_send_peers_gates_mute_on_flag(self):
         with open('hblink.py', encoding='utf-8') as fh:
             source = fh.read()
+        self.assertIn('HBP_PEER_TX_MUTE_ENABLED', source)
         self.assertIn('hbp_peer_is_slot_rx_owner', source)
-        self.assertIn('hbp_peer_is_slot_rx_owner(_slot_status, _peer, _now)', source)
 
 
 if __name__ == '__main__':
