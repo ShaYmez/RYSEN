@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""DMO HBP TX lock: VHEAD-only static arm, sysIgnore, no ON beside OFF."""
+"""DMO HBP TX lock: idle-only static takeover, sysIgnore, no ON beside OFF."""
 import unittest
 
 from dmr_utils3.utils import bytes_3
 
 from bridge_helpers import (
-    clear_hbp_tx_stream,
-    hbp_static_tx_may_arm,
     hbp_tx_stream_locked,
     is_permanent_static_leg,
     obp_allows_static_stream_takeover,
@@ -52,38 +50,6 @@ class TestHbpTxStreamLock(unittest.TestCase):
             {'TO_TYPE': 'ON', 'ACTIVE': True}))
 
 
-class TestHbpStaticTxMayArm(unittest.TestCase):
-
-    def test_same_stream_continues_without_vhead(self):
-        sid = b'\x12\x34\x56\x78'
-        st = {'TX_STREAM_ID': sid, 'TX_TIME': 9.9}
-        self.assertTrue(hbp_static_tx_may_arm(st, sid, 10.0, STREAM_TO, False))
-
-    def test_idle_requires_vhead(self):
-        st = {'TX_STREAM_ID': b'\x00', 'TX_TIME': 0.0}
-        self.assertFalse(hbp_static_tx_may_arm(
-            st, b'\x01\x00\x00\x00', 10.0, STREAM_TO, False))
-        self.assertTrue(hbp_static_tx_may_arm(
-            st, b'\x01\x00\x00\x00', 10.0, STREAM_TO, True))
-
-    def test_unlocked_takeover_requires_vhead(self):
-        st = {'TX_STREAM_ID': b'\x11\x11\x11\x11', 'TX_TIME': 1.0}
-        self.assertFalse(hbp_static_tx_may_arm(
-            st, b'\x22\x22\x22\x22', 10.0, STREAM_TO, False))
-        self.assertTrue(hbp_static_tx_may_arm(
-            st, b'\x22\x22\x22\x22', 10.0, STREAM_TO, True))
-
-    def test_locked_blocks_even_with_vhead(self):
-        st = {'TX_STREAM_ID': b'\x11\x11\x11\x11', 'TX_TIME': 9.9}
-        self.assertFalse(hbp_static_tx_may_arm(
-            st, b'\x22\x22\x22\x22', 10.0, STREAM_TO, True))
-
-    def test_clear_tx_stream(self):
-        st = {'TX_STREAM_ID': b'\x11\x11\x11\x11'}
-        clear_hbp_tx_stream(st)
-        self.assertEqual(st['TX_STREAM_ID'], b'\x00')
-
-
 class TestHbpSysIgnoreAndOffOnly(unittest.TestCase):
 
     def test_obp_and_hbp_append_sysignore_after_hbp_send(self):
@@ -94,9 +60,8 @@ class TestHbpSysIgnoreAndOffOnly(unittest.TestCase):
                 "_sysIgnore.append((_target['SYSTEM'], _target['TS']))"),
             4)  # OBP targets + both HBP sends
         self.assertIn('Dedupe HBP/MASTER legs on this packet', source)
-        self.assertIn('hbp_static_tx_may_arm', source)
-        self.assertIn('waiting for VHEAD', source)
-        self.assertIn('clear_hbp_tx_stream', source)
+        self.assertIn('hbp_tx_stream_locked', source)
+        self.assertIn('TX stream locked', source)
 
     def test_system_slot_has_off_leg(self):
         bridges = {
