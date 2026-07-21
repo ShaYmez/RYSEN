@@ -1808,13 +1808,11 @@ def options_config():
                     except (TypeError, ValueError):
                         _raw_reflector = 0
                     _options['DEFAULT_REFLECTOR'] = normalize_default_reflector(_raw_reflector)
-                    if (_raw_reflector and _options['DEFAULT_REFLECTOR'] == 0
-                            and not CONFIG['SYSTEMS'][_system].get('_logged_service_startref')):
+                    if _raw_reflector and _options['DEFAULT_REFLECTOR'] == 0:
                         logger.info(
                             '(OPTIONS) %s StartRef/DEFAULT_REFLECTOR=%s is a dial service '
                             'code (9/4000/5000), treating as 0 (no default reflector)',
-                            _system, _raw_reflector)
-                        CONFIG['SYSTEMS'][_system]['_logged_service_startref'] = True 
+                            _system, _raw_reflector) 
                     if 'OVERRIDE_IDENT_TG' not in _options:
                         _options['OVERRIDE_IDENT_TG'] = False
                         
