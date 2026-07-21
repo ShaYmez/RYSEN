@@ -102,9 +102,7 @@ class TestStatMergeStatic(unittest.TestCase):
 
 class TestObpStaticContention(unittest.TestCase):
 
-    def test_permanent_static_allows_idle_takeover(self):
-        from const import STREAM_TO
-        from bridge_helpers import hbp_tx_stream_locked
+    def test_permanent_static_allows_takeover(self):
         static = {'TO_TYPE': 'OFF', 'ACTIVE': True, 'TGID': bytes_3(23426)}
         ua = {'TO_TYPE': 'ON', 'ACTIVE': True, 'TGID': bytes_3(23426)}
         inactive = {'TO_TYPE': 'OFF', 'ACTIVE': False, 'TGID': bytes_3(23426)}
@@ -112,16 +110,11 @@ class TestObpStaticContention(unittest.TestCase):
         self.assertTrue(obp_allows_static_stream_takeover(static))
         self.assertFalse(obp_allows_static_stream_takeover(ua))
         self.assertFalse(obp_allows_static_stream_takeover(inactive))
-        live = {'TX_STREAM_ID': b'\x11\x11\x11\x11', 'TX_TIME': 9.9}
-        self.assertTrue(hbp_tx_stream_locked(live, b'\x22\x22\x22\x22', 10.0, STREAM_TO))
-        self.assertFalse(obp_allows_static_stream_takeover(
-            static, live, b'\x22\x22\x22\x22', 10.0, STREAM_TO))
 
-    def test_obp_to_target_locks_live_static_tx(self):
+    def test_obp_to_target_skips_stream_to_for_static(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
             source = fh.read()
-        self.assertIn('hbp_tx_stream_locked', source)
-        self.assertIn('TX stream locked', source)
+        self.assertIn('obp_allows_static_stream_takeover(_target)', source)
 
 
 if __name__ == '__main__':

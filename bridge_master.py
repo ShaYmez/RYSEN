@@ -96,9 +96,7 @@ from bridge_helpers import (
     parse_options_static_fields,
     bridge_has_active_static_leg,
     is_permanent_static_leg,
-    hbp_tx_stream_locked,
     obp_allows_static_stream_takeover,
-    system_slot_has_off_leg,
     is_static_field_keyup_noise,
     classify_obp_outbound_collision,
     ensure_obp_inbound_status_keys,
@@ -490,17 +488,9 @@ def _ensure_master_on_legs(bridge_name, system):
         for _e in BRIDGES[bridge_name]
         if _e['SYSTEM'] == system and _e.get('TO_TYPE') == 'ON'
     }
-    _off_slots = {
-        _e['TS']
-        for _e in BRIDGES[bridge_name]
-        if _e['SYSTEM'] == system and _e.get('TO_TYPE') == 'OFF'
-    }
     _added = False
     for _ts in (1, 2):
         if (system, _ts) in _existing:
-            continue
-        # Permanent static OFF already owns this slot — do not add a parallel ON leg
-        if _ts in _off_slots:
             continue
         BRIDGES[bridge_name].append({
             'SYSTEM': system, 'TS': _ts, 'TGID': _tgid_b,
@@ -536,16 +526,9 @@ def activate_ua_bridge_source(bridge_name, system, slot, tmout=None, peer_id=Non
     _timeout_s = tmout * 60
     _changed = False
     _ua_refreshed = False
-    _has_off = system_slot_has_off_leg(BRIDGES, bridge_name, system, slot)
     for _entry in BRIDGES[bridge_name]:
         if (_entry['SYSTEM'] == system and _entry['TS'] == slot
                 and _entry['TO_TYPE'] != 'NONE'):
-            # Static OFF owns the slot — never activate a parallel ON leg
-            if _has_off and _entry.get('TO_TYPE') == 'ON':
-                if _entry.get('ACTIVE'):
-                    _entry['ACTIVE'] = False
-                    _changed = True
-                continue
             if not _entry['ACTIVE']:
                 _entry['ACTIVE'] = True
                 _changed = True
@@ -2272,20 +2255,9 @@ class routerOBP(OPENBRIDGE):
                             self.STATUS[_stream_id]['CONTENTION'] = True
                             logger.info('(%s) Call not routed to TGID%s, target in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']))
                         continue
-                    # Permanent static DMO: lock live TX_STREAM_ID (no mid-call flip);
-                    # skip classic STREAM_TO only when idle so kerchunk recovery remains.
-                    _slot_st = _target_status[_target['TS']]
-                    if is_permanent_static_leg(_target):
-                        if hbp_tx_stream_locked(_slot_st, _stream_id, pkt_time, STREAM_TO):
-                            if _stream_id in self.STATUS and self.STATUS[_stream_id].get('CONTENTION') == False:
-                                self.STATUS[_stream_id]['CONTENTION'] = True
-                                logger.info(
-                                    '(%s) Call not routed to static TGID%s, TX stream locked: '
-                                    'HBSystem: %s, TS: %s, live STREAM: %s',
-                                    self._system, int_id(_target['TGID']), _target['SYSTEM'],
-                                    _target['TS'], int_id(_slot_st.get('TX_STREAM_ID') or b'\x00'))
-                            continue
-                    else:
+                    # Permanent static (TO_TYPE OFF) DMO legs: allow a new mesh stream_id
+                    # to take over same-TG TX after a local kerchunk / half-open TX.
+                    if not obp_allows_static_stream_takeover(_target):
                         if (_target['TGID'] == _target_status[_target['TS']]['RX_TGID']) and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < STREAM_TO):
                             if _stream_id in self.STATUS and self.STATUS[_stream_id].get('CONTENTION') == False:
                                 self.STATUS[_stream_id]['CONTENTION'] = True
@@ -2354,8 +2326,6 @@ class routerOBP(OPENBRIDGE):
 
                 # Transmit the packet to the destination system
                 systems[_target['SYSTEM']].send_system(_tmp_data,_hops,_ber,_rssi,_source_server, _source_rptr)
-                # Dedupe HBP/MASTER legs on this packet (OFF+ON must not double-send)
-                _sysIgnore.append((_target['SYSTEM'], _target['TS']))
                 # Expire outbound OBP bookkeeping on VTERM to shrink inbound collision window
                 if (_frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM
                         and _stream_id in _target_status
@@ -3153,8 +3123,6 @@ class routerHBP(HBSYSTEM):
 
                     # Transmit the packet to the destination system
                     systems[_target['SYSTEM']].send_system(_tmp_data,b'',_ber,_rssi,_source_server, _source_rptr)
-                    # Dedupe HBP/MASTER legs on this packet (OFF+ON must not double-send)
-                    _sysIgnore.append((_target['SYSTEM'], _target['TS']))
                     # Expire outbound OBP bookkeeping on VTERM to shrink inbound collision window
                     if (_frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM
                             and _stream_id in _target_status
