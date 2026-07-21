@@ -552,6 +552,15 @@ HBP_RATE_DROP_ENABLED = False
 DMRE_MAX_PACKET_AGE_S = 15.0
 
 
+def target_requires_emb_lc_rewrite(_dst_id, _target_tgid):
+    """FreeDMR parity: rewrite embedded LC only when destination TG changes.
+
+    Same-TG HBP/OBP fanout must pass original B-E bursts through. Always rewriting
+    (and KeyError-continue on missing EMB_LC) punches holes that soft clients stretch.
+    """
+    return _dst_id != _target_tgid
+
+
 def dmrd_seq_delta(seq, last_seq):
     """Unsigned 8-bit DMRD sequence delta, or None if last_seq is unset."""
     if last_seq is False or last_seq is None:

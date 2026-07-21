@@ -102,6 +102,7 @@ from bridge_helpers import (
     should_report_hbp_rx_start,
     should_report_stream_end,
     dmrd_seq_delta,
+    target_requires_emb_lc_rewrite,
     obp_target_already_has_inbound,
     group_call_end_bridge_candidates,
     STAT_TRIMMER_INTERVAL_S,
@@ -2190,8 +2191,8 @@ class routerOBP(OPENBRIDGE):
                         if CONFIG['REPORTS']['REPORT']:
                             call_duration = pkt_time - _target_status[_stream_id]['START']
                             systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
-                    # Create a Burst B-E packet (Embedded LC)
-                    elif _dtype_vseq in [1,2,3,4]:
+                    # Create a Burst B-E packet (Embedded LC) — FreeDMR: only when TG remaps
+                    elif target_requires_emb_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_VOICE and _dtype_vseq in [1,2,3,4]:
                         try:
                             dmrbits = dmrbits[0:116] + _target_status[_stream_id]['EMB_LC'][_dtype_vseq] + dmrbits[148:264]
                         except KeyError:
@@ -2279,8 +2280,8 @@ class routerOBP(OPENBRIDGE):
                         if CONFIG['REPORTS']['REPORT']:
                             call_duration = pkt_time - _target_status[_target['TS']]['TX_START']
                             systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
-                    # Create a Burst B-E packet (Embedded LC)
-                    elif _dtype_vseq in [1,2,3,4]:
+                    # Create a Burst B-E packet (Embedded LC) — FreeDMR: only when TG remaps
+                    elif target_requires_emb_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_VOICE and _dtype_vseq in [1,2,3,4]:
                         dmrbits = dmrbits[0:116] + _target_status[_target['TS']]['TX_EMB_LC'][_dtype_vseq] + dmrbits[148:264]
                     dmrpkt = dmrbits.tobytes()
                     #_tmp_data = b''.join([_tmp_data, dmrpkt, b'\x00\x00']) # Add two bytes of nothing since OBP doesn't include BER & RSSI bytes #_data[53:55]
@@ -2989,8 +2990,8 @@ class routerHBP(HBSYSTEM):
                             if CONFIG['REPORTS']['REPORT']:
                                 call_duration = pkt_time - _target_status[_stream_id]['START']
                                 systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
-                        # Create a Burst B-E packet (Embedded LC)
-                        elif _dtype_vseq in [1,2,3,4]:
+                        # Create a Burst B-E packet (Embedded LC) — FreeDMR: only when TG remaps
+                        elif target_requires_emb_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_VOICE and _dtype_vseq in [1,2,3,4]:
                             try:
                                 dmrbits = dmrbits[0:116] + _target_status[_stream_id]['EMB_LC'][_dtype_vseq] + dmrbits[148:264]
                             except KeyError:
@@ -3071,8 +3072,8 @@ class routerHBP(HBSYSTEM):
                             if CONFIG['REPORTS']['REPORT']:
                                 call_duration = pkt_time - _target_status[_target['TS']]['TX_START']
                                 systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
-                        # Create a Burst B-E packet (Embedded LC)
-                        elif _dtype_vseq in [1,2,3,4]:
+                        # Create a Burst B-E packet (Embedded LC) — FreeDMR: only when TG remaps
+                        elif target_requires_emb_lc_rewrite(_dst_id, _target['TGID']) and _frame_type == HBPF_VOICE and _dtype_vseq in [1,2,3,4]:
                             dmrbits = dmrbits[0:116] + _target_status[_target['TS']]['TX_EMB_LC'][_dtype_vseq] + dmrbits[148:264]
                         try:
                             dmrpkt = dmrbits.tobytes()
