@@ -49,7 +49,6 @@ from dmr_utils3.utils import int_id, bytes_3, bytes_4, get_alias, mk_id_dict
 from ipsc_peer_meta import (
     lookup_peer_alias, callsign_bytes, parse_ipsc_peer_status, ipsc_peer_display_fields,
 )
-from bridge_helpers import DMRE_MAX_PACKET_AGE_S
 
 # Imports for the reporting server
 import pickle
@@ -238,7 +237,7 @@ class OPENBRIDGE(DatagramProtocol):
 
     def send_system(self, _packet, _hops = b'', _ber = b'\x00', _rssi = b'\x00', _source_server = b'\x00\x00\x00\x00', _source_rptr = b'\x00\x00\x00\x00'):                      
         #Don't do anything if we are STUNned
-        if self._config.get('_STUN'):
+        if 'STUN' in self._CONFIG:
             logger.info('(%s) Bridge STUNned, discarding', self._system)
             return
         
@@ -393,7 +392,7 @@ class OPENBRIDGE(DatagramProtocol):
                         return
                     
                     #Don't do anything if we are STUNned
-                    if self._config.get('_STUN'):
+                    if 'STUN' in self._CONFIG:
                             if _stream_id not in self._laststrid:
                                 logger.warning('(%s) Bridge STUNned, discarding', self._system)
                                 self._laststrid.append(_stream_id)
@@ -511,17 +510,17 @@ class OPENBRIDGE(DatagramProtocol):
                     #logger.debug('(%s) DMRD - Seqence: %s, RF Source: %s, Destination ID: %s', self._system, int_id(_seq), int_id(_rf_src), int_id(_dst_id))
                     
                     #Don't do anything if we are STUNned
-                    if self._config.get('_STUN'):
+                    if 'STUN' in self._CONFIG:
                             if _stream_id not in self._laststrid:
                                 logger.warning('(%s) Bridge STUNned, discarding', self._system)
                                 self._laststrid.append(_stream_id)
                             return
                         
-                    # Discard old packets. Do NOT send_bcsq on age alone — under
-                    # reactor lag that quenches live streams and worsens audio.
-                    if (int.from_bytes(_timestamp,'big')/1000000000) < (time() - DMRE_MAX_PACKET_AGE_S):
+                    #Discard old packets
+                    if (int.from_bytes(_timestamp,'big')/1000000000) < (time() - 5):
                         if _stream_id not in self._laststrid:
-                            logger.warning('(%s) Packet from server %s more than %.0fs old!, discarding',  self._system,int.from_bytes(_source_server,'big'), DMRE_MAX_PACKET_AGE_S)
+                            logger.warning('(%s) Packet from server %s more than 5s old!, discarding',  self._system,int.from_bytes(_source_server,'big'))
+                            self.send_bcsq(_dst_id,_stream_id)
                             self._laststrid.append(_stream_id)
                         return
                     
@@ -645,7 +644,7 @@ class OPENBRIDGE(DatagramProtocol):
                     #logger.debug('(%s) DMRD - Seqence: %s, RF Source: %s, Destination ID: %s', self._system, int_id(_seq), int_id(_rf_src), int_id(_dst_id))
                     
                     #Don't do anything if we are STUNned
-                    if self._config.get('_STUN'):
+                    if 'STUN' in self._CONFIG:
                             if _stream_id not in self._laststrid:
                                 logger.warning('(%s) Bridge STUNned, discarding', self._system)
                                 self._laststrid.append(_stream_id)
@@ -756,7 +755,7 @@ class OPENBRIDGE(DatagramProtocol):
                     _hash = _packet[4:]
                     _ckhs = hmac_new(self._config['PASSPHRASE'],_packet[4:],sha1).digest()
                     if compare_digest(_hash, _ckhs):
-                        logger.trace('(%s) *BridgeControl*  BCST STUN request received', self._system)
+                        logger.trace('(%s) *BridgeControl*  BCST STUN request received for TGID: %s, Stream ID: %s',self._system,int_id(_tgid), int_id(_stream_id))
                         self._config['_STUN'] = True
                     else:
                         h,p = _sockaddr

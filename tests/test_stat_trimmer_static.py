@@ -83,13 +83,6 @@ class TestStatTrimmerSourcePatterns(unittest.TestCase):
         block = source[idx:idx + 2500]
         self.assertIn('repair_static_tgs_all_systems()', block)
 
-    def test_stat_trimmer_interval_600(self):
-        from bridge_helpers import STAT_TRIMMER_INTERVAL_S
-        self.assertEqual(STAT_TRIMMER_INTERVAL_S, 600)
-        with open('bridge_master.py', encoding='utf-8') as fh:
-            source = fh.read()
-        self.assertIn('start(STAT_TRIMMER_INTERVAL_S)', source)
-
     def test_ensure_static_after_options(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
             source = fh.read()

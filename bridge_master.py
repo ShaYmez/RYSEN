@@ -94,21 +94,6 @@ from bridge_helpers import (
     parse_options_static_fields,
     bridge_has_active_static_leg,
     is_static_field_keyup_noise,
-    classify_obp_outbound_collision,
-    ensure_obp_inbound_status_keys,
-    report_include_bridge_leg,
-    build_report_bridge_leg,
-    should_report_obp_rx_start,
-    should_report_hbp_rx_start,
-    should_report_stream_end,
-    dmrd_seq_delta,
-    obp_target_already_has_inbound,
-    group_call_end_bridge_candidates,
-    STAT_TRIMMER_INTERVAL_S,
-    OBP_RATE_DROP_ENABLED,
-    HBP_RATE_DROP_ENABLED,
-    OBP_OUTBOUND_ECHO,
-    OBP_OUTBOUND_REPLACE,
 )
 # NOTE: 'words' is loaded dynamically via readAMBE() at runtime (see line ~2689)
 #from voice_lib import words
@@ -205,68 +190,6 @@ _ROUTE_STATS_NEXT_LOG = [0.0]        # mutable list so inner functions can write
 # Reactor-lag diagnostics
 _REACTOR_LAG_INTERVAL = 5.0          # expected loop-call interval (seconds)
 _REACTOR_LAG_LAST = [None]           # timestamp of last check
-
-# LoopControl optimisation: avoid scanning every SYSTEM-XXX on each voice packet.
-_OBP_SYSTEMS = ()                    # refreshed at startup
-_STREAM_RX_OWNER = {}                  # stream_id bytes -> HBP system name
-
-
-def refresh_obp_system_list():
-    """Cache OPENBRIDGE system names for LoopControl (small fixed set)."""
-    global _OBP_SYSTEMS
-    _OBP_SYSTEMS = tuple(
-        s for s in CONFIG['SYSTEMS']
-        if CONFIG['SYSTEMS'][s].get('ENABLED')
-        and CONFIG['SYSTEMS'][s]['MODE'] == 'OPENBRIDGE'
-    )
-
-
-def _track_hbp_rx_stream(system, slot_status, stream_id):
-    """Record which HBP system is receiving stream_id (LoopControl fast path)."""
-    _prev = slot_status.get('RX_STREAM_ID')
-    if _prev and _prev != b'\x00' and _prev != stream_id:
-        if _STREAM_RX_OWNER.get(_prev) == system:
-            _STREAM_RX_OWNER.pop(_prev, None)
-    if stream_id and stream_id != b'\x00':
-        _STREAM_RX_OWNER[stream_id] = system
-
-
-def _untrack_hbp_rx_stream(system, stream_id):
-    if stream_id and stream_id != b'\x00' and _STREAM_RX_OWNER.get(stream_id) == system:
-        _STREAM_RX_OWNER.pop(stream_id, None)
-
-
-def _find_hbp_stream_rx_owner(stream_id, exclude=None):
-    """Return (True, system) if a non-OBP system is RXing stream_id; else (False, None).
-
-    Uses _STREAM_RX_OWNER when warm; falls back to full scan so behaviour matches
-    pre-optimisation code if the map is stale or missing an entry.
-    """
-    _owner = _STREAM_RX_OWNER.get(stream_id)
-    if _owner is not None and _owner != exclude:
-        if CONFIG['SYSTEMS'][_owner]['MODE'] != 'OPENBRIDGE':
-            return True, _owner
-        return False, None
-    for _system in systems:
-        if _system == exclude:
-            continue
-        if CONFIG['SYSTEMS'][_system]['MODE'] == 'OPENBRIDGE':
-            continue
-        for _sysslot in systems[_system].STATUS:
-            if systems[_system].STATUS[_sysslot].get('RX_STREAM_ID') == stream_id:
-                _STREAM_RX_OWNER[stream_id] = _system
-                return True, _system
-    return False, None
-
-
-def _obp_loop_hr_times(stream_id, dst_id):
-    """Collect OBP first-receiver times for stream_id (inbound OBP legs only)."""
-    _hr_times = {}
-    for _obp in _OBP_SYSTEMS:
-        _st = systems[_obp].STATUS.get(stream_id)
-        if _st and not _st.get('_outbound') and '1ST' in _st and _st['TGID'] == dst_id:
-            _hr_times[_obp] = _st['1ST']
-    return _hr_times
 
 
 def _idx_add_bridge(bridge_name):
@@ -461,51 +384,12 @@ def augment_bridges_for_masters():
                     _removed, _added)
 
 
-def _ensure_master_on_legs(bridge_name, system):
-    """Add missing UA ON legs for a routing master on a lazy STAT bridge.
-
-    make_stat_bridge only creates OBP STAT legs; master ON legs are added on demand
-    when this hotspot/IPSC actually keys or needs the TG.
-    """
-    if bridge_name not in BRIDGES or system not in CONFIG['SYSTEMS']:
-        return False
-    if not is_routing_master(CONFIG['SYSTEMS'][system]['MODE']):
-        return False
-    try:
-        _tgid_i = int(bridge_name[1:]) if bridge_name[0:1] == '#' else int(bridge_name)
-    except ValueError:
-        return False
-    _tgid_b = bytes_3(_tgid_i)
-    _tmout = CONFIG['SYSTEMS'][system].get('DEFAULT_UA_TIMER', 10)
-    if bridge_name == '9990':
-        _tmout = 1
-    _existing = {
-        (_e['SYSTEM'], _e['TS'])
-        for _e in BRIDGES[bridge_name]
-        if _e['SYSTEM'] == system and _e.get('TO_TYPE') == 'ON'
-    }
-    _added = False
-    for _ts in (1, 2):
-        if (system, _ts) in _existing:
-            continue
-        BRIDGES[bridge_name].append({
-            'SYSTEM': system, 'TS': _ts, 'TGID': _tgid_b,
-            'ACTIVE': False, 'TIMEOUT': _tmout * 60, 'TO_TYPE': 'ON',
-            'OFF': [], 'ON': [_tgid_b], 'RESET': [], 'TIMER': time(),
-        })
-        _added = True
-    if _added:
-        _idx_replace_bridge(bridge_name)
-    return _added
-
-
 def activate_ua_bridge_source(bridge_name, system, slot, tmout=None, peer_id=None):
     """Activate this master's UA slot on an existing bridge (e.g. direct TG 9990 PTT)."""
     if bridge_name not in BRIDGES:
         return False
     if system not in CONFIG['SYSTEMS']:
         return False
-    _ensure_master_on_legs(bridge_name, system)
     if tmout is None:
         tmout = CONFIG['SYSTEMS'][system].get('DEFAULT_UA_TIMER')
         if tmout is None:
@@ -579,15 +463,14 @@ def make_single_bridge(_tgid,_sourcesystem,_slot,_tmout):
 
 #Make static bridge - used for on-the-fly relay bridges
 def make_stat_bridge(_tgid):
-    """Create a lazy STAT bridge: OBP STAT legs only.
-
-    Master UA ON legs are added on demand via _ensure_master_on_legs /
-    activate_ua_bridge_source (avoids 2*N_masters BRIDGE_IDX keys per discovered TG).
-    """
     if is_parrot_talkgroup(int_id(_tgid)):
         return
     _tgid_s = str(int_id(_tgid))
     BRIDGES[_tgid_s] = []
+    for _system in iter_routing_master_systems():
+        _tmout = CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']
+        BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time()})
+        BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time()})
     for _system in CONFIG['SYSTEMS']:
         if _system[0:3] == 'OBP':
             BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': '','TO_TYPE': 'STAT','OFF': [],'ON': [],'RESET': [], 'TIMER': time()})
@@ -1180,7 +1063,7 @@ def rule_timer_loop():
                     else:
                         timeout_in = _system['TIMER'] - _now
                         _bridge_used = True
-                        logger.debug('(ROUTER) Conference Bridge ACTIVE (ON timer running): System: %s Bridge: %s, TS: %s, TGID: %s, Timeout in: %.2fs,', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']),  timeout_in)
+                        logger.info('(ROUTER) Conference Bridge ACTIVE (ON timer running): System: %s Bridge: %s, TS: %s, TGID: %s, Timeout in: %.2fs,', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']),  timeout_in)
                 elif _system['ACTIVE'] == False:
                     logger.debug('(ROUTER) Conference Bridge INACTIVE (no change): System: %s Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
             elif _system['TO_TYPE'] == 'OFF':
@@ -1194,7 +1077,7 @@ def rule_timer_loop():
                     else:
                         timeout_in = _system['TIMER'] - _now
                         _bridge_used = True
-                        logger.debug('(ROUTER) Conference Bridge INACTIVE (OFF timer running): System: %s Bridge: %s, TS: %s, TGID: %s, Timeout in: %.2fs,', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']),  timeout_in)
+                        logger.info('(ROUTER) Conference Bridge INACTIVE (OFF timer running): System: %s Bridge: %s, TS: %s, TGID: %s, Timeout in: %.2fs,', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']),  timeout_in)
                 elif _system['ACTIVE'] == True:
                     _bridge_used = True
                     logger.debug('(ROUTER) Conference Bridge ACTIVE (no change): System: %s Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
@@ -1322,11 +1205,10 @@ def stream_trimmer_loop():
                     else:
                         logger.info('(%s) *TIME OUT*  RX STREAM ID: %s SUB: %s TGID %s, TS %s, Duration: %.2f', \
                             system, int_id(_slot['RX_STREAM_ID']), int_id(_slot['RX_RFS']), int_id(_slot['RX_TGID']), slot, _slot['RX_TIME'] - _slot['RX_START'])
-                    if CONFIG['REPORTS']['REPORT'] and should_report_stream_end(_slot):
+                    if CONFIG['REPORTS']['REPORT']:
                         systems[system]._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(_slot['RX_STREAM_ID']), int_id(_slot['RX_PEER']), int_id(_slot['RX_RFS']), slot, int_id(_slot['RX_TGID']), _slot['RX_TIME'] - _slot['RX_START']).encode(encoding='utf-8', errors='ignore'))
                 #Null stream_id - for loop control 
                 if _slot['RX_TIME'] < _now - 60:
-                    _untrack_hbp_rx_stream(system, _slot['RX_STREAM_ID'])
                     _slot['RX_STREAM_ID'] = b'\x00'
 
                 # TX slot check
@@ -1373,14 +1255,13 @@ def stream_trimmer_loop():
                                 logger.debug('(%s) *TIME OUT*   STREAM ID: %s SUB: %s PEER: %s TGID: %s TS 1 Duration: %.2f', \
                                     system, int_id(stream_id), get_alias(int_id(_stream['RFS']), subscriber_ids), get_alias(int_id(_stream['RX_PEER']), peer_ids), get_alias(int_id(_stream['TGID']), talkgroup_ids), _stream['LAST'] - _stream['START'])
                             
-                        if CONFIG['REPORTS']['REPORT'] and should_report_stream_end(_stream):
+                        if CONFIG['REPORTS']['REPORT']:
                                 systems[system]._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(stream_id), int_id(_stream['RX_PEER']), int_id(_stream['RFS']), 1, int_id(_stream['TGID']), _stream['LAST'] - _stream['START']).encode(encoding='utf-8', errors='ignore'))
                         systems[system].STATUS[stream_id]['_to'] = True
                         continue
                 except Exception as e:
                     logger.exception("(%s) Keyerror - stream trimmer Stream ID: %s",system,stream_id, exc_info=e)
-                    # Remove corrupt STATUS instead of bumping LAST (which delayed cleanup 180s)
-                    remove_list.append(stream_id)
+                    systems[system].STATUS[stream_id]['LAST'] = _now
                     continue
 
                     
@@ -1389,7 +1270,7 @@ def stream_trimmer_loop():
                         remove_list.append(stream_id)
                 except Exception as e:
                     logger.exception("(%s) Keyerror - stream trimmer Stream ID: %s",system,stream_id, exc_info=e)
-                    remove_list.append(stream_id)
+                    systems[system].STATUS[stream_id]['LAST'] = _now
                     continue
                 
             #remove finished     
@@ -1777,7 +1658,7 @@ def options_config():
                     if 'DEFAULT_REFLECTOR' not in _options:
                         _options['DEFAULT_REFLECTOR'] = 0
                     if is_invalid_dial_reflector(_options['DEFAULT_REFLECTOR']):
-                        logger.debug('(OPTIONS) %s DEFAULT_REFLECTOR=9 is invalid (dial-a-tg channel), treating as 0', _system)
+                        logger.warning('(OPTIONS) %s DEFAULT_REFLECTOR=9 is invalid (dial-a-tg channel), treating as 0', _system)
                         _options['DEFAULT_REFLECTOR'] = 0
                     
                     if 'OVERRIDE_IDENT_TG' not in _options:
@@ -2099,10 +1980,6 @@ class routerOBP(OPENBRIDGE):
                 if _target_system['MODE'] == 'OPENBRIDGE':
                     if _noOBP == True or is_parrot_bridge(_bridge):
                         continue
-                    # Peer already hearing this stream inbound — skip mesh re-fanout TX
-                    if obp_target_already_has_inbound(_target_status, _stream_id, _dst_id):
-                        _sysIgnore.append((_target['SYSTEM'], _target['TS']))
-                        continue
                     #We want to ignore this system and TS combination if it's called again for this packet
                     _sysIgnore.append((_target['SYSTEM'],_target['TS']))
         
@@ -2135,9 +2012,6 @@ class routerOBP(OPENBRIDGE):
                             'RFS':       _rf_src,
                             'TGID':      _dst_id,
                             'RX_PEER': _peer_id,
-                            '_outbound': True,
-                            'packets': 0,
-                            'loss': 0,
 
                         }
                         # Generate LCs (full and EMB) for the TX stream
@@ -2211,22 +2085,22 @@ class routerOBP(OPENBRIDGE):
                     # The "continue" at the end of each means the next iteration of the for loop that tests for matching rules
                     #
                     if ((_target['TGID'] != _target_status[_target['TS']]['RX_TGID']) and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < _target_system['GROUP_HANGTIME'])):
-                        if _stream_id in self.STATUS and self.STATUS[_stream_id].get('CONTENTION') == False:
+                        if self.STATUS[_stream_id]['CONTENTION'] == False:
                             self.STATUS[_stream_id]['CONTENTION'] = True
                             logger.info('(%s) Call not routed to TGID %s, target active or in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
                         continue
                     if ((_target['TGID'] != _target_status[_target['TS']]['TX_TGID']) and ((pkt_time - _target_status[_target['TS']]['TX_TIME']) < _target_system['GROUP_HANGTIME'])):
-                        if _stream_id in self.STATUS and self.STATUS[_stream_id].get('CONTENTION') == False:
+                        if self.STATUS[_stream_id]['CONTENTION'] == False:
                             self.STATUS[_stream_id]['CONTENTION'] = True
                             logger.info('(%s) Call not routed to TGID%s, target in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']))
                         continue
                     if (_target['TGID'] == _target_status[_target['TS']]['RX_TGID']) and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < STREAM_TO):
-                        if _stream_id in self.STATUS and self.STATUS[_stream_id].get('CONTENTION') == False:
+                        if self.STATUS[_stream_id]['CONTENTION'] == False:
                             self.STATUS[_stream_id]['CONTENTION'] = True
                             logger.info('(%s) Call not routed to TGID%s, matching call already active on target: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
                         continue
                     if (_target['TGID'] == _target_status[_target['TS']]['TX_TGID']) and (_rf_src != _target_status[_target['TS']]['TX_RFS']) and ((pkt_time - _target_status[_target['TS']]['TX_TIME']) < STREAM_TO):
-                        if _stream_id in self.STATUS and self.STATUS[_stream_id].get('CONTENTION') == False:
+                        if self.STATUS[_stream_id]['CONTENTION'] == False:
                             self.STATUS[_stream_id]['CONTENTION'] = True
                             logger.info('(%s) Call not routed for subscriber %s, call route in progress on target: HBSystem: %s, TS: %s, TGID: %s, SUB: %s', self._system, int_id(_rf_src), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']), int_id(_target_status[_target['TS']]['TX_RFS']))
                         continue
@@ -2240,10 +2114,7 @@ class routerOBP(OPENBRIDGE):
                         _target_status[_target['TS']]['TX_RFS'] = _rf_src
                         _target_status[_target['TS']]['TX_PEER'] = _peer_id
                         # Generate LCs (full and EMB) for the TX stream
-                        _src_lc = LC_OPT
-                        if _stream_id in self.STATUS and 'LC' in self.STATUS[_stream_id]:
-                            _src_lc = self.STATUS[_stream_id]['LC'][0:3]
-                        dst_lc = b''.join([_src_lc, _target['TGID'], _rf_src])
+                        dst_lc = b''.join([self.STATUS[_stream_id]['LC'][0:3], _target['TGID'], _rf_src])
                         _target_status[_target['TS']]['TX_H_LC'] = bptc.encode_header_lc(dst_lc)
                         _target_status[_target['TS']]['TX_T_LC'] = bptc.encode_terminator_lc(dst_lc)
                         _target_status[_target['TS']]['TX_EMB_LC'] = bptc.encode_emblc(dst_lc)
@@ -2288,12 +2159,6 @@ class routerOBP(OPENBRIDGE):
 
                 # Transmit the packet to the destination system
                 systems[_target['SYSTEM']].send_system(_tmp_data,_hops,_ber,_rssi,_source_server, _source_rptr)
-                # Expire outbound OBP bookkeeping on VTERM to shrink inbound collision window
-                if (_frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM
-                        and _stream_id in _target_status
-                        and isinstance(_target_status.get(_stream_id), dict)
-                        and _target_status[_stream_id].get('_outbound')):
-                    del _target_status[_stream_id]
                     #logger.debug('(%s) Packet routed by bridge: %s to system: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                 #Ignore this system and TS pair if it's called again on this packet
         return(_sysIgnore)
@@ -2327,9 +2192,7 @@ class routerOBP(OPENBRIDGE):
                 'RFS':       _rf_src,
                 'TGID':      _dst_id,
                 'RX_PEER':   _peer_id,
-                'packets': 0,
-                'loss': 0,
-                '_outbound': True,
+                'packets': 0
             }
             
         # Record the time of this packet so we can later identify a stale stream
@@ -2394,25 +2257,26 @@ class routerOBP(OPENBRIDGE):
                     'lastData': False,
                     'RX_PEER': _peer_id,
                     'packets': 0,
-                    'loss': 0,
                     'crcs': set()
 
                 }
             
             self.STATUS[_stream_id]['LAST'] = pkt_time
             self.STATUS[_stream_id]['packets'] = self.STATUS[_stream_id]['packets'] + 1
-
-            if '1ST' not in self.STATUS[_stream_id]:
-                self.STATUS[_stream_id]['1ST'] = perf_counter()
             
-            _hbp_active, _hbp_sys = _find_hbp_stream_rx_owner(_stream_id, exclude=self._system)
-            if _hbp_active:
-                if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
-                    logger.debug("(%s) OBP UNIT *LoopControl* FIRST HBP: %s, STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, _hbp_sys, int_id(_stream_id), int_id(_dst_id), _slot)
-                    self.STATUS[_stream_id]['LOOPLOG'] = True
-                self.STATUS[_stream_id]['LAST'] = pkt_time
-                return
-            hr_times = _obp_loop_hr_times(_stream_id, _dst_id)
+            hr_times = {}
+            for system in systems: 
+                if system != self._system and CONFIG['SYSTEMS'][system]['MODE'] != 'OPENBRIDGE':
+                        for _sysslot in systems[system].STATUS:
+                            if 'RX_STREAM_ID' in systems[system].STATUS[_sysslot] and _stream_id == systems[system].STATUS[_sysslot]['RX_STREAM_ID']:
+                                if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']: 
+                                    logger.debug("(%s) OBP UNIT *LoopControl* FIRST HBP: %s, STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id),_sysslot)
+                                    self.STATUS[_stream_id]['LOOPLOG'] = True
+                                self.STATUS[_stream_id]['LAST'] = pkt_time
+                                return
+                else:
+                    if _stream_id in systems[system].STATUS and '1ST' in systems[system].STATUS[_stream_id] and    systems[system].STATUS[_stream_id]['TGID'] == _dst_id:
+                        hr_times[system] = systems[system].STATUS[_stream_id]['1ST']
                     
             #use the minimum perf_counter to ensure
             #We always use only the earliest packet
@@ -2420,7 +2284,12 @@ class routerOBP(OPENBRIDGE):
             
             hr_times = None
             
-            if fi and self._system != fi:             
+            if not fi:
+                logger.warning("(%s) OBP UNIT *LoopControl* fi is empty for some reason : %s, STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
+                self.STATUS[_stream_id]['LAST'] = pkt_time
+                return
+            
+            if self._system != fi:             
                 if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
                     call_duration = pkt_time - self.STATUS[_stream_id]['START']
                     packet_rate = 0
@@ -2460,7 +2329,7 @@ class routerOBP(OPENBRIDGE):
             #Send all data to DATA-GATEWAY if enabled and valid
             if CONFIG['GLOBAL']['DATA_GATEWAY'] and 'DATA-GATEWAY' in CONFIG['SYSTEMS'] and CONFIG['SYSTEMS']['DATA-GATEWAY']['MODE'] == 'OPENBRIDGE' and CONFIG['SYSTEMS']['DATA-GATEWAY']['ENABLED']:
                 logger.debug('(%s) DATA packet sent to DATA-GATEWAY',self._system)
-                self.sendDataToOBP('DATA-GATEWAY',_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,_hops,_source_server,_ber,_rssi,_source_rptr)
+                self.sendDataToOBP('DATA-GATEWAY',_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,_source_rptr,_ber,_rssi)
                  
             
             #Send other openbridges
@@ -2531,20 +2400,6 @@ class routerOBP(OPENBRIDGE):
             
                     
         if _call_type == 'group' or _call_type == 'vcsbk':
-            # Outbound STATUS collision: never reclaim/promote to CALL START (MAX HOPS).
-            if _stream_id in self.STATUS:
-                _collision = classify_obp_outbound_collision(self.STATUS[_stream_id], _dst_id)
-                if _collision == OBP_OUTBOUND_ECHO:
-                    self.STATUS[_stream_id]['LAST'] = pkt_time
-                    if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
-                        logger.debug(
-                            "(%s) OBP *PacketControl* outbound echo drop STREAM ID: %s TG: %s",
-                            self._system, int_id(_stream_id), int_id(_dst_id))
-                        self.STATUS[_stream_id]['LOOPLOG'] = True
-                    return
-                if _collision == OBP_OUTBOUND_REPLACE:
-                    del self.STATUS[_stream_id]
-
             # Is this a new call stream?
             if (_stream_id not in self.STATUS):
                 
@@ -2574,35 +2429,18 @@ class routerOBP(OPENBRIDGE):
                 else:
                     self.STATUS[_stream_id]['LC'] = b''.join([LC_OPT,_dst_id,_rf_src])
 
-                # Gate START RX report on LoopControl ownership (multi-OBP mesh).
-                # Report-only: losers skip START for the dash but still route the
-                # first packet (FreeDMR parity); continuation LoopControl ignores them.
-                _hbp_active, _hbp_sys = _find_hbp_stream_rx_owner(_stream_id, exclude=self._system)
-                _hr_times = _obp_loop_hr_times(_stream_id, _dst_id)
-                _report_start = should_report_obp_rx_start(
-                    self._system, _hbp_sys if _hbp_active else None, _hr_times)
-                if not _report_start:
-                    self.STATUS[_stream_id]['LOOPLOG'] = True
-                    logger.debug(
-                        "(%s) OBP *LoopControl* START RX suppressed STREAM ID: %s TG: %s "
-                        "(HBP=%s hr=%s)",
-                        self._system, int_id(_stream_id), int_id(_dst_id),
-                        _hbp_sys if _hbp_active else None, list(_hr_times))
-                else:
-                    _inthops = 0 
-                    if _hops:
-                        _inthops = int.from_bytes(_hops,'big')
-                    logger.info('(%s) *CALL START* STREAM ID: %s, SUB: %s (%s), RPTR: %s (%s), PEER: %s (%s) TGID %s (%s), TS %s, SRC: %s, HOPS %s', 
-                            self._system, int_id(_stream_id),get_alias(_rf_src, subscriber_ids),int_id(_rf_src),self.get_rptr(_source_rptr), int_id(_source_rptr),  get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot,int_id(_source_server),_inthops)
-                    if CONFIG['REPORTS']['REPORT']:
-                        self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
-                # Count the creating packet (parity with HBP / OBP unit)
-                self.STATUS[_stream_id]['packets'] = 1
+                _inthops = 0 
+                if _hops:
+                    _inthops = int.from_bytes(_hops,'big')
+                logger.info('(%s) *CALL START* STREAM ID: %s, SUB: %s (%s), RPTR: %s (%s), PEER: %s (%s) TGID %s (%s), TS %s, SRC: %s, HOPS %s', 
+                        self._system, int_id(_stream_id),get_alias(_rf_src, subscriber_ids),int_id(_rf_src),self.get_rptr(_source_rptr), int_id(_source_rptr),  get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot,int_id(_source_server),_inthops)
+                if CONFIG['REPORTS']['REPORT']:
+                    self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
 
 
             else:
-                ensure_obp_inbound_status_keys(self.STATUS[_stream_id], perf_counter)
-                self.STATUS[_stream_id]['packets'] = self.STATUS[_stream_id]['packets'] + 1
+                if 'packets' in self.STATUS[_stream_id]:
+                    self.STATUS[_stream_id]['packets'] = self.STATUS[_stream_id]['packets'] +1
                 #Finished stream handling#
                 if '_fin' in self.STATUS[_stream_id]:
                     if '_finlog' not in self.STATUS[_stream_id]:
@@ -2618,18 +2456,24 @@ class routerOBP(OPENBRIDGE):
                     self.STATUS[_stream_id]['LAST'] = pkt_time
                     return
                     
-                if '1ST' not in self.STATUS[_stream_id]:
-                    self.STATUS[_stream_id]['1ST'] = perf_counter()
-
+                
                 #LoopControl
-                _hbp_active, _hbp_sys = _find_hbp_stream_rx_owner(_stream_id, exclude=self._system)
-                if _hbp_active:
-                    if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
-                        logger.debug("(%s) OBP *LoopControl* FIRST HBP: %s, STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, _hbp_sys, int_id(_stream_id), int_id(_dst_id), _slot)
-                        self.STATUS[_stream_id]['LOOPLOG'] = True
-                    self.STATUS[_stream_id]['LAST'] = pkt_time
-                    return
-                hr_times = _obp_loop_hr_times(_stream_id, _dst_id)
+                hr_times = {}
+                for system in systems:                            
+                   # if system  == self._system:
+                   #     continue
+                    if system != self._system and CONFIG['SYSTEMS'][system]['MODE'] != 'OPENBRIDGE':
+                        for _sysslot in systems[system].STATUS:
+                            if 'RX_STREAM_ID' in systems[system].STATUS[_sysslot] and _stream_id == systems[system].STATUS[_sysslot]['RX_STREAM_ID']:
+                                if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']: 
+                                    logger.debug("(%s) OBP *LoopControl* FIRST HBP: %s, STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id),_sysslot)
+                                    self.STATUS[_stream_id]['LOOPLOG'] = True
+                                self.STATUS[_stream_id]['LAST'] = pkt_time
+                                return
+                    else:
+                        #if _stream_id in systems[system].STATUS and systems[system].STATUS[_stream_id]['START'] <= self.STATUS[_stream_id]['START']:
+                        if _stream_id in systems[system].STATUS and '1ST' in systems[system].STATUS[_stream_id] and systems[system].STATUS[_stream_id]['TGID'] == _dst_id:
+                             hr_times[system] = systems[system].STATUS[_stream_id]['1ST']
                 
                 #use the minimum perf_counter to ensure
                 #We always use only the earliest packet
@@ -2637,13 +2481,17 @@ class routerOBP(OPENBRIDGE):
                 
                 hr_times = None
                 
-                if fi and self._system != fi:             
+                if not fi:
+                    logger.warning("(%s) OBP *LoopControl* fi is empty for some reason : STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
+                    return
+                
+                if self._system != fi:             
                     if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
                         call_duration = pkt_time - self.STATUS[_stream_id]['START']
                         packet_rate = 0
                         if 'packets' in self.STATUS[_stream_id]:
                             packet_rate = self.STATUS[_stream_id]['packets'] / call_duration
-                        logger.debug("(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE. PACKET RATE %0.2f/s",self._system, fi, int_id(_stream_id), int_id(_dst_id),packet_rate)
+                        logger.debug("(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE. PACKET RATE %0.2f/s",self._system, fi, int_id(_stream_id), int_id(_dst_id),call_duration)
                         self.STATUS[_stream_id]['LOOPLOG'] = True
                     self.STATUS[_stream_id]['LAST'] = pkt_time
                     
@@ -2652,15 +2500,10 @@ class routerOBP(OPENBRIDGE):
                         self.STATUS[_stream_id]['_bcsq'] = True
                     return
                 
-                # OBP cumulative RATE DROP is disabled: wall-clock pps punishes
-                # reactor-lag catch-up on the winning leg (see OBP_RATE_DROP_ENABLED).
-                if OBP_RATE_DROP_ENABLED:
-                    _call_age = pkt_time - self.STATUS[_stream_id]['START']
-                    if (self.STATUS[_stream_id]['packets'] > 18
-                            and _call_age > 1.0
-                            and (self.STATUS[_stream_id]['packets'] / _call_age) > 35):
-                        logger.warning("(%s) *PacketControl* RATE DROP! Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
-                        return
+                #Rate drop
+                if self.STATUS[_stream_id]['packets'] > 18 and (self.STATUS[_stream_id]['packets'] / self.STATUS[_stream_id]['START'] > 25):
+                    logger.warning("(%s) *PacketControl* RATE DROP! Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
+                    return
                 
                 #Duplicate handling#
                 #Handle inbound duplicates
@@ -2669,14 +2512,13 @@ class routerOBP(OPENBRIDGE):
                     self.STATUS[_stream_id]['loss'] += 1
                     logger.debug("(%s) *PacketControl* last packet is a complete duplicate of the previous one, disgarding. Stream ID:, %s TGID: %s, LOSS: %.2f%%",self._system,int_id(_stream_id),int_id(_dst_id),((self.STATUS[_stream_id]['loss'] / self.STATUS[_stream_id]['packets']) * 100))
                     return
-                _seq_delta = dmrd_seq_delta(_seq, self.STATUS[_stream_id]['lastSeq'])
                 #Duplicate SEQ number
-                if _seq_delta == 0:
+                if _seq and _seq == self.STATUS[_stream_id]['lastSeq']:
                     self.STATUS[_stream_id]['loss'] += 1
                     logger.debug("(%s) *PacketControl* Duplicate sequence number %s, disgarding. Stream ID:, %s TGID: %s, LOSS: %.2f%%",self._system,_seq,int_id(_stream_id),int_id(_dst_id),((self.STATUS[_stream_id]['loss'] / self.STATUS[_stream_id]['packets']) * 100))
                     return
-                #Inbound out-of-order packets (wrap-aware)
-                if _seq_delta is not None and _seq_delta > 127:
+                #Inbound out-of-order packets
+                if _seq and self.STATUS[_stream_id]['lastSeq']  and (_seq != 1) and (_seq < self.STATUS[_stream_id]['lastSeq']):
                     self.STATUS[_stream_id]['loss'] += 1
                     logger.debug("%s) *PacketControl* Out of order packet - last SEQ: %s, this SEQ: %s,  disgarding. Stream ID:, %s TGID: %s, LOSS: %.2f%%",self._system,self.STATUS[_stream_id]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id),((self.STATUS[_stream_id]['loss'] / self.STATUS[_stream_id]['packets']) * 100))
                     return
@@ -2686,7 +2528,7 @@ class routerOBP(OPENBRIDGE):
                     logger.debug("(%s) *PacketControl* DMR packet payload with hash: %s seen before in this stream, disgarding. Stream ID:, %s TGID: %s: SEQ:%s PACKETS: %s, LOSS: %.2f%% ",self._system,_pkt_crc,int_id(_stream_id),int_id(_dst_id),_seq, self.STATUS[_stream_id]['packets'],((self.STATUS[_stream_id]['loss'] / self.STATUS[_stream_id]['packets']) * 100))
                     return
                 #Inbound missed packets
-                if _seq_delta is not None and _seq_delta > 1:
+                if _seq and self.STATUS[_stream_id]['lastSeq'] and _seq > (self.STATUS[_stream_id]['lastSeq']+1):
                     self.STATUS[_stream_id]['loss'] += 1
                     logger.debug("(%s) *PacketControl* Missed packet(s) - last SEQ: %s, this SEQ: %s. Stream ID:, %s TGID: %s , LOSS: %.2f%%",self._system,self.STATUS[_stream_id]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id),((self.STATUS[_stream_id]['loss'] / self.STATUS[_stream_id]['packets']) * 100))
 
@@ -2742,10 +2584,6 @@ class routerOBP(OPENBRIDGE):
                         for _system in BRIDGES[_bridge]:
                             if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
                                 _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,False,_sysIgnore,_hops, _source_server, _ber, _rssi, _source_rptr)
-                                _paired_bridge = paired_group_route_bridge(
-                                    _bridge, BRIDGES, _dst_id)
-                                if _paired_bridge:
-                                    _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_paired_bridge,_system,False,_sysIgnore,_hops, _source_server, _ber, _rssi, _source_rptr)
                 else:
                     _ROUTE_STATS['index_hits'] += 1
                     for _orig_bridge in list(_candidate_bridges):
@@ -2757,10 +2595,6 @@ class routerOBP(OPENBRIDGE):
                         for _system in BRIDGES[_orig_bridge]:
                             if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
                                 _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_orig_bridge,_system,False,_sysIgnore,_hops, _source_server, _ber, _rssi, _source_rptr)
-                                _paired_bridge = paired_group_route_bridge(
-                                    _orig_bridge, BRIDGES, _dst_id)
-                                if _paired_bridge:
-                                    _sysIgnore = self.to_target(_peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_paired_bridge,_system,False,_sysIgnore,_hops, _source_server, _ber, _rssi, _source_rptr)
                 _log_route_stats()
 
 
@@ -2769,12 +2603,12 @@ class routerOBP(OPENBRIDGE):
                 call_duration = pkt_time - self.STATUS[_stream_id]['START']
                 packet_rate = 0
                 loss = 0.00
-                if call_duration and self.STATUS[_stream_id].get('packets'):
+                if call_duration:
                     packet_rate = self.STATUS[_stream_id]['packets'] / call_duration
                     loss = (self.STATUS[_stream_id]['loss'] / self.STATUS[_stream_id]['packets']) * 100
                 logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %.2f, Packet rate: %.2f/s, Loss: %.2f%%', \
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration, packet_rate,loss)
-                if CONFIG['REPORTS']['REPORT'] and should_report_stream_end(self.STATUS[_stream_id]):
+                if CONFIG['REPORTS']['REPORT']:
                    self._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), call_duration).encode(encoding='utf-8', errors='ignore'))
                    self.STATUS[_stream_id]['_fin'] = True
                    
@@ -2816,7 +2650,6 @@ class routerHBP(HBSYSTEM):
                 'lastSeq': False,
                 'lastData': False,
                 'packets': 0,
-                'loss': 0,
                 'crcs': set(),
                 '_allStarMode': False
                 },
@@ -2848,15 +2681,10 @@ class routerHBP(HBSYSTEM):
                 'lastSeq': False,
                 'lastData': False,
                 'packets': 0,
-                'loss': 0,
                 'crcs': set(),
                 '_allStarMode': False
                 }
             }
-
-    def _assign_rx_stream_id(self, slot, stream_id):
-        _track_hbp_rx_stream(self._system, self.STATUS[slot], stream_id)
-        self.STATUS[slot]['RX_STREAM_ID'] = stream_id
 
     def master_maintenance_loop(self):
         """Clear reflectors/SUB_MAP on ping timeout (parity with RPTCL path)."""
@@ -2911,10 +2739,6 @@ class routerHBP(HBSYSTEM):
                     if _target_system['MODE'] == 'OPENBRIDGE':
                         if _noOBP == True or is_parrot_bridge(_bridge):
                             continue
-                        # Peer already hearing this stream inbound — skip mesh re-fanout TX
-                        if obp_target_already_has_inbound(_target_status, _stream_id, _dst_id):
-                            _sysIgnore.append((_target['SYSTEM'], _target['TS']))
-                            continue
                         #We want to ignore this system and TS combination if it's called again for this packet
                         _sysIgnore.append((_target['SYSTEM'],_target['TS']))
                         
@@ -2944,10 +2768,7 @@ class routerHBP(HBSYSTEM):
                                 'CONTENTION':False,
                                 'RFS':       _rf_src,
                                 'TGID':      _dst_id,
-                                'RX_PEER':   _peer_id,
-                                '_outbound': True,
-                                'packets': 0,
-                                'loss': 0,
+                                'RX_PEER':   _peer_id
                             }
                             # Generate LCs (full and EMB) for the TX stream
                             dst_lc = b''.join([self.STATUS[_slot]['RX_LC'][0:3], _target['TGID'], _rf_src])
@@ -2974,28 +2795,16 @@ class routerHBP(HBSYSTEM):
                         dmrbits.frombytes(dmrpkt)
                         # Create a voice header packet (FULL LC)
                         if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
-                            try:
-                                dmrbits = _target_status[_stream_id]['H_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['H_LC'][98:197]
-                            except KeyError:
-                                logger.debug('(%s) KeyError - H_LC, skipping', self._system)
-                                continue
+                            dmrbits = _target_status[_stream_id]['H_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['H_LC'][98:197]
                         # Create a voice terminator packet (FULL LC)
                         elif _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM:
-                            try:
-                                dmrbits = _target_status[_stream_id]['T_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['T_LC'][98:197]
-                            except KeyError:
-                                logger.debug('(%s) KeyError - T_LC, skipping', self._system)
-                                continue
+                            dmrbits = _target_status[_stream_id]['T_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['T_LC'][98:197]
                             if CONFIG['REPORTS']['REPORT']:
                                 call_duration = pkt_time - _target_status[_stream_id]['START']
                                 systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
                         # Create a Burst B-E packet (Embedded LC)
                         elif _dtype_vseq in [1,2,3,4]:
-                            try:
-                                dmrbits = dmrbits[0:116] + _target_status[_stream_id]['EMB_LC'][_dtype_vseq] + dmrbits[148:264]
-                            except KeyError:
-                                logger.debug('(%s) KeyError - EMB_LC, skipping', self._system)
-                                continue
+                            dmrbits = dmrbits[0:116] + _target_status[_stream_id]['EMB_LC'][_dtype_vseq] + dmrbits[148:264]
                         dmrpkt = dmrbits.tobytes()
                         _tmp_data = b''.join([_tmp_data, dmrpkt])
 
@@ -3083,12 +2892,6 @@ class routerHBP(HBSYSTEM):
 
                     # Transmit the packet to the destination system
                     systems[_target['SYSTEM']].send_system(_tmp_data,b'',_ber,_rssi,_source_server, _source_rptr)
-                    # Expire outbound OBP bookkeeping on VTERM to shrink inbound collision window
-                    if (_frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM
-                            and _stream_id in _target_status
-                            and isinstance(_target_status.get(_stream_id), dict)
-                            and _target_status[_stream_id].get('_outbound')):
-                        del _target_status[_stream_id]
        
         return _sysIgnore
     
@@ -3330,10 +3133,7 @@ class routerHBP(HBSYSTEM):
                 'CONTENTION':False,
                 'RFS':       _rf_src,
                 'TGID':      _dst_id,
-                'RX_PEER':   _peer_id,
-                '_outbound': True,
-                'packets': 0,
-                'loss': 0,
+                'RX_PEER':   _peer_id
             }
             
         # Record the time of this packet so we can later identify a stale stream
@@ -3351,7 +3151,7 @@ class routerHBP(HBSYSTEM):
         systems[_target].send_system(_tmp_data,b'',_ber,_rssi,_source_server,_source_rptr)
         logger.debug('(%s) UNIT Data Bridged to OBP System: %s DST_ID: %s', self._system, _target,_int_dst_id)
         if CONFIG['REPORTS']['REPORT']:
-            systems[_target]._report.send_bridgeEvent('UNIT DATA,DATA,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
+            systems[system]._report.send_bridgeEvent('UNIT DATA,DATA,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
     
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
@@ -3446,7 +3246,7 @@ class routerHBP(HBSYSTEM):
             #Send all data to DATA-GATEWAY if enabled and valid
             if CONFIG['GLOBAL']['DATA_GATEWAY'] and 'DATA-GATEWAY' in CONFIG['SYSTEMS'] and CONFIG['SYSTEMS']['DATA-GATEWAY']['MODE'] == 'OPENBRIDGE' and CONFIG['SYSTEMS']['DATA-GATEWAY']['ENABLED']:
                 logger.debug('(%s) DATA packet sent to DATA-GATEWAY',self._system)
-                self.sendDataToOBP('DATA-GATEWAY',_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,b'')
+                self.sendDataToOBP('DATA-GATEWAY',_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,_source_rptr)
                 
             #Send to all openbridges 
             # sysIgnore = []
@@ -3457,7 +3257,7 @@ class routerHBP(HBSYSTEM):
                     continue
                 #We only want to send data calls to individual IDs via FreeBridge (not OpenBridge)
                 if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE' and CONFIG['SYSTEMS'][system]['VER'] > 1 and (_int_dst_id >= 1000000):
-                    self.sendDataToOBP(system,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,b'')
+                    self.sendDataToOBP(system,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,_source_rptr)
                     
             #If destination ID is in the Subscriber Map
             if _dst_id in SUB_MAP:
@@ -3553,7 +3353,7 @@ class routerHBP(HBSYSTEM):
             self.STATUS[_slot]['RX_TYPE']      = _dtype_vseq
             self.STATUS[_slot]['RX_TGID']      = _dst_id
             self.STATUS[_slot]['RX_TIME']      = pkt_time
-            self._assign_rx_stream_id(_slot, _stream_id)
+            self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
             self.STATUS[_slot]['VOICE_STREAM'] = _voice_call
             
             self.STATUS[_slot]['packets'] = self.STATUS[_slot]['packets'] +1 
@@ -3570,7 +3370,7 @@ class routerHBP(HBSYSTEM):
                 self.STATUS[_slot]['RX_TYPE']      = _dtype_vseq
                 self.STATUS[_slot]['RX_TGID']      = _dst_id
                 self.STATUS[_slot]['RX_TIME']      = pkt_time
-                self._assign_rx_stream_id(_slot, _stream_id)
+                self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
                 self.STATUS[_slot]['VOICE_STREAM'] = _voice_call
                 self.STATUS[_slot]['packets'] = self.STATUS[_slot]['packets'] + 1
 
@@ -3587,7 +3387,7 @@ class routerHBP(HBSYSTEM):
                 self.STATUS[_slot]['RX_TYPE']      = _dtype_vseq
                 self.STATUS[_slot]['RX_TGID']      = _dst_id
                 self.STATUS[_slot]['RX_TIME']      = pkt_time
-                self._assign_rx_stream_id(_slot, _stream_id)
+                self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
                 self.STATUS[_slot]['VOICE_STREAM'] = _voice_call
                 self.STATUS[_slot]['packets'] = self.STATUS[_slot]['packets'] + 1
 
@@ -3705,7 +3505,7 @@ class routerHBP(HBSYSTEM):
                 self.STATUS[_slot]['RX_TYPE']      = _dtype_vseq
                 self.STATUS[_slot]['RX_TGID']      = _dst_id
                 self.STATUS[_slot]['RX_TIME']      = pkt_time
-                self._assign_rx_stream_id(_slot, _stream_id)
+                self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
                 self.STATUS[_slot]['VOICE_STREAM'] = _voice_call
             
                 self.STATUS[_slot]['packets'] = self.STATUS[_slot]['packets'] +1                
@@ -3726,7 +3526,6 @@ class routerHBP(HBSYSTEM):
 
                 # This is a new call stream
                 self.STATUS[_slot]['RX_START'] = pkt_time
-                self.STATUS[_slot].pop('LOOPLOG', None)
                 
                 if _call_type == 'group' :
                     if _dtype_vseq == 6:
@@ -3736,31 +3535,10 @@ class routerHBP(HBSYSTEM):
                             self._report.send_bridgeEvent('DATA HEADER,DATA,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
                     
                     else:
-                        # Gate START RX report on LoopControl ownership (report-only).
-                        _hbp_active, _hbp_sys = _find_hbp_stream_rx_owner(_stream_id, exclude=self._system)
-                        _obp_first = False
-                        for _obp_system in _OBP_SYSTEMS:
-                            if _obp_system == self._system:
-                                continue
-                            _obp_st = systems[_obp_system].STATUS.get(_stream_id)
-                            if (_obp_st and not _obp_st.get('_outbound')
-                                    and '1ST' in _obp_st and _obp_st['TGID'] == _dst_id):
-                                _obp_first = True
-                                break
-                        _report_start = should_report_hbp_rx_start(
-                            _hbp_sys if _hbp_active else None, _obp_first)
-                        if not _report_start:
-                            self.STATUS[_slot]['LOOPLOG'] = True
-                            logger.debug(
-                                "(%s) HBP *LoopControl* START RX suppressed STREAM ID: %s TG: %s "
-                                "(HBP=%s OBP=%s)",
-                                self._system, int_id(_stream_id), int_id(_dst_id),
-                                _hbp_sys if _hbp_active else None, _obp_first)
-                        else:
-                            logger.info('(%s) *CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
-                                self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
-                            if CONFIG['REPORTS']['REPORT']:
-                                self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                        logger.info('(%s) *CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
+                            self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+                        if CONFIG['REPORTS']['REPORT']:
+                            self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
                 else:
                     logger.info('(%s) *VCSBK* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s _dtype_vseq: %s', 
                             self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, _dtype_vseq)
@@ -3838,15 +3616,12 @@ class routerHBP(HBSYSTEM):
                     if CONFIG['REPORTS']['REPORT']:
                         self._report.send_bridgeEvent('VCSBK 3/4 DATA BLOCK,DATA,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
                         
-            # HBP RATE DROP disabled: same lag catch-up poison as OBP (see HBP_RATE_DROP_ENABLED).
-            if HBP_RATE_DROP_ENABLED:
-                _call_age = pkt_time - self.STATUS[_slot]['RX_START']
-                if (self.STATUS[_slot]['packets'] > 18
-                        and _call_age > 1.0
-                        and (self.STATUS[_slot]['packets'] / _call_age) > 25):
-                    logger.warning("(%s) *PacketControl* RATE DROP! Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
-                    self.STATUS[_slot]['LAST'] = pkt_time
-                    return
+            #Packet rate limit
+            #Rate drop
+            if self.STATUS[_slot]['packets'] > 18 and (self.STATUS[_slot]['packets'] / (pkt_time - self.STATUS[_slot]['RX_START']) > 25):
+                logger.warning("(%s) *PacketControl* RATE DROP! Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
+                self.STATUS[_slot]['LAST'] = pkt_time
+                return
             
             #Timeout
             if self.STATUS[_slot]['RX_START'] + 180 < pkt_time:
@@ -3857,28 +3632,28 @@ class routerHBP(HBSYSTEM):
                 return
             
             #LoopControl#
-            _hbp_active, _hbp_sys = _find_hbp_stream_rx_owner(_stream_id, exclude=self._system)
-            if _hbp_active:
-                if 'LOOPLOG' not in self.STATUS[_slot] or not self.STATUS[_slot]['LOOPLOG']:
-                    logger.debug("(%s) OBP *LoopControl* FIRST HBP: %s, STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, _hbp_sys, int_id(_stream_id), int_id(_dst_id), _slot)
-                    self.STATUS[_slot]['LOOPLOG'] = True
-                self.STATUS[_slot]['LAST'] = pkt_time
-                return
-            for _obp_system in _OBP_SYSTEMS:
-                if _obp_system == self._system:
+            for system in systems:                            
+                if system  == self._system:
                     continue
-                if (_stream_id in systems[_obp_system].STATUS
-                        and not systems[_obp_system].STATUS[_stream_id].get('_outbound')
-                        and '1ST' in systems[_obp_system].STATUS[_stream_id]
-                        and systems[_obp_system].STATUS[_stream_id]['TGID'] == _dst_id):
-                    if 'LOOPLOG' not in self.STATUS[_slot] or not self.STATUS[_slot]['LOOPLOG']:
-                        logger.debug("(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE",self._system, _obp_system, int_id(_stream_id), int_id(_dst_id))
-                        self.STATUS[_slot]['LOOPLOG'] = True
-                    self.STATUS[_slot]['LAST'] = pkt_time
-                    if 'ENHANCED_OBP' in CONFIG['SYSTEMS'][self._system] and CONFIG['SYSTEMS'][self._system]['ENHANCED_OBP'] and '_bcsq' not in self.STATUS[_slot]:
-                        systems[self._system].send_bcsq(_dst_id,_stream_id)
-                        self.STATUS[_slot]['_bcsq'] = True
-                    return
+                if CONFIG['SYSTEMS'][system]['MODE'] != 'OPENBRIDGE':
+                    for _sysslot in systems[system].STATUS:
+                        if 'RX_STREAM_ID' in systems[system].STATUS[_sysslot] and _stream_id == systems[system].STATUS[_sysslot]['RX_STREAM_ID']:
+                            if 'LOOPLOG' not in self.STATUS[_slot] or not self.STATUS[_slot]['LOOPLOG']: 
+                                logger.debug("(%s) OBP *LoopControl* FIRST HBP: %s, STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id),_sysslot)
+                                self.STATUS[_slot]['LOOPLOG'] = True
+                            self.STATUS[_slot]['LAST'] = pkt_time
+                            return
+                else:
+                    if _stream_id in systems[system].STATUS and '1ST' in systems[system].STATUS[_stream_id] and systems[system].STATUS[_stream_id]['TGID'] == _dst_id:
+                        if 'LOOPLOG' not in self.STATUS[_slot] or not self.STATUS[_slot]['LOOPLOG']:
+                            logger.debug("(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id))
+                            self.STATUS[_slot]['LOOPLOG'] = True
+                        self.STATUS[_slot]['LAST'] = pkt_time
+                        
+                        if 'ENHANCED_OBP' in CONFIG['SYSTEMS'][self._system] and CONFIG['SYSTEMS'][self._system]['ENHANCED_OBP'] and '_bcsq' not in self.STATUS[_slot]:
+                            systems[self._system].send_bcsq(_dst_id,_stream_id)
+                            self.STATUS[_slot]['_bcsq'] = True
+                        return
             
             #Duplicate handling#
             #Duplicate complete packet
@@ -3886,14 +3661,13 @@ class routerHBP(HBSYSTEM):
                 self.STATUS[_slot]['loss'] += 1
                 logger.info("(%s) *PacketControl* last packet is a complete duplicate of the previous one, disgarding. Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
                 return
-            _seq_delta = dmrd_seq_delta(_seq, self.STATUS[_slot]['lastSeq'])
             #Handle inbound duplicates
-            if _seq_delta == 0:
+            if _seq and _seq == self.STATUS[_slot]['lastSeq']:
                 self.STATUS[_slot]['loss'] += 1
                 logger.debug("(%s) *PacketControl* Duplicate sequence number %s, disgarding. Stream ID:, %s TGID: %s",self._system,_seq,int_id(_stream_id),int_id(_dst_id))
                 return
-            #Inbound out-of-order packets (wrap-aware)
-            if _seq_delta is not None and _seq_delta > 127:
+            #Inbound out-of-order packets
+            if _seq and self.STATUS[_slot]['lastSeq']  and (_seq != 1) and (_seq < self.STATUS[_slot]['lastSeq']):
                 self.STATUS[_slot]['loss'] += 1
                 logger.debug("%s) *PacketControl* Out of order packet - last SEQ: %s, this SEQ: %s,  disgarding. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_slot]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
                 return
@@ -3903,7 +3677,7 @@ class routerHBP(HBSYSTEM):
                 logger.debug("(%s) *PacketControl* DMR packet payload with hash: %s seen before in this stream, disgarding. Stream ID:, %s TGID: %s, SEQ: %s, packets %s: ",self._system,_pkt_crc,int_id(_stream_id),int_id(_dst_id),_seq,self.STATUS[_slot]['packets'])
                 return
             #Inbound missed packets
-            if _seq_delta is not None and _seq_delta > 1:
+            if _seq and self.STATUS[_slot]['lastSeq'] and _seq > (self.STATUS[_slot]['lastSeq']+1):
                 self.STATUS[_slot]['loss'] += 1
                 logger.debug("(%s) *PacketControl* Missed packet(s) - last SEQ: %s, this SEQ: %s. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_slot]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
         
@@ -3965,7 +3739,7 @@ class routerHBP(HBSYSTEM):
                     loss = (self.STATUS[_slot]['loss'] / self.STATUS[_slot]['packets']) * 100
                 logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %.2f,  Packet rate: %.2f/s, LOSS: %.2f%%', \
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration, packet_rate, loss)
-                if CONFIG['REPORTS']['REPORT'] and should_report_stream_end(self.STATUS[_slot]):
+                if CONFIG['REPORTS']['REPORT']:
                    self._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), call_duration).encode(encoding='utf-8', errors='ignore'))
                 
                 #Reset back to False  
@@ -3985,7 +3759,7 @@ class routerHBP(HBSYSTEM):
                 if _reset:
                     notify_bridge_table_updated()
 
-                for _bridge in group_call_end_bridge_candidates(BRIDGES, _int_dst_id):
+                for _bridge in BRIDGES:
                     if not _reflector_bridge_matches_group_call(_bridge, _int_dst_id):
                         continue
                     for _system in BRIDGES[_bridge]:
@@ -4092,7 +3866,7 @@ class routerHBP(HBSYSTEM):
             self.STATUS[_slot]['RX_TYPE']      = _dtype_vseq
             self.STATUS[_slot]['RX_TGID']      = _dst_id
             self.STATUS[_slot]['RX_TIME']      = pkt_time
-            self._assign_rx_stream_id(_slot, _stream_id)
+            self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
             
             self.STATUS[_slot]['crcs'].add(_pkt_crc)
 
@@ -4156,15 +3930,28 @@ class bridgeReportFactory(reportFactory):
                 if not isinstance(bridge_system, dict):
                     logger.warning('(REPORT) Skipping malformed bridge entry in %s payload type: %s', bridge, type(bridge_system))
                     continue
-                leg = build_report_bridge_leg(bridge_system)
-                if leg is None:
-                    if not report_include_bridge_leg(
-                            bridge_system.get('TO_TYPE', 'NONE'),
-                            bool(bridge_system.get('ACTIVE', False))):
-                        continue
+                if 'SYSTEM' not in bridge_system or 'TS' not in bridge_system or 'TGID' not in bridge_system:
                     logger.warning('(REPORT) Skipping incomplete bridge entry in %s: %s', bridge, bridge_system)
                     continue
-                safe_systems.append(leg)
+                _to_type = bridge_system.get('TO_TYPE', 'NONE')
+                _active = bool(bridge_system.get('ACTIVE', False))
+                _timeout = bridge_system.get('TIMEOUT', '')
+                _timer = bridge_system.get('TIMER', time())
+                if _to_type == 'OFF' and _active:
+                    _timeout = 0
+                    _timer = 0
+                safe_systems.append({
+                    'SYSTEM': bridge_system['SYSTEM'],
+                    'TS': bridge_system['TS'],
+                    'TGID': bridge_system['TGID'],
+                    'ACTIVE': _active,
+                    'TIMEOUT': _timeout,
+                    'TO_TYPE': _to_type,
+                    'OFF': cls._clean_trigger_list(bridge_system.get('OFF')),
+                    'ON': cls._clean_trigger_list(bridge_system.get('ON')),
+                    'RESET': cls._clean_trigger_list(bridge_system.get('RESET')),
+                    'TIMER': _timer,
+                })
             safe_bridges[str(bridge)] = safe_systems
         return safe_bridges
 
@@ -4443,9 +4230,6 @@ if __name__ == '__main__':
             listeningPorts[system] = reactor.listenUDP(CONFIG['SYSTEMS'][system]['PORT'], systems[system], interface=CONFIG['SYSTEMS'][system]['IP'])
             logger.debug('(GLOBAL) %s instance created: %s, %s', CONFIG['SYSTEMS'][system]['MODE'], system, systems[system])
 
-    refresh_obp_system_list()
-    logger.info('(ROUTER) LoopControl fast path: %d OBP systems cached', len(_OBP_SYSTEMS))
-
     def loopingErrHandle(failure):
         logger.error('(GLOBAL) STOPPING REACTOR TO AVOID MEMORY LEAK: Unhandled error in timed loop.\n %s', failure)
         reactor.stop()
@@ -4499,12 +4283,11 @@ if __name__ == '__main__':
         logger.info('(SELF SERVICE) Hotspot static reconcile poll every %ss',
                     ss.get('POLL_INTERVAL', 5))
         
-    # STAT trimmer — idle GEN_STAT bridges (comment historically said 10 min; was 3600)
+    #STAT trimmer - once every 10 mins (roughly - shifted so all timed tasks don't run at once
     if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:
         stat_trimmer_task = task.LoopingCall(statTrimmer)
-        stat_trimmer = stat_trimmer_task.start(STAT_TRIMMER_INTERVAL_S)
+        stat_trimmer = stat_trimmer_task.start(523)#3600
         stat_trimmer.addErrback(loopingErrHandle)
-        logger.info('(ROUTER) STAT trimmer every %ss', STAT_TRIMMER_INTERVAL_S)
         
     #KA Reporting
     ka_task = task.LoopingCall(kaReporting)
