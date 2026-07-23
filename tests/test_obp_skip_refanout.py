@@ -57,8 +57,8 @@ class TestAudioSafetyFlags(unittest.TestCase):
     def test_hbp_rate_drop_enabled_freedmr(self):
         self.assertTrue(HBP_RATE_DROP_ENABLED)
 
-    def test_age_threshold(self):
-        self.assertEqual(DMRE_MAX_PACKET_AGE_S, 15.0)
+    def test_dmre_age_freedmr_adn(self):
+        self.assertEqual(DMRE_MAX_PACKET_AGE_S, 5.0)
 
     def test_bridge_master_gates_hbp(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
@@ -67,15 +67,15 @@ class TestAudioSafetyFlags(unittest.TestCase):
         self.assertIn('obp_target_already_has_inbound', source)
         self.assertIn('group_call_end_bridge_candidates', source)
 
-    def test_hblink_no_bcsq_on_age(self):
+    def test_hblink_bcsq_on_age_freedmr(self):
         with open('hblink.py', encoding='utf-8') as fh:
             source = fh.read()
         self.assertIn('DMRE_MAX_PACKET_AGE_S', source)
-        # Age discard block must not call send_bcsq
         idx = source.find('more than %.0fs old!, discarding')
         self.assertGreater(idx, 0)
-        window = source[idx - 400:idx + 200]
-        self.assertNotIn('self.send_bcsq', window)
+        window = source[idx:idx + 250]
+        self.assertIn('self.send_bcsq', window)
+        self.assertNotIn('Do NOT send_bcsq on age alone', source)
 
 
 if __name__ == '__main__':

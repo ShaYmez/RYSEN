@@ -517,11 +517,11 @@ class OPENBRIDGE(DatagramProtocol):
                                 self._laststrid.append(_stream_id)
                             return
                         
-                    # Discard old packets. Do NOT send_bcsq on age alone — under
-                    # reactor lag that quenches live streams and worsens audio.
+                    # Discard old packets (FreeDMR/ADN: 5s + BCSQ quench)
                     if (int.from_bytes(_timestamp,'big')/1000000000) < (time() - DMRE_MAX_PACKET_AGE_S):
                         if _stream_id not in self._laststrid:
                             logger.warning('(%s) Packet from server %s more than %.0fs old!, discarding',  self._system,int.from_bytes(_source_server,'big'), DMRE_MAX_PACKET_AGE_S)
+                            self.send_bcsq(_dst_id,_stream_id)
                             self._laststrid.append(_stream_id)
                         return
                     

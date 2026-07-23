@@ -63,6 +63,10 @@ class TestFreeDmrRateDrop(unittest.TestCase):
         # Must not use the old RYSEN-only >35 / >1.0s OBP gate
         self.assertNotIn('> 35)', source)
         self.assertIn('dmrd_seq_delta', source)
+        # HBP warmup: call_duration > 1.0 before pps check
+        self.assertIn('call_duration > 1.0', source)
+        self.assertIn("self.STATUS[_slot]['lastSeq'] = False", source)
+        self.assertIn("self.STATUS[_slot]['lastData'] = False", source)
 
 
 class TestStartGateReportOnly(unittest.TestCase):

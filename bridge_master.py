@@ -3811,7 +3811,10 @@ class routerHBP(HBSYSTEM):
                     logger.warning('(%s) Packet received with STREAM ID: %s <FROM> SUB: %s PEER: %s <TO> TGID %s, SLOT %s collided with existing call', self._system, int_id(_stream_id), int_id(_rf_src), int_id(_peer_id), int_id(_dst_id), _slot)
                     return
 
-                # This is a new call stream
+                # This is a new call stream — FreeDMR: clear SEQ/dup state after collision
+                # gate so a collided attempt does not wipe the active stream.
+                self.STATUS[_slot]['lastSeq'] = False
+                self.STATUS[_slot]['lastData'] = False
                 self.STATUS[_slot]['RX_START'] = pkt_time
                 self.STATUS[_slot].pop('LOOPLOG', None)
                 
@@ -3928,7 +3931,8 @@ class routerHBP(HBSYSTEM):
             # FreeDMR HBP RATE DROP — discard catch-up bursts (soft-client playout)
             if HBP_RATE_DROP_ENABLED:
                 call_duration = pkt_time - self.STATUS[_slot]['RX_START']
-                if (call_duration
+                # 1s warmup (5ef71eb): avoid false drop right after reactor lag
+                if (call_duration > 1.0
                         and self.STATUS[_slot]['packets'] > HBP_RATE_DROP_MIN_PACKETS
                         and (self.STATUS[_slot]['packets'] / call_duration) > HBP_RATE_DROP_MAX_PPS):
                     logger.warning("(%s) *PacketControl* RATE DROP! Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))

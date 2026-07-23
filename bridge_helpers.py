@@ -594,8 +594,9 @@ HBP_RATE_DROP_ENABLED = True
 HBP_RATE_DROP_MIN_PACKETS = 18
 HBP_RATE_DROP_MAX_PPS = 25
 
-# DMRE packet age (seconds). 5s sits inside typical UK reactor lag and false-triggers.
-DMRE_MAX_PACKET_AGE_S = 15.0
+# FreeDMR / ADN identical: discard DMRE older than 5s. Widening to 15s
+# (9e452ca) admitted late OBP into BlueDV/Peanut playout buffers network-wide.
+DMRE_MAX_PACKET_AGE_S = 5.0
 
 
 def target_requires_lc_rewrite(_dst_id, _target_tgid):
