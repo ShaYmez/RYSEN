@@ -286,6 +286,39 @@ def strip_disc_from_options(options_value):
     return ';'.join(kept) + ';'
 
 
+_INVALID_DIAL_OPTION_KEYS = frozenset({'DIAL', 'StartRef', 'DEFAULT_REFLECTOR'})
+
+
+def sanitize_invalid_default_reflector_options(options_value):
+    """Rewrite DIAL/StartRef/DEFAULT_REFLECTOR=9 (dial channel) to 0.
+
+    Returns (new_options_str, changed). Stops options_config_loop from re-parsing
+    a sticky DIAL=9 every 26s after CONFIG was already coerced to 0.
+    """
+    text = _normalize_options_str(options_value)
+    if not text:
+        return '', False
+    kept = []
+    changed = False
+    for part in text.split(';'):
+        if not part.strip():
+            continue
+        try:
+            key, value = part.split('=', 1)
+        except ValueError:
+            continue
+        key_s = key.strip()
+        val_s = value.strip()
+        if key_s in _INVALID_DIAL_OPTION_KEYS and is_invalid_dial_reflector(val_s):
+            kept.append(f'{key_s}=0')
+            changed = True
+            continue
+        kept.append(f'{key_s}={val_s}')
+    if not kept:
+        return '', changed
+    return ';'.join(kept) + ';', changed
+
+
 def deactivate_linked_ipsc_bridge_legs(bridges, config_systems, source_system, peer_id=None):
     """Deactivate linked IPSC legs on bridges that are active for source_system."""
     if config_systems.get(source_system, {}).get('MODE') == 'IPSC':
@@ -554,6 +587,64 @@ def reset_dial_reflector_timers_on_user_activity(bridges, system, rf_src, peer_i
 
 # Coalesce selfcare-driven options_config() rebuilds (max once per this many seconds).
 OPTIONS_CONFIG_COALESCE_S = 5.0
+
+# STAT trimmer interval (~10 min). Tip previously used 523s offset from other timers.
+STAT_TRIMMER_INTERVAL_S = 600
+
+
+def report_include_bridge_leg(to_type, active):
+    """Whether a bridge leg belongs in the monitor report payload.
+
+    Idle UA ON legs dominate GEN_STAT meshes and inflate BRIDGE_SND pickles;
+    static OFF+ACTIVE and live/STAT/NONE legs are kept.
+    """
+    if to_type == 'ON' and not active:
+        return False
+    return True
+
+
+def clean_report_trigger_list(value):
+    """Normalise ON/OFF/RESET trigger lists for report pickle; empty -> []."""
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    try:
+        return list(value)
+    except TypeError:
+        return [value]
+
+
+def build_report_bridge_leg(bridge_system, now_fn=None):
+    """Build one slim report leg dict, or None if the leg should be omitted."""
+    if not isinstance(bridge_system, dict):
+        return None
+    if 'SYSTEM' not in bridge_system or 'TS' not in bridge_system or 'TGID' not in bridge_system:
+        return None
+    _to_type = bridge_system.get('TO_TYPE', 'NONE')
+    _active = bool(bridge_system.get('ACTIVE', False))
+    if not report_include_bridge_leg(_to_type, _active):
+        return None
+    _now = now_fn if now_fn is not None else time.time
+    _timeout = bridge_system.get('TIMEOUT', '')
+    _timer = bridge_system.get('TIMER', _now())
+    if _to_type == 'OFF' and _active:
+        _timeout = 0
+        _timer = 0
+    leg = {
+        'SYSTEM': bridge_system['SYSTEM'],
+        'TS': bridge_system['TS'],
+        'TGID': bridge_system['TGID'],
+        'ACTIVE': _active,
+        'TIMEOUT': _timeout,
+        'TO_TYPE': _to_type,
+        'TIMER': _timer,
+    }
+    for key in ('OFF', 'ON', 'RESET'):
+        cleaned = clean_report_trigger_list(bridge_system.get(key))
+        if cleaned:
+            leg[key] = cleaned
+    return leg
 
 
 # FreeDMR OBP RATE DROP — discard catch-up bursts (soft-client playout).
