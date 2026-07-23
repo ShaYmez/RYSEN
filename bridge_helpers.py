@@ -864,6 +864,9 @@ def build_report_bridge_leg(bridge_system, now_fn=None):
 
 STAT_TRIMMER_INTERVAL_S = 600
 
+# Coalesce selfcare-driven options_config() rebuilds (max once per this many seconds).
+OPTIONS_CONFIG_COALESCE_S = 5.0
+
 
 _OBP_RECLAIM_CLEAR_KEYS = (
     'LOOPLOG', '_bcsq', '_finlog', '_fin', 'H_LC', 'T_LC', 'EMB_LC',

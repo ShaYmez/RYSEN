@@ -48,7 +48,7 @@ from hashlib import blake2b
 # Twisted is pretty important, so I keep it separate
 from twisted.internet.protocol import Factory, Protocol
 from twisted.protocols.basic import NetstringReceiver
-from twisted.internet import reactor, task
+from twisted.internet import reactor, task, threads
 from twisted.internet.defer import inlineCallbacks
 
 # Things we import from the main hblink module
@@ -113,6 +113,7 @@ from bridge_helpers import (
     obp_target_already_has_inbound,
     group_call_end_bridge_candidates,
     STAT_TRIMMER_INTERVAL_S,
+    OPTIONS_CONFIG_COALESCE_S,
     OBP_RATE_DROP_ENABLED,
     OBP_RATE_DROP_MIN_DURATION,
     OBP_RATE_DROP_MIN_PACKETS,
@@ -1110,7 +1111,9 @@ def rule_timer_loop():
                     _sticky_enabled_systems.add(_sys)
                     break
 
-    for _bridge in BRIDGES:
+    for _bridge in list(BRIDGES):
+        if _bridge not in BRIDGES:
+            continue
         _bridge_used = False
         for _system in BRIDGES[_bridge]:
             if _system['TO_TYPE'] == 'ON':
@@ -1227,12 +1230,15 @@ def rule_timer_loop():
         logger.debug('(ROUTER) Unused conference bridge %s removed',_bridgerem)
 
     if CONFIG['REPORTS']['REPORT']:
-        report_server.send_clients(b'bridge updated')
+        # rule_timer_loop may run via deferToThread — notify monitor on reactor
+        reactor.callFromThread(report_server.send_clients, b'bridge updated')
 
 def statTrimmer():
     logger.debug('(ROUTER) STAT trimmer loop started')
     _remove_bridges = deque()
-    for _bridge in BRIDGES:
+    for _bridge in list(BRIDGES):
+        if _bridge not in BRIDGES:
+            continue
         _bridge_stat = False
         _in_use = False
         for _system in BRIDGES[_bridge]:
@@ -1254,7 +1260,7 @@ def statTrimmer():
         rebuild_bridge_index()
     repair_static_tgs_all_systems()
     if CONFIG['REPORTS']['REPORT']:
-        report_server.send_clients(b'bridge updated')
+        reactor.callFromThread(report_server.send_clients, b'bridge updated')
 
 def kaReporting():
     logger.debug('(ROUTER) KeepAlive reporting loop started')
@@ -1654,6 +1660,49 @@ def ident():
                     _pkt_time = time()
                     reactor.callFromThread(sendVoicePacket,systems[system],pkt,_source_id,_dst_id,_slot)
 
+_options_config_dirty = False
+_options_config_last = 0.0
+_options_config_later = None
+
+
+def schedule_options_config():
+    """Coalesce selfcare-driven OPTIONS rebuilds so they do not re-enter inline."""
+    global _options_config_dirty, _options_config_later
+    _options_config_dirty = True
+    now = time()
+    elapsed = now - _options_config_last
+    if elapsed >= OPTIONS_CONFIG_COALESCE_S:
+        _flush_scheduled_options_config()
+        return
+    if _options_config_later is None or not _options_config_later.active():
+        delay = max(0.05, OPTIONS_CONFIG_COALESCE_S - elapsed)
+        _options_config_later = reactor.callLater(delay, _flush_scheduled_options_config)
+
+
+def _flush_scheduled_options_config():
+    global _options_config_dirty, _options_config_last, _options_config_later
+    _options_config_later = None
+    if not _options_config_dirty:
+        return
+    _options_config_dirty = False
+    _options_config_last = time()
+    try:
+        options_config()
+    except Exception:
+        logger.exception('(OPTIONS) scheduled options_config failed')
+
+
+def options_config_loop():
+    """Periodic OPTIONS scrape (26s). Clears any pending selfcare dirty flag."""
+    global _options_config_dirty, _options_config_last, _options_config_later
+    if _options_config_later is not None and _options_config_later.active():
+        _options_config_later.cancel()
+    _options_config_later = None
+    _options_config_dirty = False
+    _options_config_last = time()
+    options_config()
+
+
 def options_config():
     logger.debug('(OPTIONS) Running options parser')
     for _system in CONFIG['SYSTEMS']:
@@ -2029,7 +2078,7 @@ def ipsc_selfcare_poll():
                 yield _selfcare_db.save_client_options(int_id_val, remaining)
             try:
                 if remaining or not had_disc:
-                    options_config()
+                    schedule_options_config()
             except Exception:
                 logger.exception(
                     '(SELF SERVICE) options_config failed for IPSC %s on %s',
@@ -2079,7 +2128,7 @@ def hotspot_selfcare_static_reconcile():
                 system, cfg_ts2, db_ts2)
             CONFIG['SYSTEMS'][system]['OPTIONS'] = opt_str
             try:
-                options_config()
+                schedule_options_config()
             except Exception:
                 logger.exception(
                     '(SELF SERVICE) options_config failed during hotspot reconcile for %s', system)
@@ -2113,7 +2162,7 @@ def hotspot_selfcare_disc_poll():
             yield _selfcare_db.save_client_options(int_id_val, remaining)
             if remaining:
                 try:
-                    options_config()
+                    schedule_options_config()
                 except Exception:
                     logger.exception(
                         '(SELF SERVICE) options_config failed after hotspot DISC for %s',
@@ -4544,7 +4593,10 @@ if __name__ == '__main__':
         reactor.stop()
 
     # Initialize the rule timer -- this if for user activated stuff
-    rule_timer_task = task.LoopingCall(rule_timer_loop)
+    # ADN-style: run off-reactor so sticky/bridge timeout scans do not starve UDP
+    def _rule_timer_in_thread():
+        return threads.deferToThread(rule_timer_loop)
+    rule_timer_task = task.LoopingCall(_rule_timer_in_thread)
     rule_timer = rule_timer_task.start(52)
     rule_timer.addErrback(loopingErrHandle)
 
@@ -4566,7 +4618,7 @@ if __name__ == '__main__':
     aliasa.addErrback(loopingErrHandle)
     
     #Options parsing
-    options_task = task.LoopingCall(options_config)
+    options_task = task.LoopingCall(options_config_loop)
     options = options_task.start(26)
     options.addErrback(loopingErrHandle)
 
@@ -4594,13 +4646,17 @@ if __name__ == '__main__':
         
     # STAT trimmer — idle GEN_STAT bridges (comment historically said 10 min; was 3600)
     if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:
-        stat_trimmer_task = task.LoopingCall(statTrimmer)
+        def _stat_trimmer_in_thread():
+            return threads.deferToThread(statTrimmer)
+        stat_trimmer_task = task.LoopingCall(_stat_trimmer_in_thread)
         stat_trimmer = stat_trimmer_task.start(STAT_TRIMMER_INTERVAL_S)
         stat_trimmer.addErrback(loopingErrHandle)
         logger.info('(ROUTER) STAT trimmer every %ss', STAT_TRIMMER_INTERVAL_S)
         
     #KA Reporting
-    ka_task = task.LoopingCall(kaReporting)
+    def _ka_reporting_in_thread():
+        return threads.deferToThread(kaReporting)
+    ka_task = task.LoopingCall(_ka_reporting_in_thread)
     ka = ka_task.start(60)
     ka.addErrback(loopingErrHandle)
     
