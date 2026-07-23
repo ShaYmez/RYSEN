@@ -72,6 +72,19 @@ class TestReactorOffloadWiring(unittest.TestCase):
         self.assertEqual(len(bare), 2, bare)  # _flush + options_config_loop
 
 
+
+    def test_looping_err_handle_logs_only(self):
+        """Soft timer failures must not take down the reactor (TG blackouts)."""
+        with open('bridge_master.py', encoding='utf-8') as fh:
+            source = fh.read()
+        start = source.find('def loopingErrHandle(failure):')
+        self.assertGreater(start, 0)
+        end = source.find('\n    # Initialize the rule timer', start)
+        block = source[start:end]
+        self.assertIn('logger.error', block)
+        self.assertNotIn('reactor.stop()', block)
+
+
 class TestParrotBridgeTrim(unittest.TestCase):
 
     def test_augment_skips_parrot_fanout(self):
