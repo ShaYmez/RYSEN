@@ -534,3 +534,7 @@ def reset_dial_reflector_timers_on_user_activity(bridges, system, rf_src, peer_i
             entry['TIMER'] = pkt_time + timeout
             reset_bridges.append(bridge)
     return reset_bridges
+
+
+# Coalesce selfcare-driven options_config() rebuilds (max once per this many seconds).
+OPTIONS_CONFIG_COALESCE_S = 5.0

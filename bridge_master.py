@@ -48,7 +48,7 @@ from hashlib import blake2b
 # Twisted is pretty important, so I keep it separate
 from twisted.internet.protocol import Factory, Protocol
 from twisted.protocols.basic import NetstringReceiver
-from twisted.internet import reactor, task
+from twisted.internet import reactor, task, threads
 from twisted.internet.defer import inlineCallbacks
 
 # Things we import from the main hblink module
@@ -94,6 +94,7 @@ from bridge_helpers import (
     parse_options_static_fields,
     bridge_has_active_static_leg,
     is_static_field_keyup_noise,
+    OPTIONS_CONFIG_COALESCE_S,
 )
 # NOTE: 'words' is loaded dynamically via readAMBE() at runtime (see line ~2689)
 #from voice_lib import words
@@ -342,6 +343,12 @@ def augment_bridges_for_masters():
             _fresh.append(_entry)
         BRIDGES[_bridge] = _fresh
 
+        # Parrot (TG 9990): keep rules-defined legs only (typically PARROT).
+        # Do not fan out inactive UA slots to every MASTER/IPSC — that bloated
+        # rule_timer to O(GENERATOR+IPSC) every 52s for no audio benefit.
+        if is_parrot_bridge(_bridge):
+            continue
+
         try:
             _bridge_tgid = int(_bridge[1:]) if _bridge[0:1] == '#' else int(_bridge)
         except ValueError:
@@ -401,11 +408,32 @@ def activate_ua_bridge_source(bridge_name, system, slot, tmout=None, peer_id=Non
                     break
         if tmout is None:
             tmout = 10
-    if bridge_name == '9990':
+    if is_parrot_bridge(bridge_name):
         tmout = 1
     _timeout_s = tmout * 60
     _changed = False
     _ua_refreshed = False
+
+    # Parrot bridges are not pre-filled with every master — ensure the caller has a UA leg.
+    if is_parrot_bridge(bridge_name):
+        _has_leg = any(
+            _e['SYSTEM'] == system and _e['TS'] == slot for _e in BRIDGES[bridge_name])
+        if not _has_leg:
+            try:
+                _tgid = bytes_3(int(bridge_name))
+            except ValueError:
+                _tgid = bytes_3(PARROT_TG)
+            BRIDGES[bridge_name].append({
+                'SYSTEM': system, 'TS': slot, 'TGID': _tgid,
+                'ACTIVE': True, 'TIMEOUT': _timeout_s, 'TO_TYPE': 'ON',
+                'OFF': [], 'ON': [_tgid], 'RESET': [],
+                'TIMER': time() + _timeout_s,
+            })
+            rebuild_bridge_index()
+            _changed = True
+            logger.info('(ROUTER) Bridge %s added UA leg for %s TS%s (parrot)',
+                        bridge_name, system, slot)
+
     for _entry in BRIDGES[bridge_name]:
         if (_entry['SYSTEM'] == system and _entry['TS'] == slot
                 and _entry['TO_TYPE'] != 'NONE'):
@@ -440,6 +468,39 @@ def make_single_bridge(_tgid,_sourcesystem,_slot,_tmout):
     #Always a 1 min timeout for Echo
     if _tgid_s == '9990':
         _tmout = 1
+
+    # Parrot: calling system UA leg + PARROT peer only — never every MASTER/IPSC.
+    if is_parrot_talkgroup(int_id(_tgid)):
+        BRIDGES[_tgid_s] = []
+        if _slot == 1:
+            BRIDGES[_tgid_s].append({
+                'SYSTEM': _sourcesystem, 'TS': 1, 'TGID': _tgid, 'ACTIVE': True,
+                'TIMEOUT': _tmout * 60, 'TO_TYPE': 'ON', 'OFF': [], 'ON': [_tgid],
+                'RESET': [], 'TIMER': time() + (_tmout * 60)})
+            BRIDGES[_tgid_s].append({
+                'SYSTEM': _sourcesystem, 'TS': 2, 'TGID': _tgid, 'ACTIVE': False,
+                'TIMEOUT': _tmout * 60, 'TO_TYPE': 'ON', 'OFF': [], 'ON': [_tgid],
+                'RESET': [], 'TIMER': time()})
+        else:
+            BRIDGES[_tgid_s].append({
+                'SYSTEM': _sourcesystem, 'TS': 2, 'TGID': _tgid, 'ACTIVE': True,
+                'TIMEOUT': _tmout * 60, 'TO_TYPE': 'ON', 'OFF': [], 'ON': [_tgid],
+                'RESET': [], 'TIMER': time() + (_tmout * 60)})
+            BRIDGES[_tgid_s].append({
+                'SYSTEM': _sourcesystem, 'TS': 1, 'TGID': _tgid, 'ACTIVE': False,
+                'TIMEOUT': _tmout * 60, 'TO_TYPE': 'ON', 'OFF': [], 'ON': [_tgid],
+                'RESET': [], 'TIMER': time()})
+        if ('PARROT' in CONFIG['SYSTEMS']
+                and CONFIG['SYSTEMS']['PARROT'].get('ENABLED')
+                and _sourcesystem != 'PARROT'):
+            BRIDGES[_tgid_s].append({
+                'SYSTEM': 'PARROT', 'TS': 2, 'TGID': _tgid, 'ACTIVE': True,
+                'TIMEOUT': 15, 'TO_TYPE': 'NONE', 'OFF': [], 'ON': [], 'RESET': [],
+                'TIMER': time()})
+        _idx_add_bridge(_tgid_s)
+        notify_bridge_table_updated()
+        return
+
     BRIDGES[_tgid_s] = []
     for _system in iter_routing_master_systems():
         if _system == _sourcesystem:
@@ -980,7 +1041,9 @@ def rule_timer_loop():
                     _sticky_enabled_systems.add(_sys)
                     break
 
-    for _bridge in BRIDGES:
+    for _bridge in list(BRIDGES):
+        if _bridge not in BRIDGES:
+            continue
         _bridge_used = False
         for _system in BRIDGES[_bridge]:
             if _system['TO_TYPE'] == 'ON':
@@ -1097,12 +1160,15 @@ def rule_timer_loop():
         logger.debug('(ROUTER) Unused conference bridge %s removed',_bridgerem)
 
     if CONFIG['REPORTS']['REPORT']:
-        report_server.send_clients(b'bridge updated')
+        # rule_timer_loop may run via deferToThread — notify monitor on reactor
+        reactor.callFromThread(report_server.send_clients, b'bridge updated')
 
 def statTrimmer():
     logger.debug('(ROUTER) STAT trimmer loop started')
     _remove_bridges = deque()
-    for _bridge in BRIDGES:
+    for _bridge in list(BRIDGES):
+        if _bridge not in BRIDGES:
+            continue
         _bridge_stat = False
         _in_use = False
         for _system in BRIDGES[_bridge]:
@@ -1124,7 +1190,7 @@ def statTrimmer():
         rebuild_bridge_index()
     repair_static_tgs_all_systems()
     if CONFIG['REPORTS']['REPORT']:
-        report_server.send_clients(b'bridge updated')
+        reactor.callFromThread(report_server.send_clients, b'bridge updated')
 
 def kaReporting():
     logger.debug('(ROUTER) KeepAlive reporting loop started')
@@ -1499,6 +1565,49 @@ def ident():
                     _pkt_time = time()
                     reactor.callFromThread(sendVoicePacket,systems[system],pkt,_source_id,_dst_id,_slot)
 
+_options_config_dirty = False
+_options_config_last = 0.0
+_options_config_later = None
+
+
+def schedule_options_config():
+    """Coalesce selfcare-driven OPTIONS rebuilds so they do not re-enter inline."""
+    global _options_config_dirty, _options_config_later
+    _options_config_dirty = True
+    now = time()
+    elapsed = now - _options_config_last
+    if elapsed >= OPTIONS_CONFIG_COALESCE_S:
+        _flush_scheduled_options_config()
+        return
+    if _options_config_later is None or not _options_config_later.active():
+        delay = max(0.05, OPTIONS_CONFIG_COALESCE_S - elapsed)
+        _options_config_later = reactor.callLater(delay, _flush_scheduled_options_config)
+
+
+def _flush_scheduled_options_config():
+    global _options_config_dirty, _options_config_last, _options_config_later
+    _options_config_later = None
+    if not _options_config_dirty:
+        return
+    _options_config_dirty = False
+    _options_config_last = time()
+    try:
+        options_config()
+    except Exception:
+        logger.exception('(OPTIONS) scheduled options_config failed')
+
+
+def options_config_loop():
+    """Periodic OPTIONS scrape (26s). Clears any pending selfcare dirty flag."""
+    global _options_config_dirty, _options_config_last, _options_config_later
+    if _options_config_later is not None and _options_config_later.active():
+        _options_config_later.cancel()
+    _options_config_later = None
+    _options_config_dirty = False
+    _options_config_last = time()
+    options_config()
+
+
 def options_config():
     logger.debug('(OPTIONS) Running options parser')
     for _system in CONFIG['SYSTEMS']:
@@ -1853,7 +1962,7 @@ def ipsc_selfcare_poll():
                 yield _selfcare_db.save_client_options(int_id_val, remaining)
             try:
                 if remaining or not had_disc:
-                    options_config()
+                    schedule_options_config()
             except Exception:
                 logger.exception(
                     '(SELF SERVICE) options_config failed for IPSC %s on %s',
@@ -1903,7 +2012,7 @@ def hotspot_selfcare_static_reconcile():
                 system, cfg_ts2, db_ts2)
             CONFIG['SYSTEMS'][system]['OPTIONS'] = opt_str
             try:
-                options_config()
+                schedule_options_config()
             except Exception:
                 logger.exception(
                     '(SELF SERVICE) options_config failed during hotspot reconcile for %s', system)
@@ -1937,7 +2046,7 @@ def hotspot_selfcare_disc_poll():
             yield _selfcare_db.save_client_options(int_id_val, remaining)
             if remaining:
                 try:
-                    options_config()
+                    schedule_options_config()
                 except Exception:
                     logger.exception(
                         '(SELF SERVICE) options_config failed after hotspot DISC for %s',
@@ -4235,7 +4344,10 @@ if __name__ == '__main__':
         reactor.stop()
 
     # Initialize the rule timer -- this if for user activated stuff
-    rule_timer_task = task.LoopingCall(rule_timer_loop)
+    # ADN-style: run off-reactor so sticky/bridge timeout scans do not starve UDP
+    def _rule_timer_in_thread():
+        return threads.deferToThread(rule_timer_loop)
+    rule_timer_task = task.LoopingCall(_rule_timer_in_thread)
     rule_timer = rule_timer_task.start(52)
     rule_timer.addErrback(loopingErrHandle)
 
@@ -4257,7 +4369,7 @@ if __name__ == '__main__':
     aliasa.addErrback(loopingErrHandle)
     
     #Options parsing
-    options_task = task.LoopingCall(options_config)
+    options_task = task.LoopingCall(options_config_loop)
     options = options_task.start(26)
     options.addErrback(loopingErrHandle)
 
@@ -4285,12 +4397,16 @@ if __name__ == '__main__':
         
     #STAT trimmer - once every 10 mins (roughly - shifted so all timed tasks don't run at once
     if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:
-        stat_trimmer_task = task.LoopingCall(statTrimmer)
+        def _stat_trimmer_in_thread():
+            return threads.deferToThread(statTrimmer)
+        stat_trimmer_task = task.LoopingCall(_stat_trimmer_in_thread)
         stat_trimmer = stat_trimmer_task.start(523)#3600
         stat_trimmer.addErrback(loopingErrHandle)
         
     #KA Reporting
-    ka_task = task.LoopingCall(kaReporting)
+    def _ka_reporting_in_thread():
+        return threads.deferToThread(kaReporting)
+    ka_task = task.LoopingCall(_ka_reporting_in_thread)
     ka = ka_task.start(60)
     ka.addErrback(loopingErrHandle)
     
