@@ -497,8 +497,7 @@ def is_static_field_keyup_noise(existing_ts_static, proposed_ts_static):
     """True when a lone TG in OPTIONS likely reflects a keyed talkgroup, not static config.
 
     Pi-Star/VoxDMR login Options= with comma-separated statics is real config and is not
-    noise. Collapsing an established multi-static bundle to any single TG is key-up noise
-    (member collapse or foreign single).
+    noise. A single TG replacing an established multi-static bundle usually is key-up noise.
     """
     old_list = parse_static_tg_list(existing_ts_static)
     new_list = parse_static_tg_list(proposed_ts_static)
@@ -506,7 +505,7 @@ def is_static_field_keyup_noise(existing_ts_static, proposed_ts_static):
         return False
     if len(old_list) <= 1:
         return False
-    return True
+    return new_list[0] not in old_list
 
 
 def set_reflector_link_owner(entry, rf_src, peer_id):
@@ -645,14 +644,6 @@ def build_report_bridge_leg(bridge_system, now_fn=None):
         if cleaned:
             leg[key] = cleaned
     return leg
-
-
-# FreeDMR OBP RATE DROP — discard catch-up bursts (soft-client playout).
-# Duration-based: packets / call_duration, not packets / absolute START epoch.
-OBP_RATE_DROP_ENABLED = True
-OBP_RATE_DROP_MIN_DURATION = 2.0
-OBP_RATE_DROP_MIN_PACKETS = 50
-OBP_RATE_DROP_MAX_PPS = 50
 
 
 # ---------------------------------------------------------------------------

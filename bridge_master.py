@@ -105,10 +105,6 @@ from bridge_helpers import (
     obp_target_already_has_inbound,
     OBP_OUTBOUND_ECHO,
     OBP_OUTBOUND_REPLACE,
-    OBP_RATE_DROP_ENABLED,
-    OBP_RATE_DROP_MIN_DURATION,
-    OBP_RATE_DROP_MIN_PACKETS,
-    OBP_RATE_DROP_MAX_PPS,
 )
 # NOTE: 'words' is loaded dynamically via readAMBE() at runtime (see line ~2689)
 #from voice_lib import words
@@ -2528,9 +2524,11 @@ class routerOBP(OPENBRIDGE):
             hr_times = None
             
             if not fi:
-                # No inbound peer yet / race after outbound exclusion — proceed as owner.
-                logger.warning("(%s) OBP UNIT *LoopControl* fi is empty; treating this system as owner. STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
-            elif self._system != fi:
+                logger.warning("(%s) OBP UNIT *LoopControl* fi is empty for some reason : %s, STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
+                self.STATUS[_stream_id]['LAST'] = pkt_time
+                return
+            
+            if self._system != fi:             
                 if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
                     call_duration = pkt_time - self.STATUS[_stream_id]['START']
                     packet_rate = 0
@@ -2732,9 +2730,10 @@ class routerOBP(OPENBRIDGE):
                 hr_times = None
                 
                 if not fi:
-                    # No inbound peer yet / race after outbound exclusion — proceed as owner.
-                    logger.warning("(%s) OBP *LoopControl* fi is empty; treating this system as owner. STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
-                elif self._system != fi:
+                    logger.warning("(%s) OBP *LoopControl* fi is empty for some reason : STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
+                    return
+                
+                if self._system != fi:             
                     if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
                         call_duration = pkt_time - self.STATUS[_stream_id]['START']
                         packet_rate = 0
@@ -2749,20 +2748,10 @@ class routerOBP(OPENBRIDGE):
                         self.STATUS[_stream_id]['_bcsq'] = True
                     return
                 
-                # FreeDMR OBP RATE DROP — discard catch-up bursts (soft-client playout)
-                if OBP_RATE_DROP_ENABLED:
-                    call_duration = pkt_time - self.STATUS[_stream_id]['START']
-                    packet_rate = 0
-                    if call_duration:
-                        packet_rate = self.STATUS[_stream_id]['packets'] / call_duration
-                    if (call_duration >= OBP_RATE_DROP_MIN_DURATION
-                            and self.STATUS[_stream_id]['packets'] > OBP_RATE_DROP_MIN_PACKETS
-                            and packet_rate > OBP_RATE_DROP_MAX_PPS):
-                        logger.warning(
-                            "(%s) *PacketControl* RATE DROP! Stream ID: %s TGID: %s PACKETS: %s DURATION: %.2f RATE: %.2f/s",
-                            self._system, int_id(_stream_id), int_id(_dst_id),
-                            self.STATUS[_stream_id]['packets'], call_duration, packet_rate)
-                        return
+                #Rate drop
+                if self.STATUS[_stream_id]['packets'] > 18 and (self.STATUS[_stream_id]['packets'] / self.STATUS[_stream_id]['START'] > 25):
+                    logger.warning("(%s) *PacketControl* RATE DROP! Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
+                    return
                 
                 #Duplicate handling#
                 #Handle inbound duplicates
@@ -4503,9 +4492,8 @@ if __name__ == '__main__':
     logger.info('(ROUTER) LoopControl fast path: %d OBP systems cached', len(_OBP_SYSTEMS))
 
     def loopingErrHandle(failure):
-        # Log only — do not stop the reactor. Soft timer bugs must not cause
-        # multi-minute TG blackouts (align with hblink.py maintenance errback).
-        logger.error('(GLOBAL) Unhandled error in timed loop.\n %s', failure)
+        logger.error('(GLOBAL) STOPPING REACTOR TO AVOID MEMORY LEAK: Unhandled error in timed loop.\n %s', failure)
+        reactor.stop()
 
     # Initialize the rule timer -- this if for user activated stuff.
     # MUST stay on the reactor: mutates BRIDGES / BRIDGE_IDX. Offloading via

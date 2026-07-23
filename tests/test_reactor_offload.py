@@ -60,17 +60,6 @@ class TestReactorOffloadWiring(unittest.TestCase):
         self.assertIn('list(BRIDGE_IDX.items())', rem)
         self.assertIn('list(BRIDGES.items())', reb)
 
-    def test_looping_err_handle_logs_only(self):
-        """Soft timer failures must not take down the reactor (TG blackouts)."""
-        with open('bridge_master.py', encoding='utf-8') as fh:
-            source = fh.read()
-        start = source.find('def loopingErrHandle(failure):')
-        self.assertGreater(start, 0)
-        end = source.find('\n    # Initialize the rule timer', start)
-        block = source[start:end]
-        self.assertIn('logger.error', block)
-        self.assertNotIn('reactor.stop()', block)
-
     def test_selfcare_schedules_options_config(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
             source = fh.read()

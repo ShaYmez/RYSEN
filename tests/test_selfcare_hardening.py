@@ -114,14 +114,9 @@ class TestHotspotProxyHardening(unittest.TestCase):
 
 class TestStaticKeyupNoise(unittest.TestCase):
 
-    def test_multi_to_foreign_single_is_noise(self):
+    def test_multi_to_single_is_noise(self):
         from bridge_helpers import is_static_field_keyup_noise
         self.assertTrue(is_static_field_keyup_noise('116,235,2350', '69'))
-
-    def test_multi_to_member_single_is_noise(self):
-        """Key-up often collapses multi-static to one of the members (e.g. TG235)."""
-        from bridge_helpers import is_static_field_keyup_noise
-        self.assertTrue(is_static_field_keyup_noise('116,235,2350', '235'))
 
     def test_login_multi_static_is_not_noise(self):
         from bridge_helpers import is_static_field_keyup_noise
@@ -132,7 +127,6 @@ class TestStaticKeyupNoise(unittest.TestCase):
         from bridge_helpers import is_static_field_keyup_noise
         self.assertFalse(is_static_field_keyup_noise('', '2350'))
         self.assertFalse(is_static_field_keyup_noise(False, '2350'))
-        self.assertFalse(is_static_field_keyup_noise('235', '2350'))
 
 
 class TestRouterHbpTimeoutCleanup(unittest.TestCase):
