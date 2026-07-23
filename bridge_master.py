@@ -203,8 +203,12 @@ def _idx_add_bridge(bridge_name):
 
 
 def _idx_remove_bridge(bridge_name):
-    """Remove all BRIDGE_IDX entries that reference *bridge_name*."""
-    empty_keys = [k for k, v in BRIDGE_IDX.items() if bridge_name in v]
+    """Remove all BRIDGE_IDX entries that reference *bridge_name*.
+
+    Snapshot keys first — BRIDGE_IDX must only be mutated on the reactor
+    thread; list() still guards against re-entrant size changes mid-scan.
+    """
+    empty_keys = [k for k, v in list(BRIDGE_IDX.items()) if bridge_name in v]
     for _key in empty_keys:
         BRIDGE_IDX[_key].discard(bridge_name)
         if not BRIDGE_IDX[_key]:
@@ -218,10 +222,15 @@ def _idx_replace_bridge(bridge_name):
 
 
 def rebuild_bridge_index():
-    """Rebuild BRIDGE_IDX from scratch.  Call after bulk BRIDGES mutations."""
+    """Rebuild BRIDGE_IDX from scratch.  Call after bulk BRIDGES mutations.
+
+    Must run on the reactor thread (same as all BRIDGES / BRIDGE_IDX writers).
+    Snapshot BRIDGES.items() so a concurrent size change cannot raise
+    RuntimeError mid-rebuild.
+    """
     global BRIDGE_IDX
     new_idx = {}
-    for _bname, _entries in BRIDGES.items():
+    for _bname, _entries in list(BRIDGES.items()):
         for e in _entries:
             _key = (e['SYSTEM'], e['TS'], e['TGID'])
             if _key not in new_idx:
@@ -1064,8 +1073,10 @@ def rule_timer_loop():
                             _system['SYSTEM'] in _sticky_enabled_systems and
                             not system_has_static_tgs(CONFIG['SYSTEMS'][_system['SYSTEM']])):
                         # Check if any subscriber has this TG as their sticky TG
-                        for _subscriber in SUB_MAP:
+                        for _subscriber in list(SUB_MAP):
                             try:
+                                if _subscriber not in SUB_MAP:
+                                    continue
                                 _sub_peer_id = None
                                 if len(SUB_MAP[_subscriber]) == 5:
                                     _sub_system, _sub_ts, _sub_tg, _sub_time, _sub_peer_id = SUB_MAP[_subscriber]
@@ -1160,8 +1171,7 @@ def rule_timer_loop():
         logger.debug('(ROUTER) Unused conference bridge %s removed',_bridgerem)
 
     if CONFIG['REPORTS']['REPORT']:
-        # rule_timer_loop may run via deferToThread — notify monitor on reactor
-        reactor.callFromThread(report_server.send_clients, b'bridge updated')
+        report_server.send_clients(b'bridge updated')
 
 def statTrimmer():
     logger.debug('(ROUTER) STAT trimmer loop started')
@@ -1190,11 +1200,12 @@ def statTrimmer():
         rebuild_bridge_index()
     repair_static_tgs_all_systems()
     if CONFIG['REPORTS']['REPORT']:
-        reactor.callFromThread(report_server.send_clients, b'bridge updated')
+        report_server.send_clients(b'bridge updated')
 
 def kaReporting():
+    """Read-only KeepAlive age warnings — safe to run via deferToThread."""
     logger.debug('(ROUTER) KeepAlive reporting loop started')
-    for system in systems:
+    for system in list(systems):
         if CONFIG['SYSTEMS'][system]['MODE'] == 'OPENBRIDGE':
             if CONFIG['SYSTEMS'][system]['ENHANCED_OBP']:
                 if '_bcka' not in CONFIG['SYSTEMS'][system]:
@@ -1218,7 +1229,9 @@ def SubMapTrimmer():
     logger.debug('(SUBSCRIBER) Subscriber Map trimmer loop started')
     _sub_time = time()
     _remove_list = deque()
-    for _subscriber in SUB_MAP:
+    for _subscriber in list(SUB_MAP):
+        if _subscriber not in SUB_MAP:
+            continue
         # BACKWARDS COMPATIBILITY: Handle 3, 4, and 5-element formats
         try:
             # Determine timestamp index based on format
@@ -4343,11 +4356,11 @@ if __name__ == '__main__':
         logger.error('(GLOBAL) STOPPING REACTOR TO AVOID MEMORY LEAK: Unhandled error in timed loop.\n %s', failure)
         reactor.stop()
 
-    # Initialize the rule timer -- this if for user activated stuff
-    # ADN-style: run off-reactor so sticky/bridge timeout scans do not starve UDP
-    def _rule_timer_in_thread():
-        return threads.deferToThread(rule_timer_loop)
-    rule_timer_task = task.LoopingCall(_rule_timer_in_thread)
+    # Initialize the rule timer -- this if for user activated stuff.
+    # MUST stay on the reactor: mutates BRIDGES / BRIDGE_IDX. Offloading via
+    # deferToThread raced UDP handlers (RuntimeError: dictionary changed size
+    # during iteration → STOPPING REACTOR / TG blackouts).
+    rule_timer_task = task.LoopingCall(rule_timer_loop)
     rule_timer = rule_timer_task.start(52)
     rule_timer.addErrback(loopingErrHandle)
 
@@ -4395,15 +4408,15 @@ if __name__ == '__main__':
         logger.info('(SELF SERVICE) Hotspot static reconcile poll every %ss',
                     ss.get('POLL_INTERVAL', 5))
         
-    #STAT trimmer - once every 10 mins (roughly - shifted so all timed tasks don't run at once
+    # STAT trimmer — once every ~10 mins (shifted so timed tasks do not align).
+    # MUST stay on the reactor: mutates BRIDGES / BRIDGE_IDX / static repair
+    # (same deferToThread race as rule_timer_loop — confirmed crash on UK/NZ).
     if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:
-        def _stat_trimmer_in_thread():
-            return threads.deferToThread(statTrimmer)
-        stat_trimmer_task = task.LoopingCall(_stat_trimmer_in_thread)
+        stat_trimmer_task = task.LoopingCall(statTrimmer)
         stat_trimmer = stat_trimmer_task.start(523)#3600
         stat_trimmer.addErrback(loopingErrHandle)
         
-    #KA Reporting
+    # KA Reporting — read-only CONFIG / keepalive age checks; safe off-reactor.
     def _ka_reporting_in_thread():
         return threads.deferToThread(kaReporting)
     ka_task = task.LoopingCall(_ka_reporting_in_thread)
