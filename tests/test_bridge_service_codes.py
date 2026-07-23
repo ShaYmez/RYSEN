@@ -5,6 +5,7 @@ import unittest
 from bridge_helpers import (
     is_dial_service_code,
     is_valid_talkgroup_bridge,
+    skip_bridge_idx_routing,
 )
 
 
@@ -35,6 +36,23 @@ class TestIsValidTalkgroupBridge(unittest.TestCase):
     def test_dial_service_code_helper(self):
         self.assertTrue(is_dial_service_code(4000))
         self.assertFalse(is_dial_service_code(23426))
+
+
+class TestSkipBridgeIdxRouting(unittest.TestCase):
+
+    def test_disconnect_and_status_skipped(self):
+        self.assertTrue(skip_bridge_idx_routing(4000))
+        self.assertTrue(skip_bridge_idx_routing(5000))
+        self.assertTrue(skip_bridge_idx_routing('4000'))
+
+    def test_tg9_dial_voice_not_skipped(self):
+        """TG 9 is the dial-a-tg voice channel after PC link — must enter BRIDGE_IDX."""
+        self.assertFalse(skip_bridge_idx_routing(9))
+        self.assertFalse(skip_bridge_idx_routing('9'))
+
+    def test_normal_tg_not_skipped(self):
+        self.assertFalse(skip_bridge_idx_routing(2350))
+        self.assertFalse(skip_bridge_idx_routing(235))
 
 
 class TestBridgeServiceCodeSourcePatterns(unittest.TestCase):
@@ -86,12 +104,18 @@ class TestBridgeServiceCodeSourcePatterns(unittest.TestCase):
             'remove_bridge_system(_system)\n            reapply_static_tgs_for_system(_system)',
             source)
 
-    def test_routing_skips_dial_service_codes(self):
+    def test_routing_skips_only_4000_5000_not_tg9(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
             source = fh.read()
-        self.assertIn('if not is_dial_service_code(_int_dst):', source)
-        self.assertIn('if not is_dial_service_code(int_id(_dst_id)):', source)
-        self.assertIn('if int_id(_dst_id) == 4000:\n                    disconnect_dial_reflectors(self._system)', source)
+        self.assertIn('skip_bridge_idx_routing', source)
+        self.assertIn('if not skip_bridge_idx_routing(_int_dst):', source)
+        self.assertIn('if not skip_bridge_idx_routing(int_id(_dst_id)):', source)
+        # Must not reintroduce the over-broad gate that blocked dial-a-tg TG9 voice
+        self.assertNotIn('if not is_dial_service_code(_int_dst):', source)
+        self.assertNotIn('if not is_dial_service_code(int_id(_dst_id)):', source)
+        self.assertIn(
+            'if int_id(_dst_id) == 4000:\n                    disconnect_dial_reflectors(self._system)',
+            source)
 
     def test_parrot_never_routes_obp(self):
         from bridge_helpers import is_parrot_bridge, PARROT_TG

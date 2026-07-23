@@ -73,6 +73,7 @@ from bridge_helpers import (
     DIAL_A_TG_BYTES,
     PARROT_TG,
     is_dial_service_code,
+    skip_bridge_idx_routing,
     is_invalid_dial_reflector,
     is_parrot_talkgroup,
     is_parrot_bridge,
@@ -2685,8 +2686,9 @@ class routerOBP(OPENBRIDGE):
                     and str(_int_dst) in BRIDGES):
                 activate_ua_bridge_source(str(_int_dst), self._system, _slot, peer_id=_peer_id)
             
-            if not is_dial_service_code(_int_dst):
+            if not skip_bridge_idx_routing(_int_dst):
                 # --- OPTIMISED ROUTING: use BRIDGE_IDX for O(1) lookup instead of O(N*M) full scan ---
+                # TG 9 dial-a-tg voice MUST route here; only 4000/5000 are skipped.
                 _sysIgnore = deque()
                 _lookup_key = (self._system, _slot, _dst_id)
                 _candidate_bridges = BRIDGE_IDX.get(_lookup_key)
@@ -3808,8 +3810,9 @@ class routerHBP(HBSYSTEM):
             #Save this packet
             self.STATUS[_slot]['lastData'] = _data
 
-            if not is_dial_service_code(int_id(_dst_id)):
+            if not skip_bridge_idx_routing(int_id(_dst_id)):
                 # --- OPTIMISED ROUTING: use BRIDGE_IDX for O(1) lookup instead of O(N*M) full scan ---
+                # TG 9 dial-a-tg voice MUST route here; only 4000/5000 are skipped.
                 _sysIgnore = deque()
                 _lookup_key = (self._system, _slot, _dst_id)
                 _candidate_bridges = BRIDGE_IDX.get(_lookup_key)

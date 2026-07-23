@@ -10,6 +10,9 @@ from ipsc_const import is_routing_master
 DIAL_A_TG = 9
 DIAL_A_TG_BYTES = bytes_3(DIAL_A_TG)
 _DIAL_SERVICE_CODES = frozenset([DIAL_A_TG, 4000, 5000])
+# Group TX that must not enter BRIDGE_IDX / to_target (signalling only).
+# TG 9 is intentionally NOT here — it is the dial-a-tg voice channel after link.
+_BRIDGE_IDX_SKIP_DST = frozenset([4000, 5000])
 PARROT_TG = 9990
 _SERVICE_TG_RANGE = range(9991, 10000)
 
@@ -18,6 +21,18 @@ def is_dial_service_code(reflector):
     """TGs reserved for dial-a-tg signalling (channel, disconnect, status) — not link targets."""
     try:
         return int(reflector) in _DIAL_SERVICE_CODES
+    except (TypeError, ValueError):
+        return False
+
+
+def skip_bridge_idx_routing(dst):
+    """True when group RX must bypass BRIDGE_IDX (4000 disconnect / 5000 status).
+
+    Do not include TG 9: after a dial-a-tg PC link, voice is keyed on TG 9 and
+    must hit to_target / paired_group_route_bridge via BRIDGE_IDX.
+    """
+    try:
+        return int(dst) in _BRIDGE_IDX_SKIP_DST
     except (TypeError, ValueError):
         return False
 

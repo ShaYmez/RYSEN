@@ -15,6 +15,7 @@ from bridge_helpers import (
     is_invalid_dial_reflector,
     is_parrot_talkgroup,
     private_call_may_create_reflector,
+    skip_bridge_idx_routing,
     to_target_forward_systems,
 )
 
@@ -88,6 +89,12 @@ class TestDialTg9Guards(unittest.TestCase):
         self.assertTrue(is_dial_service_code(4000))
         self.assertTrue(is_dial_service_code(5000))
         self.assertFalse(is_dial_service_code(2350))
+
+    def test_tg9_still_enters_bridge_idx_routing(self):
+        """ffe5191 over-skipped TG9; voice after dial link must not bypass BRIDGE_IDX."""
+        self.assertFalse(skip_bridge_idx_routing(DIAL_A_TG))
+        self.assertTrue(skip_bridge_idx_routing(4000))
+        self.assertTrue(skip_bridge_idx_routing(5000))
 
     def test_make_single_reflector_guard_blocks_nine(self):
         """make_single_reflector() bails out when is_invalid_dial_reflector (TG 9)."""
