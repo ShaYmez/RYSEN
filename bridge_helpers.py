@@ -492,7 +492,12 @@ def dial_reflector_user_activity_counts(int_dst_id, bridge, group_call=False):
         return False
     linked = reflector_bridge_linked_int(bridge)
     if group_call:
-        return int_dst_id == 9
+        # TG 9 (dial slot) or group PTT on the linked reflector TG both count.
+        if int_dst_id == 9:
+            return True
+        if linked is not None and int_dst_id == linked:
+            return True
+        return False
     if int_dst_id == 5000:
         return True
     if linked is not None and int_dst_id == linked:
