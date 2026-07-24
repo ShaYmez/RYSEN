@@ -11,6 +11,7 @@ Tip = **`fdfbfa2`** + rewritten selfcare/parrot (`5f3f7e1`) + safe bloat cut (`c
 |-----|------|
 | OBP `activate_ua` | Call-start / new-stream only (not every voice frame) |
 | UA key-up notify | Never `BRIDGE_SND` on timer-only UA refresh; notify only on ACTIVE/topology change |
+| OBP empty-fi owner | When LoopControl `fi` is empty, continue as owner (do not hard-drop) — not full `50e2e62` |
 | `BRIDGE_IDX` miss | Rebuild coalesced (≥1s); full-scan fallback always |
 | SC proxy | `MSTCL`×3 on reaper + reset idle timer on master→client DMRD |
 | Diagnostics | ms logs for rebuild / options / report / rule_timer; reporting errback |
@@ -36,6 +37,7 @@ Tip = **`fdfbfa2`** + rewritten selfcare/parrot (`5f3f7e1`) + safe bloat cut (`c
 | `loopingErrHandle` log-only | Avoids TG blackouts |
 | Stretch hot-path package (above) | Align OBP with FreeDMR simplicity; stop proxy RX reap |
 | UA key-up notify gate | Skip BRIDGE_SND on timer-only activate; avoid reactor stall on busy TGs |
+| OBP empty-fi owner only | Continue routing when LoopControl fi empty; do not re-land full `50e2e62` |
 
 ## Ops (UK / Greece)
 

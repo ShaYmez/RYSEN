@@ -55,5 +55,17 @@ class TestReportingErrback(unittest.TestCase):
         self.assertIn('(DIAGNOSTICS) reporting_loop took', source)
 
 
+class TestObpEmptyFiOwner(unittest.TestCase):
+
+    def test_empty_fi_continues_as_owner_not_hard_drop(self):
+        with open('bridge_master.py', encoding='utf-8') as fh:
+            source = fh.read()
+        self.assertIn('fi is empty; treating this system as owner', source)
+        self.assertGreaterEqual(source.count('fi is empty; treating this system as owner'), 2)
+        # Hard-drop on empty fi must be gone (group + unit)
+        self.assertNotIn('fi is empty for some reason', source)
+        self.assertIn('elif self._system != fi:', source)
+
+
 if __name__ == '__main__':
     unittest.main()

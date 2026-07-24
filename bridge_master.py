@@ -2297,11 +2297,10 @@ class routerOBP(OPENBRIDGE):
             hr_times = None
             
             if not fi:
-                logger.warning("(%s) OBP UNIT *LoopControl* fi is empty for some reason : %s, STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
-                self.STATUS[_stream_id]['LAST'] = pkt_time
-                return
-            
-            if self._system != fi:             
+                # No inbound peer yet / race after outbound STATUS without 1ST —
+                # proceed as owner instead of hard-dropping (choppy OBP audio).
+                logger.warning("(%s) OBP UNIT *LoopControl* fi is empty; treating this system as owner. STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
+            elif self._system != fi:
                 if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
                     call_duration = pkt_time - self.STATUS[_stream_id]['START']
                     packet_rate = 0
@@ -2495,10 +2494,10 @@ class routerOBP(OPENBRIDGE):
                 hr_times = None
                 
                 if not fi:
-                    logger.warning("(%s) OBP *LoopControl* fi is empty for some reason : STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
-                    return
-                
-                if self._system != fi:             
+                    # No inbound peer yet / race after outbound STATUS without 1ST —
+                    # proceed as owner instead of hard-dropping (choppy OBP audio).
+                    logger.warning("(%s) OBP *LoopControl* fi is empty; treating this system as owner. STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
+                elif self._system != fi:
                     if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
                         call_duration = pkt_time - self.STATUS[_stream_id]['START']
                         packet_rate = 0
