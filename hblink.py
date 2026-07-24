@@ -849,7 +849,7 @@ class HBSYSTEM(DatagramProtocol):
             self.transport.write(b''.join([MSTCL, peer]),self._CONFIG['SYSTEMS'][self._system]['PEERS'][peer]['SOCKADDR'])
             # Remove any timed out peers from the configuration
             del self._CONFIG['SYSTEMS'][self._system]['PEERS'][peer]
-        if 'PEERS' not in self._CONFIG['SYSTEMS'][self._system] and 'OPTIONS' in self._CONFIG['SYSTEMS'][self._system]:
+        if not self._peers and 'OPTIONS' in self._CONFIG['SYSTEMS'][self._system]:
             
             if '_default_options' in self._CONFIG['SYSTEMS'][self._system]:
                 logger.info('(%s) Setting default Options: %s',self._system, self._CONFIG['SYSTEMS'][self._system]['_default_options'])
@@ -1237,8 +1237,15 @@ class HBSYSTEM(DatagramProtocol):
                     _remaining, _had_disc = apply_selfcare_options(
                         self._system, _peer_id, _opt_str)
                     if _had_disc:
-                        if _remaining:
-                            self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = _remaining
+                        self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = _remaining
+                        _db = self._CONFIG.get('_SELF_SERVICE_DB')
+                        if _db is not None:
+                            _rid = int(int_id(_peer_id))
+                            _save = _db.save_client_options(_rid, _remaining)
+                            _save.addErrback(
+                                lambda f, _rid=_rid: logger.error(
+                                    '(%s) Selfcare DISC options save failed for %s: %s',
+                                    self._system, _rid, f.getErrorMessage()))
                     else:
                         self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = _opt_str
                 except Exception as exc:

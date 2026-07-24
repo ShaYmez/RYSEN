@@ -41,8 +41,8 @@ BRIDGES = {
     #                                                                                                                                        #
     #  PARROT (TG 9990) — uncomment for echo / parrot routing.                                                                               #
     #                                                                                                                                        #
-    #  System-X / GENERATOR > 1: list PARROT only. Do NOT add SYSTEM or SYSTEM-N here — bridge_master adds every generated master slot        #
-    #  after startup and activates the calling SYSTEM-N on direct TG 9990 PTT. Scale GENERATOR (100, 200, 400…) without editing rules.       #
+    #  Group call TG 9990 or private call 9990 → echo back as private to the caller. Never dial-a-tg / TG 9.                                  #
+    #  System-X / GENERATOR > 1: list PARROT only. Do NOT add SYSTEM or SYSTEM-N here — bridge_master keeps parrot fanout slim (caller UA).   #
     #  Use TO_TYPE 'NONE' on PARROT so SINGLE_MODE does not tear down this bridge when dial-a-tg traffic ends on TG 9.                       #
     #  Prefer rules over TS2_STATIC: 9990 in cfg (rules are server-side; static TG is pushed to hotspots via OPTIONS).                         #
     #                                                                                                                                        #

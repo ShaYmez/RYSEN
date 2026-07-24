@@ -238,18 +238,21 @@ Options=TS1_1=23426;TIMER=10;STICKY=1
 
 ---
 
-## Version 1.5.1 (2026-07-07)
+## Version 1.5.1 (2026-07-24)
 
-Selfcare reliability fixes, documentation overhaul, and legacy install cleanup.
+Selfcare reliability rewrite, parrot 9990 private echo, documentation overhaul.
 
 ### Bug fixes
 
-- **DISC=1 remote disconnect** — dashboard/selfcare can disconnect a hotspot or IPSC repeater; applied immediately on RPTO receipt and via MariaDB poll
-- **IPSC selfcare apply** — fix races where settings stuck on "applying"; reconnect delivery regressions fixed
-- **Dial reflector** — stop pairing numeric talkgroups with dial reflectors on group calls
+- **IPSC selfcare reconnect** — `mark_ipsc_options_pending()` re-queues stored MariaDB options on register
+- **DISC=1 one-shot** — strip and persist stripped OPTIONS after apply (IPSC/hotspot poll, HBP RPTO)
+- **Hotspot ping-timeout** — fix empty-peer OPTIONS reset; clear default/dynamic reflectors + SUB_MAP
+- **Stale dial reflectors** — clear TO_TYPE OFF `#` defaults on slot reuse / disconnect
+- **Parrot TG 9990** — group or private call in → private echo out; never OBP / dial-a-tg TG 9; slim MASTER fanout
 
 ### Documentation and maintenance
 
+- Selfcare docs: poll intervals, DISC persist, IPSC vs hotspot apply paths
 - Full doc overhaul: features, architecture, options, selfcare guides
 - Remove legacy install artifacts (hdstack, systemd-scripts, obsolete docker-configs)
 - Move ops scripts to `scripts/`; update credits for Shane Daley M0VUB (ShaYmez)

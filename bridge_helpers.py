@@ -10,6 +10,8 @@ from ipsc_const import is_routing_master
 DIAL_A_TG = 9
 DIAL_A_TG_BYTES = bytes_3(DIAL_A_TG)
 _DIAL_SERVICE_CODES = frozenset([DIAL_A_TG, 4000, 5000])
+PARROT_TG = 9990
+_SERVICE_TG_RANGE = range(9991, 10000)
 
 
 def is_dial_service_code(reflector):
@@ -26,6 +28,23 @@ def is_invalid_dial_reflector(reflector):
         return int(reflector) == DIAL_A_TG
     except (TypeError, ValueError):
         return False
+
+
+def is_parrot_talkgroup(tgid):
+    """TG 9990 — parrot echo (group or private call); never dial-a-tg / TG 9."""
+    try:
+        return int(tgid) == PARROT_TG
+    except (TypeError, ValueError):
+        return False
+
+
+def is_parrot_bridge(bridge_name):
+    """Conference or dial reflector bridge for parrot (never routes via OpenBridge)."""
+    if not bridge_name:
+        return False
+    if bridge_name[0:1] == '#':
+        return is_parrot_talkgroup(bridge_name[1:])
+    return is_parrot_talkgroup(bridge_name)
 
 
 def build_bridge_index(bridges):
@@ -86,11 +105,13 @@ def to_target_forward_systems(bridge_entries, source_system):
 
 def private_call_may_create_reflector(int_dst_id, bridges):
     """True when a private call would invoke make_single_reflector (routerHBP private path)."""
+    if is_parrot_talkgroup(int_dst_id):
+        return False
     if int_dst_id < 5 or int_dst_id in (8, 9) or int_dst_id > 999999:
         return False
     if 4000 <= int_dst_id <= 5000:
         return False
-    if 9991 <= int_dst_id <= 9999:
+    if int_dst_id in _SERVICE_TG_RANGE:
         return False
     return f'#{int_dst_id}' not in bridges
 
@@ -115,6 +136,32 @@ def sanitize_dial_reflectors_for_system(bridges, system):
                 entry['ON'] = [x for x in entry['ON'] if x != DIAL_A_TG_BYTES]
                 changed = True
     return changed
+
+
+def clear_default_reflectors_for_system(bridges, system):
+    """Deactivate TO_TYPE OFF (#) default dial reflector legs for one MASTER.
+
+    Clears stale auto-linked reflectors left on a proxy slot after the prior
+    hotspot disconnects (DEFAULT_REFLECTOR / DIAL / StartRef), without touching
+    user-activated (TO_TYPE ON) links — those are cleared by reset_dynamic_reflectors().
+    """
+    changed = False
+    for bridge_name in bridges:
+        if bridge_name[0:1] != '#':
+            continue
+        if is_dial_service_code(bridge_name[1:]):
+            continue
+        for entry in bridges[bridge_name]:
+            if entry['SYSTEM'] != system:
+                continue
+            if entry.get('TO_TYPE') != 'OFF':
+                continue
+            if entry.get('ACTIVE'):
+                entry['ACTIVE'] = False
+                entry['TIMER'] = time.time()
+                changed = True
+    return changed
+
 
 _IPSC_LINK_KEYS = frozenset(['IPSC', 'LINK_IPSC'])
 _SELFCARE_DISC_TRUTHY = frozenset(('1', 'true', 'yes'))
@@ -368,7 +415,12 @@ def dial_reflector_user_activity_counts(int_dst_id, bridge, group_call=False):
         return False
     linked = reflector_bridge_linked_int(bridge)
     if group_call:
-        return int_dst_id == 9
+        # TG 9 (dial slot) or group PTT on the linked reflector TG both count.
+        if int_dst_id == 9:
+            return True
+        if linked is not None and int_dst_id == linked:
+            return True
+        return False
     if int_dst_id == 5000:
         return True
     if linked is not None and int_dst_id == linked:
