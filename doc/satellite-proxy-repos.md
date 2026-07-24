@@ -10,11 +10,12 @@ Publish-only repos build slim Docker images; **all proxy development stays in RY
 
 ## Flow
 
-1. Edit proxy code in RYSEN on **`master`** (e.g. `hotspot_proxy_v2.py`).
+1. Edit proxy code in RYSEN on **`master`** (e.g. `hotspot_proxy_v2_sc.py` for selfcare).
 2. Push to RYSEN → **Sync satellite proxy repos** runs (path-filtered).
 3. Workflow calls `repository_dispatch` on the satellite repo(s) with `ref` = branch pushed.
 4. Satellite **Sync from RYSEN** copies files into `sync/`, commits if changed, pushes.
-5. Satellite **Build** workflow runs tests, then pushes the Docker image.
+5. Satellite sync then **`workflow_dispatch`es Build** (required: pushes made with `GITHUB_TOKEN` do **not** fire `on.push` builds — otherwise Hub images go stale while `sync/` is current).
+6. Satellite **Build** runs tests, then pushes the Docker image.
 
 ## One-time setup (RYSEN)
 
