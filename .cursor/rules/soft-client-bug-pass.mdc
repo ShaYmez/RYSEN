@@ -10,6 +10,7 @@ Tip = **`fdfbfa2`** + rewritten selfcare/parrot (`5f3f7e1`) + safe bloat cut (`c
 | Fix | What |
 |-----|------|
 | OBP `activate_ua` | Call-start / new-stream only (not every voice frame) |
+| UA key-up notify | Never `BRIDGE_SND` on timer-only UA refresh; notify only on ACTIVE/topology change |
 | `BRIDGE_IDX` miss | Rebuild coalesced (≥1s); full-scan fallback always |
 | SC proxy | `MSTCL`×3 on reaper + reset idle timer on master→client DMRD |
 | Diagnostics | ms logs for rebuild / options / report / rule_timer; reporting errback |
@@ -34,6 +35,7 @@ Tip = **`fdfbfa2`** + rewritten selfcare/parrot (`5f3f7e1`) + safe bloat cut (`c
 | DIAL/StartRef=9 OPTIONS sanitize | Stops 26s OPTIONS thrash |
 | `loopingErrHandle` log-only | Avoids TG blackouts |
 | Stretch hot-path package (above) | Align OBP with FreeDMR simplicity; stop proxy RX reap |
+| UA key-up notify gate | Skip BRIDGE_SND on timer-only activate; avoid reactor stall on busy TGs |
 
 ## Ops (UK / Greece)
 

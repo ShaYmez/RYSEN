@@ -485,7 +485,6 @@ def activate_ua_bridge_source(bridge_name, system, slot, tmout=None, peer_id=Non
         tmout = 1
     _timeout_s = tmout * 60
     _changed = False
-    _ua_refreshed = False
 
     # Parrot bridges are not pre-filled with every master — ensure the caller has a UA leg.
     if is_parrot_bridge(bridge_name):
@@ -514,23 +513,30 @@ def activate_ua_bridge_source(bridge_name, system, slot, tmout=None, peer_id=Non
                 _entry['ACTIVE'] = True
                 _changed = True
                 logger.info('(ROUTER) Bridge %s activated for %s TS%s', bridge_name, system, slot)
+            # Always refresh TIMER locally; do not BRIDGE_SND on timer-only refresh —
+            # pickle stalls the reactor under busy listen key-ups on active TGs.
             _entry['TIMER'] = time() + _timeout_s
-            if _entry.get('TO_TYPE') == 'ON':
-                _ua_refreshed = True
-    _activate_linked_ipsc_legs(bridge_name, system, slot, _timeout_s, peer_id)
-    if _changed or _ua_refreshed:
+    if _activate_linked_ipsc_legs(bridge_name, system, slot, _timeout_s, peer_id):
+        _changed = True
+    # Notify monitor only on real ACTIVE/topology change (not every PTT timer bump).
+    if _changed:
         notify_bridge_table_updated()
     return _changed
 
 
 def _activate_linked_ipsc_legs(bridge_name, source_system, slot, timeout_s, peer_id=None):
-    """Optionally wake linked IPSC slot(s) when a hotspot keys a UA bridge (OPTIONS IPSC=)."""
+    """Optionally wake linked IPSC slot(s) when a hotspot keys a UA bridge (OPTIONS IPSC=).
+
+    Returns True if any linked leg was newly activated (idle→active).
+    """
     from bridge_helpers import activate_linked_bridge_legs
     _now = time()
-    for _target in activate_linked_bridge_legs(
-            BRIDGES, CONFIG['SYSTEMS'], bridge_name, source_system, slot, timeout_s, _now, peer_id):
+    _activated = activate_linked_bridge_legs(
+            BRIDGES, CONFIG['SYSTEMS'], bridge_name, source_system, slot, timeout_s, _now, peer_id)
+    for _target in _activated:
         logger.info('(ROUTER) Bridge %s linked leg activated: %s TS%s (source %s)',
                     bridge_name, _target, slot, source_system)
+    return bool(_activated)
 
 
 #Make a single bridge - used for on-the-fly UA bridges
