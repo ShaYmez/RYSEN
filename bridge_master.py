@@ -144,14 +144,23 @@ def config_reports(_config, _factory):
     if True: #_config['REPORTS']['REPORT']:
         def reporting_loop(logger, _server):
             logger.debug('(REPORT) Periodic reporting loop started')
+            _t0 = time()
             _server.send_config()
             _server.send_bridge()
+            _elapsed_ms = (time() - _t0) * 1000.0
+            if _elapsed_ms >= 50.0:
+                logger.info(
+                    '(DIAGNOSTICS) reporting_loop took %.1fms (bridges=%d idx_keys=%d)',
+                    _elapsed_ms, len(BRIDGES), len(BRIDGE_IDX))
             i = 0
             for system in CONFIG['SYSTEMS']:
                 if 'PEERS' in CONFIG['SYSTEMS'][system] and CONFIG['SYSTEMS'][system]['PEERS']:
                     i = i +1
             logger.info('(REPORT) %s systems have at least one peer',i)
             logger.info('(REPORT) Subscriber Map has %s entries',len(SUB_MAP))
+
+        def _reporting_errback(failure):
+            logger.error('(REPORT) Unhandled error in reporting loop.\n %s', failure)
             
         logger.info('(REPORT) HBlink TCP reporting server configured')
 
@@ -160,7 +169,7 @@ def config_reports(_config, _factory):
         reactor.listenTCP(_config['REPORTS']['REPORT_PORT'], report_server)
 
         reporting = task.LoopingCall(reporting_loop, logger, report_server)
-        reporting.start(_config['REPORTS']['REPORT_INTERVAL'])
+        reporting.start(_config['REPORTS']['REPORT_INTERVAL']).addErrback(_reporting_errback)
 
     return report_server
 
@@ -188,6 +197,10 @@ _ROUTE_STATS_NEXT_LOG = [0.0]        # mutable list so inner functions can write
 # Reactor-lag diagnostics
 _REACTOR_LAG_INTERVAL = 5.0          # expected loop-call interval (seconds)
 _REACTOR_LAG_LAST = [None]           # timestamp of last check
+
+# Coalesce hot-path full index rebuilds so a miss storm cannot rebuild once per packet.
+_BRIDGE_IDX_REBUILD_MIN_INTERVAL_S = 1.0
+_BRIDGE_IDX_LAST_REBUILD = [0.0]
 
 
 def _idx_add_bridge(bridge_name):
@@ -217,6 +230,7 @@ def _idx_replace_bridge(bridge_name):
 def rebuild_bridge_index():
     """Rebuild BRIDGE_IDX from scratch.  Call after bulk BRIDGES mutations."""
     global BRIDGE_IDX
+    _t0 = time()
     new_idx = {}
     for _bname, _entries in BRIDGES.items():
         for e in _entries:
@@ -225,8 +239,33 @@ def rebuild_bridge_index():
                 new_idx[_key] = set()
             new_idx[_key].add(_bname)
     BRIDGE_IDX = new_idx
-    logger.debug('(ROUTER) BRIDGE_IDX rebuilt: %d keys across %d bridges',
-                 len(BRIDGE_IDX), len(BRIDGES))
+    _BRIDGE_IDX_LAST_REBUILD[0] = time()
+    _elapsed_ms = (_BRIDGE_IDX_LAST_REBUILD[0] - _t0) * 1000.0
+    if _elapsed_ms >= 20.0:
+        logger.info(
+            '(DIAGNOSTICS) BRIDGE_IDX rebuild took %.1fms: %d keys / %d bridges',
+            _elapsed_ms, len(BRIDGE_IDX), len(BRIDGES))
+    else:
+        logger.debug('(ROUTER) BRIDGE_IDX rebuilt: %d keys across %d bridges',
+                     len(BRIDGE_IDX), len(BRIDGES))
+
+
+def _maybe_rebuild_bridge_index_on_miss(system_name, slot, dst_id):
+    """Full-scan fallback always; coalesce rebuilds during miss storms."""
+    _ROUTE_STATS['index_misses'] += 1
+    _ROUTE_STATS['fallbacks'] += 1
+    _now = time()
+    if (_now - _BRIDGE_IDX_LAST_REBUILD[0]) >= _BRIDGE_IDX_REBUILD_MIN_INTERVAL_S:
+        logger.warning(
+            '(%s) BRIDGE_IDX miss for key (%s, %s, %s) '
+            '- falling back to full scan and rebuilding index',
+            system_name, system_name, slot, int_id(dst_id))
+        rebuild_bridge_index()
+    else:
+        logger.warning(
+            '(%s) BRIDGE_IDX miss for key (%s, %s, %s) '
+            '- falling back to full scan (rebuild throttled)',
+            system_name, system_name, slot, int_id(dst_id))
 
 
 def reactorLagCheck():
@@ -959,6 +998,7 @@ def notify_bridge_table_updated():
 # Run this every minute for rule timer updates
 def rule_timer_loop():
     logger.debug('(ROUTER) routerHBP Rule timer loop started')
+    _t0 = time()
     _now = time()
     _remove_bridges = deque()
 
@@ -1092,6 +1132,12 @@ def rule_timer_loop():
 
     if CONFIG['REPORTS']['REPORT']:
         report_server.send_clients(b'bridge updated')
+
+    _elapsed_ms = (time() - _t0) * 1000.0
+    if _elapsed_ms >= 50.0:
+        logger.info(
+            '(DIAGNOSTICS) rule_timer_loop took %.1fms (bridges=%d idx_keys=%d)',
+            _elapsed_ms, len(BRIDGES), len(BRIDGE_IDX))
 
 def statTrimmer():
     logger.debug('(ROUTER) STAT trimmer loop started')
@@ -1490,6 +1536,7 @@ def ident():
 
 def options_config():
     logger.debug('(OPTIONS) Running options parser')
+    _t0 = time()
     for _system in CONFIG['SYSTEMS']:
         if '_reset' in  CONFIG['SYSTEMS'][_system] and CONFIG['SYSTEMS'][_system]['_reset']:
             logger.debug('(OPTIONS) Bridge reset for %s - no peers',_system)
@@ -1791,6 +1838,12 @@ def options_config():
         except Exception as e:
             logger.exception('(OPTIONS) caught exception: %s',e)
             continue
+
+    _elapsed_ms = (time() - _t0) * 1000.0
+    if _elapsed_ms >= 50.0:
+        logger.info(
+            '(DIAGNOSTICS) options_config took %.1fms (bridges=%d idx_keys=%d)',
+            _elapsed_ms, len(BRIDGES), len(BRIDGE_IDX))
 
 
 _selfcare_db = None
@@ -2354,7 +2407,8 @@ class routerOBP(OPENBRIDGE):
                     
         if _call_type == 'group' or _call_type == 'vcsbk':
             # Is this a new call stream?
-            if (_stream_id not in self.STATUS):
+            _obp_new_stream = (_stream_id not in self.STATUS)
+            if _obp_new_stream:
                 
                 # This is a new call stream
                 self.STATUS[_stream_id] = {
@@ -2507,13 +2561,15 @@ class routerOBP(OPENBRIDGE):
                     logger.debug('(%s) Bridge for STAT TG %s does not exist. Creating',self._system, int_id(_dst_id))
                     make_stat_bridge(_dst_id)
 
-            # Activate this OBP leg on an existing conference bridge (same as HBP on call start)
-            _int_dst = int_id(_dst_id)
-            if (_int_dst >= 5 and _int_dst != 9 and _int_dst not in (4000, 5000)
-                    and not is_parrot_talkgroup(_int_dst)
-                    and not (_int_dst >= 9991 and _int_dst <= 9999)
-                    and str(_int_dst) in BRIDGES):
-                activate_ua_bridge_source(str(_int_dst), self._system, _slot, peer_id=_peer_id)
+            # Activate OBP UA leg once per call (parity with HBP / FreeDMR hot path —
+            # never every voice frame; that burned reactor CPU under busy OBP).
+            if _obp_new_stream:
+                _int_dst = int_id(_dst_id)
+                if (_int_dst >= 5 and _int_dst != 9 and _int_dst not in (4000, 5000)
+                        and not is_parrot_talkgroup(_int_dst)
+                        and not (_int_dst >= 9991 and _int_dst <= 9999)
+                        and str(_int_dst) in BRIDGES):
+                    activate_ua_bridge_source(str(_int_dst), self._system, _slot, peer_id=_peer_id)
             
             # --- OPTIMISED ROUTING: use BRIDGE_IDX for O(1) lookup instead of O(N*M) full scan ---
             _sysIgnore = deque()
@@ -2521,14 +2577,7 @@ class routerOBP(OPENBRIDGE):
             _candidate_bridges = BRIDGE_IDX.get(_lookup_key)
             _ROUTE_STATS['packets'] += 1
             if _candidate_bridges is None:
-                # Index miss - fall back to full scan and schedule a rebuild.
-                # This should never happen in normal operation; log at WARNING.
-                logger.warning('(%s) OBP BRIDGE_IDX miss for key (%s, %s, %s) '
-                               '- falling back to full scan and rebuilding index',
-                               self._system, self._system, _slot, int_id(_dst_id))
-                _ROUTE_STATS['index_misses'] += 1
-                _ROUTE_STATS['fallbacks'] += 1
-                rebuild_bridge_index()
+                _maybe_rebuild_bridge_index_on_miss(self._system, _slot, _dst_id)
                 _candidate_bridges = BRIDGE_IDX.get(_lookup_key, set())
                 # Full-scan fallback for safety
                 for _bridge in BRIDGES:
@@ -3646,14 +3695,7 @@ class routerHBP(HBSYSTEM):
             _candidate_bridges = BRIDGE_IDX.get(_lookup_key)
             _ROUTE_STATS['packets'] += 1
             if _candidate_bridges is None:
-                # Index miss - fall back to full scan and schedule a rebuild.
-                # This should never happen in normal operation; log at WARNING.
-                logger.warning('(%s) HBP BRIDGE_IDX miss for key (%s, %s, %s) '
-                               '- falling back to full scan and rebuilding index',
-                               self._system, self._system, _slot, int_id(_dst_id))
-                _ROUTE_STATS['index_misses'] += 1
-                _ROUTE_STATS['fallbacks'] += 1
-                rebuild_bridge_index()
+                _maybe_rebuild_bridge_index_on_miss(self._system, _slot, _dst_id)
                 _candidate_bridges = BRIDGE_IDX.get(_lookup_key, set())
                 # Full-scan fallback for safety
                 for _bridge in BRIDGES:
@@ -3892,8 +3934,14 @@ class bridgeReportFactory(reportFactory):
         return safe_bridges
 
     def send_bridge(self):
+        _t0 = time()
         serialized = pickle.dumps(self._safe_bridges_payload(), protocol=2) #.decode("utf-8", errors='ignore')
         self.send_clients(b''.join([REPORT_OPCODES['BRIDGE_SND'],serialized]))
+        _elapsed_ms = (time() - _t0) * 1000.0
+        if _elapsed_ms >= 50.0:
+            logger.info(
+                '(DIAGNOSTICS) send_bridge took %.1fms (payload=%d bytes, bridges=%d)',
+                _elapsed_ms, len(serialized), len(BRIDGES))
 
     def send_bridgeEvent(self, _data):
         if isinstance(_data, str):

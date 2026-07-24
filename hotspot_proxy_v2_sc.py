@@ -103,6 +103,10 @@ class Proxy(DatagramProtocol):
         _dport = _peer.get('dport')
         if _dport in self.connTrack:
             self.transport.write(b'RPTCL'+_peer_id, (self.master, _dport))
+            # Tell client we closed the session (parity with hotspot_proxy_v2)
+            self.transport.write(b'MSTCL', (_peer['shost'], _peer['sport']))
+            self.transport.write(b'MSTCL', (_peer['shost'], _peer['sport']))
+            self.transport.write(b'MSTCL', (_peer['shost'], _peer['sport']))
             self.connTrack[_dport] = False
         if self.selfserv:
             self.db_proxy.updt_tbl('log_out', _peer_id)
@@ -186,6 +190,14 @@ class Proxy(DatagramProtocol):
                 print(data)
             if _peer_id is not None and _peer_id in self.peerTrack:
                 self.transport.write(data,(self.peerTrack[_peer_id]['shost'],self.peerTrack[_peer_id]['sport']))
+                # Keep RX-heavy soft clients alive while master→client voice flows
+                if _command == DMRD:
+                    _timer = self.peerTrack[_peer_id].get('timer')
+                    if _timer is not None:
+                        try:
+                            _timer.reset(self.timeout)
+                        except Exception:
+                            pass
             return
 
         else:

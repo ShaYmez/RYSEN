@@ -1,0 +1,40 @@
+---
+description: Soft-client stretch — tip-safe hot-path fixes (OBP activate gate, idx miss throttle, SC proxy reaper)
+alwaysApply: true
+---
+
+# Soft-client / stretch notes
+
+Tip = **`fdfbfa2`** + rewritten selfcare/parrot (`5f3f7e1`) + safe bloat cut (`c385a76`) + **stretch hot-path package**:
+
+| Fix | What |
+|-----|------|
+| OBP `activate_ua` | Call-start / new-stream only (not every voice frame) |
+| `BRIDGE_IDX` miss | Rebuild coalesced (≥1s); full-scan fallback always |
+| SC proxy | `MSTCL`×3 on reaper + reset idle timer on master→client DMRD |
+| Diagnostics | ms logs for rebuild / options / report / rule_timer; reporting errback |
+
+## Do not re-land without explicit user ask
+
+| Item | Was tried |
+|------|-----------|
+| OBP mesh hygiene | `bcbfdfd` — stretch returned |
+| Leftovers (RATE DROP / empty-fi / keyup) | `50e2e62` — stretch returned |
+| Reactor `deferToThread` offload | `9b07fb2` non-parrot half |
+| `GEN_STAT_BRIDGES: False` on UK/USA | USA unstable under OBP; leave True |
+
+## Keep (on tip)
+
+| Item | Why |
+|------|-----|
+| Selfcare four (rewrite) | dial clear, IPSC requeue, DISC persist, ping-timeout |
+| Parrot 9990 private echo | group/PC in → private out; never TG9/OBP; slim fanout |
+| Lazy `make_stat_bridge` + `_ensure_master_on_legs` | Cuts BRIDGE_IDX explosion |
+| Slim `BRIDGE_SND` report legs | Less reactor pickle work |
+| DIAL/StartRef=9 OPTIONS sanitize | Stops 26s OPTIONS thrash |
+| `loopingErrHandle` log-only | Avoids TG blackouts |
+| Stretch hot-path package (above) | Align OBP with FreeDMR simplicity; stop proxy RX reap |
+
+## Ops (UK / Greece)
+
+Keep SYSTEM `GENERATOR` modest and proxy `DESTPORTEND` matched. Soft stretch = late/bursty HBP into client jitter (same TX as MMDVM). Correlate `(DIAGNOSTICS) Reactor lag` vs proxy `Removed`/`New client`. Retest BlueDV/Peanut/DVSwitch on local TG and 235/116 after deploy.
