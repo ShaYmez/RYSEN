@@ -85,13 +85,10 @@ from bridge_helpers import (
     sanitize_invalid_default_reflector_options,
     deactivate_linked_ipsc_bridge_legs,
     paired_group_route_bridge,
-<<<<<<< HEAD
+    clear_default_reflectors_for_system,
     STAT_TRIMMER_INTERVAL_S,
     report_include_bridge_leg,
     build_report_bridge_leg,
-=======
-    clear_default_reflectors_for_system,
->>>>>>> d7e9ac2 (Fix stale dial-a-tg default reflectors on hotspot slot reuse.)
 )
 # NOTE: 'words' is loaded dynamically via readAMBE() at runtime (see line ~2689)
 #from voice_lib import words
