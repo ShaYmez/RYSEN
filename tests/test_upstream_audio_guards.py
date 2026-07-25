@@ -37,6 +37,8 @@ class TestPacketControlSourceGuards(unittest.TestCase):
             cls.legacy_bridge_source = fh.read()
         with open('ipsc_proxy.py', encoding='utf-8') as fh:
             cls.ipsc_proxy_source = fh.read()
+        with open('ipsc_master.py', encoding='utf-8') as fh:
+            cls.ipsc_master_source = fh.read()
 
     def test_hbp_new_stream_resets_duplicate_state(self):
         hbp_start = self.bridge_source.index('class routerHBP')
@@ -93,6 +95,68 @@ class TestPacketControlSourceGuards(unittest.TestCase):
     def test_raw_repeat_has_order_gate(self):
         self.assertIn('self._repeat_seq = {}', self.hblink_source)
         self.assertIn("and _repeat_ok:", self.hblink_source)
+        self.assertIn('_repeat_vhead_restart', self.hblink_source)
+        self.assertIn('if len(self._repeat_seq) > 1024:', self.hblink_source)
+        self.assertIn('and _repeat_ok\n', self.hblink_source)
+
+    def test_generation_restarts_propagate_to_target_state(self):
+        self.assertGreaterEqual(
+            self.bridge_source.count('_new_generation=False'), 2)
+        self.assertGreaterEqual(
+            self.bridge_source.count('_target_generation_changed'), 2)
+        self.assertGreaterEqual(
+            self.bridge_source.count(', _hbp_new_stream)'), 4)
+        self.assertGreaterEqual(
+            self.bridge_source.count(', _obp_new_stream)'), 2)
+        self.assertGreaterEqual(
+            self.bridge_source.count("'TARGET_LC': {}"), 2)
+        self.assertGreaterEqual(
+            self.bridge_source.count(
+                "_target_lc_map[_target['TGID']]"), 2)
+
+    def test_stale_hbp_terminators_are_rejected_before_routing(self):
+        stale_guard = self.bridge_source.index('Ignoring stale VTERM')
+        route = self.bridge_source.index(
+            '# --- OPTIMISED ROUTING:', stale_guard)
+        self.assertLess(stale_guard, route)
+        self.assertIn(
+            "if self.STATUS[_slot]['RX_TYPE'] == HBPF_SLT_VTERM:",
+            self.bridge_source)
+        self.assertIn('_is_tombstoned_term(', self.bridge_source)
+        self.assertGreaterEqual(
+            self.bridge_source.count('_remember_term('), 3)
+        self.assertIn(
+            'def _is_tombstoned_term(key, data, now, sequence_expected=False):',
+            self.bridge_source)
+        self.assertIn('if sequence_expected:', self.bridge_source)
+        self.assertIn('_hbp_sequence_expected', self.bridge_source)
+        self.assertIn('_obp_sequence_expected', self.bridge_source)
+
+    def test_claim_is_set_only_after_sequence_acceptance(self):
+        packet_control = self.bridge_source.index(
+            '#Duplicate handling#',
+            self.bridge_source.index('class routerHBP'))
+        claim_update = self.bridge_source.index(
+            '_set_hbp_stream_claim(', packet_control)
+        last_data = self.bridge_source.index(
+            "self.STATUS[_slot]['lastData'] = _data", packet_control)
+        self.assertGreater(claim_update, last_data)
+        self.assertIn(
+            'if _now - _claim[2] >= _HBP_CLAIM_TIMEOUT_S:',
+            self.bridge_source)
+
+    def test_every_successful_target_is_deduplicated(self):
+        self.assertEqual(
+            self.bridge_source.count('_sysIgnore.append(_ignore_key)'), 2)
+        self.assertNotIn(
+            "if _target_system['MODE'] == 'OPENBRIDGE':\n"
+            "                    _sysIgnore.append(_ignore_key)",
+            self.bridge_source)
+
+    def test_obp_completion_does_not_depend_on_reporting(self):
+        self.assertEqual(
+            self.bridge_source.count(
+                "self.STATUS[_stream_id]['_fin'] = True"), 1)
 
     def test_legacy_bridge_entrypoint_has_audio_parity(self):
         self.assertEqual(
@@ -100,7 +164,17 @@ class TestPacketControlSourceGuards(unittest.TestCase):
         self.assertGreaterEqual(
             self.legacy_bridge_source.count('_tx_dmrpkt = dmrpkt'), 4)
         self.assertIn(
-            "if (_target_status[_target['TS']]['TX_STREAM_ID'] != _stream_id):",
+            "_target_status[_target['TS']]['TX_STREAM_ID'] != _stream_id",
+            self.legacy_bridge_source)
+        self.assertGreaterEqual(
+            self.legacy_bridge_source.count('_target_generation_changed'), 2)
+        self.assertIn('_OPENBRIDGE_SYSTEMS = set()',
+                      self.legacy_bridge_source)
+        self.assertGreaterEqual(
+            self.legacy_bridge_source.count(
+                'for system in _OPENBRIDGE_SYSTEMS:'), 2)
+        self.assertIn(
+            'for _claim_key, _claim in list(_HBP_STREAM_CLAIMS.items()):',
             self.legacy_bridge_source)
         self.assertIsNone(re.search(
             r'(?<!_tx_)dmrpkt = dmrbits\.tobytes\(\)',
@@ -135,10 +209,15 @@ class TestPacketControlSourceGuards(unittest.TestCase):
         self.assertIn("Stale DMRF packet discarded", self.hblink_source)
 
     def test_canned_audio_uses_reactor_backpressure(self):
-        self.assertIn('from twisted.internet.threads import blockingCallFromThread',
+        self.assertIn('from threading import Event', self.bridge_source)
+        self.assertIn("if not getattr(reactor, 'running', False):",
+                      self.bridge_source)
+        self.assertIn('return done.wait(1.0) and sent[0]',
                       self.bridge_source)
         self.assertNotIn(
             'reactor.callFromThread(sendVoicePacket', self.bridge_source)
+        self.assertIn('_bounded_reactor_call(', self.ipsc_master_source)
+        self.assertNotIn('blockingCallFromThread', self.ipsc_master_source)
 
 
 if __name__ == '__main__':

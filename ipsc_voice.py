@@ -147,11 +147,10 @@ _MAX_DELIVERY_BACKLOG = 12  # two DMR superframes / 720 ms
 
 
 def _paced_next_deadline(previous, now):
-    """Keep an absolute 60 ms cadence without burst-catching a full-slot stall."""
-    deadline = previous + SLOT_INTERVAL_S
-    if now - deadline >= SLOT_INTERVAL_S:
+    """Keep a 60 ms cadence without compressing packets after any late callback."""
+    if now > previous:
         return now + SLOT_INTERVAL_S
-    return deadline
+    return previous + SLOT_INTERVAL_S
 
 
 def _dmrd_voice_position(flags):

@@ -20,7 +20,8 @@ class TestIpscOutbound(unittest.TestCase):
     MASTER_ID = 9999999
 
     def test_paced_deadline_does_not_accumulate_callback_cost(self):
-        self.assertAlmostEqual(_paced_next_deadline(1.000, 1.005), 1.060)
+        self.assertAlmostEqual(_paced_next_deadline(1.000, 1.005), 1.065)
+        self.assertAlmostEqual(_paced_next_deadline(1.000, 1.119), 1.179)
         self.assertAlmostEqual(_paced_next_deadline(1.000, 1.121), 1.181)
 
     def _make_head_packet(self):

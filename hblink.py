@@ -1104,6 +1104,19 @@ class HBSYSTEM(DatagramProtocol):
                     _repeat_now = time()
                     if _repeat_state is not None:
                         _repeat_delta = dmr_seq_delta(_seq, _repeat_state['seq'])
+                        _repeat_identity_changed = (
+                            _repeat_state.get('rf_src') != _rf_src
+                            or _repeat_state.get('dst_id') != _dst_id)
+                        _repeat_vhead_restart = (
+                            _frame_type == HBPF_DATA_SYNC
+                            and _dtype_vseq == HBPF_SLT_VHEAD
+                            and (_repeat_now - _repeat_state['time'] >= STREAM_TO
+                                 or (_repeat_delta is not None
+                                     and _repeat_delta > 127)))
+                        if _repeat_identity_changed or _repeat_vhead_restart:
+                            _repeat_state = None
+                            _repeat_delta = None
+                    if _repeat_state is not None:
                         if (_data == _repeat_state['data']
                                 or _repeat_delta == 0
                                 or (_repeat_delta is not None and _repeat_delta > 127
@@ -1111,12 +1124,19 @@ class HBSYSTEM(DatagramProtocol):
                             _repeat_ok = False
                     if _repeat_ok:
                         self._repeat_seq[_repeat_key] = {
-                            'seq': _seq, 'data': _data, 'time': _repeat_now}
+                            'seq': _seq, 'data': _data, 'time': _repeat_now,
+                            'rf_src': _rf_src, 'dst_id': _dst_id}
                         if len(self._repeat_seq) > 1024:
                             self._repeat_seq = {
                                 key: value for key, value in self._repeat_seq.items()
                                 if _repeat_now - value['time'] < STREAM_TO
                             }
+                            if len(self._repeat_seq) > 1024:
+                                _oldest = sorted(
+                                    self._repeat_seq,
+                                    key=lambda key: self._repeat_seq[key]['time'])
+                                for key in _oldest[:-1024]:
+                                    self._repeat_seq.pop(key, None)
 
                 # The basic purpose of a master is to repeat to the peers
                 if _repeat_enabled and _repeat_ok:
@@ -1126,7 +1146,8 @@ class HBSYSTEM(DatagramProtocol):
                             pkt[1] = _peer
                             self.transport.write(b''.join(pkt), self._peers[_peer]['SOCKADDR'])
                             #logger.debug('(%s) Packet on TS%s from %s (%s) for destination ID %s repeated to peer: %s (%s) [Stream ID: %s]', self._system, _slot, self._peers[_peer_id]['CALLSIGN'], int_id(_peer_id), int_id(_dst_id), self._peers[_peer]['CALLSIGN'], int_id(_peer), int_id(_stream_id))
-                if (_repeat_enabled and _frame_type == HBPF_DATA_SYNC
+                if (_repeat_enabled and _repeat_ok
+                        and _frame_type == HBPF_DATA_SYNC
                         and _dtype_vseq == HBPF_SLT_VTERM):
                     self._repeat_seq.pop(_repeat_key, None)
 

@@ -14,10 +14,10 @@ import socket
 import struct
 from collections import deque
 from hashlib import sha1
+from threading import Event
 from time import sleep, time
 
 from twisted.internet import reactor
-from twisted.internet.threads import blockingCallFromThread
 
 from dmr_utils3.utils import int_id
 
@@ -38,6 +38,23 @@ from ipsc_const import (
 from ipsc_peer_meta import parse_ipsc_peer_status, ipsc_peer_display_fields
 from ipsc_voice import IpscVoiceTranslator
 from selfcare_db import build_ipsc_seed_options
+
+
+def _bounded_reactor_call(callable_, *args):
+    """Run on the reactor with backpressure but never hang worker shutdown."""
+    if not getattr(reactor, 'running', False):
+        return False
+    done = Event()
+    result = [False]
+
+    def _invoke():
+        try:
+            result[0] = callable_(*args)
+        finally:
+            done.set()
+
+    reactor.callFromThread(_invoke)
+    return result[0] if done.wait(1.0) else False
 
 
 class IpscMasterMixin:
@@ -535,8 +552,11 @@ class IpscMasterMixin:
             except StopIteration:
                 break
             sleep(0.058)
-            if blockingCallFromThread(reactor, self._ipsc_send_reflector_dmrd, pkt, peer_id):
+            if _bounded_reactor_call(
+                    self._ipsc_send_reflector_dmrd, pkt, peer_id):
                 sent += 1
+            else:
+                return
         if generation != self._reflector_speech_gen:
             return
         if sent:

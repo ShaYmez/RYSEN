@@ -13,9 +13,10 @@ class TestTargetOwnedStreamState(unittest.TestCase):
 
     def test_hbp_tx_lc_regen_uses_target_stream(self):
         self.assertIn(
-            "if (_target_status[_target['TS']]['TX_STREAM_ID'] != _stream_id):",
+            "_target_status[_target['TS']]['TX_STREAM_ID'] != _stream_id",
             self.source,
         )
+        self.assertIn('_new_generation', self.source)
 
     def test_hbp_tx_lc_regen_does_not_use_source_stream(self):
         # Source RX can advance while a destination rejects early frames during
