@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Soft-client / stretch notes
 
-Tip = **`fdfbfa2`** + rewritten selfcare/parrot (`5f3f7e1`) + safe bloat cut (`c385a76`) + **stretch hot-path package** + **tip stability bug pass**:
+Tip = **`fdfbfa2`** + rewritten selfcare/parrot (`5f3f7e1`) + safe bloat cut (`c385a76`) + **stretch hot-path package** + **tip stability bug pass** + **audio root-cause package**:
 
 | Fix | What |
 |-----|------|
@@ -16,6 +16,19 @@ Tip = **`fdfbfa2`** + rewritten selfcare/parrot (`5f3f7e1`) + safe bloat cut (`c
 | `BRIDGE_IDX` miss/stale | Rebuild coalesced (≥1s); stale hit path also rebuilds; full-scan fallback always |
 | SC proxy | `MSTCL`×3 on reaper + RX idle reset; **no** `cleanup_peer` on mid-login `MSTNAK`; LoopingCall errback log-only |
 | Diagnostics | ms logs for rebuild / options / report / rule_timer; reporting errback; ON-timer → DEBUG |
+| HBP target stream | Regenerate target LC from target `TX_STREAM_ID`, not source RX state after hangtime |
+| Fanout payload | Per-target `_tx_dmrpkt`; one leg's LC rewrite never feeds the next leg |
+| OPTIONS cadence | Dirty-gated reactor parser; unchanged 26s ticks return immediately |
+| Catch-up audio | No HBP/OBP RATE DROP after reactor stalls; preserve queued DMRD for endpoint jitter buffers |
+| IPSC playout | Ordered multi-generation queue; 60ms pacing after stalls; VTERM drains at cadence |
+| Packet sequence | Reset HBP duplicate state per accepted stream; modular 8-bit ordering across 255→0 |
+| Proxy login | Both standard and SC proxies preserve slots on mid-login MSTNAK/MSTN |
+| Datagram guards | Reject short HBP/OBP/proxy DMRD; authenticate DMRE before version upgrade |
+| Legacy bridge parity | `BRIDGE_SERVER=1` keeps modular sequence, target-owned TX state, and per-leg payload isolation |
+| Stream identity | Reused IDs restart after VTERM/idle; LoopControl claims require fresh active matching source |
+| Sequence recovery | Large modular jumps resync after a real idle gap; no lifetime packet-fingerprint false drops |
+| Endpoint liveness | HBP voice and master→client proxy traffic refresh peer timers (HBP + IPSC proxies) |
+| Canned audio | Thread producers use reactor backpressure; callbacks cannot accumulate and burst after lag |
 
 ## Do not re-land without explicit user ask
 
@@ -41,7 +54,8 @@ Tip = **`fdfbfa2`** + rewritten selfcare/parrot (`5f3f7e1`) + safe bloat cut (`c
 | OBP empty-fi owner only | Continue routing when LoopControl fi empty; do not re-land full `50e2e62` |
 | OBP stub packets / LC / 1ST | Init/guard counters + LC on outbound stubs so empty-fi continue cannot KeyError |
 | Tip stability bug pass | Mid-login MSTNAK no-cleanup; stub-first UA arm; rule_timer DEBUG; CALL END zero-packet guard |
+| Audio root-cause package | Fix stale target LC, cross-leg payload bleed, OPTIONS stalls, RATE DROP holes, IPSC overwrite/tail burst, stale sequence state/wrap |
 
 ## Ops (UK / Greece)
 
-Keep SYSTEM `GENERATOR` modest and proxy `DESTPORTEND` matched. Soft stretch = late/bursty HBP into client jitter (same TX as MMDVM). Correlate `(DIAGNOSTICS) Reactor lag` vs proxy `Removed`/`New client`. Retest BlueDV/Peanut/DVSwitch on local TG and 235/116 after deploy. Roll **USA first**, then UK after tip stability package.
+Keep SYSTEM `GENERATOR` modest and proxy `DESTPORTEND` matched. Soft stretch = late/bursty HBP into client jitter (same TX as MMDVM). Correlate `(DIAGNOSTICS) Reactor lag` vs proxy `Removed`/`New client`. Retest BlueDV/Peanut/DVSwitch on local TG and 235/116 after deploy. Roll **USA first**, then UK, then Greece/IPSC.
