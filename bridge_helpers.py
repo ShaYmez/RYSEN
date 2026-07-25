@@ -14,6 +14,18 @@ PARROT_TG = 9990
 _SERVICE_TG_RANGE = range(9991, 10000)
 
 
+def mark_options_dirty(config):
+    """Schedule one reactor-owned OPTIONS rebuild after configuration changes."""
+    config['_OPTIONS_DIRTY'] = True
+
+
+def dmr_seq_delta(sequence, previous):
+    """Return forward 8-bit sequence distance, or None before first packet."""
+    if previous is False or previous is None:
+        return None
+    return (int(sequence) - int(previous)) & 0xFF
+
+
 def is_dial_service_code(reflector):
     """TGs reserved for dial-a-tg signalling (channel, disconnect, status) — not link targets."""
     try:

@@ -9,7 +9,8 @@ class TestObpActivateUaCallStartOnly(unittest.TestCase):
         with open('bridge_master.py', encoding='utf-8') as fh:
             source = fh.read()
         # New-stream flag on OBP group path
-        self.assertIn('_obp_new_stream = (_stream_id not in self.STATUS)', source)
+        self.assertIn('_obp_previous = self.STATUS.get(_stream_id)', source)
+        self.assertIn('_obp_new_stream = (', source)
         # Activate on first inbound claim (new stream or stub missing 1ST) — not every frame
         self.assertIn('_obp_ua_arm', source)
         self.assertIn('if _obp_ua_arm:', source)
@@ -51,11 +52,13 @@ class TestProxyReaperMstclAndRxTimer(unittest.TestCase):
     def test_mid_login_mstnak_skips_cleanup(self):
         with open('hotspot_proxy_v2_sc.py', encoding='utf-8') as fh:
             source = fh.read()
-        self.assertIn("('RPTL_SENT', 'CHALLENGE_SENT', 'WAITING_CONFIG')", source)
+        self.assertIn("('RPTL_SENT', 'CHALLENGE_SENT', 'WAITING_CONFIG',", source)
+        self.assertIn("'AUTH_ACKED', 'CONFIG_SENT')", source)
         self.assertIn('Mid-login NAKs', source)
         self.assertIn("['CONNECTION'] = 'RPTL_SENT'", source)
         self.assertIn("['CONNECTION'] = 'WAITING_CONFIG'", source)
         self.assertIn("['CONNECTION'] = 'CHALLENGE_SENT'", source)
+        self.assertIn("['CONNECTION'] = 'CONFIG_SENT'", source)
 
     def test_looping_errback_no_reactor_stop(self):
         with open('hotspot_proxy_v2_sc.py', encoding='utf-8') as fh:
@@ -97,8 +100,9 @@ class TestObpEmptyFiOwner(unittest.TestCase):
             source = fh.read()
         self.assertIn("setdefault('LC', b''.join([LC_OPT,_dst_id,_rf_src]))", source)
         self.assertIn("setdefault('1ST', perf_counter())", source)
-        self.assertIn("_obp_packets = self.STATUS[_stream_id].get('packets', 0)", source)
         self.assertIn('Outbound OBP stubs may lack inbound LC/1ST/counters', source)
+        # Catch-up bursts must not be dropped after reactor stalls.
+        self.assertNotIn('*PacketControl* RATE DROP!', source)
         # Outbound OBP STATUS stubs carry packet counters
         self.assertGreaterEqual(source.count("'packets': 0,"), 4)
 

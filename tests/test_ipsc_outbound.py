@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 import unittest
+from unittest.mock import patch
 
 from dmr_utils3.utils import bytes_3
 from mk_voice import pkt_gen
+from twisted.internet.task import Clock
 from voice_lib import words
 
 from ipsc_const import (
@@ -10,12 +12,16 @@ from ipsc_const import (
     HBPF_UNIT_CALL,
     GV_BURST_TYPE_OFF, GV_HEAD_LEN, GV_VOICE_LEN,
 )
-from ipsc_voice import IpscVoiceTranslator
+from ipsc_voice import IpscVoiceTranslator, _paced_next_deadline
 
 
 class TestIpscOutbound(unittest.TestCase):
 
     MASTER_ID = 9999999
+
+    def test_paced_deadline_does_not_accumulate_callback_cost(self):
+        self.assertAlmostEqual(_paced_next_deadline(1.000, 1.005), 1.060)
+        self.assertAlmostEqual(_paced_next_deadline(1.000, 1.121), 1.181)
 
     def _make_head_packet(self):
         peer = b'\x00\x03\x96\x77'
@@ -46,6 +52,23 @@ class TestIpscOutbound(unittest.TestCase):
         self.assertEqual(outbound[9:12], dst)
         self.assertEqual(outbound[GV_BURST_TYPE_OFF], VOICE_HEAD)
         self.assertEqual(outbound[31], 0x80)
+
+    def test_inbound_stream_identity_includes_ipsc_peer(self):
+        inbound, peer, src, dst = self._make_head_packet()
+        tr = IpscVoiceTranslator(master_id=self.MASTER_ID)
+        first = tr.translate(inbound, 2, VOICE_HEAD)
+
+        second_head = bytearray(inbound)
+        second_head[1:5] = b'\x01\x02\x03\x04'
+        second = tr.translate(bytes(second_head), 2, VOICE_HEAD)
+
+        self.assertNotEqual(first[16:20], second[16:20])
+        self.assertEqual(tr._out_ipsc_peer_id[2], b'\x01\x02\x03\x04')
+
+        stale_term = bytearray(inbound)
+        stale_term[GV_BURST_TYPE_OFF] = VOICE_TERM
+        self.assertIsNone(tr.translate(bytes(stale_term), 2, VOICE_TERM))
+        self.assertEqual(tr._out_ipsc_peer_id[2], b'\x01\x02\x03\x04')
 
     def test_encode_term_after_stream(self):
         inbound, peer, src, dst = self._make_head_packet()
@@ -116,8 +139,8 @@ class TestIpscOutbound(unittest.TestCase):
         self.assertIsNotNone(tr.handle_outbound(dmrd_head))
         self.assertIsNone(tr.handle_outbound(dmrd_head))
 
-    def test_term_flushes_buffered_voice(self):
-        """TERM must not discard jitter-buffered AMBE (reflector / canned speech)."""
+    def test_term_drains_buffered_voice_at_cadence(self):
+        """TERM waits behind buffered AMBE instead of bursting it immediately."""
         sent = []
         tr = IpscVoiceTranslator(master_id=self.MASTER_ID)
         tr.set_send_callback(sent.append)
@@ -146,10 +169,181 @@ class TestIpscOutbound(unittest.TestCase):
         dmrd_term = tr.translate(bytes(term_in), 2, VOICE_TERM)
         term_out = tr.handle_outbound(dmrd_term)
 
-        self.assertIsNotNone(term_out)
-        self.assertEqual(term_out[GV_BURST_TYPE_OFF], VOICE_TERM)
+        self.assertIsNone(term_out)
+        self.assertEqual(sent, [])
+
+        # Simulate the two paced callbacks: queued voice, then terminator.
+        tr._cancel_delivery_timer(2)
+        tr._deliver_slot(2)
         voice_sent = [p for p in sent if len(p) == GV_VOICE_LEN]
         self.assertEqual(len(voice_sent), 1)
+        self.assertFalse(any(p[GV_BURST_TYPE_OFF] == VOICE_TERM for p in sent))
+
+        tr._cancel_delivery_timer(2)
+        tr._deliver_slot(2)
+        self.assertEqual(sent[-1][GV_BURST_TYPE_OFF], VOICE_TERM)
+
+    def test_jitter_queue_preserves_wrapped_superframe_order(self):
+        """Positions from consecutive generations must not overwrite each other."""
+        tr = IpscVoiceTranslator(master_id=self.MASTER_ID)
+        for pos in (4, 5, 0, 1, 2, 3, 4):
+            tr._del_buf[2].append((pos, bytes([pos]) * 19))
+
+        self.assertEqual(
+            [pos for pos, _ambe in tr._del_buf[2]],
+            [4, 5, 0, 1, 2, 3, 4],
+        )
+        self.assertEqual(len(tr._del_buf[2]), 7)
+
+    def test_jitter_queue_bounds_latency_at_superframe_boundary(self):
+        tr = IpscVoiceTranslator(master_id=self.MASTER_ID)
+        for index in range(30):
+            pos = index % 6
+            tr._del_buf[2].append((pos, bytes([pos]) * 19))
+            tr._trim_delivery_backlog(2)
+
+        self.assertLessEqual(len(tr._del_buf[2]), 12)
+        self.assertEqual(tr._del_buf[2][0][0], 0)
+        self.assertEqual(tr._del_burst_pos[2], 0)
+
+    def test_new_head_closes_prior_deferred_stream(self):
+        sent = []
+        tr = IpscVoiceTranslator(master_id=self.MASTER_ID)
+        tr.set_send_callback(sent.append)
+
+        inbound, peer, src, dst = self._make_head_packet()
+        dmrd_head = tr.translate(inbound, 2, VOICE_HEAD)
+        tr.handle_outbound(dmrd_head)
+
+        slot_pkt = bytearray([GROUP_VOICE]) + bytearray(51)
+        slot_pkt[1:5] = peer
+        slot_pkt[5] = 0x42
+        slot_pkt[6:9] = src
+        slot_pkt[9:12] = dst
+        slot_pkt[GV_BURST_TYPE_OFF] = SLOT2_VOICE
+        slot_pkt[32] = 0x16
+        dmrd_voice = tr.translate(bytes(slot_pkt), 2, SLOT2_VOICE)
+        tr.handle_outbound(dmrd_voice)
+
+        term_in = bytearray([GROUP_VOICE]) + bytearray(30)
+        term_in[1:5] = peer
+        term_in[5] = 0x42
+        term_in[6:9] = src
+        term_in[9:12] = dst
+        term_in[17] = TS_CALL_MSK
+        term_in[GV_BURST_TYPE_OFF] = VOICE_TERM
+        dmrd_term = tr.translate(bytes(term_in), 2, VOICE_TERM)
+        self.assertIsNone(tr.handle_outbound(dmrd_term))
+
+        new_head = bytearray(dmrd_head)
+        new_head[16:20] = b'\x12\x34\x56\x78'
+        new_head_out = tr.handle_outbound(bytes(new_head))
+
+        self.assertIsNotNone(new_head_out)
+        self.assertEqual(sent[-1][GV_BURST_TYPE_OFF], VOICE_TERM)
+        self.assertEqual(tr._del_hbp_stream[2], b'\x12\x34\x56\x78')
+        self.assertIsNone(tr._del_pending_term[2])
+
+    def test_headerless_new_voice_closes_prior_deferred_stream(self):
+        sent = []
+        tr = IpscVoiceTranslator(master_id=self.MASTER_ID)
+        tr.set_send_callback(sent.append)
+
+        inbound, peer, src, dst = self._make_head_packet()
+        dmrd_head = tr.translate(inbound, 2, VOICE_HEAD)
+        tr.handle_outbound(dmrd_head)
+
+        slot_pkt = bytearray([GROUP_VOICE]) + bytearray(51)
+        slot_pkt[1:5] = peer
+        slot_pkt[5] = 0x42
+        slot_pkt[6:9] = src
+        slot_pkt[9:12] = dst
+        slot_pkt[GV_BURST_TYPE_OFF] = SLOT2_VOICE
+        slot_pkt[32] = 0x16
+        dmrd_voice = tr.translate(bytes(slot_pkt), 2, SLOT2_VOICE)
+        tr.handle_outbound(dmrd_voice)
+
+        term_in = bytearray([GROUP_VOICE]) + bytearray(30)
+        term_in[1:5] = peer
+        term_in[5] = 0x42
+        term_in[6:9] = src
+        term_in[9:12] = dst
+        term_in[17] = TS_CALL_MSK
+        term_in[GV_BURST_TYPE_OFF] = VOICE_TERM
+        dmrd_term = tr.translate(bytes(term_in), 2, VOICE_TERM)
+        self.assertIsNone(tr.handle_outbound(dmrd_term))
+
+        new_voice = bytearray(dmrd_voice)
+        new_voice[16:20] = b'\x87\x65\x43\x21'
+        self.assertIsNone(tr.handle_outbound(bytes(new_voice)))
+
+        self.assertEqual(sent[-1][GV_BURST_TYPE_OFF], VOICE_TERM)
+        self.assertEqual(tr._del_hbp_stream[2], b'\x87\x65\x43\x21')
+        self.assertIsNone(tr._del_pending_term[2])
+        tr._cancel_delivery_timer(2)
+
+    def test_stale_term_cannot_close_replacement_stream(self):
+        sent = []
+        tr = IpscVoiceTranslator(master_id=self.MASTER_ID)
+        tr.set_send_callback(sent.append)
+
+        inbound, peer, src, dst = self._make_head_packet()
+        old_head = tr.translate(inbound, 2, VOICE_HEAD)
+        tr.handle_outbound(old_head)
+
+        term_in = bytearray([GROUP_VOICE]) + bytearray(30)
+        term_in[1:5] = peer
+        term_in[5] = 0x42
+        term_in[6:9] = src
+        term_in[9:12] = dst
+        term_in[17] = TS_CALL_MSK
+        term_in[GV_BURST_TYPE_OFF] = VOICE_TERM
+        old_term = tr.translate(bytes(term_in), 2, VOICE_TERM)
+
+        new_head = bytearray(old_head)
+        new_head[16:20] = b'\xaa\xbb\xcc\xdd'
+        self.assertIsNotNone(tr.handle_outbound(bytes(new_head)))
+        sent_before_stale = len(sent)
+
+        self.assertIsNone(tr.handle_outbound(old_term))
+        self.assertEqual(len(sent), sent_before_stale)
+        self.assertEqual(tr._del_hbp_stream[2], b'\xaa\xbb\xcc\xdd')
+        self.assertIsNone(tr._del_pending_term[2])
+
+    def test_delivery_does_not_catch_up_in_a_burst_after_reactor_stall(self):
+        clock = Clock()
+        sent_at = []
+        with patch('ipsc_voice.reactor', clock):
+            tr = IpscVoiceTranslator(master_id=self.MASTER_ID)
+            tr.set_send_callback(lambda packet: sent_at.append(
+                (clock.seconds(), packet)))
+
+            inbound, peer, src, dst = self._make_head_packet()
+            dmrd_head = tr.translate(inbound, 2, VOICE_HEAD)
+            tr.handle_outbound(dmrd_head)
+
+            slot_pkt = bytearray([GROUP_VOICE]) + bytearray(51)
+            slot_pkt[1:5] = peer
+            slot_pkt[5] = 0x42
+            slot_pkt[6:9] = src
+            slot_pkt[9:12] = dst
+            slot_pkt[GV_BURST_TYPE_OFF] = SLOT2_VOICE
+            slot_pkt[32] = 0x16
+            for _ in range(5):
+                dmrd_voice = tr.translate(bytes(slot_pkt), 2, SLOT2_VOICE)
+                tr.handle_outbound(dmrd_voice)
+
+            clock.advance(0.12)
+            self.assertEqual(len(sent_at), 1)
+
+            # A delayed reactor callback emits one slot, then schedules the
+            # next slot 60 ms from now instead of draining overdue callbacks.
+            clock.advance(0.50)
+            self.assertEqual(len(sent_at), 2)
+            clock.advance(0.059)
+            self.assertEqual(len(sent_at), 2)
+            clock.advance(0.001)
+            self.assertEqual(len(sent_at), 3)
 
     def test_pkt_gen_private_call_flag(self):
         caller = bytes_3(2348831)

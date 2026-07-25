@@ -48,6 +48,7 @@ from dmr_utils3 import decode, bptc, const
 import config
 import log
 from const import *
+from bridge_helpers import dmr_seq_delta
 
 # Stuff for socket reporting
 import pickle
@@ -255,7 +256,18 @@ class routerOBP(OPENBRIDGE):
 
         if _call_type == 'group':
             # Is this a new call stream?
-            if (_stream_id not in self.STATUS):
+            _obp_previous = self.STATUS.get(_stream_id)
+            _obp_idle = (
+                _obp_previous is not None
+                and pkt_time - _obp_previous.get(
+                    'LAST', _obp_previous.get('START', 0)) >= STREAM_TO)
+            _obp_new_stream = (
+                _obp_previous is None
+                or (_frame_type == HBPF_DATA_SYNC
+                    and _dtype_vseq == HBPF_SLT_VHEAD
+                    and (_obp_previous.get('_fin') or _obp_idle))
+                or (_obp_idle and _dtype_vseq != HBPF_SLT_VTERM))
+            if _obp_new_stream:
                 # This is a new call stream
                 self.STATUS[_stream_id] = {
                     'START':     pkt_time,
@@ -296,7 +308,11 @@ class routerOBP(OPENBRIDGE):
                         continue
                     if CONFIG['SYSTEMS'][system]['MODE'] != 'OPENBRIDGE':
                         for _sysslot in systems[system].STATUS:
-                            if 'RX_STREAM_ID' in systems[system].STATUS[_sysslot] and _stream_id == systems[system].STATUS[_sysslot]['RX_STREAM_ID']:
+                            _claim = systems[system].STATUS[_sysslot]
+                            if (_stream_id == _claim.get('RX_STREAM_ID')
+                                    and _rf_src == _claim.get('RX_RFS')
+                                    and _claim.get('RX_TYPE') != HBPF_SLT_VTERM
+                                    and pkt_time - _claim.get('RX_TIME', 0) < STREAM_TO):
                                 if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']: 
                                     logger.warning("(%s) OBP *LoopControl* FIRST HBP: %s, STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id),_sysslot)
                                     self.STATUS[_stream_id]['LOOPLOG'] = True
@@ -304,7 +320,12 @@ class routerOBP(OPENBRIDGE):
                                 return
                     else:
                         #if _stream_id in systems[system].STATUS and systems[system].STATUS[_stream_id]['START'] <= self.STATUS[_stream_id]['START']:
-                        if _stream_id in systems[system].STATUS and '1ST' in systems[system].STATUS[_stream_id] and systems[system].STATUS[_stream_id]['TGID'] == _dst_id:
+                        if (_stream_id in systems[system].STATUS
+                                and '1ST' in systems[system].STATUS[_stream_id]
+                                and systems[system].STATUS[_stream_id].get('TGID') == _dst_id
+                                and systems[system].STATUS[_stream_id].get('RFS') == _rf_src
+                                and not systems[system].STATUS[_stream_id].get('_fin')
+                                and pkt_time - systems[system].STATUS[_stream_id].get('LAST', 0) < STREAM_TO):
                             if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
                                 logger.warning("(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id))
                                 self.STATUS[_stream_id]['LOOPLOG'] = True
@@ -318,20 +339,22 @@ class routerOBP(OPENBRIDGE):
 
                 
                 #Duplicate handling#
+                _seq_delta = dmr_seq_delta(
+                    _seq, self.STATUS[_stream_id]['lastSeq'])
                 #Duplicate complete packet
                 if self.STATUS[_stream_id]['lastData'] and self.STATUS[_stream_id]['lastData'] == _data and _seq > 1:
                     logger.warning("(%s) *PacketControl* last packet is a complete duplicate of the previous one, disgarding. Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
                     return
                 #Handle inbound duplicates
-                if _seq and _seq == self.STATUS[_stream_id]['lastSeq']:
+                if _seq_delta == 0:
                     logger.warning("(%s) *PacketControl* Duplicate sequence number %s, disgarding. Stream ID:, %s TGID: %s",self._system,_seq,int_id(_stream_id),int_id(_dst_id))
                     return
                 #Inbound out-of-order packets
-                if _seq and self.STATUS[_stream_id]['lastSeq']  and (_seq != 1) and (_seq < self.STATUS[_stream_id]['lastSeq']):
+                if _seq_delta is not None and _seq_delta > 127:
                     logger.warning("%s) *PacketControl* Out of order packet - last SEQ: %s, this SEQ: %s,  disgarding. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_stream_id]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
                     return
                 #Inbound missed packets
-                if _seq and self.STATUS[_stream_id]['lastSeq'] and _seq > (self.STATUS[_stream_id]['lastSeq']+1):
+                if _seq_delta is not None and 1 < _seq_delta <= 127:
                     logger.warning("(%s) *PacketControl* Missed packet(s) - last SEQ: %s, this SEQ: %s. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_stream_id]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
             
                 #Save this sequence number 
@@ -382,8 +405,9 @@ class routerOBP(OPENBRIDGE):
                                     # MUST TEST FOR NEW STREAM AND IF SO, RE-WRITE THE LC FOR THE TARGET
                                     # MUST RE-WRITE DESTINATION TGID IF DIFFERENT
                                     # if _dst_id != rule['DST_GROUP']:
+                                    _tx_dmrpkt = dmrpkt
                                     dmrbits = bitarray(endian='big')
-                                    dmrbits.frombytes(dmrpkt)
+                                    dmrbits.frombytes(_tx_dmrpkt)
                                     # Create a voice header packet (FULL LC)
                                     if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
                                         dmrbits = _target_status[_stream_id]['H_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['H_LC'][98:197]
@@ -396,8 +420,8 @@ class routerOBP(OPENBRIDGE):
                                     # Create a Burst B-E packet (Embedded LC)
                                     elif _dtype_vseq in [1,2,3,4]:
                                         dmrbits = dmrbits[0:116] + _target_status[_stream_id]['EMB_LC'][_dtype_vseq] + dmrbits[148:264]
-                                    dmrpkt = dmrbits.tobytes()
-                                    _tmp_data = b''.join([_tmp_data, dmrpkt])
+                                    _tx_dmrpkt = dmrbits.tobytes()
+                                    _tmp_data = b''.join([_tmp_data, _tx_dmrpkt])
 
                                 else:
                                     # BEGIN CONTENTION HANDLING
@@ -464,8 +488,9 @@ class routerOBP(OPENBRIDGE):
                                     # MUST TEST FOR NEW STREAM AND IF SO, RE-WRITE THE LC FOR THE TARGET
                                     # MUST RE-WRITE DESTINATION TGID IF DIFFERENT
                                     # if _dst_id != rule['DST_GROUP']:
+                                    _tx_dmrpkt = dmrpkt
                                     dmrbits = bitarray(endian='big')
-                                    dmrbits.frombytes(dmrpkt)
+                                    dmrbits.frombytes(_tx_dmrpkt)
                                     # Create a voice header packet (FULL LC)
                                     if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
                                         dmrbits = _target_status[_target['TS']]['TX_H_LC'][0:98] + dmrbits[98:166] + _target_status[_target['TS']]['TX_H_LC'][98:197]
@@ -478,8 +503,8 @@ class routerOBP(OPENBRIDGE):
                                     # Create a Burst B-E packet (Embedded LC)
                                     elif _dtype_vseq in [1,2,3,4]:
                                         dmrbits = dmrbits[0:116] + _target_status[_target['TS']]['TX_EMB_LC'][_dtype_vseq] + dmrbits[148:264]
-                                    dmrpkt = dmrbits.tobytes()
-                                    _tmp_data = b''.join([_tmp_data, dmrpkt, b'\x00\x00']) # Add two bytes of nothing since OBP doesn't include BER & RSSI bytes #_data[53:55]
+                                    _tx_dmrpkt = dmrbits.tobytes()
+                                    _tmp_data = b''.join([_tmp_data, _tx_dmrpkt, b'\x00\x00']) # Add two bytes of nothing since OBP doesn't include BER & RSSI bytes #_data[53:55]
 
                                 # Transmit the packet to the destination system
                                 systems[_target['SYSTEM']].send_system(_tmp_data,_hops,_ber,_rssi,_source_server,_source_rptr)
@@ -585,10 +610,19 @@ class routerHBP(HBSYSTEM):
         if _call_type == 'group':
 
             # Is this a new call stream?
-            if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
+            _hbp_new_stream = (
+                _stream_id != self.STATUS[_slot]['RX_STREAM_ID']
+                or pkt_time - self.STATUS[_slot]['RX_TIME'] >= STREAM_TO
+                or (_frame_type == HBPF_DATA_SYNC
+                    and _dtype_vseq == HBPF_SLT_VHEAD
+                    and self.STATUS[_slot]['RX_TYPE'] == HBPF_SLT_VTERM))
+            if _hbp_new_stream:
                 if (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM) and (pkt_time < (self.STATUS[_slot]['RX_TIME'] + STREAM_TO)) and (_rf_src != self.STATUS[_slot]['RX_RFS']):
                     logger.warning('(%s) Packet received with STREAM ID: %s <FROM> SUB: %s PEER: %s <TO> TGID %s, SLOT %s collided with existing call', self._system, int_id(_stream_id), int_id(_rf_src), int_id(_peer_id), int_id(_dst_id), _slot)
                     return
+
+                self.STATUS[_slot]['lastSeq'] = False
+                self.STATUS[_slot]['lastData'] = False
 
                 # This is a new call stream
                 self.STATUS[_slot]['RX_START'] = pkt_time
@@ -613,7 +647,11 @@ class routerHBP(HBSYSTEM):
                     continue
                 if CONFIG['SYSTEMS'][system]['MODE'] != 'OPENBRIDGE':
                     for _sysslot in systems[system].STATUS:
-                        if 'RX_STREAM_ID' in systems[system].STATUS[_sysslot] and _stream_id == systems[system].STATUS[_sysslot]['RX_STREAM_ID']:
+                        _claim = systems[system].STATUS[_sysslot]
+                        if (_stream_id == _claim.get('RX_STREAM_ID')
+                                and _rf_src == _claim.get('RX_RFS')
+                                and _claim.get('RX_TYPE') != HBPF_SLT_VTERM
+                                and pkt_time - _claim.get('RX_TIME', 0) < STREAM_TO):
                             if 'LOOPLOG' not in self.STATUS[_slot] or not self.STATUS[_slot]['LOOPLOG']: 
                                 logger.warning("(%s) OBP *LoopControl* FIRST HBP: %s, STREAM ID: %s, TG: %s, TS: %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id),_sysslot)
                                 self.STATUS[_slot]['LOOPLOG'] = True
@@ -621,7 +659,12 @@ class routerHBP(HBSYSTEM):
                             return
                 else:
                     #if _stream_id in systems[system].STATUS and systems[system].STATUS[_stream_id]['START'] <= self.STATUS[_stream_id]['START']:
-                    if _stream_id in systems[system].STATUS and '1ST' in systems[system].STATUS[_stream_id] and systems[system].STATUS[_stream_id]['TGID'] == _dst_id:
+                    if (_stream_id in systems[system].STATUS
+                            and '1ST' in systems[system].STATUS[_stream_id]
+                            and systems[system].STATUS[_stream_id].get('TGID') == _dst_id
+                            and systems[system].STATUS[_stream_id].get('RFS') == _rf_src
+                            and not systems[system].STATUS[_stream_id].get('_fin')
+                            and pkt_time - systems[system].STATUS[_stream_id].get('LAST', 0) < STREAM_TO):
                         if 'LOOPLOG' not in self.STATUS[_slot] or not self.STATUS[_slot]['LOOPLOG']:
                             logger.warning("(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id))
                             self.STATUS[_slot]['LOOPLOG'] = True
@@ -634,20 +677,22 @@ class routerHBP(HBSYSTEM):
                         return
         
             #Duplicate handling#
+            _seq_delta = dmr_seq_delta(
+                _seq, self.STATUS[_slot]['lastSeq'])
             #Duplicate complete packet
             if self.STATUS[_slot]['lastData'] and self.STATUS[_slot]['lastData'] == _data and _seq > 1:
                 logger.warning("(%s) *PacketControl* last packet is a complete duplicate of the previous one, disgarding. Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
                 return
             #Handle inbound duplicates
-            if _seq and _seq == self.STATUS[_slot]['lastSeq']:
+            if _seq_delta == 0:
                 logger.warning("(%s) *PacketControl* Duplicate sequence number %s, disgarding. Stream ID:, %s TGID: %s",self._system,_seq,int_id(_stream_id),int_id(_dst_id))
                 return
             #Inbound out-of-order packets
-            if _seq and self.STATUS[_slot]['lastSeq']  and (_seq != 1) and (_seq < self.STATUS[_slot]['lastSeq']):
+            if _seq_delta is not None and _seq_delta > 127:
                 logger.warning("%s) *PacketControl* Out of order packet - last SEQ: %s, this SEQ: %s,  disgarding. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_slot]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
                 return
             #Inbound missed packets
-            if _seq and self.STATUS[_slot]['lastSeq'] and _seq > (self.STATUS[_slot]['lastSeq']+1):
+            if _seq_delta is not None and 1 < _seq_delta <= 127:
                 logger.warning("(%s) *PacketControl* Missed packet(s) - last SEQ: %s, this SEQ: %s. Stream ID:, %s TGID: %s ",self._system,self.STATUS[_slot]['lastSeq'],_seq,int_id(_stream_id),int_id(_dst_id))
         
             #Save this sequence number 
@@ -699,8 +744,9 @@ class routerHBP(HBSYSTEM):
                                         # MUST TEST FOR NEW STREAM AND IF SO, RE-WRITE THE LC FOR THE TARGET
                                         # MUST RE-WRITE DESTINATION TGID IF DIFFERENT
                                         # if _dst_id != rule['DST_GROUP']:
+                                        _tx_dmrpkt = dmrpkt
                                         dmrbits = bitarray(endian='big')
-                                        dmrbits.frombytes(dmrpkt)
+                                        dmrbits.frombytes(_tx_dmrpkt)
                                         # Create a voice header packet (FULL LC)
                                         if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
                                             dmrbits = _target_status[_stream_id]['H_LC'][0:98] + dmrbits[98:166] + _target_status[_stream_id]['H_LC'][98:197]
@@ -713,8 +759,8 @@ class routerHBP(HBSYSTEM):
                                         # Create a Burst B-E packet (Embedded LC)
                                         elif _dtype_vseq in [1,2,3,4]:
                                             dmrbits = dmrbits[0:116] + _target_status[_stream_id]['EMB_LC'][_dtype_vseq] + dmrbits[148:264]
-                                        dmrpkt = dmrbits.tobytes()
-                                        _tmp_data = b''.join([_tmp_data, dmrpkt])
+                                        _tx_dmrpkt = dmrbits.tobytes()
+                                        _tmp_data = b''.join([_tmp_data, _tx_dmrpkt])
 
                                     else:
                                         # BEGIN STANDARD CONTENTION HANDLING
@@ -744,7 +790,7 @@ class routerHBP(HBSYSTEM):
                                             continue
 
                                         # Is this a new call stream?
-                                        if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
+                                        if (_target_status[_target['TS']]['TX_STREAM_ID'] != _stream_id):
                                              # Record the DST TGID and Stream ID
                                              _target_status[_target['TS']]['TX_START'] = pkt_time
                                              _target_status[_target['TS']]['TX_TGID'] = _target['TGID']
@@ -777,8 +823,9 @@ class routerHBP(HBSYSTEM):
                                         # MUST TEST FOR NEW STREAM AND IF SO, RE-WRITE THE LC FOR THE TARGET
                                         # MUST RE-WRITE DESTINATION TGID IF DIFFERENT
                                         # if _dst_id != rule['DST_GROUP']:
+                                        _tx_dmrpkt = dmrpkt
                                         dmrbits = bitarray(endian='big')
-                                        dmrbits.frombytes(dmrpkt)
+                                        dmrbits.frombytes(_tx_dmrpkt)
                                         # Create a voice header packet (FULL LC)
                                         if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
                                             dmrbits = _target_status[_target['TS']]['TX_H_LC'][0:98] + dmrbits[98:166] + _target_status[_target['TS']]['TX_H_LC'][98:197]
@@ -791,8 +838,8 @@ class routerHBP(HBSYSTEM):
                                         # Create a Burst B-E packet (Embedded LC)
                                         elif _dtype_vseq in [1,2,3,4]:
                                             dmrbits = dmrbits[0:116] + _target_status[_target['TS']]['TX_EMB_LC'][_dtype_vseq] + dmrbits[148:264]
-                                        dmrpkt = dmrbits.tobytes()
-                                        _tmp_data = b''.join([_tmp_data, dmrpkt, _data[53:55]])
+                                        _tx_dmrpkt = dmrbits.tobytes()
+                                        _tmp_data = b''.join([_tmp_data, _tx_dmrpkt, _data[53:55]])
 
                                     # Transmit the packet to the destination system
                                     systems[_target['SYSTEM']].send_system(_tmp_data,_hops,_ber,_rssi,_source_server,_source_rptr)

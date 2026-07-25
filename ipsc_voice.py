@@ -13,6 +13,7 @@
 
 import os
 import struct
+from collections import deque
 
 from bitarray import bitarray
 from twisted.internet import reactor
@@ -142,6 +143,15 @@ def _make_ambe_silence_ipsc():
 
 
 _AMBE_SILENCE_IPSC = _make_ambe_silence_ipsc()
+_MAX_DELIVERY_BACKLOG = 12  # two DMR superframes / 720 ms
+
+
+def _paced_next_deadline(previous, now):
+    """Keep an absolute 60 ms cadence without burst-catching a full-slot stall."""
+    deadline = previous + SLOT_INTERVAL_S
+    if now - deadline >= SLOT_INTERVAL_S:
+        return now + SLOT_INTERVAL_S
+    return deadline
 
 
 def _dmrd_voice_position(flags):
@@ -169,6 +179,7 @@ class IpscVoiceTranslator:
         self._send_cb = None
         self._out_stream_id = {1: None, 2: None}
         self._out_ipsc_stream_id = {1: None, 2: None}
+        self._out_ipsc_peer_id = {1: None, 2: None}
         self._out_seq = 0
         self._out_frame_pos = {1: 0, 2: 0}
         self._out_lc = {1: None, 2: None}
@@ -180,11 +191,14 @@ class IpscVoiceTranslator:
         self._del_emb_lc = {1: None, 2: None}
         self._del_stream_id = {1: 0, 2: 0}
         self._del_hbp_stream = {1: None, 2: None}
-        self._del_buf = {1: {}, 2: {}}
+        # Ordered queues preserve superframe generations. A dict keyed only by
+        # burst position 0..5 overwrote older frames when the reactor stalled.
+        self._del_buf = {1: deque(), 2: deque()}
         self._del_burst_pos = {1: 0, 2: 0}
         self._del_timer = {1: None, 2: None}
         self._del_next_slot = {1: 0.0, 2: 0.0}
         self._del_consec_synth = {1: 0, 2: 0}
+        self._del_pending_term = {1: None, 2: None}
         self._del_rtp_seq = {1: 0, 2: 0}
         self._del_rtp_ts = {1: 0, 2: 0}
         self._del_private = {1: False, 2: False}
@@ -202,6 +216,7 @@ class IpscVoiceTranslator:
             self._del_next_slot[ts] = 0.0
             self._del_burst_pos[ts] = 0
             self._del_consec_synth[ts] = 0
+            self._del_pending_term[ts] = None
             self._del_hbp_stream[ts] = None
             self._del_lc[ts] = None
             self._del_emb_lc[ts] = None
@@ -228,6 +243,7 @@ class IpscVoiceTranslator:
         for ts in (1, 2):
             self._out_stream_id[ts] = None
             self._out_ipsc_stream_id[ts] = None
+            self._out_ipsc_peer_id[ts] = None
             self._out_lc[ts] = None
             self._out_emb_lc[ts] = None
             self._out_frame_pos[ts] = 0
@@ -252,12 +268,13 @@ class IpscVoiceTranslator:
 
         if burst_type == VOICE_HEAD:
             if (self._out_stream_id[ts] is not None
-                    and self._out_ipsc_stream_id[ts] is not None
-                    and self._out_ipsc_stream_id[ts] != ipsc_stream_id):
+                    and (self._out_ipsc_stream_id[ts] != ipsc_stream_id
+                         or self._out_ipsc_peer_id[ts] != peer_id_b)):
                 self._clear_ts(ts)
             if self._out_stream_id[ts] is None:
                 self._out_stream_id[ts] = os.urandom(4)
                 self._out_ipsc_stream_id[ts] = ipsc_stream_id
+                self._out_ipsc_peer_id[ts] = peer_id_b
             self._out_frame_pos[ts] = 0
             lc = LC_OPT + dst_group + src_sub
             self._out_lc[ts] = lc
@@ -274,7 +291,9 @@ class IpscVoiceTranslator:
             flags |= HBPF_FRAMETYPE_DATASYNC | HBPF_SLT_VHEAD
 
         elif burst_type == VOICE_TERM:
-            if self._out_stream_id[ts] is None:
+            if (self._out_stream_id[ts] is None
+                    or self._out_ipsc_stream_id[ts] != ipsc_stream_id
+                    or self._out_ipsc_peer_id[ts] != peer_id_b):
                 return None
             lc = self._out_lc[ts] if self._out_lc[ts] else LC_OPT + dst_group + src_sub
             full_lc = bptc.encode_terminator_lc(lc)
@@ -290,8 +309,8 @@ class IpscVoiceTranslator:
 
         else:
             if (self._out_stream_id[ts] is not None
-                    and self._out_ipsc_stream_id[ts] is not None
-                    and self._out_ipsc_stream_id[ts] != ipsc_stream_id):
+                    and (self._out_ipsc_stream_id[ts] != ipsc_stream_id
+                         or self._out_ipsc_peer_id[ts] != peer_id_b)):
                 self._clear_ts(ts)
             if self._out_stream_id[ts] is None:
                 if len(data) < 33 or data[32] != 0x16:
@@ -299,6 +318,7 @@ class IpscVoiceTranslator:
                 lc = LC_OPT + dst_group + src_sub
                 self._out_stream_id[ts] = os.urandom(4)
                 self._out_ipsc_stream_id[ts] = ipsc_stream_id
+                self._out_ipsc_peer_id[ts] = peer_id_b
                 self._out_lc[ts] = lc
                 self._out_emb_lc[ts] = bptc.encode_emblc(lc)
                 self._out_frame_pos[ts] = 4
@@ -340,6 +360,7 @@ class IpscVoiceTranslator:
     def _clear_ts(self, ts):
         self._out_stream_id[ts] = None
         self._out_ipsc_stream_id[ts] = None
+        self._out_ipsc_peer_id[ts] = None
         self._out_lc[ts] = None
         self._out_emb_lc[ts] = None
         self._out_frame_pos[ts] = 0
@@ -403,7 +424,16 @@ class IpscVoiceTranslator:
     def _deliver_slot(self, ts):
         """Deliver one 60 ms TDMA slot to IPSC (real AMBE or synthesized silence)."""
         pos = self._del_burst_pos[ts]
-        ambe_19 = self._del_buf[ts].pop(pos, None)
+        if not self._del_buf[ts] and self._del_pending_term[ts] is not None:
+            self._send_pending_term(ts)
+            return
+
+        ambe_19 = None
+        if self._del_buf[ts]:
+            queued_pos, queued_ambe = self._del_buf[ts][0]
+            if queued_pos == pos:
+                self._del_buf[ts].popleft()
+                ambe_19 = queued_ambe
 
         if ambe_19 is None:
             ambe_19 = _AMBE_SILENCE_IPSC
@@ -429,30 +459,52 @@ class IpscVoiceTranslator:
             self._send_cb(pkt)
 
         self._del_burst_pos[ts] = (pos + 1) % 6
-        self._del_next_slot[ts] += SLOT_INTERVAL_S
+        # Never catch up by firing overdue slots back-to-back after reactor lag.
+        # Preserve the 60 ms wire cadence and let the ordered queue absorb delay.
+        self._del_next_slot[ts] = _paced_next_deadline(
+            self._del_next_slot[ts], reactor.seconds())
         self._arm_delivery_timer(ts)
 
-    def _flush_del_buf(self, ts):
-        """Send all jitter-buffered voice slots immediately (before TERM)."""
-        if self._del_lc[ts] is None:
+    def _build_term_packet(self, ts, lc, src_sub, dst_id):
+        call_info = (END_MSK | TS_CALL_MSK) if ts == 2 else END_MSK
+        gv_payload = bytes([VOICE_TERM]) + _build_ipsc_voice_payload(lc, VOICE_TERM)
+        rtp_hdr = self._next_rtp_hdr(ts, 0x5e)
+        return self._build_voice(
+            self._outbound_opcode(ts), src_sub, dst_id, call_info, rtp_hdr, gv_payload,
+            self._del_stream_id[ts], private_call=self._del_private[ts],
+        )
+
+    def _send_pending_term(self, ts):
+        """Send VTERM only after queued voice has drained at normal cadence."""
+        pending = self._del_pending_term[ts]
+        if pending is None:
             return
-        lc = self._del_lc[ts]
-        src_sub = lc[6:9]
-        dst_id = lc[3:6]
-        call_info = TS_CALL_MSK if ts == 2 else 0x00
-        for pos in sorted(self._del_buf[ts].keys()):
-            ambe_19 = self._del_buf[ts].pop(pos)
-            gv_payload = _build_slot_voice_payload(
-                ts, pos, ambe_19, self._del_emb_lc[ts], lc)
-            self._del_rtp_ts[ts] = (self._del_rtp_ts[ts] + 480) & 0xFFFFFFFF
-            rtp_hdr = self._next_rtp_hdr(ts, 0x5d)
-            pkt = self._build_voice(
-                self._outbound_opcode(ts), src_sub, dst_id, call_info, rtp_hdr, gv_payload,
-                self._del_stream_id[ts], private_call=self._del_private[ts],
-            )
-            if self._send_cb:
-                self._send_cb(pkt)
-        self._del_buf[ts].clear()
+        lc, src_sub, dst_id = pending
+        pkt = self._build_term_packet(ts, lc, src_sub, dst_id)
+        if self._send_cb:
+            self._send_cb(pkt)
+        self._clear_delivery_ts(ts)
+
+    def _close_replaced_stream(self, ts):
+        """Close the old call before a different HBP stream replaces its state."""
+        if self._del_pending_term[ts] is not None:
+            self._send_pending_term(ts)
+        else:
+            self._synthesize_stream_term(ts)
+
+    def _trim_delivery_backlog(self, ts):
+        """Bound playout latency, dropping only complete old superframe tails."""
+        queue = self._del_buf[ts]
+        if len(queue) <= _MAX_DELIVERY_BACKLOG:
+            return
+        # Advance to the next voice-sync boundary. Keeping stale audio forever
+        # would make a 60 ms producer/consumer queue grow after every stall.
+        while len(queue) > _MAX_DELIVERY_BACKLOG:
+            queue.popleft()
+            while queue and queue[0][0] != 0:
+                queue.popleft()
+        if queue:
+            self._del_burst_pos[ts] = queue[0][0]
 
     def _synthesize_stream_term(self, ts):
         lc = self._del_lc[ts]
@@ -477,6 +529,7 @@ class IpscVoiceTranslator:
         self._del_next_slot[ts] = 0.0
         self._del_burst_pos[ts] = 0
         self._del_consec_synth[ts] = 0
+        self._del_pending_term[ts] = None
         self._del_hbp_stream[ts] = None
         self._del_lc[ts] = None
         self._del_emb_lc[ts] = None
@@ -507,6 +560,13 @@ class IpscVoiceTranslator:
                     and self._del_stream_id[ts] is not None):
                 # pkt_gen emits 3 HEAD frames; one IPSC HEAD per stream is enough.
                 return None
+            if (self._del_hbp_stream.get(ts) is not None
+                    and hbp_stream != self._del_hbp_stream[ts]
+                    and self._del_lc[ts] is not None):
+                # A new call must never erase the prior stream's deferred TERM.
+                # Close the old stream before returning the new HEAD; stale tail
+                # audio is discarded rather than interleaved across calls.
+                self._close_replaced_stream(ts)
             lc = _decode_lc_from_dmrd(payload)
             self._del_lc[ts] = lc
             self._del_emb_lc[ts] = bptc.encode_emblc(lc)
@@ -521,6 +581,7 @@ class IpscVoiceTranslator:
                 self._del_buf[ts].clear()
                 self._del_burst_pos[ts] = 0
                 self._del_consec_synth[ts] = 0
+                self._del_pending_term[ts] = None
                 self._del_next_slot[ts] = 0.0
                 self._del_rtp_ts[ts] = 0
             call_info = TS_CALL_MSK if ts == 2 else 0x00
@@ -532,16 +593,20 @@ class IpscVoiceTranslator:
             )
 
         if frame_type == HBPF_FRAMETYPE_DATASYNC and dtype == HBPF_SLT_VTERM:
+            # A delayed VTERM from a replaced stream must not terminate the
+            # current call. With no active stream there is nothing to close.
+            if (self._del_hbp_stream.get(ts) is None
+                    or hbp_stream != self._del_hbp_stream[ts]):
+                return None
             lc = self._del_lc.get(ts) or _decode_lc_from_dmrd(payload) or (LC_OPT + dst_id + src_sub)
-            self._cancel_delivery_timer(ts)
-            self._flush_del_buf(ts)
-            call_info = (END_MSK | TS_CALL_MSK) if ts == 2 else END_MSK
-            gv_payload = bytes([VOICE_TERM]) + _build_ipsc_voice_payload(lc, VOICE_TERM)
-            rtp_hdr = self._next_rtp_hdr(ts, 0x5e)
-            pkt = self._build_voice(
-                self._outbound_opcode(ts), src_sub, dst_id, call_info, rtp_hdr, gv_payload,
-                self._del_stream_id[ts], private_call=self._del_private[ts],
-            )
+            if self._del_buf[ts] or self._del_timer[ts] is not None:
+                self._del_pending_term[ts] = (lc, src_sub, dst_id)
+                if self._del_timer[ts] is None:
+                    self._del_next_slot[ts] = max(
+                        self._del_next_slot[ts], reactor.seconds())
+                    self._arm_delivery_timer(ts)
+                return None
+            pkt = self._build_term_packet(ts, lc, src_sub, dst_id)
             self._clear_delivery_ts(ts)
             return pkt
 
@@ -549,7 +614,9 @@ class IpscVoiceTranslator:
             if (self._del_lc[ts] is not None
                     and self._del_hbp_stream[ts] is not None
                     and self._del_hbp_stream[ts] != hbp_stream):
-                self._clear_delivery_ts(ts)
+                # Some networks begin with VOICESYNC and no VHEAD. Preserve the
+                # same stream-boundary guarantee as the normal HEAD path.
+                self._close_replaced_stream(ts)
 
             if self._del_lc[ts] is None:
                 lc = LC_OPT + dst_id + src_sub
@@ -561,7 +628,9 @@ class IpscVoiceTranslator:
                 self._del_stream_id[ts] = self._del_stream_ctr
 
             cur_pos = _dmrd_voice_position(flags)
-            self._del_buf[ts][cur_pos] = _extract_ambe_from_dmrd(payload)
+            self._del_buf[ts].append(
+                (cur_pos, _extract_ambe_from_dmrd(payload)))
+            self._trim_delivery_backlog(ts)
 
             if self._del_timer[ts] is None and self._del_next_slot[ts] == 0.0:
                 self._del_burst_pos[ts] = cur_pos

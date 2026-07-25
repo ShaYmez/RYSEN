@@ -49,6 +49,7 @@ from dmr_utils3.utils import int_id, bytes_3, bytes_4, get_alias, mk_id_dict
 from ipsc_peer_meta import (
     lookup_peer_alias, callsign_bytes, parse_ipsc_peer_status, ipsc_peer_display_fields,
 )
+from bridge_helpers import mark_options_dirty, dmr_seq_delta
 
 # Imports for the reporting server
 import pickle
@@ -249,7 +250,7 @@ class OPENBRIDGE(DatagramProtocol):
         if _packet[:3] == DMR and self._config['TARGET_IP']:
             
             if 'VER' in self._config and self._config['VER'] > 4:
-                _ver = VER.to_bytes(1,'big')
+                _ver = self._config['VER'].to_bytes(1,'big')
                 _packet = b''.join([DMRE,_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'],_packet[15:],_ber,_rssi,_ver,time_ns().to_bytes(8,'big'), _source_server, _source_rptr, _hops])
                 _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
                 _h.update(_packet)
@@ -258,7 +259,7 @@ class OPENBRIDGE(DatagramProtocol):
                 self.transport.write(_packet, (self._config['TARGET_IP'], self._config['TARGET_PORT']))
 
             elif 'VER' in self._config and self._config['VER'] == 4:
-                _ver = VER.to_bytes(1,'big')
+                _ver = self._config['VER'].to_bytes(1,'big')
                 _packet = b''.join([DMRE,_packet[4:11], self._CONFIG['GLOBAL']['SERVER_ID'],_packet[15:],_ber,_rssi,_ver,time_ns().to_bytes(8,'big'), _source_server, _hops])
                 _h = blake2b(key=self._config['PASSPHRASE'], digest_size=16)
                 _h.update(_packet)
@@ -341,6 +342,10 @@ class OPENBRIDGE(DatagramProtocol):
         
         if _packet[:3] == DMR:    # DMRData -- encapsulated DMR data frame
             if _packet[:4] == DMRD:
+                if len(_packet) != 73:  # 53-byte DMRD + SHA-1 HMAC
+                    logger.warning('(%s) OpenBridge short/invalid DMRD discarded: %s bytes',
+                                   self._system, len(_packet))
+                    return
                 _data = _packet[:53]
                 _stream_id = _data[16:20]
                 if self._config['VER'] > 1:
@@ -451,13 +456,25 @@ class OPENBRIDGE(DatagramProtocol):
                return
            
             elif _packet[:4] == DMRE:
-                
-                if _packet[55] > 4:
+                if len(_packet) < 56:
+                    logger.warning('(%s) OpenBridge short DMRE discarded: %s bytes',
+                                   self._system, len(_packet))
+                    return
+                _embedded_version = _packet[55]
+                if _embedded_version < 4 or _embedded_version > VER:
+                    logger.warning('(%s) Unsupported OpenBridge DMRE version %s discarded',
+                                   self._system, _embedded_version)
+                    return
+                _expected_len = 89 if _embedded_version > 4 else 85
+                if len(_packet) != _expected_len:
+                    logger.warning('(%s) OpenBridge invalid DMRE v%s length discarded: %s bytes',
+                                   self._system, _embedded_version, len(_packet))
+                    return
+
+                if _embedded_version > 4:
                     _data = _packet[:53]
                     _ber = _packet[53:54]
                     _rssi = _packet[54:55]
-                    _embedded_version  = _packet[55]
-                    self._config['VER'] = _embedded_version
                     _timestamp = _packet[56:64]
                     _source_server = _packet[64:68]
                     _source_rptr = _packet[68:72]
@@ -470,8 +487,6 @@ class OPENBRIDGE(DatagramProtocol):
                     _data = _packet[:53]
                     _ber = _packet[53:54]
                     _rssi = _packet[54:55]
-                    _embedded_version  = _packet[55]
-                    self._config['VER'] = _embedded_version
                     _timestamp = _packet[56:64]
                     _source_server = _packet[64:68]
                     _source_rptr = b'\x00\x00\x00\x00'
@@ -486,6 +501,8 @@ class OPENBRIDGE(DatagramProtocol):
                 _stream_id = _data[16:20]
 
                 if compare_digest(_hash, _ckhs) and (_sockaddr == self._config['TARGET_SOCK'] or self._config['RELAX_CHECKS']):
+                    if _embedded_version > self._config['VER']:
+                        self._config['VER'] = _embedded_version
                     _peer_id = _data[11:15]
                     if self._config['NETWORK_ID'] != _peer_id:
                         if _stream_id not in self._laststrid:
@@ -516,11 +533,16 @@ class OPENBRIDGE(DatagramProtocol):
                                 self._laststrid.append(_stream_id)
                             return
                         
-                    #Discard old packets
-                    if (int.from_bytes(_timestamp,'big')/1000000000) < (time() - 5):
+                    # Discard genuinely stale packets without quenching an
+                    # otherwise healthy stream for one delayed datagram.
+                    _max_packet_age = self._config.get('MAX_PACKET_AGE', 15)
+                    if (int.from_bytes(_timestamp,'big')/1000000000) < (
+                            time() - _max_packet_age):
                         if _stream_id not in self._laststrid:
-                            logger.warning('(%s) Packet from server %s more than 5s old!, discarding',  self._system,int.from_bytes(_source_server,'big'))
-                            self.send_bcsq(_dst_id,_stream_id)
+                            logger.warning(
+                                '(%s) Packet from server %s more than %ss old; discarding',
+                                self._system, int.from_bytes(_source_server,'big'),
+                                _max_packet_age)
                             self._laststrid.append(_stream_id)
                         return
                     
@@ -605,8 +627,13 @@ class OPENBRIDGE(DatagramProtocol):
 
 
             elif _packet[:4] == DMRF:
+                if len(_packet) != 78:
+                    logger.warning('(%s) OpenBridge invalid DMRF discarded: %s bytes',
+                                   self._system, len(_packet))
+                    return
                 _data = _packet[:53]
-                _timestamp = _packet[53:60]
+                _stream_id = _data[16:20]
+                _timestamp = _packet[53:61]
                 _hops = _packet[61]
                 _hash = _packet[62:]
                 #_ckhs = hmac_new(self._config['PASSPHRASE'],_data,sha1).digest()
@@ -619,6 +646,11 @@ class OPENBRIDGE(DatagramProtocol):
                 _ckhs = _h.digest()
 
                 if compare_digest(_hash, _ckhs) and (_sockaddr == self._config['TARGET_SOCK'] or self._config['RELAX_CHECKS']):
+                    _max_packet_age = self._config.get('MAX_PACKET_AGE', 15)
+                    if (int.from_bytes(_timestamp, 'big') / 1000000000) < (
+                            time() - _max_packet_age):
+                        logger.warning('(%s) Stale DMRF packet discarded', self._system)
+                        return
                     _peer_id = _data[11:15]
                     if self._config['NETWORK_ID'] != _peer_id:
                         if _stream_id not in self._laststrid:
@@ -640,7 +672,6 @@ class OPENBRIDGE(DatagramProtocol):
                         _call_type = 'group'
                     _frame_type = (_bits & 0x30) >> 4
                     _dtype_vseq = (_bits & 0xF) # data, 1=voice header, 2=voice terminator; voice, 0=burst A ... 5=burst F
-                    _stream_id = _data[16:20]
                     #logger.debug('(%s) DMRD - Seqence: %s, RF Source: %s, Destination ID: %s', self._system, int_id(_seq), int_id(_rf_src), int_id(_dst_id))
                     
                     #Don't do anything if we are STUNned
@@ -797,6 +828,7 @@ class HBSYSTEM(DatagramProtocol):
         self._report = _report
         self._config = self._CONFIG['SYSTEMS'][self._system]
         self._laststrid = {1: b'', 2: b''}
+        self._repeat_seq = {}
         
 
         # Define shortcuts and generic function names based on the type of system we are
@@ -855,8 +887,10 @@ class HBSYSTEM(DatagramProtocol):
                 logger.info('(%s) Setting default Options: %s',self._system, self._CONFIG['SYSTEMS'][self._system]['_default_options'])
                 self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = self._CONFIG['SYSTEMS'][self._system]['_default_options']
                 self._CONFIG['SYSTEMS'][self._system]['_reset'] = True
+                mark_options_dirty(self._CONFIG)
             else:
                 del self._CONFIG['SYSTEMS'][self._system]['OPTIONS']
+                mark_options_dirty(self._CONFIG)
                 logger.info('(%s) Deleting HBP Options',self._system)
 
     # Aliased in __init__ to maintenance_loop if system is a peer
@@ -994,10 +1028,17 @@ class HBSYSTEM(DatagramProtocol):
         _command = _data[:4]
 
         if _command == DMRD:    # DMRData -- encapsulated DMR data frame
+            if len(_data) < 53:
+                logger.warning('(%s) Short master DMRD discarded: %s bytes',
+                               self._system, len(_data))
+                return
             _peer_id = _data[11:15]
             if _peer_id in self._peers \
                         and self._peers[_peer_id]['CONNECTION'] == 'YES' \
                         and self._peers[_peer_id]['SOCKADDR'] == _sockaddr:
+                # Authenticated voice is live peer traffic even when an endpoint
+                # suppresses RPTPING while transmitting.
+                self._peers[_peer_id]['LAST_PING'] = time()
                 _seq = _data[4]
                 _rf_src = _data[5:8]
                 _dst_id = _data[8:11]
@@ -1051,14 +1092,43 @@ class HBSYSTEM(DatagramProtocol):
                             self._laststrid[_slot] = _stream_id
                         return
 
+                # Raw peer repeat happens before application routing, so apply a
+                # small ingress order gate here as well. Otherwise duplicate or
+                # reordered UDP bypasses routerHBP PacketControl.
+                _repeat_enabled = (
+                    self._config['REPEAT'] == True and len(self._peers) > 1)
+                _repeat_ok = True
+                if _repeat_enabled:
+                    _repeat_key = (_peer_id, _slot, _stream_id)
+                    _repeat_state = self._repeat_seq.get(_repeat_key)
+                    _repeat_now = time()
+                    if _repeat_state is not None:
+                        _repeat_delta = dmr_seq_delta(_seq, _repeat_state['seq'])
+                        if (_data == _repeat_state['data']
+                                or _repeat_delta == 0
+                                or (_repeat_delta is not None and _repeat_delta > 127
+                                    and _repeat_now - _repeat_state['time'] < 1.0)):
+                            _repeat_ok = False
+                    if _repeat_ok:
+                        self._repeat_seq[_repeat_key] = {
+                            'seq': _seq, 'data': _data, 'time': _repeat_now}
+                        if len(self._repeat_seq) > 1024:
+                            self._repeat_seq = {
+                                key: value for key, value in self._repeat_seq.items()
+                                if _repeat_now - value['time'] < STREAM_TO
+                            }
+
                 # The basic purpose of a master is to repeat to the peers
-                if self._config['REPEAT'] == True:
+                if _repeat_enabled and _repeat_ok:
                     pkt = [_data[:11], '', _data[15:]]
                     for _peer in self._peers:
                         if _peer != _peer_id:
                             pkt[1] = _peer
                             self.transport.write(b''.join(pkt), self._peers[_peer]['SOCKADDR'])
                             #logger.debug('(%s) Packet on TS%s from %s (%s) for destination ID %s repeated to peer: %s (%s) [Stream ID: %s]', self._system, _slot, self._peers[_peer_id]['CALLSIGN'], int_id(_peer_id), int_id(_dst_id), self._peers[_peer]['CALLSIGN'], int_id(_peer), int_id(_stream_id))
+                if (_repeat_enabled and _frame_type == HBPF_DATA_SYNC
+                        and _dtype_vseq == HBPF_SLT_VTERM):
+                    self._repeat_seq.pop(_repeat_key, None)
 
 
                 # Userland actions -- typically this is the function you subclass for an application
@@ -1173,10 +1243,12 @@ class HBSYSTEM(DatagramProtocol):
                             self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = self._CONFIG['SYSTEMS'][self._system]['_default_options']
                             logger.info('(%s) Setting default Options: %s',self._system, self._CONFIG['SYSTEMS'][self._system]['_default_options'])
                             self._CONFIG['SYSTEMS'][self._system]['_reset'] = True
+                            mark_options_dirty(self._CONFIG)
                         else:
                             logger.info('(%s) Deleting HBP Options',self._system)
                             del self._CONFIG['SYSTEMS'][self._system]['OPTIONS']
                             self._CONFIG['SYSTEMS'][self._system]['_reset'] = True
+                            mark_options_dirty(self._CONFIG)
                     
             else:
                 _peer_id = _data[4:8]      # Configure Command
@@ -1227,6 +1299,7 @@ class HBSYSTEM(DatagramProtocol):
             if _peer_id in self._peers and self._peers[_peer_id]['SOCKADDR'] == _sockaddr:
                 _this_peer = self._peers[_peer_id]
                 _this_peer['OPTIONS'] = _data[8:]
+                mark_options_dirty(self._CONFIG)
                 self.send_peer(_peer_id, b''.join([RPTACK, _peer_id]))
                 _opt_str = (_this_peer['OPTIONS'].decode()
                             if isinstance(_this_peer['OPTIONS'], bytes)
@@ -1290,7 +1363,10 @@ class HBSYSTEM(DatagramProtocol):
             # Extract the command, which is various length, but only 4 significant characters
             _command = _data[:4]
             if   _command == DMRD:    # DMRData -- encapsulated DMR data frame
-
+                if len(_data) < 53:
+                    logger.warning('(%s) Short peer DMRD discarded: %s bytes',
+                                   self._system, len(_data))
+                    return
                 _peer_id = _data[11:15]
                 if self._config['LOOSE'] or _peer_id == self._config['RADIO_ID']: # Validate the Radio_ID unless using loose validation
                     #_seq = _data[4:5]

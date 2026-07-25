@@ -94,6 +94,12 @@ class IpscProxy(DatagramProtocol):
         if peer_id and peer_id in self.peer_track:
             peer = self.peer_track[peer_id]
             self.transport.write(data, (peer['shost'], peer['sport']))
+            timer = peer.get('timer')
+            if timer is not None:
+                try:
+                    timer.reset(self.timeout)
+                except Exception:
+                    pass
             return True
         return False
 
