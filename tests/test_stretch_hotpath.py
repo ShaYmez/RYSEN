@@ -66,6 +66,14 @@ class TestObpEmptyFiOwner(unittest.TestCase):
         self.assertNotIn('fi is empty for some reason', source)
         self.assertIn('elif self._system != fi:', source)
 
+    def test_obp_rate_drop_guards_missing_packets(self):
+        with open('bridge_master.py', encoding='utf-8') as fh:
+            source = fh.read()
+        self.assertIn("_obp_packets = self.STATUS[_stream_id].get('packets', 0)", source)
+        self.assertIn("Outbound OBP stubs may lack inbound counters", source)
+        # Outbound OBP STATUS stubs carry packet counters
+        self.assertGreaterEqual(source.count("'packets': 0,"), 4)
+
 
 if __name__ == '__main__':
     unittest.main()

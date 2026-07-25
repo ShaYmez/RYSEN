@@ -2024,7 +2024,12 @@ class routerOBP(OPENBRIDGE):
                             'RFS':       _rf_src,
                             'TGID':      _dst_id,
                             'RX_PEER': _peer_id,
-
+                            # Inbound LoopControl may see this stub first — keep packet stats present
+                            'packets': 0,
+                            'loss': 0,
+                            'crcs': set(),
+                            'lastSeq': False,
+                            'lastData': False,
                         }
                         # Generate LCs (full and EMB) for the TX stream
                         _src_lc = LC_OPT
@@ -2274,6 +2279,9 @@ class routerOBP(OPENBRIDGE):
                 }
             
             self.STATUS[_stream_id]['LAST'] = pkt_time
+            if 'packets' not in self.STATUS[_stream_id]:
+                self.STATUS[_stream_id]['packets'] = 0
+                self.STATUS[_stream_id].setdefault('crcs', set())
             self.STATUS[_stream_id]['packets'] = self.STATUS[_stream_id]['packets'] + 1
             
             hr_times = {}
@@ -2451,8 +2459,15 @@ class routerOBP(OPENBRIDGE):
 
 
             else:
-                if 'packets' in self.STATUS[_stream_id]:
-                    self.STATUS[_stream_id]['packets'] = self.STATUS[_stream_id]['packets'] +1
+                # Outbound OBP stubs may lack inbound counters — ensure before PacketControl.
+                _obp_st = self.STATUS[_stream_id]
+                if 'packets' not in _obp_st:
+                    _obp_st['packets'] = 0
+                    _obp_st.setdefault('loss', 0)
+                    _obp_st.setdefault('crcs', set())
+                    _obp_st.setdefault('lastSeq', False)
+                    _obp_st.setdefault('lastData', False)
+                _obp_st['packets'] = _obp_st['packets'] + 1
                 #Finished stream handling#
                 if '_fin' in self.STATUS[_stream_id]:
                     if '_finlog' not in self.STATUS[_stream_id]:
@@ -2512,8 +2527,9 @@ class routerOBP(OPENBRIDGE):
                         self.STATUS[_stream_id]['_bcsq'] = True
                     return
                 
-                #Rate drop
-                if self.STATUS[_stream_id]['packets'] > 18 and (self.STATUS[_stream_id]['packets'] / self.STATUS[_stream_id]['START'] > 25):
+                #Rate drop (guard packets — outbound stubs / empty-fi owner continue)
+                _obp_packets = self.STATUS[_stream_id].get('packets', 0)
+                if _obp_packets > 18 and (_obp_packets / self.STATUS[_stream_id]['START'] > 25):
                     logger.warning("(%s) *PacketControl* RATE DROP! Stream ID:, %s TGID: %s",self._system,int_id(_stream_id),int_id(_dst_id))
                     return
                 
@@ -2773,7 +2789,13 @@ class routerHBP(HBSYSTEM):
                                 'CONTENTION':False,
                                 'RFS':       _rf_src,
                                 'TGID':      _dst_id,
-                                'RX_PEER':   _peer_id
+                                'RX_PEER':   _peer_id,
+                                # Inbound LoopControl may see this stub first — keep packet stats present
+                                'packets': 0,
+                                'loss': 0,
+                                'crcs': set(),
+                                'lastSeq': False,
+                                'lastData': False,
                             }
                             # Generate LCs (full and EMB) for the TX stream
                             dst_lc = b''.join([self.STATUS[_slot]['RX_LC'][0:3], _target['TGID'], _rf_src])
