@@ -168,14 +168,33 @@ class Proxy(DatagramProtocol):
                         _peer_id = data[6:10]
                     else:
                         _peer_id = self.connTrack.get(port)
+                    # Track master login ACKs for mid-login MSTNAK gate
+                    if _peer_id in self.peerTrack:
+                        _conn = self.peerTrack[_peer_id].get('CONNECTION')
+                        if _conn == 'RPTL_SENT':
+                            self.peerTrack[_peer_id]['CONNECTION'] = 'CHALLENGE_SENT'
+                        elif _conn == 'WAITING_CONFIG':
+                            self.peerTrack[_peer_id]['CONNECTION'] = 'YES'
             elif data[:6] == MSTNAK:
                     _peer_id = data[6:10] if len(data) >= 10 else None
                     if _peer_id:
+                        _peer = self.peerTrack.get(_peer_id)
+                        _conn = (_peer or {}).get('CONNECTION', 'YES')
+                        # Mid-login NAKs (auth/config) — forward to client, keep proxy slot.
+                        # Cleanup here was Instant New→Removed with premature RPTCL/MSTCL.
+                        if _peer and _conn in ('RPTL_SENT', 'CHALLENGE_SENT', 'WAITING_CONFIG'):
+                            self.transport.write(data, (_peer['shost'], _peer['sport']))
+                            return
                         self.cleanup_peer(_peer_id)
                     return
             elif _command == MSTN:
                     _peer_id = data[6:10] if len(data) >= 10 else None
                     if _peer_id:
+                        _peer = self.peerTrack.get(_peer_id)
+                        _conn = (_peer or {}).get('CONNECTION', 'YES')
+                        if _peer and _conn in ('RPTL_SENT', 'CHALLENGE_SENT', 'WAITING_CONFIG'):
+                            self.transport.write(data, (_peer['shost'], _peer['sport']))
+                            return
                         self.cleanup_peer(_peer_id)
                     return
             elif _command == MSTP and len(data) >= 11:
@@ -251,6 +270,13 @@ class Proxy(DatagramProtocol):
                 _dport = self.peerTrack[_peer_id]['dport']
                 self.peerTrack[_peer_id]['sport'] = port
                 self.peerTrack[_peer_id]['shost'] = host
+                # Track client login steps for mid-login MSTNAK gate
+                if _command == RPTL:
+                    self.peerTrack[_peer_id]['CONNECTION'] = 'RPTL_SENT'
+                elif _command == RPTK:
+                    self.peerTrack[_peer_id]['CONNECTION'] = 'WAITING_CONFIG'
+                elif _command == RPTP:
+                    self.peerTrack[_peer_id]['CONNECTION'] = 'YES'
                 self.transport.write(data, (self.master,_dport))
                 self.peerTrack[_peer_id]['timer'].reset(self.timeout)
                 if self.debug:
@@ -272,6 +298,13 @@ class Proxy(DatagramProtocol):
                 self.peerTrack[_peer_id]['sport'] = port
                 self.peerTrack[_peer_id]['shost'] = host
                 self.peerTrack[_peer_id]['timer'] = reactor.callLater(self.timeout,self.reaper,_peer_id)
+                # First packet allocates the slot — usually RPTL
+                if _command == RPTL:
+                    self.peerTrack[_peer_id]['CONNECTION'] = 'RPTL_SENT'
+                elif _command == RPTK:
+                    self.peerTrack[_peer_id]['CONNECTION'] = 'WAITING_CONFIG'
+                else:
+                    self.peerTrack[_peer_id]['CONNECTION'] = 'YES'
                 self.transport.write(data, (self.master,_dport))
                 pripacket = b''.join([b'PRIN',host.encode('UTF-8'),b':',str(port).encode('UTF-8')])
                 #Send IP and Port info to server
@@ -455,8 +488,7 @@ if __name__ == '__main__':
     reactor.listenUDP(ListenPort, srv_proxy, interface=ListenIP)
 
     def loopingErrHandle(failure):
-        print('(GLOBAL) STOPPING REACTOR TO AVOID MEMORY LEAK: Unhandled error innowtimed loop.\n {}'.format(failure))
-        reactor.stop()
+        print('(GLOBAL) Unhandled error in timed loop.\n {}'.format(failure))
 
     if use_selfservice:
         # Options loop

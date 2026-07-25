@@ -5,17 +5,17 @@ alwaysApply: true
 
 # Soft-client / stretch notes
 
-Tip = **`fdfbfa2`** + rewritten selfcare/parrot (`5f3f7e1`) + safe bloat cut (`c385a76`) + **stretch hot-path package**:
+Tip = **`fdfbfa2`** + rewritten selfcare/parrot (`5f3f7e1`) + safe bloat cut (`c385a76`) + **stretch hot-path package** + **tip stability bug pass**:
 
 | Fix | What |
 |-----|------|
-| OBP `activate_ua` | Call-start / new-stream only (not every voice frame) |
+| OBP `activate_ua` | Call-start / new-stream **or** first inbound claim on outbound stub (`_obp_ua_arm`) — not every voice frame |
 | UA key-up notify | Never `BRIDGE_SND` on timer-only UA refresh; notify only on ACTIVE/topology change |
 | OBP empty-fi owner | When LoopControl `fi` is empty, continue as owner (do not hard-drop) — not full `50e2e62` |
-| OBP stub packets | Outbound OBP STATUS + RATE DROP use/init `packets` so empty-fi continue cannot KeyError |
-| `BRIDGE_IDX` miss | Rebuild coalesced (≥1s); full-scan fallback always |
-| SC proxy | `MSTCL`×3 on reaper + reset idle timer on master→client DMRD |
-| Diagnostics | ms logs for rebuild / options / report / rule_timer; reporting errback |
+| OBP stub harden | Outbound stubs + empty-fi: `setdefault` `LC`/`1ST`/counters; one-shot owner `LOOPLOG`; no `_sysslot` NameError |
+| `BRIDGE_IDX` miss/stale | Rebuild coalesced (≥1s); stale hit path also rebuilds; full-scan fallback always |
+| SC proxy | `MSTCL`×3 on reaper + RX idle reset; **no** `cleanup_peer` on mid-login `MSTNAK`; LoopingCall errback log-only |
+| Diagnostics | ms logs for rebuild / options / report / rule_timer; reporting errback; ON-timer → DEBUG |
 
 ## Do not re-land without explicit user ask
 
@@ -35,12 +35,13 @@ Tip = **`fdfbfa2`** + rewritten selfcare/parrot (`5f3f7e1`) + safe bloat cut (`c
 | Lazy `make_stat_bridge` + `_ensure_master_on_legs` | Cuts BRIDGE_IDX explosion |
 | Slim `BRIDGE_SND` report legs | Less reactor pickle work |
 | DIAL/StartRef=9 OPTIONS sanitize | Stops 26s OPTIONS thrash |
-| `loopingErrHandle` log-only | Avoids TG blackouts |
+| `loopingErrHandle` log-only | Avoids TG blackouts (hblink + SC proxy) |
 | Stretch hot-path package (above) | Align OBP with FreeDMR simplicity; stop proxy RX reap |
 | UA key-up notify gate | Skip BRIDGE_SND on timer-only activate; avoid reactor stall on busy TGs |
 | OBP empty-fi owner only | Continue routing when LoopControl fi empty; do not re-land full `50e2e62` |
-| OBP stub packets guard | Init/guard `packets` on outbound stubs + RATE DROP after empty-fi continue |
+| OBP stub packets / LC / 1ST | Init/guard counters + LC on outbound stubs so empty-fi continue cannot KeyError |
+| Tip stability bug pass | Mid-login MSTNAK no-cleanup; stub-first UA arm; rule_timer DEBUG; CALL END zero-packet guard |
 
 ## Ops (UK / Greece)
 
-Keep SYSTEM `GENERATOR` modest and proxy `DESTPORTEND` matched. Soft stretch = late/bursty HBP into client jitter (same TX as MMDVM). Correlate `(DIAGNOSTICS) Reactor lag` vs proxy `Removed`/`New client`. Retest BlueDV/Peanut/DVSwitch on local TG and 235/116 after deploy.
+Keep SYSTEM `GENERATOR` modest and proxy `DESTPORTEND` matched. Soft stretch = late/bursty HBP into client jitter (same TX as MMDVM). Correlate `(DIAGNOSTICS) Reactor lag` vs proxy `Removed`/`New client`. Retest BlueDV/Peanut/DVSwitch on local TG and 235/116 after deploy. Roll **USA first**, then UK after tip stability package.

@@ -5,14 +5,17 @@ import unittest
 
 class TestObpActivateUaCallStartOnly(unittest.TestCase):
 
-    def test_obp_activate_gated_on_new_stream(self):
+    def test_obp_activate_gated_on_new_stream_or_stub_claim(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
             source = fh.read()
         # New-stream flag on OBP group path
         self.assertIn('_obp_new_stream = (_stream_id not in self.STATUS)', source)
-        # Activate must be gated — not bare per-packet call after STAT create
-        self.assertIn('if _obp_new_stream:', source)
+        # Activate on first inbound claim (new stream or stub missing 1ST) — not every frame
+        self.assertIn('_obp_ua_arm', source)
+        self.assertIn('if _obp_ua_arm:', source)
         self.assertIn('activate_ua_bridge_source(str(_int_dst), self._system, _slot, peer_id=_peer_id)', source)
+        # Must not gate solely on brand-new STATUS (outbound stub race)
+        self.assertNotIn('if _obp_new_stream:\n                _int_dst = int_id(_dst_id)', source)
         # Ensure the ungated OBP comment/call pattern is gone
         self.assertNotIn(
             '# Activate this OBP leg on an existing conference bridge (same as HBP on call start)',
@@ -27,8 +30,8 @@ class TestBridgeIdxMissThrottle(unittest.TestCase):
         self.assertIn('_BRIDGE_IDX_REBUILD_MIN_INTERVAL_S', source)
         self.assertIn('def _maybe_rebuild_bridge_index_on_miss', source)
         self.assertIn('rebuild throttled', source)
-        # Both OBP and HBP miss paths use the helper (not raw rebuild alone)
-        self.assertGreaterEqual(source.count('_maybe_rebuild_bridge_index_on_miss('), 2)
+        # Miss paths + stale hit paths use the helper
+        self.assertGreaterEqual(source.count('_maybe_rebuild_bridge_index_on_miss('), 4)
 
 
 class TestProxyReaperMstclAndRxTimer(unittest.TestCase):
@@ -44,6 +47,26 @@ class TestProxyReaperMstclAndRxTimer(unittest.TestCase):
             source = fh.read()
         self.assertIn('Keep RX-heavy soft clients alive', source)
         self.assertIn('_timer.reset(self.timeout)', source)
+
+    def test_mid_login_mstnak_skips_cleanup(self):
+        with open('hotspot_proxy_v2_sc.py', encoding='utf-8') as fh:
+            source = fh.read()
+        self.assertIn("('RPTL_SENT', 'CHALLENGE_SENT', 'WAITING_CONFIG')", source)
+        self.assertIn('Mid-login NAKs', source)
+        self.assertIn("['CONNECTION'] = 'RPTL_SENT'", source)
+        self.assertIn("['CONNECTION'] = 'WAITING_CONFIG'", source)
+        self.assertIn("['CONNECTION'] = 'CHALLENGE_SENT'", source)
+
+    def test_looping_errback_no_reactor_stop(self):
+        with open('hotspot_proxy_v2_sc.py', encoding='utf-8') as fh:
+            source = fh.read()
+        # Signal handler may still stop reactor; LoopingCall errback must not
+        self.assertIn('def loopingErrHandle(failure):', source)
+        # Extract errback body between def and next top-level-ish block
+        start = source.index('def loopingErrHandle(failure):')
+        block = source[start:start + 200]
+        self.assertNotIn('reactor.stop()', block)
+        self.assertIn('Unhandled error in timed loop', block)
 
 
 class TestReportingErrback(unittest.TestCase):
@@ -65,14 +88,34 @@ class TestObpEmptyFiOwner(unittest.TestCase):
         # Hard-drop on empty fi must be gone (group + unit)
         self.assertNotIn('fi is empty for some reason', source)
         self.assertIn('elif self._system != fi:', source)
+        # Empty-fi log must not reference unbound _sysslot
+        self.assertNotIn('treating this system as owner. STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)', source)
+        self.assertIn('treating this system as owner. STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_slot)', source)
 
-    def test_obp_rate_drop_guards_missing_packets(self):
+    def test_obp_stub_hardens_lc_1st_counters(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
             source = fh.read()
+        self.assertIn("setdefault('LC', b''.join([LC_OPT,_dst_id,_rf_src]))", source)
+        self.assertIn("setdefault('1ST', perf_counter())", source)
         self.assertIn("_obp_packets = self.STATUS[_stream_id].get('packets', 0)", source)
-        self.assertIn("Outbound OBP stubs may lack inbound counters", source)
+        self.assertIn('Outbound OBP stubs may lack inbound LC/1ST/counters', source)
         # Outbound OBP STATUS stubs carry packet counters
         self.assertGreaterEqual(source.count("'packets': 0,"), 4)
+
+    def test_call_end_guards_zero_packets(self):
+        with open('bridge_master.py', encoding='utf-8') as fh:
+            source = fh.read()
+        self.assertIn('if call_duration and _obp_pkts:', source)
+
+    def test_rule_timer_on_running_is_debug(self):
+        with open('bridge_master.py', encoding='utf-8') as fh:
+            source = fh.read()
+        self.assertIn(
+            "logger.debug('(ROUTER) Conference Bridge ACTIVE (ON timer running):",
+            source)
+        self.assertNotIn(
+            "logger.info('(ROUTER) Conference Bridge ACTIVE (ON timer running):",
+            source)
 
 
 if __name__ == '__main__':

@@ -1103,7 +1103,7 @@ def rule_timer_loop():
                     else:
                         timeout_in = _system['TIMER'] - _now
                         _bridge_used = True
-                        logger.info('(ROUTER) Conference Bridge ACTIVE (ON timer running): System: %s Bridge: %s, TS: %s, TGID: %s, Timeout in: %.2fs,', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']),  timeout_in)
+                        logger.debug('(ROUTER) Conference Bridge ACTIVE (ON timer running): System: %s Bridge: %s, TS: %s, TGID: %s, Timeout in: %.2fs,', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']),  timeout_in)
                 elif _system['ACTIVE'] == False:
                     logger.debug('(ROUTER) Conference Bridge INACTIVE (no change): System: %s Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
             elif _system['TO_TYPE'] == 'OFF':
@@ -2209,7 +2209,12 @@ class routerOBP(OPENBRIDGE):
                 'RFS':       _rf_src,
                 'TGID':      _dst_id,
                 'RX_PEER':   _peer_id,
-                'packets': 0
+                # Match group OBP stub counters — inbound may see this first
+                'packets': 0,
+                'loss': 0,
+                'crcs': set(),
+                'lastSeq': False,
+                'lastData': False,
             }
             
         # Record the time of this packet so we can later identify a stale stream
@@ -2274,14 +2279,22 @@ class routerOBP(OPENBRIDGE):
                     'lastData': False,
                     'RX_PEER': _peer_id,
                     'packets': 0,
-                    'crcs': set()
-
+                    'crcs': set(),
+                    'LC': b''.join([LC_OPT,_dst_id,_rf_src]),
                 }
+            else:
+                # Outbound stubs / races — harden before LoopControl
+                _obp_st = self.STATUS[_stream_id]
+                _obp_st.setdefault('1ST', perf_counter())
+                _obp_st.setdefault('LC', b''.join([LC_OPT,_dst_id,_rf_src]))
+                _obp_st.setdefault('packets', 0)
+                _obp_st.setdefault('crcs', set())
+                _obp_st.setdefault('lastSeq', False)
+                _obp_st.setdefault('lastData', False)
             
             self.STATUS[_stream_id]['LAST'] = pkt_time
-            if 'packets' not in self.STATUS[_stream_id]:
-                self.STATUS[_stream_id]['packets'] = 0
-                self.STATUS[_stream_id].setdefault('crcs', set())
+            self.STATUS[_stream_id].setdefault('packets', 0)
+            self.STATUS[_stream_id].setdefault('crcs', set())
             self.STATUS[_stream_id]['packets'] = self.STATUS[_stream_id]['packets'] + 1
             
             hr_times = {}
@@ -2307,7 +2320,11 @@ class routerOBP(OPENBRIDGE):
             if not fi:
                 # No inbound peer yet / race after outbound STATUS without 1ST —
                 # proceed as owner instead of hard-dropping (choppy OBP audio).
-                logger.warning("(%s) OBP UNIT *LoopControl* fi is empty; treating this system as owner. STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
+                if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
+                    logger.warning("(%s) OBP UNIT *LoopControl* fi is empty; treating this system as owner. STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_slot)
+                    self.STATUS[_stream_id]['LOOPLOG'] = True
+                self.STATUS[_stream_id].setdefault('1ST', perf_counter())
+                self.STATUS[_stream_id].setdefault('LC', b''.join([LC_OPT,_dst_id,_rf_src]))
             elif self._system != fi:
                 if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
                     call_duration = pkt_time - self.STATUS[_stream_id]['START']
@@ -2415,12 +2432,15 @@ class routerOBP(OPENBRIDGE):
                                 else:
                                     logger.debug('(%s) UNIT Data not bridged to HBP on slot %s - target busy: %s DST_ID: %s',self._system,_d_slot,_d_system,_int_dst_id)
             
+            self.STATUS[_stream_id].setdefault('crcs', set())
             self.STATUS[_stream_id]['crcs'].add(_pkt_crc)
             
                     
         if _call_type == 'group' or _call_type == 'vcsbk':
             # Is this a new call stream?
             _obp_new_stream = (_stream_id not in self.STATUS)
+            # UA activate once: brand-new STATUS, or first inbound claim on an outbound stub
+            _obp_ua_arm = False
             if _obp_new_stream:
                 
                 # This is a new call stream
@@ -2438,6 +2458,7 @@ class routerOBP(OPENBRIDGE):
                     'crcs': set()
 
                 }
+                _obp_ua_arm = True
 
                 # If we can, use the LC from the voice header as to keep all options intact
                 if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD:
@@ -2449,6 +2470,9 @@ class routerOBP(OPENBRIDGE):
                 else:
                     self.STATUS[_stream_id]['LC'] = b''.join([LC_OPT,_dst_id,_rf_src])
 
+                # Count first frame (CALL END / rate stats)
+                self.STATUS[_stream_id]['packets'] = 1
+
                 _inthops = 0 
                 if _hops:
                     _inthops = int.from_bytes(_hops,'big')
@@ -2459,14 +2483,17 @@ class routerOBP(OPENBRIDGE):
 
 
             else:
-                # Outbound OBP stubs may lack inbound counters — ensure before PacketControl.
+                # Outbound OBP stubs may lack inbound LC/1ST/counters — harden before LoopControl.
                 _obp_st = self.STATUS[_stream_id]
-                if 'packets' not in _obp_st:
-                    _obp_st['packets'] = 0
-                    _obp_st.setdefault('loss', 0)
-                    _obp_st.setdefault('crcs', set())
-                    _obp_st.setdefault('lastSeq', False)
-                    _obp_st.setdefault('lastData', False)
+                if '1ST' not in _obp_st:
+                    _obp_ua_arm = True
+                _obp_st.setdefault('1ST', perf_counter())
+                _obp_st.setdefault('LC', b''.join([LC_OPT,_dst_id,_rf_src]))
+                _obp_st.setdefault('packets', 0)
+                _obp_st.setdefault('loss', 0)
+                _obp_st.setdefault('crcs', set())
+                _obp_st.setdefault('lastSeq', False)
+                _obp_st.setdefault('lastData', False)
                 _obp_st['packets'] = _obp_st['packets'] + 1
                 #Finished stream handling#
                 if '_fin' in self.STATUS[_stream_id]:
@@ -2511,7 +2538,11 @@ class routerOBP(OPENBRIDGE):
                 if not fi:
                     # No inbound peer yet / race after outbound STATUS without 1ST —
                     # proceed as owner instead of hard-dropping (choppy OBP audio).
-                    logger.warning("(%s) OBP *LoopControl* fi is empty; treating this system as owner. STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)
+                    if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
+                        logger.warning("(%s) OBP *LoopControl* fi is empty; treating this system as owner. STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_slot)
+                        self.STATUS[_stream_id]['LOOPLOG'] = True
+                    self.STATUS[_stream_id].setdefault('1ST', perf_counter())
+                    self.STATUS[_stream_id].setdefault('LC', b''.join([LC_OPT,_dst_id,_rf_src]))
                 elif self._system != fi:
                     if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
                         call_duration = pkt_time - self.STATUS[_stream_id]['START']
@@ -2584,7 +2615,8 @@ class routerOBP(OPENBRIDGE):
 
             # Activate OBP UA leg once per call (parity with HBP / FreeDMR hot path —
             # never every voice frame; that burned reactor CPU under busy OBP).
-            if _obp_new_stream:
+            # New STATUS or first inbound claim on an outbound stub (1ST was missing).
+            if _obp_ua_arm:
                 _int_dst = int_id(_dst_id)
                 if (_int_dst >= 5 and _int_dst != 9 and _int_dst not in (4000, 5000)
                         and not is_parrot_talkgroup(_int_dst)
@@ -2612,6 +2644,7 @@ class routerOBP(OPENBRIDGE):
                         # Stale index entry - skip and schedule a rebuild
                         logger.debug('(%s) OBP BRIDGE_IDX stale entry for bridge %s, skipping',
                                      self._system, _orig_bridge)
+                        _maybe_rebuild_bridge_index_on_miss(self._system, _slot, _dst_id)
                         continue
                     for _system in BRIDGES[_orig_bridge]:
                         if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
@@ -2624,9 +2657,10 @@ class routerOBP(OPENBRIDGE):
                 call_duration = pkt_time - self.STATUS[_stream_id]['START']
                 packet_rate = 0
                 loss = 0.00
-                if call_duration:
-                    packet_rate = self.STATUS[_stream_id]['packets'] / call_duration
-                    loss = (self.STATUS[_stream_id]['loss'] / self.STATUS[_stream_id]['packets']) * 100
+                _obp_pkts = self.STATUS[_stream_id].get('packets', 0)
+                if call_duration and _obp_pkts:
+                    packet_rate = _obp_pkts / call_duration
+                    loss = (self.STATUS[_stream_id].get('loss', 0) / _obp_pkts) * 100
                 logger.info('(%s) *CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, Duration: %.2f, Packet rate: %.2f/s, Loss: %.2f%%', \
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration, packet_rate,loss)
                 if CONFIG['REPORTS']['REPORT']:
@@ -3160,7 +3194,13 @@ class routerHBP(HBSYSTEM):
                 'CONTENTION':False,
                 'RFS':       _rf_src,
                 'TGID':      _dst_id,
-                'RX_PEER':   _peer_id
+                'RX_PEER':   _peer_id,
+                # Match group OBP stub counters — inbound may see this first
+                'packets': 0,
+                'loss': 0,
+                'crcs': set(),
+                'lastSeq': False,
+                'lastData': False,
             }
             
         # Record the time of this packet so we can later identify a stale stream
@@ -3737,9 +3777,10 @@ class routerHBP(HBSYSTEM):
                 _ROUTE_STATS['index_hits'] += 1
                 for _orig_bridge in list(_candidate_bridges):
                     if _orig_bridge not in BRIDGES:
-                        # Stale index entry - skip
+                        # Stale index entry - skip and schedule a rebuild
                         logger.debug('(%s) HBP BRIDGE_IDX stale entry for bridge %s, skipping',
                                      self._system, _orig_bridge)
+                        _maybe_rebuild_bridge_index_on_miss(self._system, _slot, _dst_id)
                         continue
                     for _system in BRIDGES[_orig_bridge]:
                         if _system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True:
