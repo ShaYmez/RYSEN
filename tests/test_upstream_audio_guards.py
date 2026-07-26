@@ -3,7 +3,11 @@
 import re
 import unittest
 
-from bridge_helpers import dmr_seq_delta, earliest_obp_owner
+from bridge_helpers import (
+    dmr_seq_delta,
+    earliest_obp_owner,
+    harden_obp_stub,
+)
 
 
 class TestWrapSafeDmrSequence(unittest.TestCase):
@@ -84,6 +88,28 @@ class TestObpOwnerElection(unittest.TestCase):
             tg, source, 100.1, 5.0)
 
         self.assertEqual(owner, 'ACTIVE')
+
+
+class TestObpStubHardening(unittest.TestCase):
+
+    def test_outbound_stub_is_completed_for_inbound_packet_control(self):
+        existing_lc = b'existing-lc'
+        status = {
+            'START': 1.0,
+            'LAST': 2.0,
+            'RFS': b'\x01\x02\x03',
+            'TGID': b'\x00\x00W',
+            'LC': existing_lc,
+            'TARGET_LC': {},
+        }
+
+        result = harden_obp_stub(status, 3.0, b'fallback-lc')
+
+        self.assertIs(result, status)
+        self.assertEqual(status['1ST'], 3.0)
+        self.assertIs(status['lastSeq'], False)
+        self.assertIs(status['lastData'], False)
+        self.assertEqual(status['LC'], existing_lc)
 
 
 class TestPacketControlSourceGuards(unittest.TestCase):

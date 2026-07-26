@@ -48,7 +48,11 @@ from dmr_utils3 import decode, bptc, const
 import config
 import log
 from const import *
-from bridge_helpers import dmr_seq_delta, earliest_obp_owner
+from bridge_helpers import (
+    dmr_seq_delta,
+    earliest_obp_owner,
+    harden_obp_stub,
+)
 
 # Stuff for socket reporting
 import pickle
@@ -342,6 +346,7 @@ class routerOBP(OPENBRIDGE):
                     'CONTENTION':False,
                     'RFS':       _rf_src,
                     'TGID':      _dst_id,
+                    '1ST':       pkt_time,
                     'lastSeq': False,
                     'lastData': False,
                 }
@@ -361,7 +366,12 @@ class routerOBP(OPENBRIDGE):
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
                 if CONFIG['REPORTS']['REPORT']:
                     self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
-            else: 
+            else:
+                # A stream first sent outbound creates a partial target STATUS.
+                # Complete it before the same stream returns through this OBP.
+                harden_obp_stub(
+                    self.STATUS[_stream_id], pkt_time,
+                    LC_OPT + _dst_id + _rf_src)
                 
                 #Finished stream handling#
                 if '_fin' in self.STATUS[_stream_id]:

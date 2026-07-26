@@ -44,6 +44,15 @@ def earliest_obp_owner(openbridge_systems, system_objects, stream_id,
     return min(claims, key=claims.get, default=False)
 
 
+def harden_obp_stub(status, first_seen, lc):
+    """Complete an outbound OBP status stub before it becomes an ingress."""
+    status.setdefault('1ST', first_seen)
+    status.setdefault('LC', lc)
+    status.setdefault('lastSeq', False)
+    status.setdefault('lastData', False)
+    return status
+
+
 def is_dial_service_code(reflector):
     """TGs reserved for dial-a-tg signalling (channel, disconnect, status) — not link targets."""
     try:
