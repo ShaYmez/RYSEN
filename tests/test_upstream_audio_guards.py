@@ -269,6 +269,13 @@ class TestPacketControlSourceGuards(unittest.TestCase):
         self.assertIn(
             'fi = earliest_obp_owner(',
             self.legacy_bridge_source)
+        self.assertNotIn(
+            "CONFIG['SYSTEMS'][self._system]['ENHANCED_OBP']",
+            self.legacy_bridge_source)
+        self.assertEqual(
+            self.legacy_bridge_source.count(
+                "CONFIG['SYSTEMS'][self._system].get("
+                "'ENHANCED_OBP', False)"), 2)
         self.assertIn(
             'for _claim_key, _claim in list(_HBP_STREAM_CLAIMS.items()):',
             self.legacy_bridge_source)

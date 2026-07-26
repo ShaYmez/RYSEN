@@ -404,7 +404,8 @@ class routerOBP(OPENBRIDGE):
                         self.STATUS[_stream_id]['LOOPLOG'] = True
                     self.STATUS[_stream_id]['LAST'] = pkt_time
 
-                    if CONFIG['SYSTEMS'][self._system]['ENHANCED_OBP'] and '_bcsq' not in self.STATUS[_stream_id]:
+                    if (CONFIG['SYSTEMS'][self._system].get('ENHANCED_OBP', False)
+                            and '_bcsq' not in self.STATUS[_stream_id]):
                         systems[self._system].send_bcsq(_dst_id,_stream_id)
                         self.STATUS[_stream_id]['_bcsq'] = True
                     return
@@ -794,7 +795,8 @@ class routerHBP(HBSYSTEM):
                         self.STATUS[_slot]['LOOPLOG'] = True
                     self.STATUS[_slot]['LAST'] = pkt_time
 
-                    if CONFIG['SYSTEMS'][self._system]['ENHANCED_OBP'] and '_bcsq' not in self.STATUS[_slot]:
+                    if (CONFIG['SYSTEMS'][self._system].get('ENHANCED_OBP', False)
+                            and '_bcsq' not in self.STATUS[_slot]):
                         systems[self._system].send_bcsq(_dst_id,_stream_id)
                         self.STATUS[_slot]['_bcsq'] = True
                     return
