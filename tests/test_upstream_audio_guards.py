@@ -3,7 +3,7 @@
 import re
 import unittest
 
-from bridge_helpers import dmr_seq_delta
+from bridge_helpers import dmr_seq_delta, earliest_obp_owner
 
 
 class TestWrapSafeDmrSequence(unittest.TestCase):
@@ -21,6 +21,69 @@ class TestWrapSafeDmrSequence(unittest.TestCase):
         self.assertEqual(dmr_seq_delta(7, 7), 0)
         self.assertEqual(dmr_seq_delta(12, 9), 3)
         self.assertGreater(dmr_seq_delta(250, 1), 127)
+
+
+class TestObpOwnerElection(unittest.TestCase):
+
+    class _System:
+        def __init__(self, status):
+            self.STATUS = status
+
+    def test_local_earliest_claim_wins_mirrored_ingress(self):
+        stream = b'\x00\x00\x00\x01'
+        tg = b'\x00\x00W'
+        source = b'\x01\x02\x03'
+        systems = {
+            'OBP-A': self._System({
+                stream: {
+                    '1ST': 10.0, 'TGID': tg, 'RFS': source,
+                    'LAST': 100.0,
+                },
+            }),
+            'OBP-B': self._System({
+                stream: {
+                    '1ST': 11.0, 'TGID': tg, 'RFS': source,
+                    'LAST': 100.0,
+                },
+            }),
+        }
+
+        owner = earliest_obp_owner(
+            {'OBP-A', 'OBP-B'}, systems, stream,
+            tg, source, 100.1, 5.0)
+
+        self.assertEqual(owner, 'OBP-A')
+
+    def test_finished_and_stale_claims_cannot_win(self):
+        stream = b'\x00\x00\x00\x02'
+        tg = b'\x00\x00W'
+        source = b'\x01\x02\x03'
+        systems = {
+            'FINISHED': self._System({
+                stream: {
+                    '1ST': 1.0, 'TGID': tg, 'RFS': source,
+                    'LAST': 100.0, '_fin': True,
+                },
+            }),
+            'STALE': self._System({
+                stream: {
+                    '1ST': 2.0, 'TGID': tg, 'RFS': source,
+                    'LAST': 90.0,
+                },
+            }),
+            'ACTIVE': self._System({
+                stream: {
+                    '1ST': 3.0, 'TGID': tg, 'RFS': source,
+                    'LAST': 100.0,
+                },
+            }),
+        }
+
+        owner = earliest_obp_owner(
+            set(systems), systems, stream,
+            tg, source, 100.1, 5.0)
+
+        self.assertEqual(owner, 'ACTIVE')
 
 
 class TestPacketControlSourceGuards(unittest.TestCase):
@@ -177,9 +240,9 @@ class TestPacketControlSourceGuards(unittest.TestCase):
             self.legacy_bridge_source.count('_target_generation_changed'), 2)
         self.assertIn('_OPENBRIDGE_SYSTEMS = set()',
                       self.legacy_bridge_source)
-        self.assertGreaterEqual(
-            self.legacy_bridge_source.count(
-                'for system in _OPENBRIDGE_SYSTEMS:'), 2)
+        self.assertIn(
+            'fi = earliest_obp_owner(',
+            self.legacy_bridge_source)
         self.assertIn(
             'for _claim_key, _claim in list(_HBP_STREAM_CLAIMS.items()):',
             self.legacy_bridge_source)

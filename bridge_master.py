@@ -94,6 +94,7 @@ from bridge_helpers import (
     build_report_bridge_leg,
     mark_options_dirty,
     dmr_seq_delta,
+    earliest_obp_owner,
 )
 # NOTE: 'words' is loaded dynamically via readAMBE() at runtime (see line ~2689)
 #from voice_lib import words
@@ -2656,7 +2657,6 @@ class routerOBP(OPENBRIDGE):
                     
                 
                 #LoopControl
-                hr_times = {}
                 _hbp_claim = _active_hbp_stream_claim(
                     _stream_id, _rf_src, pkt_time)
                 if _hbp_claim is not None:
@@ -2669,23 +2669,11 @@ class routerOBP(OPENBRIDGE):
                         self.STATUS[_stream_id]['LOOPLOG'] = True
                     self.STATUS[_stream_id]['LAST'] = pkt_time
                     return
-                for system in _OPENBRIDGE_SYSTEMS:
-                    if system == self._system or system not in systems:
-                        continue
-                    if _stream_id in systems[system].STATUS:
-                        _claim = systems[system].STATUS[_stream_id]
-                        if ('1ST' in _claim
-                                and _claim.get('TGID') == _dst_id
-                                and _claim.get('RFS') == _rf_src
-                                and not _claim.get('_fin')
-                                and pkt_time - _claim.get('LAST', 0) < STREAM_TO):
-                            hr_times[system] = _claim['1ST']
-                
-                #use the minimum perf_counter to ensure
-                #We always use only the earliest packet
-                fi = min(hr_times, key=hr_times.get, default = False)
-                
-                hr_times = None
+                # Include this ingress in the election. Excluding it lets two
+                # mirrored OBP links each select the other and suppress both.
+                fi = earliest_obp_owner(
+                    _OPENBRIDGE_SYSTEMS, systems, _stream_id,
+                    _dst_id, _rf_src, pkt_time, STREAM_TO)
                 
                 if not fi:
                     # No inbound peer yet / race after outbound STATUS without 1ST —

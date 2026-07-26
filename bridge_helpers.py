@@ -26,6 +26,24 @@ def dmr_seq_delta(sequence, previous):
     return (int(sequence) - int(previous)) & 0xFF
 
 
+def earliest_obp_owner(openbridge_systems, system_objects, stream_id,
+                       dst_id, rf_src, now, stream_timeout):
+    """Return the earliest active OBP claimant, including the local ingress."""
+    claims = {}
+    for system in openbridge_systems:
+        if system not in system_objects:
+            continue
+        claim = system_objects[system].STATUS.get(stream_id)
+        if (claim is not None
+                and '1ST' in claim
+                and claim.get('TGID') == dst_id
+                and claim.get('RFS') == rf_src
+                and not claim.get('_fin')
+                and now - claim.get('LAST', 0) < stream_timeout):
+            claims[system] = claim['1ST']
+    return min(claims, key=claims.get, default=False)
+
+
 def is_dial_service_code(reflector):
     """TGs reserved for dial-a-tg signalling (channel, disconnect, status) — not link targets."""
     try:
