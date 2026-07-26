@@ -2086,7 +2086,11 @@ class routerOBP(OPENBRIDGE):
             if (_target['SYSTEM'] != self._system) and (_target['ACTIVE']):
                 _target_status = systems[_target['SYSTEM']].STATUS
                 _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
-                _ignore_key = (_target['SYSTEM'], _target['TS'], _target['TGID'])
+                # A destination system/slot may appear through several bridge
+                # aliases. Send this packet only once: delivering the same
+                # stream ID under multiple TGIDs corrupts single-stream
+                # consumers such as HosePipe.
+                _ignore_key = (_target['SYSTEM'], _target['TS'])
                 if _ignore_key in _sysIgnore:
                     #logger.debug("(DEDUP) OBP Source Skipping system %s TS: %s",_target['SYSTEM'],_target['TS'])
                     continue
@@ -2931,7 +2935,10 @@ class routerHBP(HBSYSTEM):
                     _target_status = systems[_target['SYSTEM']].STATUS
                     _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
 
-                    _ignore_key = (_target['SYSTEM'], _target['TS'], _target['TGID'])
+                    # Deduplicate aliases by physical destination, not TGID.
+                    # One packet sent twice with the same stream ID can make
+                    # downstream decoders repeatedly replace the active call.
+                    _ignore_key = (_target['SYSTEM'], _target['TS'])
                     if _ignore_key in _sysIgnore:
                         #logger.debug("(DEDUP) HBP Source - Skipping system %s TS: %s",_target['SYSTEM'],_target['TS'])
                         continue

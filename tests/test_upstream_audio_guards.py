@@ -148,6 +148,13 @@ class TestPacketControlSourceGuards(unittest.TestCase):
     def test_every_successful_target_is_deduplicated(self):
         self.assertEqual(
             self.bridge_source.count('_sysIgnore.append(_ignore_key)'), 2)
+        self.assertEqual(
+            self.bridge_source.count(
+                "_ignore_key = (_target['SYSTEM'], _target['TS'])"), 2)
+        self.assertNotIn(
+            "_ignore_key = (_target['SYSTEM'], _target['TS'], "
+            "_target['TGID'])",
+            self.bridge_source)
         self.assertNotIn(
             "if _target_system['MODE'] == 'OPENBRIDGE':\n"
             "                    _sysIgnore.append(_ignore_key)",
