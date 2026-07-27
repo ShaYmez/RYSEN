@@ -53,6 +53,36 @@ def harden_obp_stub(status, first_seen, lc):
     return status
 
 
+def hbp_claim_is_local(claim, system, slot):
+    """Return whether an active HBP claim belongs to this exact ingress."""
+    return (
+        claim is not None
+        and claim[0] == system
+        and claim[1] == slot
+    )
+
+
+def hbp_should_scan_obp(claim, system, slot, local_lineage):
+    """Only consider an OBP mirror when this HBP ingress has no ownership."""
+    return not (
+        hbp_claim_is_local(claim, system, slot)
+        or local_lineage
+    )
+
+
+def hbp_short_gap_continuation(incoming_identity, active_identity, idle,
+                               stream_timeout, claim_timeout,
+                               is_voice_header=False,
+                               active_finished=False):
+    """Keep an active HBP lineage across jitter beyond STREAM_TO."""
+    return (
+        incoming_identity == active_identity
+        and not active_finished
+        and not is_voice_header
+        and stream_timeout <= idle < claim_timeout
+    )
+
+
 def is_dial_service_code(reflector):
     """TGs reserved for dial-a-tg signalling (channel, disconnect, status) — not link targets."""
     try:

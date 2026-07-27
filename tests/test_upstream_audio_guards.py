@@ -7,6 +7,9 @@ from bridge_helpers import (
     dmr_seq_delta,
     earliest_obp_owner,
     harden_obp_stub,
+    hbp_claim_is_local,
+    hbp_should_scan_obp,
+    hbp_short_gap_continuation,
 )
 
 
@@ -112,6 +115,65 @@ class TestObpStubHardening(unittest.TestCase):
         self.assertEqual(status['LC'], existing_lc)
 
 
+class TestHbpOwnerContinuity(unittest.TestCase):
+
+    def setUp(self):
+        self.identity = (
+            b'\x00\x00\x00\x01',
+            b'\x01\x02\x03',
+            b'\x00\x00\x00\x02',
+            b'\x00\x00t',
+        )
+
+    def test_short_jitter_gap_preserves_same_hbp_generation(self):
+        for idle in (0.364, 0.435, 0.999):
+            with self.subTest(idle=idle):
+                self.assertTrue(hbp_short_gap_continuation(
+                    self.identity, self.identity, idle,
+                    0.360, 1.0))
+
+    def test_claim_boundary_and_normal_cadence_do_not_use_resume(self):
+        self.assertFalse(hbp_short_gap_continuation(
+            self.identity, self.identity, 0.359,
+            0.360, 1.0))
+        self.assertFalse(hbp_short_gap_continuation(
+            self.identity, self.identity, 1.001,
+            0.360, 1.0))
+
+    def test_headers_finished_calls_and_identity_changes_do_not_resume(self):
+        changed = list(self.identity)
+        changed[1] = b'\x04\x05\x06'
+        self.assertFalse(hbp_short_gap_continuation(
+            tuple(changed), self.identity, 0.435,
+            0.360, 1.0))
+        self.assertFalse(hbp_short_gap_continuation(
+            self.identity, self.identity, 0.435,
+            0.360, 1.0, is_voice_header=True))
+        self.assertFalse(hbp_short_gap_continuation(
+            self.identity, self.identity, 0.435,
+            0.360, 1.0, active_finished=True))
+
+    def test_claim_must_match_system_and_slot(self):
+        claim = ('SYSTEM-45', 2, 100.0)
+        self.assertTrue(hbp_claim_is_local(
+            claim, 'SYSTEM-45', 2))
+        self.assertFalse(hbp_claim_is_local(
+            claim, 'SYSTEM-46', 2))
+        self.assertFalse(hbp_claim_is_local(
+            claim, 'SYSTEM-45', 1))
+        self.assertFalse(hbp_claim_is_local(
+            None, 'SYSTEM-45', 2))
+
+    def test_local_lineage_blocks_obp_after_claim_expiry(self):
+        self.assertFalse(hbp_should_scan_obp(
+            None, 'SYSTEM-45', 2, local_lineage=True))
+        self.assertFalse(hbp_should_scan_obp(
+            ('SYSTEM-45', 2, 100.0),
+            'SYSTEM-45', 2, local_lineage=False))
+        self.assertTrue(hbp_should_scan_obp(
+            None, 'SYSTEM-45', 2, local_lineage=False))
+
+
 class TestPacketControlSourceGuards(unittest.TestCase):
 
     @classmethod
@@ -155,6 +217,23 @@ class TestPacketControlSourceGuards(unittest.TestCase):
         self.assertIn('key = (stream_id, rf_src)', self.bridge_source)
         self.assertGreaterEqual(
             self.bridge_source.count('_active_hbp_stream_claim('), 3)
+
+    def test_local_hbp_lineage_cannot_be_preempted_by_obp_mirror(self):
+        for source in (self.bridge_source, self.legacy_bridge_source):
+            with self.subTest(
+                    entrypoint='master' if source is self.bridge_source
+                    else 'legacy'):
+                self.assertIn(
+                    '_hbp_short_resume = hbp_short_gap_continuation(',
+                    source)
+                self.assertIn('_hbp_local_lineage = (', source)
+                self.assertIn(
+                    'if hbp_should_scan_obp(',
+                    source)
+                self.assertNotIn(
+                    "if _hbp_claim is not None and "
+                    "_hbp_claim[0] != self._system:",
+                    source)
 
     def test_standard_proxy_preserves_mid_login_session(self):
         self.assertIn("'CHALLENGE_SENT'", self.proxy_source)

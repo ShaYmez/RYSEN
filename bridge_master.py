@@ -95,6 +95,9 @@ from bridge_helpers import (
     mark_options_dirty,
     dmr_seq_delta,
     earliest_obp_owner,
+    hbp_claim_is_local,
+    hbp_should_scan_obp,
+    hbp_short_gap_continuation,
 )
 # NOTE: 'words' is loaded dynamically via readAMBE() at runtime (see line ~2689)
 #from voice_lib import words
@@ -207,6 +210,13 @@ _BRIDGE_IDX_LAST_REBUILD = [0.0]
 _OPENBRIDGE_SYSTEMS = set()
 _HBP_STREAM_CLAIMS = {}
 _HBP_CLAIM_TIMEOUT_S = 1.0
+_LOOP_DIAG = {
+    'claim_expired': 0,
+    'short_resumes': 0,
+    'lineage_reclaims': 0,
+    'hbp_yields': 0,
+    'obp_yields': 0,
+}
 _TERM_TOMBSTONES = {}
 _TERM_TOMBSTONE_TTL_S = 5.0
 
@@ -217,6 +227,7 @@ def _active_hbp_stream_claim(stream_id, rf_src, now):
     claim = _HBP_STREAM_CLAIMS.get(key)
     if claim is not None and now - claim[2] >= _HBP_CLAIM_TIMEOUT_S:
         _HBP_STREAM_CLAIMS.pop(key, None)
+        _LOOP_DIAG['claim_expired'] += 1
         return None
     return claim
 
@@ -347,15 +358,21 @@ def _log_route_stats():
         logger.info(
             '(DIAGNOSTICS) Routing stats (last %.0fs): '
             'packets=%d idx_hits=%d idx_misses=%d fallbacks=%d '
-            'bridges=%d idx_keys=%d',
+            'bridges=%d idx_keys=%d claim_expired=%d short_resumes=%d '
+            'lineage_reclaims=%d hbp_yields=%d obp_yields=%d',
             _ROUTE_STATS_INTERVAL,
             _ROUTE_STATS['packets'], _ROUTE_STATS['index_hits'],
             _ROUTE_STATS['index_misses'], _ROUTE_STATS['fallbacks'],
-            len(BRIDGES), len(BRIDGE_IDX))
+            len(BRIDGES), len(BRIDGE_IDX),
+            _LOOP_DIAG['claim_expired'], _LOOP_DIAG['short_resumes'],
+            _LOOP_DIAG['lineage_reclaims'], _LOOP_DIAG['hbp_yields'],
+            _LOOP_DIAG['obp_yields'])
         _ROUTE_STATS['packets'] = 0
         _ROUTE_STATS['index_hits'] = 0
         _ROUTE_STATS['index_misses'] = 0
         _ROUTE_STATS['fallbacks'] = 0
+        for _diag_key in _LOOP_DIAG:
+            _LOOP_DIAG[_diag_key] = 0
         _ROUTE_STATS_NEXT_LOG[0] = _now + _ROUTE_STATS_INTERVAL
 
 
@@ -3782,13 +3799,37 @@ class routerHBP(HBSYSTEM):
                         int_id(self.STATUS[_slot]['RX_STREAM_ID']), _slot)
                     return
 
+            _hbp_active_identity = (
+                self.STATUS[_slot]['RX_STREAM_ID'],
+                self.STATUS[_slot]['RX_RFS'],
+                self.STATUS[_slot]['RX_PEER'],
+                self.STATUS[_slot]['RX_TGID'])
+            _hbp_incoming_identity = (
+                _stream_id, _rf_src, _peer_id, _dst_id)
+            _hbp_idle = pkt_time - self.STATUS[_slot]['RX_TIME']
+            _hbp_is_vhead = (
+                _frame_type == HBPF_DATA_SYNC
+                and _dtype_vseq == HBPF_SLT_VHEAD)
+            _hbp_active_finished = (
+                self.STATUS[_slot]['RX_TYPE'] == HBPF_SLT_VTERM)
+            _hbp_short_resume = hbp_short_gap_continuation(
+                _hbp_incoming_identity, _hbp_active_identity, _hbp_idle,
+                STREAM_TO, _HBP_CLAIM_TIMEOUT_S,
+                is_voice_header=_hbp_is_vhead,
+                active_finished=_hbp_active_finished)
+            if _hbp_short_resume:
+                _LOOP_DIAG['short_resumes'] += 1
+            # The physical HBP lineage remains authoritative while its slot
+            # still identifies this call, even if its cache claim just expired.
+            _hbp_local_lineage = (
+                _hbp_incoming_identity == _hbp_active_identity
+                and not _hbp_active_finished)
+
             # Is this a new call stream?
             _hbp_new_stream = (
                 _stream_id != self.STATUS[_slot]['RX_STREAM_ID']
-                or pkt_time - self.STATUS[_slot]['RX_TIME'] >= STREAM_TO
-                or (_frame_type == HBPF_DATA_SYNC
-                    and _dtype_vseq == HBPF_SLT_VHEAD
-                    and self.STATUS[_slot]['RX_TYPE'] == HBPF_SLT_VTERM))
+                or (_hbp_idle >= STREAM_TO and not _hbp_short_resume)
+                or (_hbp_is_vhead and _hbp_active_finished))
             if _hbp_new_stream:
                 if (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM) and (pkt_time < (self.STATUS[_slot]['RX_TIME'] + STREAM_TO)) and (_rf_src != self.STATUS[_slot]['RX_RFS']):
                     logger.warning('(%s) Packet received with STREAM ID: %s <FROM> SUB: %s PEER: %s <TO> TGID %s, SLOT %s collided with existing call', self._system, int_id(_stream_id), int_id(_rf_src), int_id(_peer_id), int_id(_dst_id), _slot)
@@ -3899,7 +3940,10 @@ class routerHBP(HBSYSTEM):
             #LoopControl#
             _hbp_claim = _active_hbp_stream_claim(
                 _stream_id, _rf_src, pkt_time)
-            if _hbp_claim is not None and _hbp_claim[0] != self._system:
+            _hbp_local_owner = hbp_claim_is_local(
+                _hbp_claim, self._system, _slot)
+            if _hbp_claim is not None and not _hbp_local_owner:
+                _LOOP_DIAG['hbp_yields'] += 1
                 if 'LOOPLOG' not in self.STATUS[_slot] or not self.STATUS[_slot]['LOOPLOG']:
                     logger.debug(
                         '(%s) HBP *LoopControl* FIRST HBP: %s, STREAM ID: %s, '
@@ -3909,25 +3953,32 @@ class routerHBP(HBSYSTEM):
                     self.STATUS[_slot]['LOOPLOG'] = True
                 self.STATUS[_slot]['LAST'] = pkt_time
                 return
-            for system in _OPENBRIDGE_SYSTEMS:
-                if system not in systems or _stream_id not in systems[system].STATUS:
-                    continue
-                _claim = systems[system].STATUS[_stream_id]
-                if ('1ST' in _claim
-                        and _claim.get('TGID') == _dst_id
-                        and _claim.get('RFS') == _rf_src
-                        and not _claim.get('_fin')
-                        and pkt_time - _claim.get('LAST', 0) < STREAM_TO):
-                    if 'LOOPLOG' not in self.STATUS[_slot] or not self.STATUS[_slot]['LOOPLOG']:
-                        logger.debug("(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id))
-                        self.STATUS[_slot]['LOOPLOG'] = True
-                    self.STATUS[_slot]['LAST'] = pkt_time
-                    if ('ENHANCED_OBP' in CONFIG['SYSTEMS'][self._system]
-                            and CONFIG['SYSTEMS'][self._system]['ENHANCED_OBP']
-                            and '_bcsq' not in self.STATUS[_slot]):
-                        systems[self._system].send_bcsq(_dst_id,_stream_id)
-                        self.STATUS[_slot]['_bcsq'] = True
-                    return
+            if (_hbp_claim is None and _hbp_local_lineage
+                    and _hbp_idle >= _HBP_CLAIM_TIMEOUT_S):
+                _LOOP_DIAG['lineage_reclaims'] += 1
+            if hbp_should_scan_obp(
+                    _hbp_claim, self._system, _slot,
+                    _hbp_local_lineage):
+                for system in _OPENBRIDGE_SYSTEMS:
+                    if system not in systems or _stream_id not in systems[system].STATUS:
+                        continue
+                    _claim = systems[system].STATUS[_stream_id]
+                    if ('1ST' in _claim
+                            and _claim.get('TGID') == _dst_id
+                            and _claim.get('RFS') == _rf_src
+                            and not _claim.get('_fin')
+                            and pkt_time - _claim.get('LAST', 0) < STREAM_TO):
+                        if 'LOOPLOG' not in self.STATUS[_slot] or not self.STATUS[_slot]['LOOPLOG']:
+                            logger.debug("(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE",self._system, system, int_id(_stream_id), int_id(_dst_id))
+                            self.STATUS[_slot]['LOOPLOG'] = True
+                        self.STATUS[_slot]['LAST'] = pkt_time
+                        if ('ENHANCED_OBP' in CONFIG['SYSTEMS'][self._system]
+                                and CONFIG['SYSTEMS'][self._system]['ENHANCED_OBP']
+                                and '_bcsq' not in self.STATUS[_slot]):
+                            systems[self._system].send_bcsq(_dst_id,_stream_id)
+                            self.STATUS[_slot]['_bcsq'] = True
+                        _LOOP_DIAG['obp_yields'] += 1
+                        return
 
             #Duplicate handling#
             _seq_delta = dmr_seq_delta(
