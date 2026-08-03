@@ -561,8 +561,79 @@ def reset_dial_reflector_timers_on_user_activity(bridges, system, rf_src, peer_i
     return reset_bridges
 
 
-# STAT trimmer interval (~10 min).
-STAT_TRIMMER_INTERVAL_S = 600
+# STAT trimmer: prune idle master ON legs and expire cold stat bridges.
+STAT_TRIMMER_INTERVAL_S = 120
+STAT_ON_LEG_IDLE_TTL_S = 3600
+STAT_BRIDGE_IDLE_TTL_S = 600
+
+
+def bridge_has_stat_legs(entries):
+    """True when bridge was created by make_stat_bridge (has OBP STAT legs)."""
+    return any(entry.get('TO_TYPE') == 'STAT' for entry in entries)
+
+
+def stat_bridge_in_active_use(entries):
+    """ON timer running or OFF waiting to re-activate — blocks whole-bridge removal."""
+    for entry in entries:
+        if entry.get('TO_TYPE') == 'ON' and entry.get('ACTIVE'):
+            return True
+        if entry.get('TO_TYPE') == 'OFF' and not entry.get('ACTIVE'):
+            return True
+    return False
+
+
+def stat_bridge_last_activity(entries):
+    """Latest TIMER among STAT legs (bumped on OBP call-start)."""
+    last = 0.0
+    for entry in entries:
+        if entry.get('TO_TYPE') != 'STAT':
+            continue
+        timer = entry.get('TIMER', 0)
+        if isinstance(timer, (int, float)):
+            last = max(last, timer)
+    return last
+
+
+def touch_stat_bridge_activity(entries, now=None):
+    """Record OBP call-start on STAT legs (never on every voice frame)."""
+    _now = now if now is not None else time.time()
+    for entry in entries:
+        if entry.get('TO_TYPE') == 'STAT':
+            entry['TIMER'] = _now
+
+
+def prune_idle_stat_on_legs(entries, now=None):
+    """Drop idle UA ON legs from a stat bridge after STAT_ON_LEG_IDLE_TTL_S.
+
+    Returns (new_entries, removed_count). Master ON legs are added on demand and
+    otherwise never pruned — this is the main BRIDGE_IDX bloat fix.
+    """
+    _now = now if now is not None else time.time()
+    kept = []
+    removed = 0
+    for entry in entries:
+        if entry.get('TO_TYPE') == 'ON' and not entry.get('ACTIVE'):
+            timer = entry.get('TIMER', 0)
+            if isinstance(timer, (int, float)):
+                idle_s = (_now - timer) if timer <= _now else 0.0
+                if idle_s >= STAT_ON_LEG_IDLE_TTL_S:
+                    removed += 1
+                    continue
+        kept.append(entry)
+    return kept, removed
+
+
+def stat_bridge_should_remove(entries, now=None):
+    """Remove whole stat bridge when idle (no active ON/OFF) and no recent OBP traffic."""
+    if not bridge_has_stat_legs(entries):
+        return False
+    if stat_bridge_in_active_use(entries):
+        return False
+    _now = now if now is not None else time.time()
+    last = stat_bridge_last_activity(entries)
+    if last <= 0:
+        return True
+    return (_now - last) >= STAT_BRIDGE_IDLE_TTL_S
 
 
 def report_include_bridge_leg(to_type, active):

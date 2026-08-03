@@ -90,6 +90,10 @@ from bridge_helpers import (
     paired_group_route_bridge,
     clear_default_reflectors_for_system,
     STAT_TRIMMER_INTERVAL_S,
+    bridge_has_stat_legs,
+    prune_idle_stat_on_legs,
+    stat_bridge_should_remove,
+    touch_stat_bridge_activity,
     report_include_bridge_leg,
     build_report_bridge_leg,
     mark_options_dirty,
@@ -1220,24 +1224,36 @@ def rule_timer_loop():
 
 def statTrimmer():
     logger.debug('(ROUTER) STAT trimmer loop started')
+    _now = time()
     _remove_bridges = deque()
-    for _bridge in BRIDGES:
-        _bridge_stat = False
-        _in_use = False
-        for _system in BRIDGES[_bridge]:
-            if _system['TO_TYPE'] == 'STAT':
-                _bridge_stat = True
-            if _system['TO_TYPE'] == 'ON' and _system['ACTIVE']:
-                _in_use = True
-            elif _system['TO_TYPE'] == 'OFF' and not _system['ACTIVE']:
-                _in_use = True
-        if _bridge_stat and not _in_use:
+    _on_legs_pruned = 0
+    _changed = False
+    for _bridge in list(BRIDGES.keys()):
+        _entries = BRIDGES[_bridge]
+        if not bridge_has_stat_legs(_entries):
+            continue
+        _pruned, _removed = prune_idle_stat_on_legs(_entries, _now)
+        if _removed:
+            BRIDGES[_bridge] = _pruned
+            _idx_replace_bridge(_bridge)
+            _on_legs_pruned += _removed
+            _changed = True
+            logger.info(
+                '(ROUTER) STAT trimmer pruned %d idle ON leg(s) from bridge %s',
+                _removed, _bridge)
+        if stat_bridge_should_remove(BRIDGES[_bridge], _now):
             _remove_bridges.append(_bridge)
     for _bridgerem in _remove_bridges:
         _idx_remove_bridge(_bridgerem)
         del BRIDGES[_bridgerem]
-        logger.debug('(ROUTER) STAT bridge %s removed',_bridgerem)
-    if CONFIG['REPORTS']['REPORT']:
+        _changed = True
+        logger.info('(ROUTER) STAT bridge %s removed (idle)', _bridgerem)
+    if _on_legs_pruned:
+        logger.info(
+            '(ROUTER) STAT trimmer pass complete: %d ON leg(s) pruned, '
+            '%d bridge(s) removed, idx_keys=%d bridges=%d',
+            _on_legs_pruned, len(_remove_bridges), len(BRIDGE_IDX), len(BRIDGES))
+    if _changed and CONFIG['REPORTS']['REPORT']:
         report_server.send_clients(b'bridge updated')
 
 def kaReporting():
@@ -2774,6 +2790,7 @@ class routerOBP(OPENBRIDGE):
                         and not (_int_dst >= 9991 and _int_dst <= 9999)
                         and str(_int_dst) in BRIDGES):
                     activate_ua_bridge_source(str(_int_dst), self._system, _slot, peer_id=_peer_id)
+                    touch_stat_bridge_activity(BRIDGES[str(_int_dst)], pkt_time)
             
             # --- OPTIMISED ROUTING: use BRIDGE_IDX for O(1) lookup instead of O(N*M) full scan ---
             _sysIgnore = deque()
@@ -4610,7 +4627,7 @@ if __name__ == '__main__':
         logger.info('(SELF SERVICE) Hotspot DISC=1 poll every %ss',
                     ss.get('DISC_POLL_INTERVAL', 2))
         
-    #STAT trimmer - once every 10 mins (roughly - shifted so all timed tasks don't run at once
+    # STAT trimmer — prune idle ON legs and expire cold stat bridges
     if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:
         stat_trimmer_task = task.LoopingCall(statTrimmer)
         stat_trimmer = stat_trimmer_task.start(STAT_TRIMMER_INTERVAL_S)

@@ -15,8 +15,8 @@ from bridge_helpers import (
 
 class TestStatTrimmerInterval(unittest.TestCase):
 
-    def test_interval_is_10_minutes(self):
-        self.assertEqual(STAT_TRIMMER_INTERVAL_S, 600)
+    def test_interval_is_2_minutes(self):
+        self.assertEqual(STAT_TRIMMER_INTERVAL_S, 120)
 
     def test_bridge_master_uses_constant(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
