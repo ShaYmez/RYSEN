@@ -928,10 +928,19 @@ class HBSYSTEM(DatagramProtocol):
         logger.info('(%s) hostname resolution error: %s',self._system,failure)
 
     def send_peers(self, _packet, _hops = b'', _ber = b'\x00', _rssi = b'\x00',_source_server = b'\x00\x00\x00\x00', _source_rptr = b'\x00\x00\x00\x00'):
+        # Bridged return traffic must not be delivered back to the originating
+        # hotspot/repeater peer — that causes a post-dekey "parrot" tail when
+        # OBP or reactor lag round-trips the caller's own audio.
+        _rf_src = _packet[5:8] if _packet[:4] == DMRD and len(_packet) >= 8 else None
         for _peer in self._peers:
-            if len(_packet) < 54:
-                _packet =b''.join([_packet,_ber,_rssi])
-            self.send_peer(_peer, _packet)
+            if (_source_rptr != b'\x00\x00\x00\x00' and _peer == _source_rptr):
+                continue
+            if _rf_src is not None and _peer == _rf_src:
+                continue
+            _tx_pkt = _packet
+            if len(_tx_pkt) < 54:
+                _tx_pkt = b''.join([_tx_pkt, _ber, _rssi])
+            self.send_peer(_peer, _tx_pkt)
             #logger.debug('(%s) Packet sent to peer %s', self._system, self._peers[_peer]['RADIO_ID'])
 
     def send_peer(self, _peer, _packet):

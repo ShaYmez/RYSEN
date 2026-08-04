@@ -267,6 +267,12 @@ class TestPacketControlSourceGuards(unittest.TestCase):
         self.assertIn('if len(self._repeat_seq) > 1024:', self.hblink_source)
         self.assertIn('and _repeat_ok\n', self.hblink_source)
 
+    def test_send_peers_suppresses_source_hotspot_echo(self):
+        self.assertIn('_source_rptr != b\'\\x00\\x00\\x00\\x00\' and _peer == _source_rptr',
+                      self.hblink_source)
+        self.assertIn('_rf_src is not None and _peer == _rf_src',
+                      self.hblink_source)
+
     def test_generation_restarts_propagate_to_target_state(self):
         self.assertGreaterEqual(
             self.bridge_source.count('_new_generation=False'), 2)
