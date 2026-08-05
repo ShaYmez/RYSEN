@@ -19,10 +19,11 @@ Released on **`master`** — rebuild/push `shaymez/rysen:latest` (and satellite 
 - **OBP / HBP generation** — mirrored owner election, duplicate fanout guards, stream generation boundaries and pacing
 - **Endpoint audio** — ordering and reactor pacing across HBP / OBP / IPSC paths; preserve HBP ownership across short jitter gaps
 - **Hotspot dekey echo** — `send_peers()` suppresses delivery back to the originating peer / RF source so OBP round-trips cannot play a post-PTT “parrot” tail
+- **Orphan RPTPING (hotfix)** — hotspot proxy / HBP stay silent on unknown `RPTPING` (no synthesized `MSTNAK`/`MSTCL`) so IPSC2-style reconnects are not knocked offline mid-session
 
 ### Tests and docs
 
-- Regression coverage for STAT trimmer, upstream audio guards, soft-client audio, OBP stubs
+- Regression coverage for STAT trimmer, upstream audio guards, soft-client audio, OBP stubs, orphan RPTPING
 - Deployment / endpoint audio safeguard notes
 
 ### Ops notes
