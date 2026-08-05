@@ -1,5 +1,39 @@
 # RYSEN DMRMaster+ Changelog
 
+## Version 1.5.2 (2026-08-05)
+
+Scale and audio stability release. Field-tested on Freestar SYSTEM-X UK / USA / Europe under busy OBP load (BRIDGE_IDX held ~9–14k keys; reactor lag stayed under 1s; zero HBP rate-drops during hammer tests on TG 116 / 2350).
+
+Released on **`master`** — rebuild/push `shaymez/rysen:latest` (and satellite proxies as needed).
+
+### Performance and scaling
+
+- **STAT bridge trimmer** — prune idle UA ON legs on GEN_STAT bridges; expire cold stat bridges; bump STAT activity on OBP call-start (not per frame)
+- **Slim BRIDGE_SND reports** — omit idle ON legs from monitor pickles to cut reactor stalls
+- **Index / UA hot-path** — lazy STAT, throttle index rebuilds, skip BRIDGE_SND on already-active UA key-up
+- **Soft-client stretch** — gate OBP activate and stabilize SC proxy sessions under load
+
+### Audio and routing reliability
+
+- **OBP LoopControl** — do not hard-drop when `fi is empty`; treat as owner and continue routing; harden empty-fi stubs and packet counters
+- **OBP / HBP generation** — mirrored owner election, duplicate fanout guards, stream generation boundaries and pacing
+- **Endpoint audio** — ordering and reactor pacing across HBP / OBP / IPSC paths; preserve HBP ownership across short jitter gaps
+- **Hotspot dekey echo** — `send_peers()` suppresses delivery back to the originating peer / RF source so OBP round-trips cannot play a post-PTT “parrot” tail
+
+### Tests and docs
+
+- Regression coverage for STAT trimmer, upstream audio guards, soft-client audio, OBP stubs
+- Deployment / endpoint audio safeguard notes
+
+### Ops notes
+
+- TG **4000** remains disconnect (dial service code); BRIDGE_IDX miss on that TG is expected full-scan fallback, not a routing failure
+- Enhanced OBP peers should use `PROTO_VER: 5` (DMRE v4–5); invalid version bytes are discarded
+
+See [doc/features.md](doc/features.md) and [doc/architecture.md](doc/architecture.md).
+
+---
+
 ## Version 1.5.0 (2026-06-30)
 
 Major release: Motorola IP Site Connect for SystemX — group voice, selfcare, monitor integration, and private/unit voice (Phase 3). Field-tested on SYSTEM-XTEST (GB7NR). Companion dashboard: [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR) **v1.5.0**.

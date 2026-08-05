@@ -1,12 +1,13 @@
 # RYSEN Features
 
-Version history and feature reference for RYSEN DMRMaster+ (SystemX). Current release: **1.5.1** on `master`.
+Version history and feature reference for RYSEN DMRMaster+ (SystemX). Current release: **1.5.2** on `master`.
 
 Maintained by **Shane Daley M0VUB** (aka **ShaYmez**) — primary RYSEN / SystemX development since v1.3.9. Lineage: HBlink3 (N0MJS) → FreeDMR (G7RZU) → RYSEN.
 
 | Version | Date | Summary |
 |---------|------|---------|
-| 1.5.1 | 2026-07-07 | Selfcare fixes, documentation overhaul, legacy cleanup |
+| 1.5.2 | 2026-08-05 | BRIDGE_IDX bloat trim, reactor/audio stability, hotspot echo fix |
+| 1.5.1 | 2026-07-24 | Selfcare fixes, documentation overhaul, legacy cleanup |
 | 1.5.0 | 2026-06-30 | Motorola IPSC, selfcare, private voice, dial-a-tg on IPSC |
 | 1.4.1 | 2026-06-09 | Bridge routing index, proxy stability, diagnostics |
 | 1.4.0 | 2026-01-10 | Sticky talkgroups (Brandmeister-style) |
@@ -125,6 +126,20 @@ Full reference: [ipsc.md](ipsc.md). Roadmap for future phases: [ipsc-roadmap.md]
 | Selfcare apply fixes | Race conditions and stuck "applying" state resolved |
 | Dial reflector fix | Numeric TGs no longer paired with dial reflectors on group calls |
 | Documentation | Full doc overhaul; legacy install artifacts removed |
+
+---
+
+## v1.5.2 — Scale and audio stability
+
+Field-hardened on high-cardinality masters (UK / USA / Europe) under busy OBP load.
+
+| Feature | Detail |
+|---------|--------|
+| STAT / BRIDGE_IDX trim | Prune idle UA ON legs; slim monitor reports; stop index bloat (~50k+ → ~9–14k keys) |
+| OBP LoopControl | Keep routing when `fi is empty` (owner continue); harden stubs and packet counters |
+| Reactor / audio pacing | Endpoint ordering, UA activate without BRIDGE_SND thrash, soft-client stretch cuts |
+| Hotspot dekey echo | `send_peers()` skips originating peer / RF source so round-tripped audio cannot parrot after PTT |
+| HBP continuity | Preserve ownership across short jitter gaps; generation / fanout isolation |
 
 ---
 
