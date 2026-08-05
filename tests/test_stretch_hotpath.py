@@ -40,8 +40,37 @@ class TestProxyReaperMstclAndRxTimer(unittest.TestCase):
     def test_sc_reaper_sends_mstcl(self):
         with open('hotspot_proxy_v2_sc.py', encoding='utf-8') as fh:
             source = fh.read()
-        self.assertIn("self.transport.write(b'MSTCL'", source)
-        self.assertGreaterEqual(source.count("b'MSTCL'"), 3)
+        # HBP logout must include radio ID (bare MSTCL is ignored by many gateways)
+        self.assertIn("_mstcl = b'MSTCL' + _peer_id", source)
+        self.assertGreaterEqual(source.count('self.transport.write(_mstcl,'), 3)
+        self.assertNotIn("self.transport.write(b'MSTCL', (_peer['shost'], _peer['sport']))", source)
+        self.assertIn('notify_client=True', source)
+        self.assertIn('notify_client=False', source)
+
+    def test_orphan_rptping_sends_mstnak_no_slot(self):
+        for path in ('hotspot_proxy_v2.py', 'hotspot_proxy_v2_sc.py'):
+            with open(path, encoding='utf-8') as fh:
+                source = fh.read()
+            self.assertIn('Orphan keepalive after master/proxy restart', source)
+            self.assertIn("b'MSTNAK' + _peer_id", source)
+            self.assertIn('(sent MSTNAK)', source)
+
+    def test_hblink_orphan_ping_sends_mstnak(self):
+        with open('hblink.py', encoding='utf-8') as fh:
+            source = fh.read()
+        self.assertIn('Ping from Radio ID that is not logged in: %s', source)
+        orphan = source[source.index('elif _command == RPTP:'):
+                        source.index('elif _command == DMRA:')]
+        self.assertIn("join([MSTNAK, _peer_id])", orphan)
+        self.assertNotIn("join([MSTCL, _peer_id])", orphan)
+        self.assertIn('MSTCL is reserved for master shutdown', orphan)
+
+    def test_proxy_forwards_mstnak_before_drop(self):
+        for path in ('hotspot_proxy_v2.py', 'hotspot_proxy_v2_sc.py'):
+            with open(path, encoding='utf-8') as fh:
+                source = fh.read()
+            self.assertIn('notify_client=False', source)
+            self.assertIn('forward MSTNAK', source)
 
     def test_master_dmrd_resets_idle_timer(self):
         with open('hotspot_proxy_v2_sc.py', encoding='utf-8') as fh:

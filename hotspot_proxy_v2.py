@@ -67,7 +67,7 @@ class Proxy(DatagramProtocol):
         self.numPorts = DestPortEnd - DestportStart
         
         
-    def cleanup_peer(self, _peer_id):
+    def cleanup_peer(self, _peer_id, *, notify_client=True):
         _peer = self.peerTrack.get(_peer_id)
         if not _peer:
             return
@@ -78,9 +78,9 @@ class Proxy(DatagramProtocol):
                     _timer.cancel()
             except Exception:
                 pass
-        self.reaper(_peer_id)
+        self.reaper(_peer_id, notify_client=notify_client)
 
-    def reaper(self,_peer_id):
+    def reaper(self,_peer_id, *, notify_client=True):
         _peer = self.peerTrack.get(_peer_id)
         if not _peer:
             return
@@ -91,10 +91,13 @@ class Proxy(DatagramProtocol):
         _dport = _peer.get('dport')
         if _dport in self.connTrack:
             self.transport.write(b'RPTCL'+_peer_id, (self.master,_dport))
-            #Tell client we have closed the session - 3 times, in case they are on a lossy network
-            self.transport.write(b'MSTCL',(_peer['shost'],_peer['sport']))
-            self.transport.write(b'MSTCL',(_peer['shost'],_peer['sport']))
-            self.transport.write(b'MSTCL',(_peer['shost'],_peer['sport']))
+            # Explicit session close → MSTCL + radio ID (HBP). Skip when the
+            # master already sent MSTNAK (forward that instead; do not replace).
+            if notify_client:
+                _mstcl = b'MSTCL' + _peer_id
+                self.transport.write(_mstcl, (_peer['shost'], _peer['sport']))
+                self.transport.write(_mstcl, (_peer['shost'], _peer['sport']))
+                self.transport.write(_mstcl, (_peer['shost'], _peer['sport']))
             self.connTrack[_dport] = False
         if _peer_id in self.peerTrack:
             del self.peerTrack[_peer_id]
@@ -180,7 +183,10 @@ class Proxy(DatagramProtocol):
                                               'AUTH_ACKED', 'CONFIG_SENT'):
                             self.transport.write(data, (_peer['shost'], _peer['sport']))
                             return
-                        self.cleanup_peer(_peer_id)
+                        # Established / orphan session: forward MSTNAK (HBP), then drop slot
+                        if _peer:
+                            self.transport.write(data, (_peer['shost'], _peer['sport']))
+                        self.cleanup_peer(_peer_id, notify_client=False)
                     return
             elif _command == MSTN:
                     _peer_id = data[6:10] if len(data) >= 10 else None
@@ -191,7 +197,9 @@ class Proxy(DatagramProtocol):
                                               'AUTH_ACKED', 'CONFIG_SENT'):
                             self.transport.write(data, (_peer['shost'], _peer['sport']))
                             return
-                        self.cleanup_peer(_peer_id)
+                        if _peer:
+                            self.transport.write(data, (_peer['shost'], _peer['sport']))
+                        self.cleanup_peer(_peer_id, notify_client=False)
                     return
             elif _command == MSTP and len(data) >= 11:
                     _peer_id = data[7:11]
@@ -261,7 +269,15 @@ class Proxy(DatagramProtocol):
 
             else:
                 if int_id(_peer_id) in self.blackList:
-                    return   
+                    return
+                # Orphan keepalive after master/proxy restart — do not allocate a
+                # slot for RPTPING alone; reply MSTNAK so the client re-runs RPTL.
+                if _command == RPTP:
+                    self.transport.write(b'MSTNAK' + _peer_id, (host, port))
+                    if self.clientinfo and _peer_id != b'\xff\xff\xff\xff':
+                        print(f'{datetime.now().replace(microsecond=0)} Orphan ping: ID:{str(int_id(_peer_id)).rjust(9)} '
+                              f'IP:{host.rjust(15)} Port:{port} (sent MSTNAK).')
+                    return
                 # Make a list with the available ports
                 _ports_avail = [port for port in self.connTrack if not self.connTrack[port]]
                 if _ports_avail:
