@@ -305,12 +305,11 @@ class Proxy(DatagramProtocol):
                 if int_id(_peer_id) in self.blackList:
                     return
                 # Orphan keepalive after master/proxy restart — do not allocate a
-                # slot for RPTPING alone; reply MSTNAK so the client re-runs RPTL.
+                # slot and do not reply (IPSC2 interop: silence → client re-RPTL).
                 if _command == RPTP:
-                    self.transport.write(b'MSTNAK' + _peer_id, (host, port))
                     if self.clientinfo and _peer_id != b'\xff\xff\xff\xff':
                         print(f'{datetime.now().replace(microsecond=0)} Orphan ping: ID:{str(int_id(_peer_id)).rjust(9)} '
-                              f'IP:{host.rjust(15)} Port:{port} (sent MSTNAK).')
+                              f'IP:{host.rjust(15)} Port:{port} (no reply).')
                     return
                 # Make a list with the available ports
                 _ports_avail = [port for port in self.connTrack if not self.connTrack[port]]

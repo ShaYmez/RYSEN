@@ -47,23 +47,28 @@ class TestProxyReaperMstclAndRxTimer(unittest.TestCase):
         self.assertIn('notify_client=True', source)
         self.assertIn('notify_client=False', source)
 
-    def test_orphan_rptping_sends_mstnak_no_slot(self):
+    def test_orphan_rptping_silent_no_slot(self):
         for path in ('hotspot_proxy_v2.py', 'hotspot_proxy_v2_sc.py'):
             with open(path, encoding='utf-8') as fh:
                 source = fh.read()
             self.assertIn('Orphan keepalive after master/proxy restart', source)
-            self.assertIn("b'MSTNAK' + _peer_id", source)
-            self.assertIn('(sent MSTNAK)', source)
+            self.assertIn('(no reply).', source)
+            # Must not synthesize MSTNAK/MSTCL on unknown RPTPING
+            orphan = source[source.index('Orphan keepalive after master/proxy restart'):
+                            source.index('# Make a list with the available ports')]
+            self.assertNotIn('MSTNAK', orphan)
+            self.assertNotIn('MSTCL', orphan)
 
-    def test_hblink_orphan_ping_sends_mstnak(self):
+    def test_hblink_orphan_ping_silent(self):
         with open('hblink.py', encoding='utf-8') as fh:
             source = fh.read()
-        self.assertIn('Ping from Radio ID that is not logged in: %s', source)
+        self.assertIn('Ping from Radio ID that is not logged in (no reply)', source)
         orphan = source[source.index('elif _command == RPTP:'):
                         source.index('elif _command == DMRA:')]
-        self.assertIn("join([MSTNAK, _peer_id])", orphan)
+        self.assertIn('no MSTPONG / MSTNAK', orphan)
+        self.assertNotIn("join([MSTNAK, _peer_id])", orphan)
         self.assertNotIn("join([MSTCL, _peer_id])", orphan)
-        self.assertIn('MSTCL is reserved for master shutdown', orphan)
+        self.assertNotIn("join([MSTPONG, _peer_id])", orphan.split('else:')[1])
 
     def test_proxy_forwards_mstnak_before_drop(self):
         for path in ('hotspot_proxy_v2.py', 'hotspot_proxy_v2_sc.py'):

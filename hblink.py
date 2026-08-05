@@ -1370,10 +1370,10 @@ class HBSYSTEM(DatagramProtocol):
                     self.send_peer(_peer_id, b''.join([MSTPONG, _peer_id]))
                     logger.trace('(%s) Received and answered RPTPING from peer %s (%s)', self._system, self._peers[_peer_id]['CALLSIGN'], int_id(_peer_id))
                 else:
-                    # HBP keep-alive: orphan packets get MSTNAK; client should re-login.
-                    # (MSTCL is reserved for master shutdown / explicit session close.)
-                    self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
-                    logger.info('(%s) Ping from Radio ID that is not logged in: %s', self._system, int_id(_peer_id))
+                    # Orphan keepalive (no session): stay silent — no MSTPONG / MSTNAK.
+                    # IPSC2 field capture + PA7LIM Contabo: silence → missed pongs → RPTL.
+                    # MSTNAK here left some gateways stuck; MSTCL remains shutdown-only.
+                    logger.info('(%s) Ping from Radio ID that is not logged in (no reply): %s', self._system, int_id(_peer_id))
         
         elif _command == DMRA:
                 _peer_id = _data[4:8]
