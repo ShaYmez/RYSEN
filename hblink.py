@@ -64,7 +64,7 @@ from functools import partial, partialmethod
 import ssl
 
 from os.path import isfile, getmtime
-from urllib.request import urlopen
+from urllib.request import urlopen, Request
 
 import csv
 
@@ -1613,7 +1613,7 @@ def try_download(_path, _file, _url, _stale,):
         file_old = (getmtime(''.join([_path,_file])) + _stale) < now
     if not file_exists or (file_exists and file_old):
         try:
-            request = urllib.request.Request(_url)
+            request = Request(_url)
             request.add_header('User-Agent', __import__('rysen_version').user_agent())
             with urlopen(request, context=no_verify) as response:
                 data = response.read()
