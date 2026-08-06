@@ -1,5 +1,31 @@
 # RYSEN DMRMaster+ Changelog
 
+## Version 1.5.3 (2026-08-07)
+
+Built-in version traceability — no operator config required.
+
+Released on **`master`** — `shaymez/rysen:1.5.3` and `:latest`.
+
+### Traceability (always on)
+
+- **`rysen_version.py`** — single source from `version.txt`; startup log, `--version`, Docker OCI label
+- **HBP `PACKAGE_ID`** — stock values advertise `RYSEN-x.y.z` on the wire
+- **Report socket `SERVER_INFO_SND`** — live version to RYSEN-MONITOR dashboard footer
+- **`User-Agent: RYSEN/x`** on alias JSON downloads
+- **`.rysen_version`** in log dir for host status page (`/status/index.php`)
+- Optional anonymous **`api.freestar.network/v1/rysen/ping.php`** (silent fail)
+
+### Fixes
+
+- **`try_download` `Request` import** — fixed startup crash when fetching alias files (1.5.3 image)
+
+### Companion updates
+
+- **RYSEN-MONITOR** — live `Ver x.y.z` in footer via websocket; wwservers RYSEN column
+- **System-X-Installer** — broadcaster `rysen_version` POST; verified-server CSV column 8
+
+---
+
 ## Version 1.5.2 (2026-08-05)
 
 Scale and audio stability release. Field-tested on Freestar SYSTEM-X UK / USA / Europe under busy OBP load (BRIDGE_IDX held ~9–14k keys; reactor lag stayed under 1s; zero HBP rate-drops during hammer tests on TG 116 / 2350).

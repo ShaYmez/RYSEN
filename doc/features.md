@@ -1,11 +1,12 @@
 # RYSEN Features
 
-Version history and feature reference for RYSEN DMRMaster+ (SystemX). Current release: **1.5.2** on `master`.
+Version history and feature reference for RYSEN DMRMaster+ (SystemX). Current release: **1.5.3** on `master`.
 
 Maintained by **Shane Daley M0VUB** (aka **ShaYmez**) — primary RYSEN / SystemX development since v1.3.9. Lineage: HBlink3 (N0MJS) → FreeDMR (G7RZU) → RYSEN.
 
 | Version | Date | Summary |
 |---------|------|---------|
+| 1.5.3 | 2026-08-07 | Built-in version traceability, status page live version, monitor footer |
 | 1.5.2 | 2026-08-05 | BRIDGE_IDX bloat trim, reactor/audio stability, hotspot echo fix |
 | 1.5.1 | 2026-07-24 | Selfcare fixes, documentation overhaul, legacy cleanup |
 | 1.5.0 | 2026-06-30 | Motorola IPSC, selfcare, private voice, dial-a-tg on IPSC |
