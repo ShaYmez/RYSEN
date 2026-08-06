@@ -27,4 +27,5 @@ REPORT_OPCODES = {
     'BRIDGE_UPD': b'\x05',
     'LINK_EVENT': b'\x06',
     'BRDG_EVENT': b'\x07',
+    'SERVER_INFO_SND': b'\x08',
     }

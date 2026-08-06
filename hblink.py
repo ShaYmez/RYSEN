@@ -1565,6 +1565,8 @@ class report(NetstringReceiver):
     def connectionMade(self):
         self._factory.clients.append(self)
         logger.info('(REPORT) HBlink reporting client connected: %s', self.transport.getPeer())
+        if hasattr(self._factory, 'send_server_info'):
+            self._factory.send_server_info()
 
     def connectionLost(self, reason):
         logger.info('(REPORT) HBlink reporting client disconnected: %s', self.transport.getPeer())
@@ -1611,7 +1613,9 @@ def try_download(_path, _file, _url, _stale,):
         file_old = (getmtime(''.join([_path,_file])) + _stale) < now
     if not file_exists or (file_exists and file_old):
         try:
-            with urlopen(_url, context=no_verify) as response:
+            request = urllib.request.Request(_url)
+            request.add_header('User-Agent', __import__('rysen_version').user_agent())
+            with urlopen(request, context=no_verify) as response:
                 data = response.read()
                 #outfile.write(data)
                 response.close()

@@ -1,5 +1,5 @@
 #!/bin/sh 
-# RYSEN DMRMaster+ Version 1.5.2
+# RYSEN DMRMaster+ — version from version.txt at runtime
 ###############################################################################
 # Copyright (C) 2020 Simon Adlem, G7RZU <g7rzu@gb7fr.org.uk>  
 #
@@ -19,6 +19,9 @@
 ###############################################################################
 
 cd /opt/rysen
+
+RYSEN_VER="$(python3 -c 'from rysen_version import __version__; print(__version__)' 2>/dev/null || echo unknown)"
+echo "RYSEN v${RYSEN_VER}"
 
 if [ "$BRIDGE_SERVER" == 1 ]
 then

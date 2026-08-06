@@ -1,5 +1,9 @@
 FROM python:alpine3.20
 
+ARG RYSEN_VERSION=dev
+LABEL org.opencontainers.image.title="RYSEN" \
+      org.opencontainers.image.version="${RYSEN_VERSION}"
+
 COPY entrypoint /entrypoint
 RUN chmod +x /entrypoint
 

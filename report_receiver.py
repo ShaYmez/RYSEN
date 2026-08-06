@@ -41,6 +41,9 @@ class reportClient(NetstringReceiver):
         elif data[:1] == REPORT_OPCODES['BRIDGE_SND']:
             if cli_args.BRIDGES:
                 self.bridgeSend(data[1:])
+        elif data[:1] == REPORT_OPCODES['SERVER_INFO_SND']:
+            if cli_args.CONFIG:
+                self.serverInfoSend(data[1:])
         elif data == b'bridge updated':
             pass
         else:
@@ -83,6 +86,12 @@ class reportClient(NetstringReceiver):
     def configSend(self,data):
         self.CONFIG = pickle.loads(data)
         pprint(self.CONFIG, compact=True)
+
+    def serverInfoSend(self, data):
+        import json
+        info = json.loads(data.decode('utf-8'))
+        if cli_args.STATS or cli_args.CONFIG:
+            print('RYSEN server info: {}'.format(info.get('rysen_version', '?')))
         
     
 

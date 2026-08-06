@@ -15,7 +15,9 @@ Must be root for this install to work correctly.
 
 This works on Debian 10, 11, 12, PiOs (Raspbian) and recent Ubuntu systems, on other flavours, you may need to follow the process below.
 
-The installer uses Docker Compose V2 (`docker compose`). On **master** the installer pulls **`shaymez/rysen:latest`** and satellite proxy images from Docker Hub.
+The installer uses Docker Compose V2 (`docker compose`). On **master** the installer pulls **`shaymez/rysen:latest`** (or a pinned tag such as **`shaymez/rysen:1.5.3`**) and satellite proxy images from Docker Hub.
+
+RYSEN reports its version automatically at startup (`--version`, container logs, monitor dashboard, and verified-server listings). No extra operator configuration is required.
 
 The rest of this page details the manual install process.
 

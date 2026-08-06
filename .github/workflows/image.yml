@@ -17,10 +17,17 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: read version
+        id: ver
+        run: echo "version=$(tr -d ' \r\n' < version.txt)" >> "$GITHUB_OUTPUT"
       - name: build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           platforms: linux/386,linux/amd64,linux/arm64
-          tags: shaymez/rysen:latest
+          build-args: |
+            RYSEN_VERSION=${{ steps.ver.outputs.version }}
+          tags: |
+            shaymez/rysen:latest
+            shaymez/rysen:${{ steps.ver.outputs.version }}

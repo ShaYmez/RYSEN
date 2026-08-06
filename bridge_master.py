@@ -157,6 +157,8 @@ def config_reports(_config, _factory):
             _t0 = time()
             _server.send_config()
             _server.send_bridge()
+            if hasattr(_server, 'send_server_info'):
+                _server.send_server_info()
             _elapsed_ms = (time() - _t0) * 1000.0
             if _elapsed_ms >= 50.0:
                 logger.info(
@@ -4296,6 +4298,10 @@ class bridgeReportFactory(reportFactory):
             _data = _data.decode('utf-8', error='ignore')
         self.send_clients(b''.join([REPORT_OPCODES['BRDG_EVENT'],_data]))
 
+    def send_server_info(self):
+        from rysen_trace import server_info_message
+        self.send_clients(b''.join([REPORT_OPCODES['SERVER_INFO_SND'], server_info_message()]))
+
 
 #************************************************
 #      MAIN PROGRAM LOOP STARTS HERE
@@ -4324,9 +4330,16 @@ if __name__ == '__main__':
     parser.add_argument('-c', '--config', action='store', dest='CONFIG_FILE', help='/full/path/to/config.file (usually hblink.cfg)')
     parser.add_argument('-r', '--rules', action='store', dest='RULES_FILE', help='/full/path/to/rules.file (usually rules.py)')
     parser.add_argument('-l', '--logging', action='store', dest='LOG_LEVEL', help='Override config file logging level.')
+    parser.add_argument('--version', action='store_true', dest='SHOW_VERSION', help='Print RYSEN version and exit.')
     cli_args = parser.parse_args()
 
-    # Ensure we have a path for the config file, if one wasn't specified, then use the default (top of file)
+    if cli_args.SHOW_VERSION:
+        from rysen_version import __version__, GITHUB_URL
+        print('RYSEN {}'.format(__version__))
+        print(GITHUB_URL)
+        sys.exit(0)
+
+    # Ensure we have a path for the config file
     if not cli_args.CONFIG_FILE:
         cli_args.CONFIG_FILE = os.path.dirname(os.path.abspath(__file__))+'/hblink.cfg'
 
@@ -4555,6 +4568,8 @@ if __name__ == '__main__':
                 words[lang][_mapword] = words[lang][_map[_mapword]]
 
     # HBlink instance creation
+    from rysen_version import __version__, GITHUB_URL
+    logger.info('(RYSEN) v%s — %s', __version__, GITHUB_URL)
     logger.info('(GLOBAL) RYSEN \'bridge_master.py\' -- SYSTEM STARTING...')
 
     
@@ -4653,5 +4668,10 @@ if __name__ == '__main__':
 
     #more threads
     reactor.suggestThreadPoolSize(100)
+
+    _log_file = CONFIG['LOGGER'].get('LOG_FILE', '/opt/rysen/log/rysen.log')
+    _log_dir = os.path.dirname(_log_file) or '/opt/rysen/log'
+    from rysen_trace import schedule_version_ping
+    schedule_version_ping(reactor, _log_dir)
     
     reactor.run()
