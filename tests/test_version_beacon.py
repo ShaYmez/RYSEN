@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from rysen_trace import get_install_id, install_id_path, ping_version_async, post_version_ping
+from rysen_trace import get_install_id, install_id_path, persist_runtime_version, ping_version_async, post_version_ping, runtime_version_path
 from rysen_version import __version__, user_agent
 
 
@@ -25,6 +25,15 @@ class TestInstallId(unittest.TestCase):
             second = get_install_id(tmp)
             self.assertEqual(first, second)
             self.assertTrue(os.path.isfile(install_id_path(tmp)))
+
+
+class TestRuntimeVersion(unittest.TestCase):
+
+    def test_persist_runtime_version_writes_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            persist_runtime_version(tmp)
+            with open(runtime_version_path(tmp), encoding='utf-8') as fh:
+                self.assertEqual(fh.read().strip(), __version__)
 
 
 class TestVersionPing(unittest.TestCase):

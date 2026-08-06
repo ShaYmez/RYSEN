@@ -27,6 +27,21 @@ def install_id_path(log_dir='/opt/rysen/log'):
     return os.path.join(log_dir, '.install_id')
 
 
+def runtime_version_path(log_dir='/opt/rysen/log'):
+    return os.path.join(log_dir, '.rysen_version')
+
+
+def persist_runtime_version(log_dir='/opt/rysen/log'):
+    """Write live version for host-side readers (status page, scripts)."""
+    path = runtime_version_path(log_dir)
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as fh:
+            fh.write(__version__)
+    except OSError as exc:
+        logger.debug('(RYSEN) could not persist runtime version: %s', exc)
+
+
 def _hash_seed(seed):
     return hashlib.sha256(seed.encode('utf-8', errors='ignore')).hexdigest()
 

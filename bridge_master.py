@@ -4671,7 +4671,8 @@ if __name__ == '__main__':
 
     _log_file = CONFIG['LOGGER'].get('LOG_FILE', '/opt/rysen/log/rysen.log')
     _log_dir = os.path.dirname(_log_file) or '/opt/rysen/log'
-    from rysen_trace import schedule_version_ping
+    from rysen_trace import persist_runtime_version, schedule_version_ping
+    persist_runtime_version(_log_dir)
     schedule_version_ping(reactor, _log_dir)
     
     reactor.run()
