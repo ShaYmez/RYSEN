@@ -35,10 +35,11 @@ from twisted.internet import reactor, task
 # Things we import from the main hblink module
 from hblink import HBSYSTEM, systems, hblink_handler, reportFactory, REPORT_OPCODES, config_reports, mk_aliases
 from dmr_utils3.utils import bytes_3, bytes_4, int_id, get_alias
-from dmr_utils3 import decode, bptc, const
+from dmr_utils3 import bptc
 import config
 import log
 import const
+from const import LC_OPT, HBPF_DATA_SYNC, HBPF_SLT_VHEAD, HBPF_SLT_VTERM
 
 # The module needs logging logging, but handlers, etc. are controlled by the parent
 import logging
@@ -54,6 +55,82 @@ __email__      = 'n0mjs@me.com'
 __status__     = 'pre-alpha'
 
 # Module gobal variables
+
+# Parrot identity (TG 9990). Group inbound echoes as group 9990→TG9990 so
+# MMDVM_Bridge clients tuned to 9990 see a consistent group stream. Private
+# inbound still echoes as unit 9990→caller, with LC rewritten to match.
+PARROT_SRC = bytes_3(9990)
+HBP_UNIT_CALL = 0x40
+UNIT_LC_OPT = b'\x03\x00\x20'
+PLAYBACK_FRAME_S = 0.06
+
+
+def parrot_echo_lc_blocks(src, dst, unit_call):
+    """FULL + embedded LC for a parrot echo whose HBP header is src→dst."""
+    lc = (UNIT_LC_OPT if unit_call else LC_OPT) + dst + src
+    return {
+        'H_LC': bptc.encode_header_lc(lc),
+        'T_LC': bptc.encode_terminator_lc(lc),
+        'EMB_LC': bptc.encode_emblc(lc),
+    }
+
+
+def parrot_echo_addresses(unit_call, caller_id):
+    """Return (src, dst) for parrot playback. Group echo stays on TG 9990."""
+    if unit_call:
+        return PARROT_SRC, caller_id
+    return PARROT_SRC, PARROT_SRC
+
+
+def rewrite_parrot_echo_packet(packet, stream_id, seq, src, dst, lc_blocks, unit_call):
+    """Rewrite one recorded DMRD frame for parrot playback.
+
+    New stream ID, reset HBP sequence, matching src/dst, group/unit bit, and
+    voice LC / embedded LC aligned with the HBP header (MMDVM_Bridge rejects
+    mismatched private headers vs group LC and stretches the stream ~2×).
+    """
+    if not packet or len(packet) < 53:
+        return packet
+    pkt = bytearray(packet)
+    pkt[4] = seq & 0xFF
+    pkt[5:8] = src
+    pkt[8:11] = dst
+    pkt[16:20] = stream_id
+    bits = pkt[15]
+    if unit_call:
+        bits |= HBP_UNIT_CALL
+    else:
+        bits &= ~HBP_UNIT_CALL
+    pkt[15] = bits
+    frame_type = (bits & 0x30) >> 4
+    dtype_vseq = bits & 0x0F
+    dmrbits = bitarray(endian='big')
+    dmrbits.frombytes(bytes(pkt[20:53]))
+    if len(dmrbits) < 264:
+        dmrbits.extend([0] * (264 - len(dmrbits)))
+    if frame_type == HBPF_DATA_SYNC and dtype_vseq == HBPF_SLT_VHEAD:
+        dmrbits = lc_blocks['H_LC'][0:98] + dmrbits[98:166] + lc_blocks['H_LC'][98:197]
+    elif frame_type == HBPF_DATA_SYNC and dtype_vseq == HBPF_SLT_VTERM:
+        dmrbits = lc_blocks['T_LC'][0:98] + dmrbits[98:166] + lc_blocks['T_LC'][98:197]
+    elif dtype_vseq in (1, 2, 3, 4):
+        dmrbits = dmrbits[0:116] + lc_blocks['EMB_LC'][dtype_vseq] + dmrbits[148:264]
+    rewritten = dmrbits.tobytes()
+    pkt[20:53] = rewritten[:33]
+    return bytes(pkt)
+
+
+def build_parrot_echo_packets(packets, unit_call, caller_id, stream_id=None):
+    """Return rewritten parrot frames plus the stream/src/dst used."""
+    if stream_id is None:
+        stream_id = bytes_4(randint(0x00, 0xFFFFFFFF))
+    src, dst = parrot_echo_addresses(unit_call, caller_id)
+    lc_blocks = parrot_echo_lc_blocks(src, dst, unit_call)
+    echoed = [
+        rewrite_parrot_echo_packet(pkt, stream_id, seq % 256, src, dst, lc_blocks, unit_call)
+        for seq, pkt in enumerate(packets)
+    ]
+    return echoed, stream_id, src, dst
+
 
 class playback(HBSYSTEM):
 
@@ -133,33 +210,24 @@ class playback(HBSYSTEM):
             # Final actions - Is this a voice terminator?
             if (_frame_type == const.HBPF_DATA_SYNC) and (_dtype_vseq == const.HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != const.HBPF_SLT_VTERM) and (self.CALL_DATA):
                 call_duration = pkt_time - self.STATUS['RX_START']
-                 #Change the stream ID
                 self.CALL_DATA.append(_data)
                 logger.info('(%s) *END   RECORDING* STREAM ID: %s', self._system, int_id(_stream_id))
                 sleep(2)
-                _new_stream_id = bytes_4(randint(0x00, 0xFFFFFFFF))
-                logger.info('(%s) *START  PLAYBACK* STREAM ID: %s SUB: %s (%s) REPEATER: %s (%s) TGID %s (%s), TS %s, Duration: %s', \
-                                  self._system, int_id(_new_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration)
-                
-                _parrot_src = bytes_3(9990)
+                _unit_call = (_call_type == 'unit')
                 _echo_dst = self._record_rf_src if self._record_rf_src is not None else _rf_src
-                for i in self.CALL_DATA:
-
-                    i = i[:16] + _new_stream_id + i[20:]
-                    # Always echo as private call back to the caller (group or unit inbound).
-                    i = i[:5] + _parrot_src + _echo_dst + i[11:]
-                    # Force unit (private) call type bit in HBP header.
-                    _bits_out = i[15] | 0x40
-                    i = i[:15] + bytes([_bits_out]) + i[16:]
+                _echoed, _new_stream_id, _echo_src, _echo_tg = build_parrot_echo_packets(
+                    self.CALL_DATA, _unit_call, _echo_dst)
+                logger.info('(%s) *START  PLAYBACK* STREAM ID: %s SUB: %s (%s) REPEATER: %s (%s) TGID %s (%s), TS %s, Duration: %s, %s', \
+                                  self._system, int_id(_new_stream_id), get_alias(_echo_src, subscriber_ids), int_id(_echo_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_echo_tg, talkgroup_ids), int_id(_echo_tg), _slot, call_duration, 'unit' if _unit_call else 'group')
+                for i in _echoed:
                     self.send_system(i)
-                    sleep(0.06)
+                    sleep(PLAYBACK_FRAME_S)
                 self.CALL_DATA = []
                 self._record_rf_src = None
                 logger.info('(%s) *END    PLAYBACK* STREAM ID: %s', self._system, int_id(_new_stream_id))
 
             else:
                 if self.CALL_DATA:
-                    #Change the stream ID
                     self.CALL_DATA.append(_data)
 
 
