@@ -100,7 +100,7 @@ def is_invalid_dial_reflector(reflector):
 
 
 def is_parrot_talkgroup(tgid):
-    """TG 9990 — parrot echo (group or private call); never dial-a-tg / TG 9."""
+    """TG 9990 — parrot echo (group in → group out; private in → private out); never dial-a-tg / TG 9."""
     try:
         return int(tgid) == PARROT_TG
     except (TypeError, ValueError):
