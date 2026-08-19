@@ -49,7 +49,7 @@ from dmr_utils3.utils import int_id, bytes_3, bytes_4, get_alias, mk_id_dict
 from ipsc_peer_meta import (
     lookup_peer_alias, callsign_bytes, parse_ipsc_peer_status, ipsc_peer_display_fields,
 )
-from bridge_helpers import mark_options_dirty, dmr_seq_delta
+from bridge_helpers import mark_options_dirty, dmr_seq_delta, reset_slot_voice_ident
 
 # Imports for the reporting server
 import pickle
@@ -887,9 +887,11 @@ class HBSYSTEM(DatagramProtocol):
                 logger.info('(%s) Setting default Options: %s',self._system, self._CONFIG['SYSTEMS'][self._system]['_default_options'])
                 self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = self._CONFIG['SYSTEMS'][self._system]['_default_options']
                 self._CONFIG['SYSTEMS'][self._system]['_reset'] = True
+                reset_slot_voice_ident(self._CONFIG['SYSTEMS'][self._system])
                 mark_options_dirty(self._CONFIG)
             else:
                 del self._CONFIG['SYSTEMS'][self._system]['OPTIONS']
+                reset_slot_voice_ident(self._CONFIG['SYSTEMS'][self._system])
                 mark_options_dirty(self._CONFIG)
                 logger.info('(%s) Deleting HBP Options',self._system)
 
@@ -1273,11 +1275,13 @@ class HBSYSTEM(DatagramProtocol):
                             self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = self._CONFIG['SYSTEMS'][self._system]['_default_options']
                             logger.info('(%s) Setting default Options: %s',self._system, self._CONFIG['SYSTEMS'][self._system]['_default_options'])
                             self._CONFIG['SYSTEMS'][self._system]['_reset'] = True
+                            reset_slot_voice_ident(self._CONFIG['SYSTEMS'][self._system])
                             mark_options_dirty(self._CONFIG)
                         else:
                             logger.info('(%s) Deleting HBP Options',self._system)
                             del self._CONFIG['SYSTEMS'][self._system]['OPTIONS']
                             self._CONFIG['SYSTEMS'][self._system]['_reset'] = True
+                            reset_slot_voice_ident(self._CONFIG['SYSTEMS'][self._system])
                             mark_options_dirty(self._CONFIG)
                     
             else:
