@@ -30,6 +30,7 @@ class TestHblinkPingTimeout(unittest.TestCase):
                     },
                     'OPTIONS': 'TS2=2350;',
                     '_default_options': 'TS1=9;',
+                    'VOICE_IDENT': True,
                 },
             },
         }
@@ -46,6 +47,7 @@ class TestHblinkPingTimeout(unittest.TestCase):
         sys_cfg = stub._CONFIG['SYSTEMS']['MASTER-0']
         self.assertEqual(sys_cfg['OPTIONS'], 'TS1=9;')
         self.assertTrue(sys_cfg.get('_reset'))
+        self.assertFalse(sys_cfg.get('VOICE_IDENT'))
 
     def test_timeout_keeps_options_while_peers_remain(self):
         stub = self._make_master_stub()

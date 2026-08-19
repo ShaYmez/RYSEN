@@ -97,6 +97,9 @@ from bridge_helpers import (
     report_include_bridge_leg,
     build_report_bridge_leg,
     mark_options_dirty,
+    voice_ident_requested,
+    apply_voice_ident_from_options,
+    reset_slot_voice_ident,
     dmr_seq_delta,
     earliest_obp_owner,
     hbp_claim_is_local,
@@ -1591,7 +1594,9 @@ def ident():
     for system in systems:
         if CONFIG['SYSTEMS'][system]['MODE'] != 'MASTER':
             continue
-        if CONFIG['SYSTEMS'][system]['VOICE_IDENT'] == True:
+        # Source of truth is the live OPTIONS string. The VOICE_IDENT flag can
+        # stick True on a reused generator slot after a VOICE=1 peer leaves.
+        if voice_ident_requested(CONFIG['SYSTEMS'][system].get('OPTIONS')):
             _lang = CONFIG['SYSTEMS'][system]['ANNOUNCEMENT_LANGUAGE']
             if CONFIG['SYSTEMS'][system]['MAX_PEERS'] > 1:
                 logger.debug("(IDENT) %s System has MAX_PEERS > 1, skipping",system)
@@ -1677,6 +1682,7 @@ def options_config():
             logger.debug('(OPTIONS) Bridge reset for %s - no peers',_system)
             remove_bridge_system(_system)
             CONFIG['SYSTEMS'][_system]['_reset'] = False
+            reset_slot_voice_ident(CONFIG['SYSTEMS'][_system])
             # This pass removed stale bridge state. Re-run once so restored
             # default OPTIONS are parsed instead of being lost to the dirty gate.
             mark_options_dirty(CONFIG)
@@ -1845,9 +1851,11 @@ def options_config():
                     if 'DEFAULT_UA_TIMER' not in _options:
                         _options['DEFAULT_UA_TIMER'] = CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']
                     
-                    if 'VOICE' in _options and bool(_options['VOICE']) and (CONFIG['SYSTEMS'][_system]['VOICE_IDENT'] != bool(int(_options['VOICE']))):
-                        CONFIG['SYSTEMS'][_system]['VOICE_IDENT'] = bool(int(_options['VOICE']))
-                        logger.debug("(OPTIONS) %s - Setting voice ident to %s",_system,CONFIG['SYSTEMS'][_system]['VOICE_IDENT'])
+                    _prev_ident = CONFIG['SYSTEMS'][_system].get('VOICE_IDENT')
+                    _new_ident = apply_voice_ident_from_options(
+                        CONFIG['SYSTEMS'][_system], _options)
+                    if _new_ident != _prev_ident:
+                        logger.debug("(OPTIONS) %s - Setting voice ident to %s",_system,_new_ident)
                         
                     if 'OVERRIDE_IDENT_TG' in _options and _options['OVERRIDE_IDENT_TG'] and (CONFIG['SYSTEMS'][_system]['OVERRIDE_IDENT_TG'] != int(_options['OVERRIDE_IDENT_TG'])):
                         CONFIG['SYSTEMS'][_system]['OVERRIDE_IDENT_TG'] = int(_options['OVERRIDE_IDENT_TG'])
@@ -4243,6 +4251,7 @@ class routerIPSC(IpscMasterMixin, routerHBP):
                 del _sys['OPTIONS']
                 logger.info('(%s) IPSC peer gone — clearing OPTIONS', self._system)
                 _sys['_reset'] = True
+            reset_slot_voice_ident(_sys)
             mark_options_dirty(self._CONFIG)
 
 

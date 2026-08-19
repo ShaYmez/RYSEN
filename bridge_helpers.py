@@ -19,6 +19,38 @@ def mark_options_dirty(config):
     config['_OPTIONS_DIRTY'] = True
 
 
+# RPTO / selfcare: VOICE=1 or legacy IDENT=1. Do not match UserLink=1 / RelinkTime=.
+_VOICE_IDENT_ON_RE = re.compile(r'(?:^|;)(?:VOICE|IDENT)=1(?:;|$)')
+
+
+def voice_ident_requested(options):
+    """True only when the current OPTIONS string explicitly enables voice ident."""
+    if not options:
+        return False
+    if isinstance(options, (bytes, bytearray)):
+        options = options.decode('ascii', 'ignore')
+    return bool(_VOICE_IDENT_ON_RE.search(str(options).replace(' ', '')))
+
+
+def apply_voice_ident_from_options(system_cfg, parsed_options):
+    """Set VOICE_IDENT from parsed OPTIONS. Missing or 0 clears a leftover slot flag."""
+    if 'VOICE' not in parsed_options:
+        system_cfg['VOICE_IDENT'] = False
+        return False
+    try:
+        system_cfg['VOICE_IDENT'] = bool(int(parsed_options['VOICE']))
+    except (TypeError, ValueError):
+        system_cfg['VOICE_IDENT'] = False
+    return system_cfg['VOICE_IDENT']
+
+
+def reset_slot_voice_ident(system_cfg):
+    """Generator slots reuse ports; ident must not survive the previous occupant."""
+    if system_cfg is None:
+        return
+    system_cfg['VOICE_IDENT'] = False
+
+
 def dmr_seq_delta(sequence, previous):
     """Return forward 8-bit sequence distance, or None before first packet."""
     if previous is False or previous is None:
