@@ -66,6 +66,16 @@ class TestControlDispatch(unittest.TestCase):
         code, _body = handle_control_request('disconnect', 'POST', {}, **self.kw)
         self.assertEqual(code, 400)
 
+    def test_runtime_bridge_uses_main_when_config_present(self):
+        import sys
+        from control_api import _runtime_bridge
+        main = sys.modules['__main__']
+        main.CONFIG = {'SYSTEMS': {}}
+        try:
+            self.assertIs(_runtime_bridge(), main)
+        finally:
+            delattr(main, 'CONFIG')
+
 
 if __name__ == '__main__':
     unittest.main()

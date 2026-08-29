@@ -8,8 +8,12 @@ Calls existing bridge_master hooks. Does not scrape REPORT.
 from __future__ import annotations
 
 import json
+import logging
 import os
+import sys
 from typing import Callable, Dict, Optional, Tuple
+
+log = logging.getLogger(__name__)
 
 TOKEN_PATH = os.environ.get('FREESTAR_CONTROL_TOKEN', '/etc/rysen/freestar-control.token')
 LISTEN_HOST = os.environ.get('FREESTAR_CONTROL_HOST', '127.0.0.1')
@@ -93,8 +97,18 @@ def _http_response(code: int, body: dict) -> bytes:
     return headers.encode('ascii') + payload
 
 
-def _wire_handlers():
+def _runtime_bridge():
+    """Use the running process module. bridge_master.py is started as __main__,
+    so `import bridge_master` is a second copy without CONFIG/BRIDGES."""
+    main = sys.modules.get('__main__')
+    if main is not None and getattr(main, 'CONFIG', None) is not None:
+        return main
     import bridge_master as bm
+    return bm
+
+
+def _wire_handlers():
+    bm = _runtime_bridge()
     from dmr_utils3.utils import bytes_3
     from selfcare_db import find_hotspot_master_peer, find_ipsc_peer_for_radio_id
 
@@ -218,16 +232,20 @@ def start_control_api(logger=None):
                     self.transport.loseConnection()
                     return
             action = path.split('?')[0].strip('/')
-            code, payload = handle_control_request(
-                action,
-                method,
-                body,
-                find_peer=self.handlers['find_peer'],
-                disconnect=self.handlers['disconnect'],
-                drop_dynamic=self.handlers['drop_dynamic'],
-                activate_tg=self.handlers['activate_tg'],
-                deactivate_tg=self.handlers['deactivate_tg'],
-            )
+            try:
+                code, payload = handle_control_request(
+                    action,
+                    method,
+                    body,
+                    find_peer=self.handlers['find_peer'],
+                    disconnect=self.handlers['disconnect'],
+                    drop_dynamic=self.handlers['drop_dynamic'],
+                    activate_tg=self.handlers['activate_tg'],
+                    deactivate_tg=self.handlers['deactivate_tg'],
+                )
+            except Exception as err:
+                log.exception('(CONTROL) request failed: %s', err)
+                code, payload = 500, {'error': 'Control handler failed'}
             self.transport.write(_http_response(code, payload))
             self.transport.loseConnection()
 
