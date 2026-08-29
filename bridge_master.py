@@ -186,6 +186,12 @@ def config_reports(_config, _factory):
         reporting = task.LoopingCall(reporting_loop, logger, report_server)
         reporting.start(_config['REPORTS']['REPORT_INTERVAL']).addErrback(_reporting_errback)
 
+        try:
+            from control_api import start_control_api
+            start_control_api(logger)
+        except Exception as err:
+            logger.warning('(CONTROL) not started: %s', err)
+
     return report_server
 
 
