@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Loopback HTTP control listener for FreeSTAR hub /v2/control/* and /v2/device/*.
+"""Loopback HTTP control listener for FreeSTAR ops and owner device APIs.
 
 Listens when /etc/rysen/freestar-control.token exists.
-POST/DELETE /talkgroup remains user-activated (ops). Statics use /static-talkgroup.
+Legacy root actions are ops-only. Owner actions are under /device/*.
 """
 
 from __future__ import annotations
 
 import json
+import hmac
 import logging
 import os
 import sys
@@ -32,6 +33,10 @@ def parse_control_path(path: str) -> Tuple[str, List[str]]:
     parts = [p for p in (path or '').split('?')[0].strip('/').split('/') if p]
     if not parts:
         return '', []
+    if parts[0] == 'device':
+        if len(parts) < 2:
+            return '', []
+        return 'device:' + parts[1], parts[2:]
     return parts[0], parts[1:]
 
 
@@ -78,11 +83,29 @@ def handle_control_request(
     add_static: Optional[Callable] = None,
     remove_static: Optional[Callable] = None,
     persist_disc: Optional[Callable] = None,
+    kick_peer: Optional[Callable] = None,
+    ban_radio: Optional[Callable] = None,
+    unban_radio: Optional[Callable] = None,
     path_parts: Optional[List[str]] = None,
 ) -> Tuple[int, dict]:
     path_parts = list(path_parts or [])
     method = (method or 'POST').upper()
     action = (action or '').strip().strip('/')
+    scope = 'ops'
+    if action.startswith('device:'):
+        scope = 'device'
+        action = action.split(':', 1)[1]
+
+    ops_actions = {
+        'disconnect', 'drop-call', 'drop-dynamic', 'talkgroup',
+        'kick', 'ban', 'unban',
+    }
+    device_actions = {
+        'peer', 'static-talkgroup', 'drop-call', 'drop-dynamic',
+        'disconnect',
+    }
+    if action not in (device_actions if scope == 'device' else ops_actions):
+        return 404, {'error': 'Unknown control action'}
 
     radio_id = _radio_from(body, path_parts if action == 'peer' else [])
     if radio_id is None:
@@ -90,11 +113,41 @@ def handle_control_request(
     if radio_id is None:
         return 400, {'error': 'radio_id is required'}
 
-    system, peer_id = find_peer(radio_id)
+    if scope == 'ops' and action == 'unban':
+        if method != 'POST' or unban_radio is None:
+            return 405, {'error': 'Method not allowed'}
+        removed = bool(unban_radio(radio_id))
+        return 200, {
+            'ok': True, 'action': 'unban', 'radio_id': radio_id,
+            'removed': removed,
+        }
+
+    if scope == 'ops' and action == 'ban':
+        if method != 'POST' or ban_radio is None:
+            return 405, {'error': 'Method not allowed'}
+        try:
+            duration = int(body.get('duration_seconds', 300))
+        except (TypeError, ValueError):
+            return 400, {'error': 'duration_seconds must be an integer'}
+        if duration < 1 or duration > 86400:
+            return 400, {'error': 'duration_seconds must be between 1 and 86400'}
+        result = ban_radio(radio_id, duration, body.get('reason', ''))
+        payload = {
+            'ok': True, 'action': 'ban', 'radio_id': radio_id,
+            'duration_seconds': duration,
+        }
+        if isinstance(result, dict):
+            payload.update(result)
+        return 200, payload
+
+    try:
+        system, peer_id = find_peer(radio_id)
+    except LookupError as err:
+        return 409, {'error': str(err)}
     if not system:
         return 404, {'error': 'Peer not connected on this master'}
 
-    if action == 'peer' and method == 'GET':
+    if scope == 'device' and action == 'peer' and method == 'GET':
         if list_peer is None:
             return 404, {'error': 'Unknown control action'}
         payload = list_peer(system, peer_id, radio_id)
@@ -108,20 +161,34 @@ def handle_control_request(
 
     if action == 'disconnect' and method == 'POST':
         disconnect(system, peer_id)
-        if persist_disc is not None:
+        if scope == 'device' and persist_disc is not None:
             persist_disc(system, peer_id)
-        return 200, {'ok': True, 'action': action, 'system': system}
+        return 200, {
+            'ok': True, 'action': action, 'scope': scope, 'system': system,
+        }
 
     if action == 'drop-call' and method == 'POST':
         if drop_call is not None:
             drop_call(system, peer_id)
-        return 200, {'ok': True, 'action': action, 'system': system}
+        return 200, {
+            'ok': True, 'action': action, 'scope': scope, 'system': system,
+        }
 
     if action == 'drop-dynamic' and method == 'POST':
         drop_dynamic(system, peer_id)
-        return 200, {'ok': True, 'action': action, 'system': system}
+        return 200, {
+            'ok': True, 'action': action, 'scope': scope, 'system': system,
+        }
 
-    if action == 'talkgroup':
+    if scope == 'ops' and action == 'kick' and method == 'POST':
+        if kick_peer is None:
+            return 404, {'error': 'Kick is not available'}
+        kicked = bool(kick_peer(system, peer_id))
+        return 200, {
+            'ok': True, 'action': action, 'system': system, 'kicked': kicked,
+        }
+
+    if scope == 'ops' and action == 'talkgroup':
         tg = body.get('talkgroup', body.get('group'))
         try:
             tgid = int(tg)
@@ -136,7 +203,7 @@ def handle_control_request(
         activate_tg(system, tgid, slot, peer_id)
         return 200, {'ok': True, 'action': 'talkgroup-add', 'system': system, 'talkgroup': tgid}
 
-    if action == 'static-talkgroup':
+    if scope == 'device' and action == 'static-talkgroup':
         if add_static is None or remove_static is None:
             return 404, {'error': 'Unknown control action'}
         slot_raw = body.get('slot')
@@ -169,7 +236,7 @@ def handle_control_request(
             'slot': slot,
         }
 
-    return 404, {'error': 'Unknown control action'}
+    return 405, {'error': 'Method not allowed'}
 
 
 def _http_response(code: int, body: dict) -> bytes:
@@ -179,6 +246,7 @@ def _http_response(code: int, body: dict) -> bytes:
         400: 'Bad Request',
         401: 'Unauthorized',
         404: 'Not Found',
+        409: 'Conflict',
         405: 'Method Not Allowed',
         500: 'Internal Server Error',
     }.get(code, 'Error')
@@ -240,36 +308,28 @@ def _wire_handlers():
     bm = _runtime_bridge()
     from dmr_utils3.utils import bytes_3
     from bridge_helpers import (
-        deactivate_peer_ua_talkgroup,
+        linked_ipsc_slots,
         mark_options_dirty,
-        note_peer_ua_talkgroup,
         peer_dynamic_groups,
     )
     from selfcare_db import (
-        find_hotspot_master_peer,
-        find_ipsc_peer_for_radio_id,
+        find_connected_dmr_peer,
+        live_static_required,
         merge_ts_into_options,
-        other_peer_has_static,
         peer_own_options,
         store_peer_options,
         ts_lists_from_options,
     )
 
     def find_peer(radio_id: int):
-        system, peer_id = find_hotspot_master_peer(bm.CONFIG['SYSTEMS'], radio_id)
-        if system:
-            return system, peer_id
-        return find_ipsc_peer_for_radio_id(bm.CONFIG['SYSTEMS'], radio_id)
+        return find_connected_dmr_peer(
+            bm.CONFIG['SYSTEMS'], radio_id, require_unique=True)
 
     def disconnect(system, peer_id):
         bm.selfcare_disconnect(system, peer_id)
 
     def drop_call(system, peer_id):
-        if peer_id:
-            bm.clear_sub_map_for_peer(peer_id, include_ops_membership=False)
-        else:
-            bm.clear_sub_map_for_system(system)
-        bm.notify_bridge_table_updated()
+        bm.drop_peer_call(system, peer_id)
 
     def drop_dynamic(system, peer_id=None):
         bm.selfcare_disconnect(system, peer_id)
@@ -324,15 +384,20 @@ def _wire_handlers():
         cfg = bm.CONFIG['SYSTEMS'][system]
         ts1, ts2 = ts_lists_from_options(_options_base(system, peer_id))
         name = str(int(tgid))
+        groups = ts1 if slot == 1 else ts2
+        if name not in groups:
+            return False
         if slot == 1:
             ts1 = [g for g in ts1 if g != name]
         else:
             ts2 = [g for g in ts2 if g != name]
         tmout = cfg.get('DEFAULT_UA_TIMER', 10)
-        if not other_peer_has_static(cfg, slot, tgid, except_peer_id=peer_id):
+        if not live_static_required(
+                cfg, slot, tgid, except_peer_id=peer_id):
             bm.reset_static_tg(int(tgid), slot, tmout, system)
         bm.notify_bridge_table_updated()
         _persist_statics(system, peer_id, ts1, ts2)
+        return True
 
     def list_peer(system, peer_id, radio_id):
         ts1, ts2 = ts_lists_from_options(_options_base(system, peer_id))
@@ -370,39 +435,42 @@ def _wire_handlers():
         if name not in bm.BRIDGES:
             bm.make_single_bridge(tgid_b, system, slot, tmout)
         else:
-            bm.activate_ua_bridge_source(name, system, slot, tmout, peer_id)
-        dropped_old = note_peer_ua_talkgroup(
-            getattr(bm, 'SUB_MAP', None), system, peer_id, slot, tgid,
-            getattr(bm, 'BRIDGES', None))
-        if dropped_old:
-            bm.rebuild_bridge_index()
+            # Ops activation is stanza-scoped; the radio only locates its host.
+            bm.activate_ua_bridge_source(name, system, slot, tmout, None)
         bm.notify_bridge_table_updated()
 
     def deactivate_tg(system, tgid, slot, peer_id=None):
-        if peer_id:
-            changed = deactivate_peer_ua_talkgroup(
-                getattr(bm, 'BRIDGES', None) or {},
-                getattr(bm, 'SUB_MAP', None) or {},
-                system, peer_id, slot, tgid)
-            if changed:
-                bm.rebuild_bridge_index()
-            bm.notify_bridge_table_updated()
-            return
         name = str(int(tgid))
         if name not in bm.BRIDGES:
             return
         changed = False
+        target_systems = {system}
+        target_systems.update(linked_ipsc_slots(
+            bm.CONFIG.get('SYSTEMS', {}), system, None))
         for entry in bm.BRIDGES[name]:
-            if entry.get('SYSTEM') != system:
+            if entry.get('SYSTEM') not in target_systems:
                 continue
             if slot and entry.get('TS') != slot:
                 continue
-            if entry.get('ACTIVE'):
+            # Static OFF legs remain governed by OPTIONS. Ops DELETE force-drops
+            # the shared user-activated leg; it does not corrupt static state.
+            if entry.get('TO_TYPE') == 'ON' and entry.get('ACTIVE'):
                 entry['ACTIVE'] = False
+                entry['TIMER'] = 0
                 changed = True
         if changed:
             bm.rebuild_bridge_index()
             bm.notify_bridge_table_updated()
+
+    def kick_peer(system, peer_id):
+        return bm.kick_hotspot_peer(system, peer_id)
+
+    def ban_radio(radio_id, duration_seconds, reason):
+        return bm.ban_hotspot_radio(
+            radio_id, duration_seconds=duration_seconds, reason=reason)
+
+    def unban_radio(radio_id):
+        return bm.unban_hotspot_radio(radio_id)
 
     return {
         'find_peer': find_peer,
@@ -415,6 +483,9 @@ def _wire_handlers():
         'add_static': add_static,
         'remove_static': remove_static,
         'persist_disc': persist_disc,
+        'kick_peer': kick_peer,
+        'ban_radio': ban_radio,
+        'unban_radio': unban_radio,
     }
 
 
@@ -463,14 +534,14 @@ def start_control_api(logger=None):
                 length = int(headers.get('content-length', '0') or 0)
             except ValueError:
                 length = 0
-            if length > MAX_BODY:
+            if length < 0 or length > MAX_BODY:
                 self.transport.write(_http_response(400, {'error': 'Request too large'}))
                 self.transport.loseConnection()
                 return
             if len(rest) < length:
                 return
             auth = headers.get('authorization', '')
-            if auth != 'Bearer ' + self.token:
+            if not hmac.compare_digest(auth, 'Bearer ' + self.token):
                 self.transport.write(_http_response(401, {'error': 'Unauthorized'}))
                 self.transport.loseConnection()
                 return
@@ -504,6 +575,9 @@ def start_control_api(logger=None):
                     add_static=self.handlers.get('add_static'),
                     remove_static=self.handlers.get('remove_static'),
                     persist_disc=self.handlers.get('persist_disc'),
+                    kick_peer=self.handlers.get('kick_peer'),
+                    ban_radio=self.handlers.get('ban_radio'),
+                    unban_radio=self.handlers.get('unban_radio'),
                     path_parts=path_parts,
                 )
             except Exception as err:

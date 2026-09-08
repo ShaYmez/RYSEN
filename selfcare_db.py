@@ -243,9 +243,40 @@ def find_ipsc_slot_for_radio_id(config_systems, radio_id):
     return slot
 
 
-def find_ipsc_peer_for_radio_id(config_systems, radio_id):
+class AmbiguousPeerError(LookupError):
+    """A seven-digit owner ID matched more than one connected ESSID."""
+
+
+def find_connected_dmr_peer(config_systems, radio_id, require_unique=False):
+    """Find one connected MASTER/IPSC peer, rejecting ambiguous control targets."""
+    exact = []
+    fuzzy = []
+    for system, syscfg in config_systems.items():
+        mode = syscfg.get('MODE')
+        if mode not in ('MASTER', 'IPSC') or not syscfg.get('ENABLED'):
+            continue
+        for peer_id, peer in (syscfg.get('PEERS') or {}).items():
+            connection = peer.get('CONNECTION')
+            if mode == 'MASTER' and connection != 'YES':
+                continue
+            if mode == 'IPSC' and connection not in (None, 'YES'):
+                continue
+            candidate = (system, peer_id)
+            if _peer_matches_radio(peer, peer_id, radio_id, exact_only=True):
+                exact.append(candidate)
+            elif _peer_matches_radio(peer, peer_id, radio_id):
+                fuzzy.append(candidate)
+    matches = exact or fuzzy
+    if require_unique and len(matches) > 1:
+        raise AmbiguousPeerError(
+            'Multiple connected peers match; use the exact connected radio ID')
+    return matches[0] if matches else (None, None)
+
+
+def find_ipsc_peer_for_radio_id(
+        config_systems, radio_id, require_unique=False):
     """Return (IPSC-N slot, peer_id) for a connected IPSC repeater radio ID."""
-    fuzzy = (None, None)
+    fuzzy = []
     for slot, syscfg in config_systems.items():
         if syscfg.get('MODE') != 'IPSC' or not syscfg.get('ENABLED'):
             continue
@@ -254,17 +285,21 @@ def find_ipsc_peer_for_radio_id(config_systems, radio_id):
                 continue
             if _peer_matches_radio(peer, peer_id, radio_id, exact_only=True):
                 return slot, peer_id
-            if fuzzy[0] is None and _peer_matches_radio(peer, peer_id, radio_id):
-                fuzzy = (slot, peer_id)
-    return fuzzy
+            if _peer_matches_radio(peer, peer_id, radio_id):
+                fuzzy.append((slot, peer_id))
+    if require_unique and len(fuzzy) > 1:
+        raise AmbiguousPeerError(
+            'Multiple connected ESSIDs match; use the exact connected radio ID')
+    return fuzzy[0] if fuzzy else (None, None)
 
 
-def find_hotspot_master_peer(config_systems, radio_id):
+def find_hotspot_master_peer(
+        config_systems, radio_id, require_unique=False):
     """Return (MASTER system name, peer_id) for a logged-in hotspot radio ID.
 
     Exact ID wins. ESSID 01-99 is a fallback (234018901 matches 2340189).
     """
-    fuzzy = (None, None)
+    fuzzy = []
     for system, syscfg in config_systems.items():
         if syscfg.get('MODE') != 'MASTER' or not syscfg.get('ENABLED'):
             continue
@@ -273,9 +308,12 @@ def find_hotspot_master_peer(config_systems, radio_id):
                 continue
             if _peer_matches_radio(peer, peer_id, radio_id, exact_only=True):
                 return system, peer_id
-            if fuzzy[0] is None and _peer_matches_radio(peer, peer_id, radio_id):
-                fuzzy = (system, peer_id)
-    return fuzzy
+            if _peer_matches_radio(peer, peer_id, radio_id):
+                fuzzy.append((system, peer_id))
+    if require_unique and len(fuzzy) > 1:
+        raise AmbiguousPeerError(
+            'Multiple connected ESSIDs match; use the exact connected radio ID')
+    return fuzzy[0] if fuzzy else (None, None)
 
 
 def comma_tg_list(value):
@@ -394,6 +432,18 @@ def other_peer_has_static(syscfg, slot, tgid, except_peer_id=None):
         if want in groups:
             return True
     return False
+
+
+def live_static_required(syscfg, slot, tgid, except_peer_id=None):
+    """True when cfg defaults or another connected peer still require a static."""
+    want = str(int(tgid))
+    default_ts1, default_ts2 = ts_lists_from_options(
+        syscfg.get('_default_options'))
+    defaults = default_ts1 if int(slot) == 1 else default_ts2
+    if want in defaults:
+        return True
+    return other_peer_has_static(
+        syscfg, slot, tgid, except_peer_id=except_peer_id)
 
 
 def merge_ts_into_options(options_value, ts1, ts2, disc=False):

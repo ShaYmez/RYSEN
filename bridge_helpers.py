@@ -479,103 +479,18 @@ def other_peer_has_sub_map_tg(sub_map, system, slot, tgid, except_peer_id=None):
     return False
 
 
-def clear_peer_sub_map_tg(sub_map, system, peer_id, slot, tgid):
-    """Drop this hotspot's SUB_MAP rows for one UA talkgroup."""
-    if not sub_map or peer_id is None:
-        return 0
-    want = int(tgid)
-    slot = int(slot)
-    remove = []
-    for sid, entry in list(sub_map.items()):
-        try:
-            if len(entry) < 5 or entry[4] != peer_id or entry[0] != system:
-                continue
-            if int(entry[1] or 2) != slot:
-                continue
-            if _tg_int(entry[2]) != want:
-                continue
-            remove.append(sid)
-        except (TypeError, ValueError, IndexError):
-            continue
-    for sid in remove:
-        sub_map.pop(sid, None)
-    return len(remove)
-
-
-def drop_ua_leg_if_unused(bridges, sub_map, system, slot, tgid):
-    """Take down a UA ON leg only if nobody still has that TG in SUB_MAP."""
-    if not tgid or not bridges:
-        return False
-    slot = int(slot) if slot else 2
-    tgid = int(tgid)
-    if other_peer_has_sub_map_tg(sub_map, system, slot, tgid):
-        return False
-    name = str(tgid)
-    if name not in bridges or str(name)[:1] == '#':
-        return False
-    changed = False
-    now = time.time()
-    for entry in bridges[name]:
-        if entry.get('SYSTEM') != system:
-            continue
-        if int(entry.get('TS') or 2) != slot:
-            continue
-        if entry.get('TO_TYPE') != 'ON' or not entry.get('ACTIVE'):
-            continue
-        entry['ACTIVE'] = False
-        entry['TIMER'] = now
-        changed = True
-    return changed
-
-
-def note_peer_ua_talkgroup(sub_map, system, peer_id, slot, tgid, bridges=None):
-    """Record that this hotspot has this UA TG (ops POST /talkgroup).
-
-    Keyed by peer_id so it does not collide with 3-byte RF subscriber rows.
-    A second POST replaces this radio's ops membership. The previous UA live
-    leg comes down only if nobody (including this radio's RF rows) still has it.
-    Returns True if a live UA leg was taken down.
-    """
-    if not isinstance(sub_map, dict) or peer_id is None or not tgid:
-        return False
-    slot = int(slot) if slot else 2
-    tgid = int(tgid)
-    changed = False
-    old = sub_map.get(peer_id)
-    old_system = old_slot = old_tg = None
-    if old and len(old) >= 3:
-        old_system = old[0]
-        try:
-            old_slot = int(old[1] or 2)
-        except (TypeError, ValueError):
-            old_slot = 2
-        old_tg = _tg_int(old[2])
-    if old_tg and (old_tg != tgid or old_slot != slot or old_system != system):
-        sub_map.pop(peer_id, None)
-        changed = drop_ua_leg_if_unused(
-            bridges, sub_map, old_system, old_slot, old_tg)
-    sub_map[peer_id] = (system, slot, bytes_3(tgid), time.time(), peer_id)
-    return changed
-
-
-def deactivate_peer_ua_talkgroup(bridges, sub_map, system, peer_id, slot, tgid):
-    """Unlink one UA TG for this radio. Other radios on the MASTER keep it.
-
-    The live TO_TYPE ON leg comes down only if no other peer still has that TG.
-    """
-    if not tgid:
-        return False
-    slot = int(slot) if slot else 2
-    tgid = int(tgid)
-    clear_peer_sub_map_tg(sub_map, system, peer_id, slot, tgid)
-    return drop_ua_leg_if_unused(bridges, sub_map, system, slot, tgid)
-
-
 def peer_dynamic_groups(sub_map, bridges, system, peer_id):
-    """This hotspot's dynamic TGs (SUB_MAP + dial reflectors it owns)."""
+    """This hotspot's currently active dynamic TGs and owned dial reflectors."""
     out = []
     seen = set()
     for slot, tgid in peer_sub_map_tgs(sub_map, system, peer_id):
+        active = any(
+            entry.get('SYSTEM') == system
+            and int(entry.get('TS') or 2) == slot
+            and entry.get('ACTIVE')
+            for entry in (bridges or {}).get(str(tgid), ()))
+        if not active:
+            continue
         item = (slot, tgid)
         if item in seen:
             continue

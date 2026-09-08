@@ -38,6 +38,8 @@ Must be run as **root** on Debian 10+, Pi OS, or recent Ubuntu. See [doc/install
 | [doc/satellite-proxy-repos.md](doc/satellite-proxy-repos.md) | Satellite proxy image workflow |
 | [CHANGELOG.md](CHANGELOG.md) | Release notes |
 
+FreeSTAR operator/device boundary: [doc/control-api.md](doc/control-api.md).
+
 Sample configs: [RYSEN-SAMPLE-commented.cfg](RYSEN-SAMPLE-commented.cfg), [docker-configs/config/rysen.cfg](docker-configs/config/rysen.cfg).
 
 ## Related projects

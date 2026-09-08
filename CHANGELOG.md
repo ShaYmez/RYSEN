@@ -4,12 +4,13 @@
 
 FreeSTAR hub device control on `:8765` (needs matching `freestar-api-v2` device API).
 
-- `GET /peer/{radio_id}` — connected lookup, statics, dynamics. Exact ID wins; ESSID 01-99 falls back to the 7-digit ID.
-- `POST/DELETE /static-talkgroup` — per-peer OPTIONS / `Clients` (`TS1=`/`TS2=`). Does not copy MASTER last-writer `TS1_STATIC`. Slot 0 is simplex (TS2). Remove only drops the live bridge if no other peer still has that static. Live MASTER statics are the union of connected peer OPTIONS (plus cfg defaults); RPTO no longer copies TS1/TS2 onto the MASTER stanza.
-- `POST /drop-dynamic` and `POST /disconnect` — drop this hotspot's UA/dial TGs only. Other radios on the same MASTER keep theirs. A live UA bridge is taken down only if no other peer still has that TG. Disconnect also queues `DISC=1` on that radio's `Clients` row (does not rewrite TS1/TS2). `DISC=1` apply writes that peer's OPTIONS only — it does not copy onto the MASTER stanza or run `options_config()`.
-- `POST /drop-call` — drop this radio's current call route (`SUB_MAP` RF rows). Does not unlink ops UA membership and is not an alias of disconnect.
-- `POST/DELETE /talkgroup` — user-activated, per radio. POST raises the shared MASTER UA leg (audio is stanza-wide) and records this radio in `SUB_MAP`. A second POST replaces this radio's ops TG; the previous live UA leg comes down only if nobody still has it. DELETE unlinks that TG for this radio only; the live UA bridge stays up if another peer still has it.
-- Taking a static down (control API or `options_config`) demotes to UA and stays on-air when another radio still has that TG in `SUB_MAP`. Offline / not-yet-connected peers do not keep a live static up. DIAL=9 sanitize rewrites each connected peer's own OPTIONS — it does not copy the MASTER stanza onto every `Clients` row.
+- Owner endpoints are isolated under `/device/*`; root actions remain operator-only. `GET /device/peer/{radio_id}` returns connected state, per-radio statics, and active RF/dial dynamics. Exact ID wins; ESSID 01-99 falls back to the 7-digit ID.
+- `POST/DELETE /device/static-talkgroup` updates only that peer's OPTIONS / `Clients` (`TS1=`/`TS2=`). Slot 0 is simplex (TS2). Live MASTER statics are the union of cfg defaults and connected peer OPTIONS. Removal cannot take down a cfg default or another peer's static, and offline peers do not keep a static live.
+- `POST /device/drop-dynamic` and `/device/disconnect` clear only that hotspot's RF/dial links. Disconnect additionally queues one-shot `DISC=1`; neither action logs the HBP session out. `POST /device/drop-call` now suppresses the peer's active stream as well as clearing its RF route.
+- Ops `POST/DELETE /talkgroup` is deliberately stanza-wide: POST raises the shared MASTER UA leg (plus the stanza-configured IPSC link) and DELETE force-drops those UA legs without muting static OPTIONS legs. It no longer invents per-radio ops membership in `SUB_MAP`; audio cannot be private inside a shared MASTER stanza.
+- Ops `/kick` sends `MSTCL` and removes one session. `/ban` persists a 7-digit Radio-ID/ESSID-family ban (1–86400 seconds), kicks every matching session, and rejects reconnects; `/unban` works while the radio is offline. Ban state defaults to `/etc/rysen/freestar-control-bans.json`.
+- Peer timeout, logout, and reconfiguration cleanup is peer-scoped. It no longer clears every hotspot's reflectors or `SUB_MAP` rows. Dial-reflector single-mode replacement is likewise scoped to the linking peer.
+- DIAL=9 sanitization rewrites each connected peer's own OPTIONS rather than copying the MASTER stanza onto every `Clients` row.
 
 ## Version 1.5.3 (2026-08-07)
 

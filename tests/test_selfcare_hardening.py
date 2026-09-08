@@ -119,7 +119,8 @@ class TestRouterHbpTimeoutCleanup(unittest.TestCase):
             source = fh.read()
         self.assertIn('def master_maintenance_loop(self):', source)
         self.assertIn('HBSYSTEM.master_maintenance_loop(self)', source)
-        self.assertIn('clear_sub_map_for_peer(_peer_id)', source)
+        self.assertIn('selfcare_disconnect(self._system, _peer_id)', source)
+        self.assertNotIn('clear_sub_map_for_system(self._system)', source)
 
 
 class TestDial9SanitizeIsPerPeer(unittest.TestCase):
@@ -140,19 +141,17 @@ class TestDial9SanitizeIsPerPeer(unittest.TestCase):
         self.assertEqual(updates[peer_a], 'DIAL=0;TS2=2350;')
         self.assertNotIn(peer_b, updates)
 
-    def test_drop_call_keeps_ops_membership_row(self):
+    def test_sub_map_contains_only_rf_routes(self):
         import bridge_master as bm
         from dmr_utils3.utils import bytes_3
         peer = b'\x00\x23\xc5\x93'
         rf = b'\x00\x23\xc5\x01'
         prev = getattr(bm, 'SUB_MAP', None)
         bm.SUB_MAP = {
-            peer: ('MASTER-1', 2, bytes_3(91), 1, peer),
             rf: ('MASTER-1', 2, bytes_3(91), 1, peer),
         }
         try:
-            bm.clear_sub_map_for_peer(peer, include_ops_membership=False)
-            self.assertIn(peer, bm.SUB_MAP)
+            bm.clear_sub_map_for_peer(peer)
             self.assertNotIn(rf, bm.SUB_MAP)
         finally:
             if prev is None:

@@ -10,6 +10,9 @@ from control_api import (
     static_slot,
 )
 from selfcare_db import (
+    AmbiguousPeerError,
+    find_connected_dmr_peer,
+    live_static_required,
     merge_ts_into_options,
     other_peer_has_static,
     peer_own_options,
@@ -64,6 +67,18 @@ class TestControlDispatch(unittest.TestCase):
         def persist_disc(system, peer_id):
             self.calls.append(('persist-disc', system, peer_id))
 
+        def kick_peer(system, peer_id):
+            self.calls.append(('kick', system, peer_id))
+            return True
+
+        def ban_radio(radio_id, duration, reason):
+            self.calls.append(('ban', radio_id, duration, reason))
+            return {'expires_at': 1234}
+
+        def unban_radio(radio_id):
+            self.calls.append(('unban', radio_id))
+            return True
+
         self.kw = dict(
             find_peer=find_peer,
             disconnect=disconnect,
@@ -75,14 +90,25 @@ class TestControlDispatch(unittest.TestCase):
             add_static=add_static,
             remove_static=remove_static,
             persist_disc=persist_disc,
+            kick_peer=kick_peer,
+            ban_radio=ban_radio,
+            unban_radio=unban_radio,
         )
 
-    def test_disconnect(self):
+    def test_ops_disconnect_does_not_queue_device_disc(self):
         code, body = handle_control_request('disconnect', 'POST', {'radio_id': 2345875}, **self.kw)
         self.assertEqual(code, 200)
         self.assertEqual(body['system'], 'MASTER-1')
         self.assertEqual(self.calls[0][0], 'disconnect')
-        self.assertEqual(self.calls[1][0], 'persist-disc')
+        self.assertNotIn('persist-disc', [call[0] for call in self.calls])
+
+    def test_device_disconnect_queues_one_shot_disc(self):
+        code, body = handle_control_request(
+            'device:disconnect', 'POST', {'radio_id': 2345875}, **self.kw)
+        self.assertEqual(code, 200)
+        self.assertEqual(body['scope'], 'device')
+        self.assertEqual([call[0] for call in self.calls],
+                         ['disconnect', 'persist-disc'])
 
     def test_drop_call_is_not_disconnect(self):
         code, body = handle_control_request('drop-call', 'POST', {'radio_id': 2345875}, **self.kw)
@@ -104,6 +130,19 @@ class TestControlDispatch(unittest.TestCase):
         self.assertEqual(code, 404)
         self.assertIn('error', body)
 
+    def test_ambiguous_owner_id_returns_conflict(self):
+        kw = dict(self.kw)
+
+        def ambiguous(_radio_id):
+            raise AmbiguousPeerError(
+                'Multiple connected peers match; use the exact connected radio ID')
+
+        kw['find_peer'] = ambiguous
+        code, body = handle_control_request(
+            'device:disconnect', 'POST', {'radio_id': 2345875}, **kw)
+        self.assertEqual(code, 409)
+        self.assertIn('exact connected radio ID', body['error'])
+
     def test_talkgroup_add_and_remove(self):
         code, body = handle_control_request(
             'talkgroup', 'POST', {'radio_id': 2345875, 'talkgroup': 2350}, **self.kw)
@@ -123,7 +162,7 @@ class TestControlDispatch(unittest.TestCase):
 
     def test_static_talkgroup_slot_zero_is_ts2(self):
         code, body = handle_control_request(
-            'static-talkgroup',
+            'device:static-talkgroup',
             'POST',
             {'radio_id': 2345875, 'group': 91, 'slot': 0},
             **self.kw,
@@ -134,7 +173,7 @@ class TestControlDispatch(unittest.TestCase):
 
     def test_static_talkgroup_delete_path(self):
         code, body = handle_control_request(
-            'static-talkgroup',
+            'device:static-talkgroup',
             'DELETE',
             {'radio_id': 2345875},
             path_parts=['1', '9'],
@@ -145,7 +184,7 @@ class TestControlDispatch(unittest.TestCase):
 
     def test_static_talkgroup_delete_ignores_radio_in_path(self):
         code, body = handle_control_request(
-            'static-talkgroup',
+            'device:static-talkgroup',
             'DELETE',
             {'radio_id': 2345875},
             path_parts=['2345875', '1', '9'],
@@ -157,7 +196,7 @@ class TestControlDispatch(unittest.TestCase):
 
     def test_get_peer(self):
         code, body = handle_control_request(
-            'peer', 'GET', {}, path_parts=['2345875'], **self.kw)
+            'device:peer', 'GET', {}, path_parts=['2345875'], **self.kw)
         self.assertEqual(code, 200)
         self.assertTrue(body['connected'])
         self.assertEqual(body['statics'][0]['group'], 2350)
@@ -173,6 +212,43 @@ class TestControlDispatch(unittest.TestCase):
     def test_parse_path(self):
         self.assertEqual(parse_control_path('/peer/2340189'), ('peer', ['2340189']))
         self.assertEqual(parse_control_path('/static-talkgroup/2/2350'), ('static-talkgroup', ['2', '2350']))
+        self.assertEqual(
+            parse_control_path('/device/peer/2340189'),
+            ('device:peer', ['2340189']))
+        self.assertEqual(
+            parse_control_path('/device/static-talkgroup/2/2350'),
+            ('device:static-talkgroup', ['2', '2350']))
+
+    def test_device_cannot_invoke_ops_talkgroup(self):
+        code, _body = handle_control_request(
+            'device:talkgroup', 'POST',
+            {'radio_id': 2345875, 'group': 91}, **self.kw)
+        self.assertEqual(code, 404)
+        self.assertFalse(any(call[0] == 'activate' for call in self.calls))
+
+    def test_ops_kick_ban_and_offline_unban(self):
+        code, body = handle_control_request(
+            'kick', 'POST', {'radio_id': 2345875}, **self.kw)
+        self.assertEqual(code, 200)
+        self.assertTrue(body['kicked'])
+        code, body = handle_control_request(
+            'ban', 'POST',
+            {'radio_id': 2345875, 'duration_seconds': 600, 'reason': 'loop'},
+            **self.kw)
+        self.assertEqual(code, 200)
+        self.assertEqual(body['expires_at'], 1234)
+        code, body = handle_control_request(
+            'unban', 'POST', {'radio_id': 1}, **self.kw)
+        self.assertEqual(code, 200)
+        self.assertTrue(body['removed'])
+        self.assertEqual(
+            [call[0] for call in self.calls], ['kick', 'ban', 'unban'])
+
+    def test_ban_duration_is_bounded(self):
+        code, _body = handle_control_request(
+            'ban', 'POST',
+            {'radio_id': 2345875, 'duration_seconds': 0}, **self.kw)
+        self.assertEqual(code, 400)
 
     def test_missing_radio(self):
         code, _body = handle_control_request('disconnect', 'POST', {}, **self.kw)
@@ -266,6 +342,35 @@ class TestRadioIdCore(unittest.TestCase):
             },
         }
         self.assertFalse(other_peer_has_static(cfg, 2, 2350, except_peer_id=peer_a))
+
+    def test_config_default_keeps_live_static(self):
+        cfg = {
+            'MODE': 'MASTER',
+            '_default_options': 'TS1=91;TS2=2350;',
+            'PEERS': {},
+        }
+        self.assertTrue(live_static_required(cfg, 1, 91))
+        self.assertTrue(live_static_required(cfg, 2, 2350))
+        self.assertFalse(live_static_required(cfg, 2, 91))
+
+    def test_control_lookup_rejects_multiple_online_essids(self):
+        peer_a = (234018901).to_bytes(4, 'big')
+        peer_b = (234018902).to_bytes(4, 'big')
+        cfg = {
+            'MASTER-1': {
+                'MODE': 'MASTER',
+                'ENABLED': True,
+                'PEERS': {
+                    peer_a: {'CONNECTION': 'YES', 'RADIO_ID': '234018901'},
+                    peer_b: {'CONNECTION': 'YES', 'RADIO_ID': '234018902'},
+                },
+            },
+        }
+        with self.assertRaises(AmbiguousPeerError):
+            find_connected_dmr_peer(cfg, 2340189, require_unique=True)
+        self.assertEqual(
+            find_connected_dmr_peer(cfg, 234018901, require_unique=True),
+            ('MASTER-1', peer_a))
 
     def test_empty_peer_options_still_uses_union_not_last_writer(self):
         from selfcare_db import master_has_peer_options, union_peer_static_lists
