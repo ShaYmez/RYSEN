@@ -142,8 +142,8 @@ def handle_control_request(
         slot_raw = body.get('slot')
         group_raw = body.get('talkgroup', body.get('group'))
         if method == 'DELETE' and len(path_parts) >= 2:
-            slot_raw = path_parts[0]
-            group_raw = path_parts[1]
+            slot_raw = path_parts[-2]
+            group_raw = path_parts[-1]
         try:
             tgid = int(group_raw)
         except (TypeError, ValueError):
@@ -266,7 +266,7 @@ def _wire_handlers():
 
     def drop_call(system, peer_id):
         if peer_id:
-            bm.clear_sub_map_for_peer(peer_id)
+            bm.clear_sub_map_for_peer(peer_id, include_ops_membership=False)
         else:
             bm.clear_sub_map_for_system(system)
         bm.notify_bridge_table_updated()
@@ -371,8 +371,11 @@ def _wire_handlers():
             bm.make_single_bridge(tgid_b, system, slot, tmout)
         else:
             bm.activate_ua_bridge_source(name, system, slot, tmout, peer_id)
-        note_peer_ua_talkgroup(
-            getattr(bm, 'SUB_MAP', None), system, peer_id, slot, tgid)
+        dropped_old = note_peer_ua_talkgroup(
+            getattr(bm, 'SUB_MAP', None), system, peer_id, slot, tgid,
+            getattr(bm, 'BRIDGES', None))
+        if dropped_old:
+            bm.rebuild_bridge_index()
         bm.notify_bridge_table_updated()
 
     def deactivate_tg(system, tgid, slot, peer_id=None):

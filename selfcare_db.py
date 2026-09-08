@@ -343,9 +343,17 @@ def store_peer_options(syscfg, peer_id, options):
     return True
 
 
+def peer_counts_for_live_statics(syscfg, peer):
+    """True if this peer's OPTIONS should count toward live MASTER/IPSC statics."""
+    conn = peer.get('CONNECTION')
+    if syscfg.get('MODE') == 'IPSC':
+        return conn in (None, 'YES')
+    return conn == 'YES'
+
+
 def master_has_peer_options(syscfg):
     for peer in (syscfg.get('PEERS') or {}).values():
-        if peer.get('CONNECTION') == 'YES' and peer.get('OPTIONS'):
+        if peer_counts_for_live_statics(syscfg, peer) and 'OPTIONS' in peer:
             return True
     return False
 
@@ -365,7 +373,7 @@ def union_peer_static_lists(syscfg):
     _add(ts1, seen1, d1)
     _add(ts2, seen2, d2)
     for peer in (syscfg.get('PEERS') or {}).values():
-        if peer.get('CONNECTION') != 'YES':
+        if not peer_counts_for_live_statics(syscfg, peer):
             continue
         p1, p2 = ts_lists_from_options(peer.get('OPTIONS'))
         _add(ts1, seen1, p1)
@@ -374,9 +382,12 @@ def union_peer_static_lists(syscfg):
 
 
 def other_peer_has_static(syscfg, slot, tgid, except_peer_id=None):
+    """True if another *connected* peer still has this static in OPTIONS."""
     want = str(int(tgid))
     for pid, peer in (syscfg.get('PEERS') or {}).items():
         if except_peer_id is not None and pid == except_peer_id:
+            continue
+        if not peer_counts_for_live_statics(syscfg, peer):
             continue
         ts1, ts2 = ts_lists_from_options(peer.get('OPTIONS'))
         groups = ts1 if int(slot) == 1 else ts2

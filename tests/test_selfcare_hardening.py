@@ -122,5 +122,47 @@ class TestRouterHbpTimeoutCleanup(unittest.TestCase):
         self.assertIn('clear_sub_map_for_peer(_peer_id)', source)
 
 
+class TestDial9SanitizeIsPerPeer(unittest.TestCase):
+
+    def test_master_rewrites_each_peer_options_not_stanza(self):
+        from bridge_helpers import peer_options_sanitized_dial9
+        peer_a = b'\x00\x23\xc5\x93'
+        peer_b = b'\x00\x23\xc5\x94'
+        cfg = {
+            'MODE': 'MASTER',
+            'OPTIONS': 'DIAL=9;TS2=999;',
+            'PEERS': {
+                peer_a: {'CONNECTION': 'YES', 'OPTIONS': 'DIAL=9;TS2=2350;'},
+                peer_b: {'CONNECTION': 'YES', 'OPTIONS': 'TS1=91;'},
+            },
+        }
+        updates = dict(peer_options_sanitized_dial9(cfg))
+        self.assertEqual(updates[peer_a], 'DIAL=0;TS2=2350;')
+        self.assertNotIn(peer_b, updates)
+
+    def test_drop_call_keeps_ops_membership_row(self):
+        import bridge_master as bm
+        from dmr_utils3.utils import bytes_3
+        peer = b'\x00\x23\xc5\x93'
+        rf = b'\x00\x23\xc5\x01'
+        prev = getattr(bm, 'SUB_MAP', None)
+        bm.SUB_MAP = {
+            peer: ('MASTER-1', 2, bytes_3(91), 1, peer),
+            rf: ('MASTER-1', 2, bytes_3(91), 1, peer),
+        }
+        try:
+            bm.clear_sub_map_for_peer(peer, include_ops_membership=False)
+            self.assertIn(peer, bm.SUB_MAP)
+            self.assertNotIn(rf, bm.SUB_MAP)
+        finally:
+            if prev is None:
+                try:
+                    delattr(bm, 'SUB_MAP')
+                except AttributeError:
+                    pass
+            else:
+                bm.SUB_MAP = prev
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -93,5 +93,50 @@ class TestActivateUaNotify(unittest.TestCase):
         )
 
 
+class TestResetStaticKeepsUaMembers(unittest.TestCase):
+
+    def setUp(self):
+        self._prev_bridges = getattr(bm, 'BRIDGES', None)
+        self._prev_sub = getattr(bm, 'SUB_MAP', None)
+        self._prev_idx = getattr(bm, 'BRIDGE_IDX', None)
+        bm.SUB_MAP = {}
+        bm.BRIDGE_IDX = {}
+        bm.BRIDGES = {
+            '91': [_leg('SYSTEM-1', 2, active=True, to_type='OFF')],
+        }
+
+    def tearDown(self):
+        if self._prev_bridges is None:
+            delattr(bm, 'BRIDGES')
+        else:
+            bm.BRIDGES = self._prev_bridges
+        if self._prev_sub is None:
+            try:
+                delattr(bm, 'SUB_MAP')
+            except AttributeError:
+                pass
+        else:
+            bm.SUB_MAP = self._prev_sub
+        if self._prev_idx is None:
+            bm.BRIDGE_IDX = {}
+        else:
+            bm.BRIDGE_IDX = self._prev_idx
+
+    def test_keeps_live_when_ua_member_remains(self):
+        peer = b'\x00\x23\xc5\x93'
+        bm.SUB_MAP = {peer: ('SYSTEM-1', 2, b'\x00\x00\x5b', 1, peer)}  # 91
+        bm.reset_static_tg(91, 2, 10, 'SYSTEM-1')
+        leg = bm.BRIDGES['91'][0]
+        self.assertTrue(leg['ACTIVE'])
+        self.assertEqual(leg['TO_TYPE'], 'ON')
+
+    def test_drops_live_when_no_ua_members(self):
+        bm.SUB_MAP = {}
+        bm.reset_static_tg(91, 2, 10, 'SYSTEM-1')
+        leg = bm.BRIDGES['91'][0]
+        self.assertFalse(leg['ACTIVE'])
+        self.assertEqual(leg['TO_TYPE'], 'ON')
+
+
 if __name__ == '__main__':
     unittest.main()

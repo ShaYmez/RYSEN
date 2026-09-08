@@ -270,5 +270,62 @@ class TestNotePeerUaTalkgroup(unittest.TestCase):
         self.assertEqual(sub_map, {})
 
 
+class TestNotePeerUaReplace(unittest.TestCase):
+
+    def test_second_post_drops_unused_previous_tg(self):
+        from bridge_helpers import note_peer_ua_talkgroup, peer_dynamic_groups
+        peer_a = b'\x00\x23\xc5\x93'
+        tg91 = bytes_3(91)
+        tg2350 = bytes_3(2350)
+        sub_map = {}
+        bridges = {
+            '91': [{'SYSTEM': 'MASTER-1', 'TS': 2, 'TGID': tg91, 'ACTIVE': True, 'TO_TYPE': 'ON', 'TIMER': 0}],
+            '2350': [{'SYSTEM': 'MASTER-1', 'TS': 2, 'TGID': tg2350, 'ACTIVE': True, 'TO_TYPE': 'ON', 'TIMER': 0}],
+        }
+        note_peer_ua_talkgroup(sub_map, 'MASTER-1', peer_a, 2, 91, bridges)
+        changed = note_peer_ua_talkgroup(sub_map, 'MASTER-1', peer_a, 2, 2350, bridges)
+        self.assertTrue(changed)
+        self.assertFalse(bridges['91'][0]['ACTIVE'])
+        self.assertTrue(bridges['2350'][0]['ACTIVE'])
+        self.assertEqual(
+            peer_dynamic_groups(sub_map, {}, 'MASTER-1', peer_a),
+            [{'slot': 2, 'group': 2350}],
+        )
+
+    def test_second_post_keeps_previous_tg_if_rf_still_on_it(self):
+        from bridge_helpers import note_peer_ua_talkgroup
+        peer_a = b'\x00\x23\xc5\x93'
+        rf = b'\x00\x23\xc5\x01'
+        tg91 = bytes_3(91)
+        sub_map = {
+            rf: ('MASTER-1', 2, tg91, 1, peer_a),
+        }
+        bridges = {
+            '91': [{'SYSTEM': 'MASTER-1', 'TS': 2, 'TGID': tg91, 'ACTIVE': True, 'TO_TYPE': 'ON', 'TIMER': 0}],
+        }
+        note_peer_ua_talkgroup(sub_map, 'MASTER-1', peer_a, 2, 91, bridges)
+        changed = note_peer_ua_talkgroup(sub_map, 'MASTER-1', peer_a, 2, 2350, bridges)
+        self.assertFalse(changed)
+        self.assertTrue(bridges['91'][0]['ACTIVE'])
+        self.assertIn(rf, sub_map)
+
+    def test_second_post_keeps_previous_tg_if_other_peer_on_it(self):
+        from bridge_helpers import note_peer_ua_talkgroup
+        peer_a = b'\x00\x23\xc5\x93'
+        peer_b = b'\x00\x23\xc5\x94'
+        tg91 = bytes_3(91)
+        sub_map = {
+            peer_b: ('MASTER-1', 2, tg91, 1, peer_b),
+        }
+        bridges = {
+            '91': [{'SYSTEM': 'MASTER-1', 'TS': 2, 'TGID': tg91, 'ACTIVE': True, 'TO_TYPE': 'ON', 'TIMER': 0}],
+        }
+        note_peer_ua_talkgroup(sub_map, 'MASTER-1', peer_a, 2, 91, bridges)
+        changed = note_peer_ua_talkgroup(sub_map, 'MASTER-1', peer_a, 2, 2350, bridges)
+        self.assertFalse(changed)
+        self.assertTrue(bridges['91'][0]['ACTIVE'])
+        self.assertIn(peer_b, sub_map)
+
+
 if __name__ == '__main__':
     unittest.main()

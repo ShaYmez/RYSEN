@@ -143,6 +143,18 @@ class TestControlDispatch(unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertEqual(self.calls[-1], ('remove-static', 'MASTER-1', 9, 1))
 
+    def test_static_talkgroup_delete_ignores_radio_in_path(self):
+        code, body = handle_control_request(
+            'static-talkgroup',
+            'DELETE',
+            {'radio_id': 2345875},
+            path_parts=['2345875', '1', '9'],
+            **self.kw,
+        )
+        self.assertEqual(code, 200)
+        self.assertEqual(body['slot'], 1)
+        self.assertEqual(self.calls[-1], ('remove-static', 'MASTER-1', 9, 1))
+
     def test_get_peer(self):
         code, body = handle_control_request(
             'peer', 'GET', {}, path_parts=['2345875'], **self.kw)
@@ -208,8 +220,8 @@ class TestRadioIdCore(unittest.TestCase):
             'MODE': 'MASTER',
             'OPTIONS': 'TS2=9;',
             'PEERS': {
-                peer_a: {'OPTIONS': 'TS2=2350;'},
-                peer_b: {'OPTIONS': 'TS1=91;'},
+                peer_a: {'CONNECTION': 'YES', 'OPTIONS': 'TS2=2350;'},
+                peer_b: {'CONNECTION': 'YES', 'OPTIONS': 'TS1=91;'},
             },
         }
         self.assertEqual(peer_own_options(cfg, peer_a), 'TS2=2350;')
@@ -242,6 +254,34 @@ class TestRadioIdCore(unittest.TestCase):
         ts1, ts2 = union_peer_static_lists(cfg)
         self.assertEqual(ts1, ['91'])
         self.assertEqual(ts2, ['9', '2350', '2351'])
+
+    def test_other_peer_has_static_skips_offline_peers(self):
+        peer_a = b'\x00\x23\xc5\x93'
+        peer_b = b'\x00\x23\xc5\x94'
+        cfg = {
+            'MODE': 'MASTER',
+            'PEERS': {
+                peer_a: {'CONNECTION': 'YES', 'OPTIONS': 'TS2=2350;'},
+                peer_b: {'CONNECTION': 'WAITING_CONFIG', 'OPTIONS': 'TS2=2350;'},
+            },
+        }
+        self.assertFalse(other_peer_has_static(cfg, 2, 2350, except_peer_id=peer_a))
+
+    def test_empty_peer_options_still_uses_union_not_last_writer(self):
+        from selfcare_db import master_has_peer_options, union_peer_static_lists
+        peer_a = b'\x00\x23\xc5\x93'
+        cfg = {
+            'MODE': 'MASTER',
+            '_default_options': 'TS2=9;',
+            'OPTIONS': 'TS2=999;',
+            'PEERS': {
+                peer_a: {'CONNECTION': 'YES', 'OPTIONS': ''},
+            },
+        }
+        self.assertTrue(master_has_peer_options(cfg))
+        ts1, ts2 = union_peer_static_lists(cfg)
+        self.assertEqual(ts1, [])
+        self.assertEqual(ts2, ['9'])
 
     def test_ipsc_falls_back_to_slot_options(self):
         peer = (235287).to_bytes(4, 'big')

@@ -7,8 +7,9 @@ FreeSTAR hub device control on `:8765` (needs matching `freestar-api-v2` device 
 - `GET /peer/{radio_id}` — connected lookup, statics, dynamics. Exact ID wins; ESSID 01-99 falls back to the 7-digit ID.
 - `POST/DELETE /static-talkgroup` — per-peer OPTIONS / `Clients` (`TS1=`/`TS2=`). Does not copy MASTER last-writer `TS1_STATIC`. Slot 0 is simplex (TS2). Remove only drops the live bridge if no other peer still has that static. Live MASTER statics are the union of connected peer OPTIONS (plus cfg defaults); RPTO no longer copies TS1/TS2 onto the MASTER stanza.
 - `POST /drop-dynamic` and `POST /disconnect` — drop this hotspot's UA/dial TGs only. Other radios on the same MASTER keep theirs. A live UA bridge is taken down only if no other peer still has that TG. Disconnect also queues `DISC=1` on that radio's `Clients` row (does not rewrite TS1/TS2). `DISC=1` apply writes that peer's OPTIONS only — it does not copy onto the MASTER stanza or run `options_config()`.
-- `POST /drop-call` — drop current call route (`SUB_MAP` only). Not an alias of disconnect.
-- `POST/DELETE /talkgroup` — user-activated, per radio. POST raises the shared MASTER UA leg (audio is stanza-wide) and records this radio in `SUB_MAP`. DELETE unlinks that TG for this radio only; the live UA bridge stays up if another peer still has it.
+- `POST /drop-call` — drop this radio's current call route (`SUB_MAP` RF rows). Does not unlink ops UA membership and is not an alias of disconnect.
+- `POST/DELETE /talkgroup` — user-activated, per radio. POST raises the shared MASTER UA leg (audio is stanza-wide) and records this radio in `SUB_MAP`. A second POST replaces this radio's ops TG; the previous live UA leg comes down only if nobody still has it. DELETE unlinks that TG for this radio only; the live UA bridge stays up if another peer still has it.
+- Taking a static down (control API or `options_config`) demotes to UA and stays on-air when another radio still has that TG in `SUB_MAP`. Offline / not-yet-connected peers do not keep a live static up. DIAL=9 sanitize rewrites each connected peer's own OPTIONS — it does not copy the MASTER stanza onto every `Clients` row.
 
 ## Version 1.5.3 (2026-08-07)
 

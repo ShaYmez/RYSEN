@@ -89,6 +89,8 @@ from bridge_helpers import (
     selfcare_disconnect_requested,
     strip_disc_from_options,
     sanitize_invalid_default_reflector_options,
+    other_peer_has_sub_map_tg,
+    peer_options_sanitized_dial9,
     deactivate_linked_ipsc_bridge_legs,
     deactivate_peer_dynamic_bridges,
     paired_group_route_bridge,
@@ -810,10 +812,17 @@ def reset_static_tg(tg,ts,_tmout,system):
     if str(tg) not in BRIDGES:
         logger.debug('(OPTIONS) reset_static_tg skipped, missing bridge %s for %s TS%s', tg, system, ts)
         return
+    # Last static peer leaving must not mute radios that still have this TG as UA.
+    keep_ua = other_peer_has_sub_map_tg(SUB_MAP, system, ts, tg)
     bridgetemp = deque()
     for bridgesystem in BRIDGES[str(tg)]:
         if bridgesystem['SYSTEM'] == system and bridgesystem['TS'] == ts:
-            bridgetemp.append({'SYSTEM': system, 'TS': ts, 'TGID': bytes_3(tg),'ACTIVE': False,'TIMEOUT':  _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(tg),],'RESET': [], 'TIMER': time() + (_tmout * 60)})
+            bridgetemp.append({
+                'SYSTEM': system, 'TS': ts, 'TGID': bytes_3(tg),
+                'ACTIVE': keep_ua, 'TIMEOUT': _tmout * 60, 'TO_TYPE': 'ON',
+                'OFF': [], 'ON': [bytes_3(tg),], 'RESET': [],
+                'TIMER': time() + (_tmout * 60),
+            })
         else:
             bridgetemp.append(bridgesystem)
         
@@ -1060,13 +1069,19 @@ def clear_sub_map_for_system(system):
         logger.info('(SUBSCRIBER) Cleared %s SUB_MAP entries for %s', len(_remove), system)
 
 
-def clear_sub_map_for_peer(peer_id):
-    """Remove SUB_MAP entries for a hotspot peer (survives REPEATER-N slot changes)."""
+def clear_sub_map_for_peer(peer_id, include_ops_membership=True):
+    """Remove SUB_MAP entries for a hotspot peer (survives REPEATER-N slot changes).
+
+    drop-call clears RF call routes only. Ops POST /talkgroup membership is
+    keyed by peer_id and is left in place unless include_ops_membership.
+    """
     _remove = []
     for _subscriber in SUB_MAP:
         try:
             _entry = SUB_MAP[_subscriber]
             if len(_entry) >= 5 and _entry[4] == peer_id:
+                if not include_ops_membership and _subscriber == peer_id:
+                    continue
                 _remove.append(_subscriber)
         except (TypeError, IndexError):
             pass
@@ -1865,7 +1880,8 @@ def options_config():
                             CONFIG['SYSTEMS'][_system].get('OPTIONS'))
                         if _opt_changed:
                             CONFIG['SYSTEMS'][_system]['OPTIONS'] = _sanitized
-                            _persist_sanitized_options_to_selfcare(_system, _sanitized)
+                        _persist_sanitized_options_to_selfcare(
+                            _system, _sanitized if _opt_changed else None)
                     
                     if 'OVERRIDE_IDENT_TG' not in _options:
                         _options['OVERRIDE_IDENT_TG'] = False
@@ -2026,18 +2042,49 @@ def options_config():
 _selfcare_db = None
 
 
-def _persist_sanitized_options_to_selfcare(system, options_str):
-    """Fire-and-forget rewrite of sticky DIAL=9 out of MariaDB for connected peers."""
-    if _selfcare_db is None or not options_str:
+def _clients_id_from_peer(peer_id, peer):
+    radio_id = (peer or {}).get('RADIO_ID')
+    try:
+        if radio_id not in (None, False, ''):
+            if isinstance(radio_id, (bytes, bytearray)):
+                return int(int_id(radio_id))
+            return int(radio_id)
+    except (TypeError, ValueError):
+        pass
+    try:
+        return int(int_id(peer_id))
+    except (TypeError, ValueError):
+        return None
+
+
+def _persist_sanitized_options_to_selfcare(system, options_str=None):
+    """Rewrite sticky DIAL=9 on each connected peer's own OPTIONS, not a shared stanza string."""
+    if _selfcare_db is None:
         return
     syscfg = CONFIG['SYSTEMS'].get(system) or {}
+    if syscfg.get('MODE') == 'MASTER':
+        updates = peer_options_sanitized_dial9(syscfg)
+        for peer_id, remaining in updates:
+            store_peer_options(syscfg, peer_id, remaining)
+            int_id_val = _clients_id_from_peer(peer_id, (syscfg.get('PEERS') or {}).get(peer_id))
+            if int_id_val is None:
+                continue
+            try:
+                d = _selfcare_db.save_client_options(int_id_val, remaining)
+                if hasattr(d, 'addErrback'):
+                    d.addErrback(
+                        lambda f, rid=int_id_val: logger.warning(
+                            '(OPTIONS) selfcare persist failed for %s: %s', rid, f.getErrorMessage()))
+            except Exception as err:
+                logger.warning('(OPTIONS) selfcare persist failed for %s: %s', int_id_val, err)
+        return
+    if not options_str:
+        return
     for peer_id, peer in (syscfg.get('PEERS') or {}).items():
-        if peer.get('CONNECTION') != 'YES':
+        if peer.get('CONNECTION') not in (None, 'YES'):
             continue
-        try:
-            radio_id = peer.get('RADIO_ID')
-            int_id_val = int(radio_id) if radio_id not in (None, False, '') else int_id(peer_id)
-        except (TypeError, ValueError):
+        int_id_val = _clients_id_from_peer(peer_id, peer)
+        if int_id_val is None:
             continue
         try:
             d = _selfcare_db.save_client_options(int_id_val, options_str)
