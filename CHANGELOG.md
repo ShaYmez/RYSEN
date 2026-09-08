@@ -4,10 +4,10 @@
 
 FreeSTAR hub device control on `:8765` (needs matching `freestar-api-v2` device API).
 
-- `GET /peer/{radio_id}` — connected lookup, statics, dynamics. ESSID 01-99 matches the 7-digit ID.
+- `GET /peer/{radio_id}` — connected lookup, statics, dynamics. Exact ID wins; ESSID 01-99 falls back to the 7-digit ID.
 - `POST/DELETE /static-talkgroup` — `TS1_STATIC`/`TS2_STATIC` via `make_static_tg` / `reset_static_tg`, persist `Clients.options` (`TS1=`/`TS2=`, `modified=1`). Slot 0 is simplex (TS2).
-- `POST /drop-call` — drop current call route (`SUB_MAP` only). No longer an alias of disconnect.
-- `POST /disconnect` — still clears dynamic links, and queues `DISC=1` on `Clients`.
+- `POST /drop-call` — drop current call route (`SUB_MAP` only). Not an alias of disconnect.
+- `POST /disconnect` — still clears dynamic links, and queues `DISC=1` on the existing `Clients.options` row (does not rewrite TS1/TS2).
 - `POST/DELETE /talkgroup` — unchanged user-activated (ops).
 
 ## Version 1.5.3 (2026-08-07)

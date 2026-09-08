@@ -83,6 +83,14 @@ class TestControlDispatch(unittest.TestCase):
         self.assertNotIn('disconnect', [c[0] for c in self.calls])
         self.assertNotIn('persist-disc', [c[0] for c in self.calls])
 
+    def test_drop_call_without_callback_does_not_disconnect(self):
+        kw = dict(self.kw)
+        kw.pop('drop_call')
+        code, body = handle_control_request('drop-call', 'POST', {'radio_id': 2345875}, **kw)
+        self.assertEqual(code, 200)
+        self.assertNotIn('disconnect', [c[0] for c in self.calls])
+        self.assertNotIn('persist-disc', [c[0] for c in self.calls])
+
     def test_unknown_peer(self):
         code, body = handle_control_request('disconnect', 'POST', {'radio_id': 1}, **self.kw)
         self.assertEqual(code, 404)
@@ -98,6 +106,12 @@ class TestControlDispatch(unittest.TestCase):
             'talkgroup', 'DELETE', {'radio_id': 2345875, 'group': 2350, 'slot': 1}, **self.kw)
         self.assertEqual(code, 200)
         self.assertEqual(self.calls[-1], ('deactivate', 'MASTER-1', 2350, 1))
+
+    def test_talkgroup_get_rejected(self):
+        code, body = handle_control_request(
+            'talkgroup', 'GET', {'radio_id': 2345875, 'talkgroup': 2350}, **self.kw)
+        self.assertEqual(code, 405)
+        self.assertFalse(any(c[0] in ('activate', 'deactivate') for c in self.calls))
 
     def test_static_talkgroup_slot_zero_is_ts2(self):
         code, body = handle_control_request(
@@ -160,8 +174,10 @@ class TestRadioIdCore(unittest.TestCase):
         self.assertEqual(radio_id_core(2340189), '2340189')
         self.assertEqual(radio_id_core(234018901), '2340189')
         self.assertEqual(radio_id_core(234018999), '2340189')
+        self.assertEqual(radio_id_core(23401890), '23401890')
         self.assertTrue(radio_ids_match(2340189, 234018901))
         self.assertFalse(radio_ids_match(2340189, 2340190))
+        self.assertFalse(radio_ids_match(2340189, 23401890))
 
     def test_merge_options(self):
         out = merge_ts_into_options('VOICE=1;TS2=9;', '9,10', '2350')
@@ -171,6 +187,16 @@ class TestRadioIdCore(unittest.TestCase):
         self.assertNotIn('TS2=9', out)
         disc = merge_ts_into_options('TS2=2350;', False, '2350', disc=True)
         self.assertIn('DISC=1', disc)
+
+
+    def test_queue_client_disc_does_not_rewrite_options(self):
+        from selfcare_db import SelfcareDB
+        import inspect
+        source = inspect.getsource(SelfcareDB.queue_client_disc)
+        self.assertIn('DISC=1', source)
+        self.assertIn('modified = 1', source)
+        self.assertNotIn('TS1=', source)
+        self.assertNotIn('TS2=', source)
 
 
 if __name__ == '__main__':

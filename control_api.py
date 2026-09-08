@@ -115,8 +115,6 @@ def handle_control_request(
     if action == 'drop-call' and method == 'POST':
         if drop_call is not None:
             drop_call(system, peer_id)
-        else:
-            disconnect(system, peer_id)
         return 200, {'ok': True, 'action': action, 'system': system}
 
     if action == 'drop-dynamic' and method == 'POST':
@@ -241,12 +239,12 @@ def _queue_options(bm, peer_id, options_str: str) -> None:
 def _wire_handlers():
     bm = _runtime_bridge()
     from dmr_utils3.utils import bytes_3
+    from bridge_helpers import mark_options_dirty
     from selfcare_db import (
         comma_tg_list,
         find_hotspot_master_peer,
         find_ipsc_peer_for_radio_id,
         merge_ts_into_options,
-        radio_id_core,
     )
 
     def find_peer(radio_id: int):
@@ -271,24 +269,41 @@ def _wire_handlers():
         bm.notify_bridge_table_updated()
 
     def persist_disc(system, peer_id):
+        # DISC=1 must land on the existing Clients row. Rewriting TS1/TS2 from
+        # the MASTER stanza would copy another hotspot's statics onto this device.
+        db = _selfcare_db(bm)
+        rid = _peer_int(peer_id)
+        if db is None or rid is None or not hasattr(db, 'queue_client_disc'):
+            return
+        try:
+            deferred = db.queue_client_disc(rid)
+            if deferred is not None and hasattr(deferred, 'addErrback'):
+                deferred.addErrback(lambda err: log.warning('(CONTROL) Clients DISC persist failed: %s', err))
+        except Exception as err:
+            log.warning('(CONTROL) Clients DISC persist failed: %s', err)
+
+    def _options_base(system, peer_id):
         cfg = bm.CONFIG['SYSTEMS'].get(system, {})
-        options = merge_ts_into_options(
-            cfg.get('OPTIONS'),
-            cfg.get('TS1_STATIC'),
-            cfg.get('TS2_STATIC'),
-            disc=True,
-        )
-        cfg['OPTIONS'] = options
-        _queue_options(bm, peer_id, options)
+        if peer_id is not None:
+            peer = (cfg.get('PEERS') or {}).get(peer_id) or {}
+            peer_opt = peer.get('OPTIONS')
+            if peer_opt:
+                return peer_opt
+        return cfg.get('OPTIONS')
 
     def _persist_statics(system, peer_id):
         cfg = bm.CONFIG['SYSTEMS'].get(system, {})
         options = merge_ts_into_options(
-            cfg.get('OPTIONS'),
+            _options_base(system, peer_id),
             cfg.get('TS1_STATIC'),
             cfg.get('TS2_STATIC'),
         )
         cfg['OPTIONS'] = options
+        if peer_id is not None:
+            peer = (cfg.get('PEERS') or {}).get(peer_id)
+            if peer is not None:
+                peer['OPTIONS'] = options
+        mark_options_dirty(bm.CONFIG)
         _queue_options(bm, peer_id, options)
 
     def _static_key(slot: int) -> str:
@@ -338,11 +353,12 @@ def _wire_handlers():
                     continue
                 seen.add(item)
                 dynamics.append({'slot': item[0], 'group': item[1]})
-        core = radio_id_core(radio_id)
+        connected_id = _peer_int(peer_id)
         return {
             'ok': True,
             'connected': True,
-            'radio_id': int(core) if core.isdigit() else radio_id,
+            'radio_id': radio_id,
+            'connected_radio_id': connected_id if connected_id is not None else radio_id,
             'system': system,
             'statics': statics,
             'dynamics': dynamics,

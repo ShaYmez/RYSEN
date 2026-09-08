@@ -94,6 +94,25 @@ class TestSelfcareHelpers(unittest.TestCase):
         self.assertEqual(system, 'MASTER-0')
         self.assertEqual(to_int(found), 234018901)
 
+    def test_find_hotspot_peer_prefers_exact_essid(self):
+        from dmr_utils3.utils import int_id as to_int
+        peer_01 = (234018901).to_bytes(4, 'big')
+        peer_02 = (234018902).to_bytes(4, 'big')
+        systems = {
+            'MASTER-0': {
+                'MODE': 'MASTER',
+                'ENABLED': True,
+                'PEERS': {
+                    peer_02: {'RADIO_ID': '234018902', 'CONNECTION': 'YES'},
+                    peer_01: {'RADIO_ID': '234018901', 'CONNECTION': 'YES'},
+                },
+            },
+        }
+        system, found = find_hotspot_master_peer(systems, 234018901)
+        self.assertEqual(system, 'MASTER-0')
+        self.assertEqual(to_int(found), 234018901)
+
+    def test_find_ipsc_slot_skips_disabled(self):
         systems = {
             'IPSC-0': {
                 'MODE': 'IPSC',

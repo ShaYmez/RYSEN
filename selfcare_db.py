@@ -29,14 +29,14 @@ def _peer_radio_id_str(radio_id_value):
 
 
 def radio_id_core(radio_id):
-    """7-digit DMR identity. ESSID 01-99 is the digits after that (234018901 -> 2340189)."""
+    """7-digit DMR identity. 9-digit ESSID (01-99) strips to the first 7 (234018901 -> 2340189)."""
     if radio_id is None:
         return ''
     try:
         digits = str(int(radio_id))
     except (TypeError, ValueError):
         digits = ''.join(ch for ch in str(radio_id) if ch.isdigit())
-    if len(digits) >= 7:
+    if len(digits) == 9:
         return digits[:7]
     return digits
 
@@ -45,6 +45,29 @@ def radio_ids_match(left, right):
     core_left = radio_id_core(left)
     core_right = radio_id_core(right)
     return bool(core_left) and core_left == core_right
+
+
+def _radio_lookup_strings(peer, peer_id):
+    radio_str = _peer_radio_id_str(peer.get('RADIO_ID'))
+    try:
+        pid_str = str(int_id(peer_id))
+    except (TypeError, ValueError):
+        pid_str = None
+    return radio_str, pid_str
+
+
+def _peer_matches_radio(peer, peer_id, radio_id, exact_only=False):
+    target = str(radio_id)
+    radio_str, pid_str = _radio_lookup_strings(peer, peer_id)
+    if radio_str == target or pid_str == target:
+        return True
+    if exact_only:
+        return False
+    if radio_str and radio_ids_match(radio_str, radio_id):
+        return True
+    if pid_str and radio_ids_match(pid_str, radio_id):
+        return True
+    return False
 
 
 class SelfcareDB:
@@ -186,6 +209,17 @@ class SelfcareDB:
             (options_str, int_id),
         )
 
+    def queue_client_disc(self, int_id):
+        """Set DISC=1 on the existing Clients.options row without replacing TS1/TS2."""
+        return self.dbpool.runOperation(
+            "UPDATE Clients SET options = CASE "
+            "WHEN options IS NULL OR TRIM(options) = '' THEN 'DISC=1;' "
+            "WHEN options LIKE '%%DISC=1%%' THEN options "
+            "ELSE CONCAT(TRIM(TRAILING ';' FROM options), ';DISC=1;') END, "
+            "modified = 1 WHERE int_id = %s",
+            (int_id,),
+        )
+
 
 def build_ipsc_seed_options(system_cfg):
     """Build TS1=/TS2= options string from cfg static TG fields (first register)."""
@@ -211,41 +245,37 @@ def find_ipsc_slot_for_radio_id(config_systems, radio_id):
 
 def find_ipsc_peer_for_radio_id(config_systems, radio_id):
     """Return (IPSC-N slot, peer_id) for a connected IPSC repeater radio ID."""
+    fuzzy = (None, None)
     for slot, syscfg in config_systems.items():
         if syscfg.get('MODE') != 'IPSC' or not syscfg.get('ENABLED'):
             continue
         for peer_id, peer in syscfg.get('PEERS', {}).items():
             if peer.get('CONNECTION') not in (None, 'YES'):
                 continue
-            if radio_ids_match(_peer_radio_id_str(peer.get('RADIO_ID')), radio_id):
+            if _peer_matches_radio(peer, peer_id, radio_id, exact_only=True):
                 return slot, peer_id
-            try:
-                if radio_ids_match(int_id(peer_id), radio_id):
-                    return slot, peer_id
-            except (TypeError, ValueError):
-                continue
-    return None, None
+            if fuzzy[0] is None and _peer_matches_radio(peer, peer_id, radio_id):
+                fuzzy = (slot, peer_id)
+    return fuzzy
 
 
 def find_hotspot_master_peer(config_systems, radio_id):
     """Return (MASTER system name, peer_id) for a logged-in hotspot radio ID.
 
-    ESSID 01-99 shares the 7-digit identity (234018901 matches 2340189).
+    Exact ID wins. ESSID 01-99 is a fallback (234018901 matches 2340189).
     """
+    fuzzy = (None, None)
     for system, syscfg in config_systems.items():
         if syscfg.get('MODE') != 'MASTER' or not syscfg.get('ENABLED'):
             continue
         for peer_id, peer in (syscfg.get('PEERS') or {}).items():
             if peer.get('CONNECTION') != 'YES':
                 continue
-            if radio_ids_match(_peer_radio_id_str(peer.get('RADIO_ID')), radio_id):
+            if _peer_matches_radio(peer, peer_id, radio_id, exact_only=True):
                 return system, peer_id
-            try:
-                if radio_ids_match(int_id(peer_id), radio_id):
-                    return system, peer_id
-            except (TypeError, ValueError):
-                continue
-    return None, None
+            if fuzzy[0] is None and _peer_matches_radio(peer, peer_id, radio_id):
+                fuzzy = (system, peer_id)
+    return fuzzy
 
 
 def comma_tg_list(value):
