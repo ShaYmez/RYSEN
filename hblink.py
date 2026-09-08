@@ -1341,10 +1341,13 @@ class HBSYSTEM(DatagramProtocol):
                 logger.info('(%s) Peer %s has sent options %s', self._system, _this_peer['CALLSIGN'], _this_peer['OPTIONS'])
                 try:
                     from bridge_master import apply_selfcare_options
+                    from selfcare_db import store_peer_options
                     _remaining, _had_disc = apply_selfcare_options(
                         self._system, _peer_id, _opt_str)
+                    _stored = _remaining if _had_disc else _opt_str
+                    store_peer_options(
+                        self._CONFIG['SYSTEMS'][self._system], _peer_id, _stored)
                     if _had_disc:
-                        self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = _remaining
                         _db = self._CONFIG.get('_SELF_SERVICE_DB')
                         if _db is not None:
                             _rid = int(int_id(_peer_id))
@@ -1353,12 +1356,15 @@ class HBSYSTEM(DatagramProtocol):
                                 lambda f, _rid=_rid: logger.error(
                                     '(%s) Selfcare DISC options save failed for %s: %s',
                                     self._system, _rid, f.getErrorMessage()))
-                    else:
-                        self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = _opt_str
                 except Exception as exc:
                     logger.exception('(%s) Selfcare options apply failed for peer %s: %s',
                                      self._system, int_id(_peer_id), exc)
-                    self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = _opt_str
+                    try:
+                        from selfcare_db import store_peer_options as _store_peer_options
+                        _store_peer_options(
+                            self._CONFIG['SYSTEMS'][self._system], _peer_id, _opt_str)
+                    except Exception:
+                        pass
             else:
                 self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                 logger.info('(%s) Options from Radio ID that is not logged: %s', self._system, int_id(_peer_id))

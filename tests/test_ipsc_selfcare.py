@@ -7,6 +7,7 @@ from twisted.internet.defer import succeed
 from selfcare_db import (
     IPSC_CLIENT_MODE,
     build_ipsc_seed_options,
+    find_hotspot_master_peer,
     find_ipsc_slot_for_radio_id,
 )
 from ipsc_master import IpscMasterMixin
@@ -76,6 +77,40 @@ class TestSelfcareHelpers(unittest.TestCase):
         slot, peer_id = find_ipsc_peer_for_radio_id(systems, 235287)
         self.assertEqual(slot, 'IPSC-0')
         self.assertEqual(peer_id, PEER_ID)
+
+    def test_find_hotspot_peer_strips_essid(self):
+        from dmr_utils3.utils import int_id as to_int
+        peer_id = (234018901).to_bytes(4, 'big')
+        systems = {
+            'MASTER-0': {
+                'MODE': 'MASTER',
+                'ENABLED': True,
+                'PEERS': {
+                    peer_id: {'RADIO_ID': '234018901', 'CONNECTION': 'YES'},
+                },
+            },
+        }
+        system, found = find_hotspot_master_peer(systems, 2340189)
+        self.assertEqual(system, 'MASTER-0')
+        self.assertEqual(to_int(found), 234018901)
+
+    def test_find_hotspot_peer_prefers_exact_essid(self):
+        from dmr_utils3.utils import int_id as to_int
+        peer_01 = (234018901).to_bytes(4, 'big')
+        peer_02 = (234018902).to_bytes(4, 'big')
+        systems = {
+            'MASTER-0': {
+                'MODE': 'MASTER',
+                'ENABLED': True,
+                'PEERS': {
+                    peer_02: {'RADIO_ID': '234018902', 'CONNECTION': 'YES'},
+                    peer_01: {'RADIO_ID': '234018901', 'CONNECTION': 'YES'},
+                },
+            },
+        }
+        system, found = find_hotspot_master_peer(systems, 234018901)
+        self.assertEqual(system, 'MASTER-0')
+        self.assertEqual(to_int(found), 234018901)
 
     def test_find_ipsc_slot_skips_disabled(self):
         systems = {

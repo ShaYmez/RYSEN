@@ -163,6 +163,15 @@ class IpscMasterMixin:
         peer_mode = bytes([ipsc_status['mode']]) if ipsc_status else data[5:6]
         is_new = peer_id not in self._ipsc_peers
 
+        ban_check = getattr(self, 'control_radio_banned', None)
+        ban = ban_check(peer_id_int) if callable(ban_check) else None
+        if ban is not None:
+            logger.warning(
+                '(%s) IPSC registration denied for banned radio %s: %s',
+                self._system, peer_id_int,
+                ban.get('reason') or 'operator ban')
+            return
+
         _global = self._CONFIG.get('GLOBAL', {})
         if not acl_check(peer_id, _global.get('REG_ACL', '')):
             logger.warning('(%s) IPSC registration denied for %s from %s (GLOBAL REG_ACL)',

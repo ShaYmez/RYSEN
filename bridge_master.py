@@ -62,10 +62,14 @@ from const import *
 from mk_voice import pkt_gen
 from ipsc_master import IpscMasterMixin
 from ipsc_const import is_routing_master
+from control_bans import ControlBanStore, radio_id_core as control_radio_id_core
 from selfcare_db import (
     SelfcareDB,
     find_hotspot_master_peer,
     find_ipsc_peer_for_radio_id,
+    master_has_peer_options,
+    store_peer_options,
+    union_peer_static_lists,
 )
 from bridge_helpers import iter_routing_master_systems as _iter_routing_master_systems
 from bridge_helpers import (
@@ -86,7 +90,10 @@ from bridge_helpers import (
     selfcare_disconnect_requested,
     strip_disc_from_options,
     sanitize_invalid_default_reflector_options,
+    other_peer_has_sub_map_tg,
+    peer_options_sanitized_dial9,
     deactivate_linked_ipsc_bridge_legs,
+    deactivate_peer_dynamic_bridges,
     paired_group_route_bridge,
     clear_default_reflectors_for_system,
     STAT_TRIMMER_INTERVAL_S,
@@ -234,6 +241,9 @@ _LOOP_DIAG = {
 }
 _TERM_TOMBSTONES = {}
 _TERM_TOMBSTONE_TTL_S = 5.0
+_CONTROL_DROPPED_STREAMS = {}
+_CONTROL_DROPPED_STREAM_TTL_S = 30.0
+CONTROL_BANS = ControlBanStore(logger=logger)
 
 
 def _active_hbp_stream_claim(stream_id, rf_src, now):
@@ -806,10 +816,17 @@ def reset_static_tg(tg,ts,_tmout,system):
     if str(tg) not in BRIDGES:
         logger.debug('(OPTIONS) reset_static_tg skipped, missing bridge %s for %s TS%s', tg, system, ts)
         return
+    # Last static peer leaving must not mute radios that still have this TG as UA.
+    keep_ua = other_peer_has_sub_map_tg(SUB_MAP, system, ts, tg)
     bridgetemp = deque()
     for bridgesystem in BRIDGES[str(tg)]:
         if bridgesystem['SYSTEM'] == system and bridgesystem['TS'] == ts:
-            bridgetemp.append({'SYSTEM': system, 'TS': ts, 'TGID': bytes_3(tg),'ACTIVE': False,'TIMEOUT':  _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(tg),],'RESET': [], 'TIMER': time() + (_tmout * 60)})
+            bridgetemp.append({
+                'SYSTEM': system, 'TS': ts, 'TGID': bytes_3(tg),
+                'ACTIVE': keep_ua, 'TIMEOUT': _tmout * 60, 'TO_TYPE': 'ON',
+                'OFF': [], 'ON': [bytes_3(tg),], 'RESET': [],
+                'TIMER': time() + (_tmout * 60),
+            })
         else:
             bridgetemp.append(bridgesystem)
         
@@ -960,19 +977,138 @@ def deactivate_user_activated_bridges(system):
 
 
 def selfcare_disconnect(source_system, peer_id=None):
-    """Drop dial-a-tg reflector and user-activated talkgroup links for one subscriber."""
-    disconnect_dial_reflectors(source_system)
-    deactivate_user_activated_bridges(source_system)
-    if deactivate_linked_ipsc_bridge_legs(
-            BRIDGES, CONFIG['SYSTEMS'], source_system, peer_id):
-        rebuild_bridge_index()
+    """Drop dial-a-tg and user-activated links for one hotspot.
+
+    Other radios on the same MASTER keep their dynamics. peer_id None still
+    clears the whole system (legacy dashboard path without a peer).
+    """
     if peer_id:
+        changed, dropped = deactivate_peer_dynamic_bridges(
+            BRIDGES, SUB_MAP, source_system, peer_id)
+        if changed:
+            rebuild_bridge_index()
         clear_sub_map_for_peer(peer_id)
+        if dropped and deactivate_linked_ipsc_bridge_legs(
+                BRIDGES, CONFIG['SYSTEMS'], source_system, peer_id,
+                bridge_names=dropped):
+            rebuild_bridge_index()
     else:
+        disconnect_dial_reflectors(source_system)
+        deactivate_user_activated_bridges(source_system)
+        if deactivate_linked_ipsc_bridge_legs(
+                BRIDGES, CONFIG['SYSTEMS'], source_system, peer_id):
+            rebuild_bridge_index()
         clear_sub_map_for_system(source_system)
     notify_bridge_table_updated()
     logger.info('(SELF SERVICE) Dynamic links cleared for %s (peer %s)',
                 source_system, int_id(peer_id) if peer_id else 'n/a')
+
+
+def _block_peer_active_streams(system, peer_id):
+    """Block the currently active HBP streams for a peer until they expire."""
+    runtime = systems.get(system)
+    status = getattr(runtime, 'STATUS', {}) if runtime is not None else {}
+    now = time()
+    blocked = 0
+    for slot, stream in status.items():
+        if not isinstance(slot, int) or not isinstance(stream, dict):
+            continue
+        stream_id = stream.get('RX_STREAM_ID')
+        if stream.get('RX_PEER') != peer_id or not stream_id:
+            continue
+        if stream.get('RX_TYPE') == HBPF_SLT_VTERM:
+            continue
+        _CONTROL_DROPPED_STREAMS[(system, peer_id, stream_id)] = (
+            now + _CONTROL_DROPPED_STREAM_TTL_S)
+        stream['RX_TYPE'] = HBPF_SLT_VTERM
+        stream['RX_TIME'] = now
+        blocked += 1
+    return blocked
+
+
+def _control_stream_is_dropped(system, peer_id, stream_id, now=None):
+    now = time() if now is None else now
+    expired = [
+        key for key, expires in _CONTROL_DROPPED_STREAMS.items()
+        if expires <= now
+    ]
+    for key in expired:
+        _CONTROL_DROPPED_STREAMS.pop(key, None)
+    return (system, peer_id, stream_id) in _CONTROL_DROPPED_STREAMS
+
+
+def drop_peer_call(system, peer_id):
+    """Stop this peer's active HBP stream and clear its RF subscriber routes."""
+    blocked = _block_peer_active_streams(system, peer_id)
+    clear_sub_map_for_peer(peer_id)
+    notify_bridge_table_updated()
+    logger.info('(CONTROL) Dropped %s active stream(s) for peer %s on %s',
+                blocked, int_id(peer_id), system)
+    return blocked
+
+
+def kick_hotspot_peer(system, peer_id):
+    """Close and remove one connected peer without disturbing its stanza."""
+    syscfg = CONFIG.get('SYSTEMS', {}).get(system) or {}
+    peers = syscfg.get('PEERS') or {}
+    peer = peers.get(peer_id)
+    runtime = systems.get(system)
+    if peer is None or runtime is None:
+        return False
+    _block_peer_active_streams(system, peer_id)
+    if syscfg.get('MODE') == 'IPSC':
+        runtime._remove_ipsc_peer(peer_id)
+        logger.warning('(CONTROL) Kicked IPSC peer %s from %s',
+                       int_id(peer_id), system)
+        return True
+    selfcare_disconnect(system, peer_id)
+    try:
+        runtime.send_peer(peer_id, b''.join([MSTCL, peer_id]))
+    except Exception as err:
+        logger.warning('(CONTROL) MSTCL failed for peer %s on %s: %s',
+                       int_id(peer_id), system, err)
+    peers.pop(peer_id, None)
+    mark_options_dirty(CONFIG)
+    if not peers:
+        if '_default_options' in syscfg:
+            syscfg['OPTIONS'] = syscfg['_default_options']
+        else:
+            syscfg.pop('OPTIONS', None)
+        syscfg['_reset'] = True
+        reset_slot_voice_ident(syscfg)
+    logger.warning('(CONTROL) Kicked hotspot peer %s from %s',
+                   int_id(peer_id), system)
+    return True
+
+
+def ban_hotspot_radio(radio_id, duration_seconds=300, reason=''):
+    """Persist a host-wide Radio-ID ban and kick every matching ESSID session."""
+    entry = CONTROL_BANS.ban(
+        radio_id, duration_seconds=duration_seconds, reason=reason)
+    target = control_radio_id_core(radio_id)
+    matches = []
+    for system, syscfg in CONFIG.get('SYSTEMS', {}).items():
+        if syscfg.get('MODE') not in ('MASTER', 'IPSC'):
+            continue
+        for peer_id, peer in list((syscfg.get('PEERS') or {}).items()):
+            peer_radio = peer.get('RADIO_ID')
+            if peer_radio in (None, False, ''):
+                peer_radio = int_id(peer_id)
+            if control_radio_id_core(peer_radio) == target:
+                matches.append((system, peer_id))
+    entry['kicked'] = sum(
+        1 for system, peer_id in matches
+        if kick_hotspot_peer(system, peer_id))
+    logger.warning('(CONTROL) Banned radio %s for %ss: %s',
+                   entry['radio_id'], duration_seconds, reason or 'no reason')
+    return entry
+
+
+def unban_hotspot_radio(radio_id):
+    removed = CONTROL_BANS.unban(radio_id)
+    logger.warning('(CONTROL) Unban radio %s: %s',
+                   radio_id, 'removed' if removed else 'not present')
+    return removed
 
 
 def apply_selfcare_options(source_system, peer_id, options_str):
@@ -1011,8 +1147,8 @@ def sanitize_dial_reflectors(system):
         rebuild_bridge_index()
 
 
-def deactivate_other_dynamic_reflectors(system, keep_bridge, slot=2):
-    """Ensure only one user-activated (TO_TYPE ON) reflector is active per MASTER."""
+def deactivate_other_dynamic_reflectors(system, keep_bridge, slot=2, peer_id=None):
+    """Ensure one dial reflector per peer without unlinking another hotspot."""
     _changed = False
     for _bridge in BRIDGES:
         if _bridge[0:1] != '#' or _bridge == keep_bridge:
@@ -1020,6 +1156,8 @@ def deactivate_other_dynamic_reflectors(system, keep_bridge, slot=2):
         for _sys in BRIDGES[_bridge]:
             if (_sys['SYSTEM'] == system and _sys['TS'] == slot
                     and _sys['TO_TYPE'] == 'ON' and _sys['ACTIVE']):
+                if peer_id is not None and _sys.get('LINKER_PEER') != peer_id:
+                    continue
                 _sys['ACTIVE'] = False
                 _sys['TIMER'] = time()
                 _changed = True
@@ -1045,7 +1183,7 @@ def clear_sub_map_for_system(system):
 
 
 def clear_sub_map_for_peer(peer_id):
-    """Remove SUB_MAP entries for a hotspot peer (survives REPEATER-N slot changes)."""
+    """Remove RF subscriber routes belonging to one hotspot peer."""
     _remove = []
     for _subscriber in SUB_MAP:
         try:
@@ -1849,7 +1987,8 @@ def options_config():
                             CONFIG['SYSTEMS'][_system].get('OPTIONS'))
                         if _opt_changed:
                             CONFIG['SYSTEMS'][_system]['OPTIONS'] = _sanitized
-                            _persist_sanitized_options_to_selfcare(_system, _sanitized)
+                        _persist_sanitized_options_to_selfcare(
+                            _system, _sanitized if _opt_changed else None)
                     
                     if 'OVERRIDE_IDENT_TG' not in _options:
                         _options['OVERRIDE_IDENT_TG'] = False
@@ -1896,6 +2035,14 @@ def options_config():
                         if re.search(r"[^\d,]", _options['TS2_STATIC']):
                             logger.debug('(OPTIONS) %s - TS2_STATIC contains characters other than numbers and comma, ignoring',_system)
                             continue
+
+                    # Shared MASTER: live statics are the union of connected peer
+                    # OPTIONS (plus cfg defaults). Do not let one RPTO last-writer
+                    # reset everyone else's TS1/TS2.
+                    if _mode == 'MASTER' and master_has_peer_options(CONFIG['SYSTEMS'][_system]):
+                        _u1, _u2 = union_peer_static_lists(CONFIG['SYSTEMS'][_system])
+                        _options['TS1_STATIC'] = ','.join(_u1) if _u1 else False
+                        _options['TS2_STATIC'] = ','.join(_u2) if _u2 else False
                     
                     if isinstance(_options['DEFAULT_REFLECTOR'], str) and not _options['DEFAULT_REFLECTOR'].isdigit():
                         logger.debug('(OPTIONS) %s - DEFAULT_REFLECTOR is not an integer, ignoring',_system)
@@ -2002,18 +2149,49 @@ def options_config():
 _selfcare_db = None
 
 
-def _persist_sanitized_options_to_selfcare(system, options_str):
-    """Fire-and-forget rewrite of sticky DIAL=9 out of MariaDB for connected peers."""
-    if _selfcare_db is None or not options_str:
+def _clients_id_from_peer(peer_id, peer):
+    radio_id = (peer or {}).get('RADIO_ID')
+    try:
+        if radio_id not in (None, False, ''):
+            if isinstance(radio_id, (bytes, bytearray)):
+                return int(int_id(radio_id))
+            return int(radio_id)
+    except (TypeError, ValueError):
+        pass
+    try:
+        return int(int_id(peer_id))
+    except (TypeError, ValueError):
+        return None
+
+
+def _persist_sanitized_options_to_selfcare(system, options_str=None):
+    """Rewrite sticky DIAL=9 on each connected peer's own OPTIONS, not a shared stanza string."""
+    if _selfcare_db is None:
         return
     syscfg = CONFIG['SYSTEMS'].get(system) or {}
+    if syscfg.get('MODE') == 'MASTER':
+        updates = peer_options_sanitized_dial9(syscfg)
+        for peer_id, remaining in updates:
+            store_peer_options(syscfg, peer_id, remaining)
+            int_id_val = _clients_id_from_peer(peer_id, (syscfg.get('PEERS') or {}).get(peer_id))
+            if int_id_val is None:
+                continue
+            try:
+                d = _selfcare_db.save_client_options(int_id_val, remaining)
+                if hasattr(d, 'addErrback'):
+                    d.addErrback(
+                        lambda f, rid=int_id_val: logger.warning(
+                            '(OPTIONS) selfcare persist failed for %s: %s', rid, f.getErrorMessage()))
+            except Exception as err:
+                logger.warning('(OPTIONS) selfcare persist failed for %s: %s', int_id_val, err)
+        return
+    if not options_str:
+        return
     for peer_id, peer in (syscfg.get('PEERS') or {}).items():
-        if peer.get('CONNECTION') != 'YES':
+        if peer.get('CONNECTION') not in (None, 'YES'):
             continue
-        try:
-            radio_id = peer.get('RADIO_ID')
-            int_id_val = int(radio_id) if radio_id not in (None, False, '') else int_id(peer_id)
-        except (TypeError, ValueError):
+        int_id_val = _clients_id_from_peer(peer_id, peer)
+        if int_id_val is None:
             continue
         try:
             d = _selfcare_db.save_client_options(int_id_val, options_str)
@@ -2094,17 +2272,8 @@ def hotspot_selfcare_disc_poll():
                     int_id_val)
                 continue
             remaining, had_disc = apply_selfcare_options(system, peer_id, opt_str)
-            CONFIG['SYSTEMS'][system]['OPTIONS'] = remaining
-            mark_options_dirty(CONFIG)
+            store_peer_options(CONFIG['SYSTEMS'][system], peer_id, remaining)
             yield _selfcare_db.save_client_options(int_id_val, remaining)
-            if remaining:
-                try:
-                    options_config()
-                except Exception:
-                    logger.exception(
-                        '(SELF SERVICE) options_config failed after hotspot DISC for %s',
-                        int_id_val)
-                    continue
             yield _selfcare_db.clear_modified_client(int_id_val)
             logger.info('(SELF SERVICE) Hotspot disconnect applied for int_id %s on %s',
                         int_id_val, system)
@@ -2927,41 +3096,48 @@ class routerHBP(HBSYSTEM):
             }
 
     def master_maintenance_loop(self):
-        """Clear reflectors/SUB_MAP on ping timeout (parity with RPTCL path)."""
+        """Clear only the timed-out peer's runtime state before HBP removes it."""
         _ping_deadline = (
             self._CONFIG['GLOBAL']['PING_TIME'] * self._CONFIG['GLOBAL']['MAX_MISSED'])
         _now = time()
         for _peer_id in list(self._peers):
             _this_peer = self._peers[_peer_id]
             if _this_peer['LAST_PING'] + _ping_deadline < _now:
-                clear_default_reflectors(self._system)
-                reset_dynamic_reflectors(self._system)
-                clear_sub_map_for_system(self._system)
-                clear_sub_map_for_peer(_peer_id)
+                selfcare_disconnect(self._system, _peer_id)
+                _block_peer_active_streams(self._system, _peer_id)
+                mark_options_dirty(CONFIG)
         HBSYSTEM.master_maintenance_loop(self)
 
     def master_datagramReceived(self, _data, _sockaddr):
         _command = _data[:4]
+        if _command == RPTL and len(_data) >= 8:
+            _peer_id = _data[4:8]
+            _ban = CONTROL_BANS.get(int_id(_peer_id))
+            if _ban is not None:
+                self.transport.write(
+                    b''.join([MSTNAK, _peer_id]), _sockaddr)
+                logger.warning(
+                    '(%s) Rejected banned hotspot %s: %s',
+                    self._system, int_id(_peer_id),
+                    _ban.get('reason') or 'operator ban')
+                return
         if _command == RPTC:
             if _data[:5] == RPTCL and len(_data) >= 9:
                 _peer_id = _data[5:9]
                 if (_peer_id in self._peers
                         and self._peers[_peer_id]['CONNECTION'] == 'YES'
                         and self._peers[_peer_id]['SOCKADDR'] == _sockaddr):
-                    clear_default_reflectors(self._system)
-                    reset_dynamic_reflectors(self._system)
-                    clear_sub_map_for_system(self._system)
-                    clear_sub_map_for_peer(_peer_id)
+                    selfcare_disconnect(self._system, _peer_id)
+                    _block_peer_active_streams(self._system, _peer_id)
+                    mark_options_dirty(CONFIG)
             elif len(_data) >= 8:
                 _peer_id = _data[4:8]
                 if (_peer_id in self._peers
                         and self._peers[_peer_id]['CONNECTION'] == 'WAITING_CONFIG'
                         and self._peers[_peer_id]['SOCKADDR'] == _sockaddr):
-                    clear_default_reflectors(self._system)
-                    reset_dynamic_reflectors(self._system)
-                    sanitize_dial_reflectors(self._system)
-                    clear_sub_map_for_system(self._system)
-                    clear_sub_map_for_peer(_peer_id)
+                    selfcare_disconnect(self._system, _peer_id)
+                    _block_peer_active_streams(self._system, _peer_id)
+                    mark_options_dirty(CONFIG)
         HBSYSTEM.master_datagramReceived(self, _data, _sockaddr)
 
     def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,sysIgnore,_source_server, _ber, _rssi, _source_rptr, _new_generation=False):
@@ -3439,6 +3615,12 @@ class routerHBP(HBSYSTEM):
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pkt_time = time()
+        if _control_stream_is_dropped(
+                self._system, _peer_id, _stream_id, now=pkt_time):
+            logger.debug(
+                '(%s) Dropping operator-blocked stream %s from peer %s',
+                self._system, int_id(_stream_id), int_id(_peer_id))
+            return
         dmrpkt = _data[20:53]
         
         _ber = _data[53:54]
@@ -3756,7 +3938,8 @@ class routerHBP(HBSYSTEM):
                                         if _system['ACTIVE'] == True and _system['TO_TYPE'] == 'ON' and _dst_id in _system['OFF']:
                                             _system['TIMER'] = pkt_time
                                             logger.info('(%s) [I] Reflector: %s has ON timer and set to "OFF": timeout timer cancelled', self._system, _bridge)
-                        deactivate_other_dynamic_reflectors(self._system, _bridgename, _slot)
+                        deactivate_other_dynamic_reflectors(
+                            self._system, _bridgename, _slot, _peer_id)
 
                 if (CONFIG['SYSTEMS'][self._system]['MODE'] == 'IPSC'
                         and is_reflector_private_destination(_int_dst_id)):
@@ -4239,14 +4422,15 @@ class routerIPSC(IpscMasterMixin, routerHBP):
         self._peers = _config['SYSTEMS'][_name]['PEERS']
         self.init_ipsc()
 
+    def control_radio_banned(self, radio_id):
+        return CONTROL_BANS.get(radio_id)
+
     def _remove_ipsc_peer(self, peer_id):
-        """Clear dial-a-tg state when a repeater drops off (parity with HBP RPTCL)."""
-        clear_default_reflectors(self._system)
-        reset_dynamic_reflectors(self._system)
-        sanitize_dial_reflectors(self._system)
-        clear_sub_map_for_peer(peer_id)
+        """Remove one IPSC repeater's state without disturbing stanza peers."""
+        selfcare_disconnect(self._system, peer_id)
         last_peer = len(self._ipsc_peers) <= 1 and peer_id in self._ipsc_peers
         IpscMasterMixin._remove_ipsc_peer(self, peer_id)
+        mark_options_dirty(self._CONFIG)
         if last_peer and 'OPTIONS' in self._CONFIG['SYSTEMS'][self._system]:
             _sys = self._CONFIG['SYSTEMS'][self._system]
             if '_default_options' in _sys:
@@ -4258,7 +4442,6 @@ class routerIPSC(IpscMasterMixin, routerHBP):
                 logger.info('(%s) IPSC peer gone — clearing OPTIONS', self._system)
                 _sys['_reset'] = True
             reset_slot_voice_ident(_sys)
-            mark_options_dirty(self._CONFIG)
 
 
 #

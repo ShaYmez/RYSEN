@@ -86,7 +86,20 @@ class TestIpscSelfcarePoll(unittest.TestCase):
             source = fh.read()
         self.assertIn('yield _selfcare_db.save_client_options(int_id_val, remaining)', source)
         self.assertIn("CONFIG['SYSTEMS'][slot]['OPTIONS'] = remaining", source)
-        self.assertIn("CONFIG['SYSTEMS'][system]['OPTIONS'] = remaining", source)
+        self.assertIn('store_peer_options(CONFIG[\'SYSTEMS\'][system], peer_id, remaining)', source)
+        self.assertNotIn("CONFIG['SYSTEMS'][system]['OPTIONS'] = remaining", source)
+
+
+class TestRptoDoesNotLastWriteMaster(unittest.TestCase):
+
+    def test_rpto_stores_peer_options_not_stanza(self):
+        with open('hblink.py', encoding='utf-8') as fh:
+            hblink = fh.read()
+        with open('bridge_master.py', encoding='utf-8') as fh:
+            bridge = fh.read()
+        self.assertIn('store_peer_options', hblink)
+        self.assertNotIn("self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = _opt_str", hblink)
+        self.assertIn('union_peer_static_lists', bridge)
 
 
 class TestHotspotProxyHardening(unittest.TestCase):
@@ -106,7 +119,48 @@ class TestRouterHbpTimeoutCleanup(unittest.TestCase):
             source = fh.read()
         self.assertIn('def master_maintenance_loop(self):', source)
         self.assertIn('HBSYSTEM.master_maintenance_loop(self)', source)
-        self.assertIn('clear_sub_map_for_peer(_peer_id)', source)
+        self.assertIn('selfcare_disconnect(self._system, _peer_id)', source)
+        self.assertNotIn('clear_sub_map_for_system(self._system)', source)
+
+
+class TestDial9SanitizeIsPerPeer(unittest.TestCase):
+
+    def test_master_rewrites_each_peer_options_not_stanza(self):
+        from bridge_helpers import peer_options_sanitized_dial9
+        peer_a = b'\x00\x23\xc5\x93'
+        peer_b = b'\x00\x23\xc5\x94'
+        cfg = {
+            'MODE': 'MASTER',
+            'OPTIONS': 'DIAL=9;TS2=999;',
+            'PEERS': {
+                peer_a: {'CONNECTION': 'YES', 'OPTIONS': 'DIAL=9;TS2=2350;'},
+                peer_b: {'CONNECTION': 'YES', 'OPTIONS': 'TS1=91;'},
+            },
+        }
+        updates = dict(peer_options_sanitized_dial9(cfg))
+        self.assertEqual(updates[peer_a], 'DIAL=0;TS2=2350;')
+        self.assertNotIn(peer_b, updates)
+
+    def test_sub_map_contains_only_rf_routes(self):
+        import bridge_master as bm
+        from dmr_utils3.utils import bytes_3
+        peer = b'\x00\x23\xc5\x93'
+        rf = b'\x00\x23\xc5\x01'
+        prev = getattr(bm, 'SUB_MAP', None)
+        bm.SUB_MAP = {
+            rf: ('MASTER-1', 2, bytes_3(91), 1, peer),
+        }
+        try:
+            bm.clear_sub_map_for_peer(peer)
+            self.assertNotIn(rf, bm.SUB_MAP)
+        finally:
+            if prev is None:
+                try:
+                    delattr(bm, 'SUB_MAP')
+                except AttributeError:
+                    pass
+            else:
+                bm.SUB_MAP = prev
 
 
 if __name__ == '__main__':
