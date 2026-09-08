@@ -87,6 +87,7 @@ from bridge_helpers import (
     strip_disc_from_options,
     sanitize_invalid_default_reflector_options,
     deactivate_linked_ipsc_bridge_legs,
+    deactivate_peer_dynamic_bridges,
     paired_group_route_bridge,
     clear_default_reflectors_for_system,
     STAT_TRIMMER_INTERVAL_S,
@@ -960,15 +961,27 @@ def deactivate_user_activated_bridges(system):
 
 
 def selfcare_disconnect(source_system, peer_id=None):
-    """Drop dial-a-tg reflector and user-activated talkgroup links for one subscriber."""
-    disconnect_dial_reflectors(source_system)
-    deactivate_user_activated_bridges(source_system)
-    if deactivate_linked_ipsc_bridge_legs(
-            BRIDGES, CONFIG['SYSTEMS'], source_system, peer_id):
-        rebuild_bridge_index()
+    """Drop dial-a-tg and user-activated links for one hotspot.
+
+    Other radios on the same MASTER keep their dynamics. peer_id None still
+    clears the whole system (legacy dashboard path without a peer).
+    """
     if peer_id:
+        changed, dropped = deactivate_peer_dynamic_bridges(
+            BRIDGES, SUB_MAP, source_system, peer_id)
+        if changed:
+            rebuild_bridge_index()
         clear_sub_map_for_peer(peer_id)
+        if dropped and deactivate_linked_ipsc_bridge_legs(
+                BRIDGES, CONFIG['SYSTEMS'], source_system, peer_id,
+                bridge_names=dropped):
+            rebuild_bridge_index()
     else:
+        disconnect_dial_reflectors(source_system)
+        deactivate_user_activated_bridges(source_system)
+        if deactivate_linked_ipsc_bridge_legs(
+                BRIDGES, CONFIG['SYSTEMS'], source_system, peer_id):
+            rebuild_bridge_index()
         clear_sub_map_for_system(source_system)
     notify_bridge_table_updated()
     logger.info('(SELF SERVICE) Dynamic links cleared for %s (peer %s)',

@@ -4,7 +4,7 @@
 import re
 import time
 
-from dmr_utils3.utils import bytes_3
+from dmr_utils3.utils import bytes_3, int_id
 from ipsc_const import is_routing_master
 
 DIAL_A_TG = 9
@@ -412,7 +412,128 @@ def sanitize_invalid_default_reflector_options(options_value):
     return ';'.join(kept) + ';', changed
 
 
-def deactivate_linked_ipsc_bridge_legs(bridges, config_systems, source_system, peer_id=None):
+def _tg_int(value):
+    if value is None or value is False:
+        return None
+    try:
+        return int(int_id(value))
+    except (TypeError, ValueError):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+
+def peer_sub_map_tgs(sub_map, system, peer_id):
+    """(slot, tgid) pairs this hotspot currently has in SUB_MAP."""
+    out = []
+    if not sub_map or peer_id is None:
+        return out
+    for entry in sub_map.values():
+        try:
+            if len(entry) < 5 or entry[4] != peer_id or entry[0] != system:
+                continue
+            tgid = _tg_int(entry[2])
+            if not tgid:
+                continue
+            out.append((int(entry[1] or 2), tgid))
+        except (TypeError, ValueError, IndexError):
+            continue
+    return out
+
+
+def other_peer_has_sub_map_tg(sub_map, system, slot, tgid, except_peer_id=None):
+    want = int(tgid)
+    slot = int(slot)
+    for entry in (sub_map or {}).values():
+        try:
+            if len(entry) < 4 or entry[0] != system or int(entry[1] or 2) != slot:
+                continue
+            if len(entry) >= 5 and except_peer_id is not None and entry[4] == except_peer_id:
+                continue
+            if _tg_int(entry[2]) == want:
+                return True
+        except (TypeError, ValueError, IndexError):
+            continue
+    return False
+
+
+def peer_dynamic_groups(sub_map, bridges, system, peer_id):
+    """This hotspot's dynamic TGs (SUB_MAP + dial reflectors it owns)."""
+    out = []
+    seen = set()
+    for slot, tgid in peer_sub_map_tgs(sub_map, system, peer_id):
+        item = (slot, tgid)
+        if item in seen:
+            continue
+        seen.add(item)
+        out.append({'slot': slot, 'group': tgid})
+    for name, entries in (bridges or {}).items():
+        if not name or str(name)[:1] != '#':
+            continue
+        try:
+            group = int(str(name)[1:])
+        except ValueError:
+            continue
+        for entry in entries:
+            if entry.get('SYSTEM') != system or not entry.get('ACTIVE'):
+                continue
+            if entry.get('LINKER_PEER') != peer_id:
+                continue
+            slot = int(entry.get('TS') or 2)
+            item = (slot, group)
+            if item in seen:
+                continue
+            seen.add(item)
+            out.append({'slot': slot, 'group': group})
+    return out
+
+
+def deactivate_peer_dynamic_bridges(bridges, sub_map, system, peer_id):
+    """Drop this hotspot's UA/dial legs. Leave other peers' dynamics up.
+
+    Returns (changed, dropped_bridge_names).
+    """
+    changed = False
+    dropped = set()
+    if not bridges or peer_id is None:
+        return changed, dropped
+    now = time.time()
+    tgs = peer_sub_map_tgs(sub_map, system, peer_id)
+
+    for name, entries in bridges.items():
+        if not name or str(name)[:1] != '#':
+            continue
+        for entry in entries:
+            if entry.get('SYSTEM') != system or not entry.get('ACTIVE'):
+                continue
+            if entry.get('LINKER_PEER') != peer_id:
+                continue
+            entry['ACTIVE'] = False
+            entry['TIMER'] = now
+            clear_reflector_link_owner(entry)
+            changed = True
+            dropped.add(name)
+
+    for slot, tgid in tgs:
+        if other_peer_has_sub_map_tg(sub_map, system, slot, tgid, except_peer_id=peer_id):
+            continue
+        name = str(tgid)
+        if name not in bridges or name[:1] == '#':
+            continue
+        for entry in bridges[name]:
+            if entry.get('SYSTEM') != system or int(entry.get('TS') or 2) != slot:
+                continue
+            if entry.get('TO_TYPE') != 'ON' or not entry.get('ACTIVE'):
+                continue
+            entry['ACTIVE'] = False
+            entry['TIMER'] = now
+            changed = True
+            dropped.add(name)
+    return changed, dropped
+
+
+def deactivate_linked_ipsc_bridge_legs(bridges, config_systems, source_system, peer_id=None, bridge_names=None):
     """Deactivate linked IPSC legs on bridges that are active for source_system."""
     if config_systems.get(source_system, {}).get('MODE') == 'IPSC':
         return False
@@ -420,18 +541,23 @@ def deactivate_linked_ipsc_bridge_legs(bridges, config_systems, source_system, p
     if not linked:
         return False
     linked_set = set(linked)
+    named = set(bridge_names) if bridge_names is not None else None
     changed = False
     now = time.time()
     for bridge_name, entries in bridges.items():
-        source_dynamic = any(
-            entry['SYSTEM'] == source_system and entry.get('ACTIVE')
-            and entry.get('TO_TYPE') == 'ON'
-            for entry in entries)
-        source_reflector = (
-            bridge_name[0:1] == '#'
-            and any(entry['SYSTEM'] == source_system and entry.get('ACTIVE') for entry in entries))
-        if not source_dynamic and not source_reflector:
-            continue
+        if named is not None:
+            if bridge_name not in named:
+                continue
+        else:
+            source_dynamic = any(
+                entry['SYSTEM'] == source_system and entry.get('ACTIVE')
+                and entry.get('TO_TYPE') == 'ON'
+                for entry in entries)
+            source_reflector = (
+                bridge_name[0:1] == '#'
+                and any(entry['SYSTEM'] == source_system and entry.get('ACTIVE') for entry in entries))
+            if not source_dynamic and not source_reflector:
+                continue
         for entry in entries:
             if entry['SYSTEM'] not in linked_set or not entry.get('ACTIVE'):
                 continue

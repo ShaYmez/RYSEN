@@ -247,6 +247,7 @@ def _wire_handlers():
         peer_own_options,
         ts_lists_from_options,
     )
+    from bridge_helpers import peer_dynamic_groups
 
     def find_peer(radio_id: int):
         system, peer_id = find_hotspot_master_peer(bm.CONFIG['SYSTEMS'], radio_id)
@@ -265,9 +266,7 @@ def _wire_handlers():
         bm.notify_bridge_table_updated()
 
     def drop_dynamic(system, peer_id=None):
-        bm.disconnect_dial_reflectors(system)
-        bm.deactivate_user_activated_bridges(system)
-        bm.notify_bridge_table_updated()
+        bm.selfcare_disconnect(system, peer_id)
 
     def persist_disc(system, peer_id):
         # DISC=1 must land on the existing Clients row. Rewriting TS1/TS2 from
@@ -342,21 +341,17 @@ def _wire_handlers():
             statics.append({'slot': 1, 'group': int(tg)})
         for tg in ts2:
             statics.append({'slot': 2, 'group': int(tg)})
+        static_keys = {(row['slot'], row['group']) for row in statics}
         dynamics = []
-        seen = set()
-        for name, entries in (getattr(bm, 'BRIDGES', None) or {}).items():
-            if not name or str(name)[:1] == '#' or not str(name).isdigit():
+        for row in peer_dynamic_groups(
+                getattr(bm, 'SUB_MAP', None) or {},
+                getattr(bm, 'BRIDGES', None) or {},
+                system,
+                peer_id):
+            key = (row['slot'], row['group'])
+            if key in static_keys:
                 continue
-            for entry in entries:
-                if entry.get('SYSTEM') != system or not entry.get('ACTIVE'):
-                    continue
-                if entry.get('TO_TYPE') != 'ON':
-                    continue
-                item = (int(entry.get('TS') or 2), int(name))
-                if item in seen:
-                    continue
-                seen.add(item)
-                dynamics.append({'slot': item[0], 'group': item[1]})
+            dynamics.append(row)
         connected_id = _peer_int(peer_id)
         return {
             'ok': True,
