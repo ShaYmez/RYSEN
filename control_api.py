@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Loopback HTTP control listener for FreeSTAR hub /v2/control/*.
+"""Loopback HTTP control listener for FreeSTAR hub /v2/control/* and /v2/device/*.
 
-Listens on 127.0.0.1 only when /etc/rysen/freestar-control.token exists.
-Calls existing bridge_master hooks. Does not scrape REPORT.
+Listens when /etc/rysen/freestar-control.token exists.
+POST/DELETE /talkgroup remains user-activated (ops). Statics use /static-talkgroup.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import json
 import logging
 import os
 import sys
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 log = logging.getLogger(__name__)
 
@@ -28,12 +28,39 @@ def load_token(path: str = TOKEN_PATH) -> Optional[str]:
     return text or None
 
 
+def parse_control_path(path: str) -> Tuple[str, List[str]]:
+    parts = [p for p in (path or '').split('?')[0].strip('/').split('/') if p]
+    if not parts:
+        return '', []
+    return parts[0], parts[1:]
+
+
 def slot_from_body(body: dict) -> int:
+    """UA talkgroup slot. 0 or omitted means slot 2 (ops compatibility)."""
     try:
         slot = int(body.get('slot') or 0)
     except (TypeError, ValueError):
         slot = 0
     return 2 if slot in (0, None) else slot
+
+
+def static_slot(value) -> int:
+    """Device/static slot. 0 (simplex) and omitted map to TS2. 1 and 2 stay."""
+    try:
+        slot = int(value)
+    except (TypeError, ValueError):
+        slot = 0
+    return 1 if slot == 1 else 2
+
+
+def _radio_from(body: dict, path_parts: List[str]) -> Optional[int]:
+    raw = body.get('radio_id')
+    if raw in (None, '') and path_parts:
+        raw = path_parts[0]
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
 
 
 def handle_control_request(
@@ -46,25 +73,53 @@ def handle_control_request(
     drop_dynamic: Callable,
     activate_tg: Callable,
     deactivate_tg: Callable,
+    drop_call: Optional[Callable] = None,
+    list_peer: Optional[Callable] = None,
+    add_static: Optional[Callable] = None,
+    remove_static: Optional[Callable] = None,
+    persist_disc: Optional[Callable] = None,
+    path_parts: Optional[List[str]] = None,
 ) -> Tuple[int, dict]:
-    radio = body.get('radio_id')
-    try:
-        radio_id = int(radio)
-    except (TypeError, ValueError):
+    path_parts = list(path_parts or [])
+    method = (method or 'POST').upper()
+    action = (action or '').strip().strip('/')
+
+    radio_id = _radio_from(body, path_parts if action == 'peer' else [])
+    if radio_id is None:
+        radio_id = _radio_from(body, [])
+    if radio_id is None:
         return 400, {'error': 'radio_id is required'}
 
     system, peer_id = find_peer(radio_id)
     if not system:
         return 404, {'error': 'Peer not connected on this master'}
 
-    method = (method or 'POST').upper()
-    action = (action or '').strip().strip('/')
+    if action == 'peer' and method == 'GET':
+        if list_peer is None:
+            return 404, {'error': 'Unknown control action'}
+        payload = list_peer(system, peer_id, radio_id)
+        if not isinstance(payload, dict):
+            payload = {'ok': True, 'system': system}
+        payload.setdefault('ok', True)
+        payload.setdefault('connected', True)
+        payload.setdefault('system', system)
+        payload.setdefault('radio_id', radio_id)
+        return 200, payload
 
-    if action in ('disconnect', 'drop-call'):
+    if action == 'disconnect' and method == 'POST':
         disconnect(system, peer_id)
+        if persist_disc is not None:
+            persist_disc(system, peer_id)
         return 200, {'ok': True, 'action': action, 'system': system}
 
-    if action == 'drop-dynamic':
+    if action == 'drop-call' and method == 'POST':
+        if drop_call is not None:
+            drop_call(system, peer_id)
+        else:
+            disconnect(system, peer_id)
+        return 200, {'ok': True, 'action': action, 'system': system}
+
+    if action == 'drop-dynamic' and method == 'POST':
         drop_dynamic(system, peer_id)
         return 200, {'ok': True, 'action': action, 'system': system}
 
@@ -78,15 +133,57 @@ def handle_control_request(
         if method == 'DELETE':
             deactivate_tg(system, tgid, slot, peer_id)
             return 200, {'ok': True, 'action': 'talkgroup-remove', 'system': system, 'talkgroup': tgid}
+        if method != 'POST':
+            return 405, {'error': 'Method not allowed'}
         activate_tg(system, tgid, slot, peer_id)
         return 200, {'ok': True, 'action': 'talkgroup-add', 'system': system, 'talkgroup': tgid}
+
+    if action == 'static-talkgroup':
+        if add_static is None or remove_static is None:
+            return 404, {'error': 'Unknown control action'}
+        slot_raw = body.get('slot')
+        group_raw = body.get('talkgroup', body.get('group'))
+        if method == 'DELETE' and len(path_parts) >= 2:
+            slot_raw = path_parts[0]
+            group_raw = path_parts[1]
+        try:
+            tgid = int(group_raw)
+        except (TypeError, ValueError):
+            return 400, {'error': 'talkgroup is required'}
+        slot = static_slot(slot_raw)
+        if method == 'DELETE':
+            remove_static(system, tgid, slot, peer_id)
+            return 200, {
+                'ok': True,
+                'action': 'static-talkgroup-remove',
+                'system': system,
+                'talkgroup': tgid,
+                'slot': slot,
+            }
+        if method != 'POST':
+            return 405, {'error': 'Method not allowed'}
+        add_static(system, tgid, slot, peer_id)
+        return 200, {
+            'ok': True,
+            'action': 'static-talkgroup-add',
+            'system': system,
+            'talkgroup': tgid,
+            'slot': slot,
+        }
 
     return 404, {'error': 'Unknown control action'}
 
 
 def _http_response(code: int, body: dict) -> bytes:
     payload = json.dumps(body, separators=(',', ':')).encode('utf-8')
-    reason = {200: 'OK', 400: 'Bad Request', 401: 'Unauthorized', 404: 'Not Found', 405: 'Method Not Allowed'}.get(code, 'Error')
+    reason = {
+        200: 'OK',
+        400: 'Bad Request',
+        401: 'Unauthorized',
+        404: 'Not Found',
+        405: 'Method Not Allowed',
+        500: 'Internal Server Error',
+    }.get(code, 'Error')
     headers = (
         f'HTTP/1.1 {code} {reason}\r\n'
         'Content-Type: application/json\r\n'
@@ -107,10 +204,50 @@ def _runtime_bridge():
     return bm
 
 
+def _selfcare_db(bm):
+    db = getattr(bm, '_selfcare_db', None)
+    if db is not None:
+        return db
+    cfg = getattr(bm, 'CONFIG', None) or {}
+    return cfg.get('_SELF_SERVICE_DB')
+
+
+def _peer_int(peer_id) -> Optional[int]:
+    if peer_id is None:
+        return None
+    try:
+        from dmr_utils3.utils import int_id
+        return int(int_id(peer_id))
+    except Exception:
+        try:
+            return int(peer_id)
+        except (TypeError, ValueError):
+            return None
+
+
+def _queue_options(bm, peer_id, options_str: str) -> None:
+    db = _selfcare_db(bm)
+    rid = _peer_int(peer_id)
+    if db is None or rid is None or not hasattr(db, 'queue_client_options'):
+        return
+    try:
+        deferred = db.queue_client_options(rid, options_str)
+        if deferred is not None and hasattr(deferred, 'addErrback'):
+            deferred.addErrback(lambda err: log.warning('(CONTROL) Clients persist failed: %s', err))
+    except Exception as err:
+        log.warning('(CONTROL) Clients persist failed: %s', err)
+
+
 def _wire_handlers():
     bm = _runtime_bridge()
     from dmr_utils3.utils import bytes_3
-    from selfcare_db import find_hotspot_master_peer, find_ipsc_peer_for_radio_id
+    from selfcare_db import (
+        comma_tg_list,
+        find_hotspot_master_peer,
+        find_ipsc_peer_for_radio_id,
+        merge_ts_into_options,
+        radio_id_core,
+    )
 
     def find_peer(radio_id: int):
         system, peer_id = find_hotspot_master_peer(bm.CONFIG['SYSTEMS'], radio_id)
@@ -121,10 +258,95 @@ def _wire_handlers():
     def disconnect(system, peer_id):
         bm.selfcare_disconnect(system, peer_id)
 
+    def drop_call(system, peer_id):
+        if peer_id:
+            bm.clear_sub_map_for_peer(peer_id)
+        else:
+            bm.clear_sub_map_for_system(system)
+        bm.notify_bridge_table_updated()
+
     def drop_dynamic(system, peer_id=None):
         bm.disconnect_dial_reflectors(system)
         bm.deactivate_user_activated_bridges(system)
         bm.notify_bridge_table_updated()
+
+    def persist_disc(system, peer_id):
+        cfg = bm.CONFIG['SYSTEMS'].get(system, {})
+        options = merge_ts_into_options(
+            cfg.get('OPTIONS'),
+            cfg.get('TS1_STATIC'),
+            cfg.get('TS2_STATIC'),
+            disc=True,
+        )
+        cfg['OPTIONS'] = options
+        _queue_options(bm, peer_id, options)
+
+    def _persist_statics(system, peer_id):
+        cfg = bm.CONFIG['SYSTEMS'].get(system, {})
+        options = merge_ts_into_options(
+            cfg.get('OPTIONS'),
+            cfg.get('TS1_STATIC'),
+            cfg.get('TS2_STATIC'),
+        )
+        cfg['OPTIONS'] = options
+        _queue_options(bm, peer_id, options)
+
+    def _static_key(slot: int) -> str:
+        return 'TS1_STATIC' if slot == 1 else 'TS2_STATIC'
+
+    def add_static(system, tgid, slot, peer_id):
+        cfg = bm.CONFIG['SYSTEMS'][system]
+        key = _static_key(slot)
+        groups = comma_tg_list(cfg.get(key))
+        name = str(int(tgid))
+        if name not in groups:
+            groups.append(name)
+        tmout = cfg.get('DEFAULT_UA_TIMER', 10)
+        bm.make_static_tg(int(tgid), slot, tmout, system)
+        cfg[key] = ','.join(groups) if groups else False
+        bm.notify_bridge_table_updated()
+        _persist_statics(system, peer_id)
+
+    def remove_static(system, tgid, slot, peer_id):
+        cfg = bm.CONFIG['SYSTEMS'][system]
+        key = _static_key(slot)
+        groups = [g for g in comma_tg_list(cfg.get(key)) if g != str(int(tgid))]
+        tmout = cfg.get('DEFAULT_UA_TIMER', 10)
+        bm.reset_static_tg(int(tgid), slot, tmout, system)
+        cfg[key] = ','.join(groups) if groups else False
+        bm.notify_bridge_table_updated()
+        _persist_statics(system, peer_id)
+
+    def list_peer(system, peer_id, radio_id):
+        cfg = bm.CONFIG['SYSTEMS'].get(system, {})
+        statics = []
+        for slot, key in ((1, 'TS1_STATIC'), (2, 'TS2_STATIC')):
+            for tg in comma_tg_list(cfg.get(key)):
+                statics.append({'slot': slot, 'group': int(tg)})
+        dynamics = []
+        seen = set()
+        for name, entries in (getattr(bm, 'BRIDGES', None) or {}).items():
+            if not name or str(name)[:1] == '#' or not str(name).isdigit():
+                continue
+            for entry in entries:
+                if entry.get('SYSTEM') != system or not entry.get('ACTIVE'):
+                    continue
+                if entry.get('TO_TYPE') != 'ON':
+                    continue
+                item = (int(entry.get('TS') or 2), int(name))
+                if item in seen:
+                    continue
+                seen.add(item)
+                dynamics.append({'slot': item[0], 'group': item[1]})
+        core = radio_id_core(radio_id)
+        return {
+            'ok': True,
+            'connected': True,
+            'radio_id': int(core) if core.isdigit() else radio_id,
+            'system': system,
+            'statics': statics,
+            'dynamics': dynamics,
+        }
 
     def activate_tg(system, tgid, slot, peer_id):
         name = str(int(tgid))
@@ -158,6 +380,11 @@ def _wire_handlers():
         'drop_dynamic': drop_dynamic,
         'activate_tg': activate_tg,
         'deactivate_tg': deactivate_tg,
+        'drop_call': drop_call,
+        'list_peer': list_peer,
+        'add_static': add_static,
+        'remove_static': remove_static,
+        'persist_disc': persist_disc,
     }
 
 
@@ -217,7 +444,7 @@ def start_control_api(logger=None):
                 self.transport.write(_http_response(401, {'error': 'Unauthorized'}))
                 self.transport.loseConnection()
                 return
-            if method not in ('POST', 'DELETE'):
+            if method not in ('GET', 'POST', 'DELETE'):
                 self.transport.write(_http_response(405, {'error': 'Method not allowed'}))
                 self.transport.loseConnection()
                 return
@@ -231,7 +458,7 @@ def start_control_api(logger=None):
                     self.transport.write(_http_response(400, {'error': 'Invalid JSON body'}))
                     self.transport.loseConnection()
                     return
-            action = path.split('?')[0].strip('/')
+            action, path_parts = parse_control_path(path)
             try:
                 code, payload = handle_control_request(
                     action,
@@ -242,6 +469,12 @@ def start_control_api(logger=None):
                     drop_dynamic=self.handlers['drop_dynamic'],
                     activate_tg=self.handlers['activate_tg'],
                     deactivate_tg=self.handlers['deactivate_tg'],
+                    drop_call=self.handlers.get('drop_call'),
+                    list_peer=self.handlers.get('list_peer'),
+                    add_static=self.handlers.get('add_static'),
+                    remove_static=self.handlers.get('remove_static'),
+                    persist_disc=self.handlers.get('persist_disc'),
+                    path_parts=path_parts,
                 )
             except Exception as err:
                 log.exception('(CONTROL) request failed: %s', err)

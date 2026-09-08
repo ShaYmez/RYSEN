@@ -28,6 +28,25 @@ def _peer_radio_id_str(radio_id_value):
         return str(radio_id_value)
 
 
+def radio_id_core(radio_id):
+    """7-digit DMR identity. ESSID 01-99 is the digits after that (234018901 -> 2340189)."""
+    if radio_id is None:
+        return ''
+    try:
+        digits = str(int(radio_id))
+    except (TypeError, ValueError):
+        digits = ''.join(ch for ch in str(radio_id) if ch.isdigit())
+    if len(digits) >= 7:
+        return digits[:7]
+    return digits
+
+
+def radio_ids_match(left, right):
+    core_left = radio_id_core(left)
+    core_right = radio_id_core(right)
+    return bool(core_left) and core_left == core_right
+
+
 class SelfcareDB:
     """MariaDB access for IPSC repeater rows in Clients (mode = 0)."""
 
@@ -160,6 +179,13 @@ class SelfcareDB:
         except Exception as err:
             raise RuntimeError(f'clear_modified_client error: {err}') from err
 
+    def queue_client_options(self, int_id, options_str):
+        """Persist TS1=/TS2= (or DISC=1) like PHP updateDevOptions. Fire-and-forget."""
+        return self.dbpool.runOperation(
+            'UPDATE Clients SET options = %s, modified = 1 WHERE int_id = %s',
+            (options_str, int_id),
+        )
+
 
 def build_ipsc_seed_options(system_cfg):
     """Build TS1=/TS2= options string from cfg static TG fields (first register)."""
@@ -185,17 +211,16 @@ def find_ipsc_slot_for_radio_id(config_systems, radio_id):
 
 def find_ipsc_peer_for_radio_id(config_systems, radio_id):
     """Return (IPSC-N slot, peer_id) for a connected IPSC repeater radio ID."""
-    target = str(radio_id)
     for slot, syscfg in config_systems.items():
         if syscfg.get('MODE') != 'IPSC' or not syscfg.get('ENABLED'):
             continue
         for peer_id, peer in syscfg.get('PEERS', {}).items():
             if peer.get('CONNECTION') not in (None, 'YES'):
                 continue
-            if _peer_radio_id_str(peer.get('RADIO_ID')) == target:
+            if radio_ids_match(_peer_radio_id_str(peer.get('RADIO_ID')), radio_id):
                 return slot, peer_id
             try:
-                if str(int_id(peer_id)) == target:
+                if radio_ids_match(int_id(peer_id), radio_id):
                     return slot, peer_id
             except (TypeError, ValueError):
                 continue
@@ -203,19 +228,60 @@ def find_ipsc_peer_for_radio_id(config_systems, radio_id):
 
 
 def find_hotspot_master_peer(config_systems, radio_id):
-    """Return (MASTER system name, peer_id) for a logged-in hotspot radio ID."""
-    target = str(radio_id)
+    """Return (MASTER system name, peer_id) for a logged-in hotspot radio ID.
+
+    ESSID 01-99 shares the 7-digit identity (234018901 matches 2340189).
+    """
     for system, syscfg in config_systems.items():
         if syscfg.get('MODE') != 'MASTER' or not syscfg.get('ENABLED'):
             continue
         for peer_id, peer in (syscfg.get('PEERS') or {}).items():
             if peer.get('CONNECTION') != 'YES':
                 continue
-            if _peer_radio_id_str(peer.get('RADIO_ID')) == target:
+            if radio_ids_match(_peer_radio_id_str(peer.get('RADIO_ID')), radio_id):
                 return system, peer_id
             try:
-                if str(int_id(peer_id)) == target:
+                if radio_ids_match(int_id(peer_id), radio_id):
                     return system, peer_id
             except (TypeError, ValueError):
                 continue
     return None, None
+
+
+def comma_tg_list(value):
+    if not value or value is False:
+        return []
+    out = []
+    for part in str(value).split(','):
+        part = part.strip()
+        if part.isdigit():
+            out.append(part)
+    return out
+
+
+def merge_ts_into_options(options_value, ts1, ts2, disc=False):
+    """Rebuild a selfcare OPTIONS string, replacing TS1/TS2 (and optional DISC=1)."""
+    text = ''
+    if options_value:
+        text = options_value.decode() if isinstance(options_value, bytes) else str(options_value)
+    kept = []
+    skip = {'TS1', 'TS2', 'TS1_STATIC', 'TS2_STATIC', 'DISC'}
+    for part in text.split(';'):
+        part = part.strip()
+        if not part or '=' not in part:
+            continue
+        key, value = part.split('=', 1)
+        if key.strip().upper() in skip:
+            continue
+        kept.append(f'{key.strip()}={value.strip()}')
+    ts1_list = comma_tg_list(ts1)
+    ts2_list = comma_tg_list(ts2)
+    if ts1_list:
+        kept.append('TS1=' + ','.join(ts1_list))
+    if ts2_list:
+        kept.append('TS2=' + ','.join(ts2_list))
+    if disc:
+        kept.append('DISC=1')
+    if not kept:
+        return ''
+    return ';'.join(kept) + ';'
