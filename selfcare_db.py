@@ -320,6 +320,19 @@ def peer_own_options(syscfg, peer_id):
     return peer.get('OPTIONS') or ''
 
 
+def store_peer_options(syscfg, peer_id, options):
+    """Write OPTIONS onto this peer only. Never copy onto a MASTER stanza."""
+    if peer_id is not None:
+        peer = (syscfg.get('PEERS') or {}).get(peer_id)
+        if peer is not None:
+            peer['OPTIONS'] = options
+            return True
+    if syscfg.get('MODE') == 'MASTER':
+        return False
+    syscfg['OPTIONS'] = options
+    return True
+
+
 def other_peer_has_static(syscfg, slot, tgid, except_peer_id=None):
     want = str(int(tgid))
     for pid, peer in (syscfg.get('PEERS') or {}).items():

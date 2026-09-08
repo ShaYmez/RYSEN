@@ -1341,10 +1341,12 @@ class HBSYSTEM(DatagramProtocol):
                 logger.info('(%s) Peer %s has sent options %s', self._system, _this_peer['CALLSIGN'], _this_peer['OPTIONS'])
                 try:
                     from bridge_master import apply_selfcare_options
+                    from selfcare_db import store_peer_options
                     _remaining, _had_disc = apply_selfcare_options(
                         self._system, _peer_id, _opt_str)
                     if _had_disc:
-                        self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = _remaining
+                        store_peer_options(
+                            self._CONFIG['SYSTEMS'][self._system], _peer_id, _remaining)
                         _db = self._CONFIG.get('_SELF_SERVICE_DB')
                         if _db is not None:
                             _rid = int(int_id(_peer_id))

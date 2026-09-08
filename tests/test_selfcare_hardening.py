@@ -86,7 +86,8 @@ class TestIpscSelfcarePoll(unittest.TestCase):
             source = fh.read()
         self.assertIn('yield _selfcare_db.save_client_options(int_id_val, remaining)', source)
         self.assertIn("CONFIG['SYSTEMS'][slot]['OPTIONS'] = remaining", source)
-        self.assertIn("CONFIG['SYSTEMS'][system]['OPTIONS'] = remaining", source)
+        self.assertIn('store_peer_options(CONFIG[\'SYSTEMS\'][system], peer_id, remaining)', source)
+        self.assertNotIn("CONFIG['SYSTEMS'][system]['OPTIONS'] = remaining", source)
 
 
 class TestHotspotProxyHardening(unittest.TestCase):

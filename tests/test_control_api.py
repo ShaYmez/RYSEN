@@ -15,6 +15,7 @@ from selfcare_db import (
     peer_own_options,
     radio_id_core,
     radio_ids_match,
+    store_peer_options,
     ts_lists_from_options,
 )
 
@@ -204,6 +205,7 @@ class TestRadioIdCore(unittest.TestCase):
         peer_a = b'\x00\x23\xc5\x93'
         peer_b = b'\x00\x23\xc5\x94'
         cfg = {
+            'MODE': 'MASTER',
             'OPTIONS': 'TS2=9;',
             'PEERS': {
                 peer_a: {'OPTIONS': 'TS2=2350;'},
@@ -217,6 +219,11 @@ class TestRadioIdCore(unittest.TestCase):
         self.assertFalse(other_peer_has_static(cfg, 2, 2350, except_peer_id=peer_a))
         self.assertTrue(other_peer_has_static(cfg, 1, 91, except_peer_id=peer_a))
         self.assertEqual(peer_own_options(cfg, b'\x00\x00\x00\x01'), '')
+        self.assertTrue(store_peer_options(cfg, peer_a, 'TS2=91;'))
+        self.assertEqual(peer_own_options(cfg, peer_a), 'TS2=91;')
+        self.assertEqual(cfg['OPTIONS'], 'TS2=9;')
+        self.assertFalse(store_peer_options(cfg, b'\x00\x00\x00\x01', 'TS2=1;'))
+        self.assertEqual(cfg['OPTIONS'], 'TS2=9;')
 
 
     def test_queue_client_disc_does_not_rewrite_options(self):

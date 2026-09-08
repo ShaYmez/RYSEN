@@ -245,6 +245,7 @@ def _wire_handlers():
         merge_ts_into_options,
         other_peer_has_static,
         peer_own_options,
+        store_peer_options,
         ts_lists_from_options,
     )
     from bridge_helpers import peer_dynamic_groups
@@ -288,17 +289,10 @@ def _wire_handlers():
 
     def _write_peer_options(system, peer_id, options):
         cfg = bm.CONFIG['SYSTEMS'].get(system, {})
-        if peer_id is not None:
-            peer = (cfg.get('PEERS') or {}).get(peer_id)
-            if peer is not None:
-                peer['OPTIONS'] = options
-                _queue_options(bm, peer_id, options)
-                return
-        if cfg.get('MODE') == 'MASTER':
-            log.warning('(CONTROL) skip OPTIONS write: peer %s not in PEERS', _peer_int(peer_id))
+        if store_peer_options(cfg, peer_id, options):
+            _queue_options(bm, peer_id, options)
             return
-        cfg['OPTIONS'] = options
-        _queue_options(bm, peer_id, options)
+        log.warning('(CONTROL) skip OPTIONS write: peer %s not in PEERS', _peer_int(peer_id))
 
     def _persist_statics(system, peer_id, ts1, ts2):
         options = merge_ts_into_options(_options_base(system, peer_id), ts1, ts2)

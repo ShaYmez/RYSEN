@@ -66,6 +66,7 @@ from selfcare_db import (
     SelfcareDB,
     find_hotspot_master_peer,
     find_ipsc_peer_for_radio_id,
+    store_peer_options,
 )
 from bridge_helpers import iter_routing_master_systems as _iter_routing_master_systems
 from bridge_helpers import (
@@ -2107,17 +2108,8 @@ def hotspot_selfcare_disc_poll():
                     int_id_val)
                 continue
             remaining, had_disc = apply_selfcare_options(system, peer_id, opt_str)
-            CONFIG['SYSTEMS'][system]['OPTIONS'] = remaining
-            mark_options_dirty(CONFIG)
+            store_peer_options(CONFIG['SYSTEMS'][system], peer_id, remaining)
             yield _selfcare_db.save_client_options(int_id_val, remaining)
-            if remaining:
-                try:
-                    options_config()
-                except Exception:
-                    logger.exception(
-                        '(SELF SERVICE) options_config failed after hotspot DISC for %s',
-                        int_id_val)
-                    continue
             yield _selfcare_db.clear_modified_client(int_id_val)
             logger.info('(SELF SERVICE) Hotspot disconnect applied for int_id %s on %s',
                         int_id_val, system)
