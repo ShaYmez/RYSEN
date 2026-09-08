@@ -8,7 +8,7 @@ FreeSTAR hub device control on `:8765` (needs matching `freestar-api-v2` device 
 - `POST/DELETE /static-talkgroup` — per-peer OPTIONS / `Clients` (`TS1=`/`TS2=`). Does not copy MASTER last-writer `TS1_STATIC`. Slot 0 is simplex (TS2). Remove only drops the live bridge if no other peer still has that static. Live MASTER statics are the union of connected peer OPTIONS (plus cfg defaults); RPTO no longer copies TS1/TS2 onto the MASTER stanza.
 - `POST /drop-dynamic` and `POST /disconnect` — drop this hotspot's UA/dial TGs only. Other radios on the same MASTER keep theirs. A live UA bridge is taken down only if no other peer still has that TG. Disconnect also queues `DISC=1` on that radio's `Clients` row (does not rewrite TS1/TS2). `DISC=1` apply writes that peer's OPTIONS only — it does not copy onto the MASTER stanza or run `options_config()`.
 - `POST /drop-call` — drop current call route (`SUB_MAP` only). Not an alias of disconnect.
-- `POST/DELETE /talkgroup` — unchanged user-activated (ops).
+- `POST/DELETE /talkgroup` — user-activated, per radio. POST raises the shared MASTER UA leg (audio is stanza-wide) and records this radio in `SUB_MAP`. DELETE unlinks that TG for this radio only; the live UA bridge stays up if another peer still has it.
 
 ## Version 1.5.3 (2026-08-07)
 

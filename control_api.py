@@ -239,7 +239,12 @@ def _queue_options(bm, peer_id, options_str: str) -> None:
 def _wire_handlers():
     bm = _runtime_bridge()
     from dmr_utils3.utils import bytes_3
-    from bridge_helpers import mark_options_dirty, peer_dynamic_groups
+    from bridge_helpers import (
+        deactivate_peer_ua_talkgroup,
+        mark_options_dirty,
+        note_peer_ua_talkgroup,
+        peer_dynamic_groups,
+    )
     from selfcare_db import (
         find_hotspot_master_peer,
         find_ipsc_peer_for_radio_id,
@@ -366,8 +371,20 @@ def _wire_handlers():
             bm.make_single_bridge(tgid_b, system, slot, tmout)
         else:
             bm.activate_ua_bridge_source(name, system, slot, tmout, peer_id)
+        note_peer_ua_talkgroup(
+            getattr(bm, 'SUB_MAP', None), system, peer_id, slot, tgid)
+        bm.notify_bridge_table_updated()
 
     def deactivate_tg(system, tgid, slot, peer_id=None):
+        if peer_id:
+            changed = deactivate_peer_ua_talkgroup(
+                getattr(bm, 'BRIDGES', None) or {},
+                getattr(bm, 'SUB_MAP', None) or {},
+                system, peer_id, slot, tgid)
+            if changed:
+                bm.rebuild_bridge_index()
+            bm.notify_bridge_table_updated()
+            return
         name = str(int(tgid))
         if name not in bm.BRIDGES:
             return

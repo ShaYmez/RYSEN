@@ -197,5 +197,78 @@ class TestDeactivatePeerDynamicBridges(unittest.TestCase):
         self.assertEqual(groups, [{'slot': 2, 'group': 91}])
 
 
+class TestDeactivatePeerUaTalkgroup(unittest.TestCase):
+
+    def test_keeps_live_leg_if_other_peer_still_on_tg(self):
+        from bridge_helpers import deactivate_peer_ua_talkgroup
+        peer_a = b'\x00\x23\xc5\x93'
+        peer_b = b'\x00\x23\xc5\x94'
+        tg91 = bytes_3(91)
+        bridges = {
+            '91': [{'SYSTEM': 'MASTER-1', 'TS': 2, 'TGID': tg91, 'ACTIVE': True, 'TO_TYPE': 'ON', 'TIMER': 0}],
+        }
+        sub_map = {
+            b'\x00\x23\xc5\x01': ('MASTER-1', 2, tg91, 1, peer_a),
+            b'\x00\x23\xc5\x02': ('MASTER-1', 2, tg91, 1, peer_b),
+        }
+        changed = deactivate_peer_ua_talkgroup(bridges, sub_map, 'MASTER-1', peer_a, 2, 91)
+        self.assertFalse(changed)
+        self.assertTrue(bridges['91'][0]['ACTIVE'])
+        self.assertNotIn(b'\x00\x23\xc5\x01', sub_map)
+        self.assertIn(b'\x00\x23\xc5\x02', sub_map)
+
+    def test_drops_live_leg_when_last_peer(self):
+        from bridge_helpers import deactivate_peer_ua_talkgroup
+        peer_a = b'\x00\x23\xc5\x93'
+        tg91 = bytes_3(91)
+        bridges = {
+            '91': [{'SYSTEM': 'MASTER-1', 'TS': 2, 'TGID': tg91, 'ACTIVE': True, 'TO_TYPE': 'ON', 'TIMER': 0}],
+        }
+        sub_map = {b'\x00\x23\xc5\x01': ('MASTER-1', 2, tg91, 1, peer_a)}
+        changed = deactivate_peer_ua_talkgroup(bridges, sub_map, 'MASTER-1', peer_a, 2, 91)
+        self.assertTrue(changed)
+        self.assertFalse(bridges['91'][0]['ACTIVE'])
+        self.assertEqual(sub_map, {})
+
+    def test_does_not_drop_static_leg(self):
+        from bridge_helpers import deactivate_peer_ua_talkgroup
+        peer_a = b'\x00\x23\xc5\x93'
+        tg91 = bytes_3(91)
+        bridges = {
+            '91': [{'SYSTEM': 'MASTER-1', 'TS': 2, 'TGID': tg91, 'ACTIVE': True, 'TO_TYPE': 'OFF', 'TIMER': 0}],
+        }
+        sub_map = {b'\x00\x23\xc5\x01': ('MASTER-1', 2, tg91, 1, peer_a)}
+        changed = deactivate_peer_ua_talkgroup(bridges, sub_map, 'MASTER-1', peer_a, 2, 91)
+        self.assertFalse(changed)
+        self.assertTrue(bridges['91'][0]['ACTIVE'])
+
+
+class TestNotePeerUaTalkgroup(unittest.TestCase):
+
+    def test_records_ops_link_for_this_radio(self):
+        from bridge_helpers import (
+            deactivate_peer_ua_talkgroup,
+            note_peer_ua_talkgroup,
+            peer_dynamic_groups,
+        )
+        peer_a = b'\x00\x23\xc5\x93'
+        peer_b = b'\x00\x23\xc5\x94'
+        tg91 = bytes_3(91)
+        sub_map = {}
+        note_peer_ua_talkgroup(sub_map, 'MASTER-1', peer_a, 2, 91)
+        self.assertEqual(
+            peer_dynamic_groups(sub_map, {}, 'MASTER-1', peer_a),
+            [{'slot': 2, 'group': 91}],
+        )
+        self.assertEqual(peer_dynamic_groups(sub_map, {}, 'MASTER-1', peer_b), [])
+        bridges = {
+            '91': [{'SYSTEM': 'MASTER-1', 'TS': 2, 'TGID': tg91, 'ACTIVE': True, 'TO_TYPE': 'ON', 'TIMER': 0}],
+        }
+        changed = deactivate_peer_ua_talkgroup(bridges, sub_map, 'MASTER-1', peer_a, 2, 91)
+        self.assertTrue(changed)
+        self.assertFalse(bridges['91'][0]['ACTIVE'])
+        self.assertEqual(sub_map, {})
+
+
 if __name__ == '__main__':
     unittest.main()
