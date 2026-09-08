@@ -239,6 +239,7 @@ def _queue_options(bm, peer_id, options_str: str) -> None:
 def _wire_handlers():
     bm = _runtime_bridge()
     from dmr_utils3.utils import bytes_3
+    from bridge_helpers import mark_options_dirty, peer_dynamic_groups
     from selfcare_db import (
         find_hotspot_master_peer,
         find_ipsc_peer_for_radio_id,
@@ -248,7 +249,6 @@ def _wire_handlers():
         store_peer_options,
         ts_lists_from_options,
     )
-    from bridge_helpers import peer_dynamic_groups
 
     def find_peer(radio_id: int):
         system, peer_id = find_hotspot_master_peer(bm.CONFIG['SYSTEMS'], radio_id)
@@ -290,6 +290,7 @@ def _wire_handlers():
     def _write_peer_options(system, peer_id, options):
         cfg = bm.CONFIG['SYSTEMS'].get(system, {})
         if store_peer_options(cfg, peer_id, options):
+            mark_options_dirty(bm.CONFIG)
             _queue_options(bm, peer_id, options)
             return
         log.warning('(CONTROL) skip OPTIONS write: peer %s not in PEERS', _peer_int(peer_id))

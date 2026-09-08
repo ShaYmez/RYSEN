@@ -66,7 +66,9 @@ from selfcare_db import (
     SelfcareDB,
     find_hotspot_master_peer,
     find_ipsc_peer_for_radio_id,
+    master_has_peer_options,
     store_peer_options,
+    union_peer_static_lists,
 )
 from bridge_helpers import iter_routing_master_systems as _iter_routing_master_systems
 from bridge_helpers import (
@@ -1910,6 +1912,14 @@ def options_config():
                         if re.search(r"[^\d,]", _options['TS2_STATIC']):
                             logger.debug('(OPTIONS) %s - TS2_STATIC contains characters other than numbers and comma, ignoring',_system)
                             continue
+
+                    # Shared MASTER: live statics are the union of connected peer
+                    # OPTIONS (plus cfg defaults). Do not let one RPTO last-writer
+                    # reset everyone else's TS1/TS2.
+                    if _mode == 'MASTER' and master_has_peer_options(CONFIG['SYSTEMS'][_system]):
+                        _u1, _u2 = union_peer_static_lists(CONFIG['SYSTEMS'][_system])
+                        _options['TS1_STATIC'] = ','.join(_u1) if _u1 else False
+                        _options['TS2_STATIC'] = ','.join(_u2) if _u2 else False
                     
                     if isinstance(_options['DEFAULT_REFLECTOR'], str) and not _options['DEFAULT_REFLECTOR'].isdigit():
                         logger.debug('(OPTIONS) %s - DEFAULT_REFLECTOR is not an integer, ignoring',_system)

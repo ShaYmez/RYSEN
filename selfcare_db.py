@@ -313,24 +313,64 @@ def ts_lists_from_options(options_value):
 
 
 def peer_own_options(syscfg, peer_id):
-    """This peer's OPTIONS only. Do not fall back to the MASTER last-writer string."""
-    if peer_id is None:
-        return syscfg.get('OPTIONS') or ''
-    peer = (syscfg.get('PEERS') or {}).get(peer_id) or {}
-    return peer.get('OPTIONS') or ''
+    """This peer's OPTIONS only. Do not fall back to the MASTER last-writer string.
+
+    IPSC is one repeater per slot, so empty peer OPTIONS may use the slot string.
+    """
+    if peer_id is not None:
+        peer = (syscfg.get('PEERS') or {}).get(peer_id) or {}
+        opt = peer.get('OPTIONS')
+        if opt:
+            return opt
+        if syscfg.get('MODE') == 'MASTER':
+            return ''
+    return syscfg.get('OPTIONS') or ''
 
 
 def store_peer_options(syscfg, peer_id, options):
-    """Write OPTIONS onto this peer only. Never copy onto a MASTER stanza."""
+    """Write OPTIONS onto this peer. Never copy onto a MASTER stanza."""
     if peer_id is not None:
         peer = (syscfg.get('PEERS') or {}).get(peer_id)
         if peer is not None:
             peer['OPTIONS'] = options
+            if syscfg.get('MODE') == 'MASTER':
+                return True
+            syscfg['OPTIONS'] = options
             return True
     if syscfg.get('MODE') == 'MASTER':
         return False
     syscfg['OPTIONS'] = options
     return True
+
+
+def master_has_peer_options(syscfg):
+    for peer in (syscfg.get('PEERS') or {}).values():
+        if peer.get('CONNECTION') == 'YES' and peer.get('OPTIONS'):
+            return True
+    return False
+
+
+def union_peer_static_lists(syscfg):
+    """TS1/TS2 from cfg defaults plus every connected peer's OPTIONS (no last-writer)."""
+    ts1, ts2 = [], []
+    seen1, seen2 = set(), set()
+
+    def _add(dest, seen, groups):
+        for group in groups:
+            if group not in seen:
+                seen.add(group)
+                dest.append(group)
+
+    d1, d2 = ts_lists_from_options(syscfg.get('_default_options'))
+    _add(ts1, seen1, d1)
+    _add(ts2, seen2, d2)
+    for peer in (syscfg.get('PEERS') or {}).values():
+        if peer.get('CONNECTION') != 'YES':
+            continue
+        p1, p2 = ts_lists_from_options(peer.get('OPTIONS'))
+        _add(ts1, seen1, p1)
+        _add(ts2, seen2, p2)
+    return ts1, ts2
 
 
 def other_peer_has_static(syscfg, slot, tgid, except_peer_id=None):

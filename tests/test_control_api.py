@@ -225,6 +225,36 @@ class TestRadioIdCore(unittest.TestCase):
         self.assertFalse(store_peer_options(cfg, b'\x00\x00\x00\x01', 'TS2=1;'))
         self.assertEqual(cfg['OPTIONS'], 'TS2=9;')
 
+    def test_union_peer_statics_ignores_master_last_writer(self):
+        from selfcare_db import master_has_peer_options, union_peer_static_lists
+        peer_a = b'\x00\x23\xc5\x93'
+        peer_b = b'\x00\x23\xc5\x94'
+        cfg = {
+            'MODE': 'MASTER',
+            '_default_options': 'TS2=9;',
+            'OPTIONS': 'TS2=999;',
+            'PEERS': {
+                peer_a: {'CONNECTION': 'YES', 'OPTIONS': 'TS2=2350;'},
+                peer_b: {'CONNECTION': 'YES', 'OPTIONS': 'TS1=91;TS2=2351;'},
+            },
+        }
+        self.assertTrue(master_has_peer_options(cfg))
+        ts1, ts2 = union_peer_static_lists(cfg)
+        self.assertEqual(ts1, ['91'])
+        self.assertEqual(ts2, ['9', '2350', '2351'])
+
+    def test_ipsc_falls_back_to_slot_options(self):
+        peer = (235287).to_bytes(4, 'big')
+        cfg = {
+            'MODE': 'IPSC',
+            'OPTIONS': 'TS1=9;TS2=2350;',
+            'PEERS': {peer: {'CONNECTION': 'YES'}},
+        }
+        self.assertEqual(peer_own_options(cfg, peer), 'TS1=9;TS2=2350;')
+        self.assertTrue(store_peer_options(cfg, peer, 'TS2=91;'))
+        self.assertEqual(cfg['OPTIONS'], 'TS2=91;')
+        self.assertEqual(peer_own_options(cfg, peer), 'TS2=91;')
+
 
     def test_queue_client_disc_does_not_rewrite_options(self):
         from selfcare_db import SelfcareDB

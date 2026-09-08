@@ -90,6 +90,18 @@ class TestIpscSelfcarePoll(unittest.TestCase):
         self.assertNotIn("CONFIG['SYSTEMS'][system]['OPTIONS'] = remaining", source)
 
 
+class TestRptoDoesNotLastWriteMaster(unittest.TestCase):
+
+    def test_rpto_stores_peer_options_not_stanza(self):
+        with open('hblink.py', encoding='utf-8') as fh:
+            hblink = fh.read()
+        with open('bridge_master.py', encoding='utf-8') as fh:
+            bridge = fh.read()
+        self.assertIn('store_peer_options', hblink)
+        self.assertNotIn("self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = _opt_str", hblink)
+        self.assertIn('union_peer_static_lists', bridge)
+
+
 class TestHotspotProxyHardening(unittest.TestCase):
 
     def test_login_opt_uses_self_db_proxy(self):
