@@ -289,6 +289,45 @@ def comma_tg_list(value):
     return out
 
 
+def ts_lists_from_options(options_value):
+    """TS1=/TS2= (or TS1_STATIC/TS2_STATIC) lists from one hotspot's OPTIONS string."""
+    ts1, ts2 = [], []
+    if not options_value:
+        return ts1, ts2
+    text = options_value.decode('utf-8', errors='ignore') if isinstance(options_value, bytes) else str(options_value)
+    for part in text.split(';'):
+        part = part.strip()
+        if not part or '=' not in part:
+            continue
+        key, value = part.split('=', 1)
+        key_u = key.strip().upper()
+        if key_u in ('TS1', 'TS1_STATIC'):
+            ts1 = comma_tg_list(value)
+        elif key_u in ('TS2', 'TS2_STATIC'):
+            ts2 = comma_tg_list(value)
+    return ts1, ts2
+
+
+def peer_own_options(syscfg, peer_id):
+    """This peer's OPTIONS only. Do not fall back to the MASTER last-writer string."""
+    if peer_id is None:
+        return syscfg.get('OPTIONS') or ''
+    peer = (syscfg.get('PEERS') or {}).get(peer_id) or {}
+    return peer.get('OPTIONS') or ''
+
+
+def other_peer_has_static(syscfg, slot, tgid, except_peer_id=None):
+    want = str(int(tgid))
+    for pid, peer in (syscfg.get('PEERS') or {}).items():
+        if except_peer_id is not None and pid == except_peer_id:
+            continue
+        ts1, ts2 = ts_lists_from_options(peer.get('OPTIONS'))
+        groups = ts1 if int(slot) == 1 else ts2
+        if want in groups:
+            return True
+    return False
+
+
 def merge_ts_into_options(options_value, ts1, ts2, disc=False):
     """Rebuild a selfcare OPTIONS string, replacing TS1/TS2 (and optional DISC=1)."""
     text = ''

@@ -239,12 +239,13 @@ def _queue_options(bm, peer_id, options_str: str) -> None:
 def _wire_handlers():
     bm = _runtime_bridge()
     from dmr_utils3.utils import bytes_3
-    from bridge_helpers import mark_options_dirty
     from selfcare_db import (
-        comma_tg_list,
         find_hotspot_master_peer,
         find_ipsc_peer_for_radio_id,
         merge_ts_into_options,
+        other_peer_has_static,
+        peer_own_options,
+        ts_lists_from_options,
     )
 
     def find_peer(radio_id: int):
@@ -284,60 +285,61 @@ def _wire_handlers():
 
     def _options_base(system, peer_id):
         cfg = bm.CONFIG['SYSTEMS'].get(system, {})
-        if peer_id is not None:
-            peer = (cfg.get('PEERS') or {}).get(peer_id) or {}
-            peer_opt = peer.get('OPTIONS')
-            if peer_opt:
-                return peer_opt
-        return cfg.get('OPTIONS')
+        return peer_own_options(cfg, peer_id)
 
-    def _persist_statics(system, peer_id):
+    def _write_peer_options(system, peer_id, options):
         cfg = bm.CONFIG['SYSTEMS'].get(system, {})
-        options = merge_ts_into_options(
-            _options_base(system, peer_id),
-            cfg.get('TS1_STATIC'),
-            cfg.get('TS2_STATIC'),
-        )
-        cfg['OPTIONS'] = options
         if peer_id is not None:
             peer = (cfg.get('PEERS') or {}).get(peer_id)
             if peer is not None:
                 peer['OPTIONS'] = options
-        mark_options_dirty(bm.CONFIG)
+                _queue_options(bm, peer_id, options)
+                return
+        cfg['OPTIONS'] = options
         _queue_options(bm, peer_id, options)
 
-    def _static_key(slot: int) -> str:
-        return 'TS1_STATIC' if slot == 1 else 'TS2_STATIC'
+    def _persist_statics(system, peer_id, ts1, ts2):
+        options = merge_ts_into_options(_options_base(system, peer_id), ts1, ts2)
+        _write_peer_options(system, peer_id, options)
 
     def add_static(system, tgid, slot, peer_id):
         cfg = bm.CONFIG['SYSTEMS'][system]
-        key = _static_key(slot)
-        groups = comma_tg_list(cfg.get(key))
+        ts1, ts2 = ts_lists_from_options(_options_base(system, peer_id))
+        groups = ts1 if slot == 1 else ts2
         name = str(int(tgid))
         if name not in groups:
             groups.append(name)
+        if slot == 1:
+            ts1 = groups
+        else:
+            ts2 = groups
         tmout = cfg.get('DEFAULT_UA_TIMER', 10)
         bm.make_static_tg(int(tgid), slot, tmout, system)
-        cfg[key] = ','.join(groups) if groups else False
         bm.notify_bridge_table_updated()
-        _persist_statics(system, peer_id)
+        _persist_statics(system, peer_id, ts1, ts2)
 
     def remove_static(system, tgid, slot, peer_id):
         cfg = bm.CONFIG['SYSTEMS'][system]
-        key = _static_key(slot)
-        groups = [g for g in comma_tg_list(cfg.get(key)) if g != str(int(tgid))]
+        ts1, ts2 = ts_lists_from_options(_options_base(system, peer_id))
+        name = str(int(tgid))
+        if slot == 1:
+            ts1 = [g for g in ts1 if g != name]
+        else:
+            ts2 = [g for g in ts2 if g != name]
         tmout = cfg.get('DEFAULT_UA_TIMER', 10)
-        bm.reset_static_tg(int(tgid), slot, tmout, system)
-        cfg[key] = ','.join(groups) if groups else False
+        if not other_peer_has_static(cfg, slot, tgid, except_peer_id=peer_id):
+            bm.reset_static_tg(int(tgid), slot, tmout, system)
         bm.notify_bridge_table_updated()
-        _persist_statics(system, peer_id)
+        _persist_statics(system, peer_id, ts1, ts2)
 
     def list_peer(system, peer_id, radio_id):
         cfg = bm.CONFIG['SYSTEMS'].get(system, {})
+        ts1, ts2 = ts_lists_from_options(_options_base(system, peer_id))
         statics = []
-        for slot, key in ((1, 'TS1_STATIC'), (2, 'TS2_STATIC')):
-            for tg in comma_tg_list(cfg.get(key)):
-                statics.append({'slot': slot, 'group': int(tg)})
+        for tg in ts1:
+            statics.append({'slot': 1, 'group': int(tg)})
+        for tg in ts2:
+            statics.append({'slot': 2, 'group': int(tg)})
         dynamics = []
         seen = set()
         for name, entries in (getattr(bm, 'BRIDGES', None) or {}).items():

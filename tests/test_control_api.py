@@ -9,7 +9,14 @@ from control_api import (
     slot_from_body,
     static_slot,
 )
-from selfcare_db import merge_ts_into_options, radio_id_core, radio_ids_match
+from selfcare_db import (
+    merge_ts_into_options,
+    other_peer_has_static,
+    peer_own_options,
+    radio_id_core,
+    radio_ids_match,
+    ts_lists_from_options,
+)
 
 
 class TestControlDispatch(unittest.TestCase):
@@ -171,6 +178,7 @@ class TestControlDispatch(unittest.TestCase):
 
 class TestRadioIdCore(unittest.TestCase):
     def test_essid_strip(self):
+        self.assertEqual(radio_id_core(235287), '235287')
         self.assertEqual(radio_id_core(2340189), '2340189')
         self.assertEqual(radio_id_core(234018901), '2340189')
         self.assertEqual(radio_id_core(234018999), '2340189')
@@ -187,6 +195,24 @@ class TestRadioIdCore(unittest.TestCase):
         self.assertNotIn('TS2=9', out)
         disc = merge_ts_into_options('TS2=2350;', False, '2350', disc=True)
         self.assertIn('DISC=1', disc)
+
+    def test_peer_own_options_ignores_master_last_writer(self):
+        peer_a = b'\x00\x23\xc5\x93'
+        peer_b = b'\x00\x23\xc5\x94'
+        cfg = {
+            'OPTIONS': 'TS2=9;',
+            'PEERS': {
+                peer_a: {'OPTIONS': 'TS2=2350;'},
+                peer_b: {'OPTIONS': 'TS1=91;'},
+            },
+        }
+        self.assertEqual(peer_own_options(cfg, peer_a), 'TS2=2350;')
+        ts1, ts2 = ts_lists_from_options(peer_own_options(cfg, peer_a))
+        self.assertEqual(ts1, [])
+        self.assertEqual(ts2, ['2350'])
+        self.assertFalse(other_peer_has_static(cfg, 2, 2350, except_peer_id=peer_a))
+        self.assertTrue(other_peer_has_static(cfg, 1, 91, except_peer_id=peer_a))
+        self.assertEqual(peer_own_options(cfg, b'\x00\x00\x00\x01'), '')
 
 
     def test_queue_client_disc_does_not_rewrite_options(self):
