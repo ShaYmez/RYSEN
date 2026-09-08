@@ -281,9 +281,13 @@ def find_hotspot_master_peer(config_systems, radio_id):
 def comma_tg_list(value):
     if not value or value is False:
         return []
+    if isinstance(value, (list, tuple)):
+        parts = value
+    else:
+        parts = str(value).split(',')
     out = []
-    for part in str(value).split(','):
-        part = part.strip()
+    for part in parts:
+        part = str(part).strip()
         if part.isdigit():
             out.append(part)
     return out

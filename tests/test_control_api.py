@@ -195,6 +195,10 @@ class TestRadioIdCore(unittest.TestCase):
         self.assertNotIn('TS2=9', out)
         disc = merge_ts_into_options('TS2=2350;', False, '2350', disc=True)
         self.assertIn('DISC=1', disc)
+        from_lists = merge_ts_into_options('VOICE=1;', ['9', '10'], ['2350'])
+        self.assertIn('TS1=9,10', from_lists)
+        self.assertIn('TS2=2350', from_lists)
+        self.assertIn('VOICE=1', from_lists)
 
     def test_peer_own_options_ignores_master_last_writer(self):
         peer_a = b'\x00\x23\xc5\x93'

@@ -295,6 +295,9 @@ def _wire_handlers():
                 peer['OPTIONS'] = options
                 _queue_options(bm, peer_id, options)
                 return
+        if cfg.get('MODE') == 'MASTER':
+            log.warning('(CONTROL) skip OPTIONS write: peer %s not in PEERS', _peer_int(peer_id))
+            return
         cfg['OPTIONS'] = options
         _queue_options(bm, peer_id, options)
 
@@ -333,7 +336,6 @@ def _wire_handlers():
         _persist_statics(system, peer_id, ts1, ts2)
 
     def list_peer(system, peer_id, radio_id):
-        cfg = bm.CONFIG['SYSTEMS'].get(system, {})
         ts1, ts2 = ts_lists_from_options(_options_base(system, peer_id))
         statics = []
         for tg in ts1:
