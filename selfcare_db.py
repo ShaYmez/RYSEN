@@ -332,13 +332,23 @@ def comma_tg_list(value):
 
 
 def ts_lists_from_options(options_value):
-    """TS1=/TS2= (or TS1_STATIC/TS2_STATIC) lists from one hotspot's OPTIONS string."""
+    """TS1=/TS2= lists from one hotspot's OPTIONS string.
+
+    Accepts selfcare `TS1=`/`TS2=`, stanza `TS1_STATIC`/`TS2_STATIC`, and DMR+
+    `TS1_1`…`TS1_9` / `TS2_1`…`TS2_9`. Numbered DMR+ keys replace the comma
+    list, matching `options_config()`.
+    """
     ts1, ts2 = [], []
+    numbered1, numbered2 = {}, {}
     if not options_value:
         return ts1, ts2
-    text = options_value.decode('utf-8', errors='ignore') if isinstance(options_value, bytes) else str(options_value)
+    if isinstance(options_value, bytes):
+        text = options_value.decode('utf-8', errors='ignore')
+    else:
+        text = str(options_value)
+    text = text.rstrip('\x00')
     for part in text.split(';'):
-        part = part.strip()
+        part = part.strip().strip('\x00')
         if not part or '=' not in part:
             continue
         key, value = part.split('=', 1)
@@ -347,6 +357,19 @@ def ts_lists_from_options(options_value):
             ts1 = comma_tg_list(value)
         elif key_u in ('TS2', 'TS2_STATIC'):
             ts2 = comma_tg_list(value)
+        elif len(key_u) == 5 and key_u[3] == '_' and key_u[4].isdigit():
+            if key_u.startswith('TS1'):
+                numbered1[int(key_u[4])] = comma_tg_list(value)
+            elif key_u.startswith('TS2'):
+                numbered2[int(key_u[4])] = comma_tg_list(value)
+    if numbered1:
+        ts1 = []
+        for idx in range(1, 10):
+            ts1.extend(numbered1.get(idx) or [])
+    if numbered2:
+        ts2 = []
+        for idx in range(1, 10):
+            ts2.extend(numbered2.get(idx) or [])
     return ts1, ts2
 
 

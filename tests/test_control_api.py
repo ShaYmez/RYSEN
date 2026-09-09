@@ -289,6 +289,20 @@ class TestRadioIdCore(unittest.TestCase):
         self.assertIn('TS2=2350', from_lists)
         self.assertIn('VOICE=1', from_lists)
 
+    def test_ts_lists_from_options_parses_dmrplus_numbered_keys(self):
+        ts1, ts2 = ts_lists_from_options(b'TS2_1=116;TS2_2=2350;\x00\x00')
+        self.assertEqual(ts1, [])
+        self.assertEqual(ts2, ['116', '2350'])
+        ts1, ts2 = ts_lists_from_options(
+            'StartRef=4000;RelinkTime=60;Userlink=1;TS1_1=;TS2_1=235;TS2_2=;')
+        self.assertEqual(ts1, [])
+        self.assertEqual(ts2, ['235'])
+        ts1, ts2 = ts_lists_from_options('TS1_1=2351;TS2_1=2351;')
+        self.assertEqual(ts1, ['2351'])
+        self.assertEqual(ts2, ['2351'])
+        ts1, ts2 = ts_lists_from_options('TS2=116,237,2350;')
+        self.assertEqual(ts2, ['116', '237', '2350'])
+
     def test_peer_own_options_ignores_master_last_writer(self):
         peer_a = b'\x00\x23\xc5\x93'
         peer_b = b'\x00\x23\xc5\x94'
