@@ -320,12 +320,21 @@ def linked_ipsc_slots(config_systems, source_system, peer_id=None):
 
     linked = set()
 
-    stored = _valid_ipsc_slot(config_systems, sys_cfg.get('LINK_IPSC'))
-    if stored:
-        linked.add(stored)
+    # A live MASTER OPTIONS string may currently be the sole peer's synthesized
+    # legacy policy. Once another peer arrives it must not inherit that link
+    # before the coalesced options parser runs. Peer-targeted routing therefore
+    # reads only the immutable stanza baseline plus that peer's own policy.
+    baseline = sys_cfg.get('_default_options')
+    if peer_id is None or baseline is None:
+        stored = _valid_ipsc_slot(config_systems, sys_cfg.get('LINK_IPSC'))
+        if stored:
+            linked.add(stored)
+        stanza_options = sys_cfg.get('OPTIONS')
+    else:
+        stanza_options = baseline
 
     parsed = _valid_ipsc_slot(
-        config_systems, parse_ipsc_link_from_options(sys_cfg.get('OPTIONS')))
+        config_systems, parse_ipsc_link_from_options(stanza_options))
     if parsed:
         linked.add(parsed)
 

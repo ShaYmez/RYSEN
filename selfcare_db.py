@@ -419,6 +419,49 @@ def master_has_peer_options(syscfg):
     return False
 
 
+def ensure_master_default_options(syscfg):
+    """Capture the cfg policy used when no single hotspot owns the stanza."""
+    existing = syscfg.get('_default_options')
+    if existing is not None:
+        return existing
+    options = (
+        'TS1_STATIC={};TS2_STATIC={};SINGLE={};DEFAULT_UA_TIMER={};'
+        'DEFAULT_REFLECTOR={};VOICE={};LANG={};OVERRIDE_IDENT_TG={}'
+    ).format(
+        syscfg.get('TS1_STATIC', ''),
+        syscfg.get('TS2_STATIC', ''),
+        int(bool(syscfg.get('SINGLE_MODE', False))),
+        syscfg.get('DEFAULT_UA_TIMER', 0),
+        syscfg.get('DEFAULT_REFLECTOR', 0),
+        int(bool(syscfg.get('VOICE_IDENT', False))),
+        syscfg.get('ANNOUNCEMENT_LANGUAGE', 'en_GB'),
+        syscfg.get('OVERRIDE_IDENT_TG', 0) or 0,
+    )
+    syscfg['_default_options'] = options
+    return options
+
+
+def effective_master_options(syscfg):
+    """Return legacy single-peer policy without reintroducing RPTO last-writer.
+
+    Static lists are replaced later with the union of every connected peer.
+    Stanza-wide settings may follow peer OPTIONS only when exactly one peer is
+    connected; shared masters retain their cfg policy because those settings
+    cannot safely differ per destination.
+    """
+    base = ensure_master_default_options(syscfg)
+    connected = [
+        peer for peer in (syscfg.get('PEERS') or {}).values()
+        if peer_counts_for_live_statics(syscfg, peer)
+    ]
+    if len(connected) != 1 or not connected[0].get('OPTIONS'):
+        return base
+    peer_options = connected[0]['OPTIONS']
+    if isinstance(peer_options, bytes):
+        peer_options = peer_options.decode('ascii', errors='ignore')
+    return '{};{}'.format(str(base).rstrip(';'), str(peer_options).lstrip(';'))
+
+
 def union_peer_static_lists(syscfg):
     """TS1/TS2 from cfg defaults plus every connected peer's OPTIONS (no last-writer)."""
     ts1, ts2 = [], []

@@ -58,6 +58,15 @@ class TestBridgeIsolation(unittest.TestCase):
         peer_id = b'\x00\x23\x45\x01'
         self.assertEqual(linked_ipsc_slots(cfg, 'SYSTEM-5', peer_id), ('IPSC-198', 'IPSC-199'))
 
+    def test_peer_does_not_inherit_synthesized_stanza_link(self):
+        cfg = _sample_config()
+        cfg['SYSTEM-5']['_default_options'] = 'TS1=;TS2=2350'
+        peer_id = b'\x00\x23\x45\x01'
+        self.assertEqual(
+            linked_ipsc_slots(cfg, 'SYSTEM-5', peer_id),
+            ('IPSC-199',),
+        )
+
     def test_ipsc_source_has_no_linked_activation_targets(self):
         cfg = _sample_config()
         self.assertEqual(linked_ipsc_slots(cfg, 'IPSC-198'), ())

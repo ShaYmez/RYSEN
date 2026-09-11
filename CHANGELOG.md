@@ -11,6 +11,8 @@ FreeSTAR hub device control on `:8765` (needs matching `freestar-api-v2` device 
 - Ops `/kick` sends `MSTCL` and removes one session. `/ban` persists a 7-digit Radio-ID/ESSID-family ban (1–86400 seconds), kicks every matching session, and rejects reconnects; `/unban` works while the radio is offline. Ban state defaults to `/etc/rysen/freestar-control-bans.json`.
 - Peer timeout, logout, and reconfiguration cleanup is peer-scoped. It no longer clears every hotspot's reflectors or `SUB_MAP` rows. Dial-reflector single-mode replacement is likewise scoped to the linking peer.
 - DIAL=9 sanitization rewrites each connected peer's own OPTIONS rather than copying the MASTER stanza onto every `Clients` row.
+- Legacy/API-free HBP control remains supported: a sole hotspot's RPTO policy (`RelinkTime`/`TIMER`, `StartRef`/`DIAL`, `SINGLE`, voice/ident and language) overlays the cfg defaults, while shared MASTER stanzas keep cfg-wide policy instead of accepting an unsafe last-writer. Standard `TS1`/`TS2` and DMR+ `TS1_1`…`TS2_9` statics are activated from the per-peer union even when the stanza did not already have an `OPTIONS` key.
+- IPSC voice fanout now applies the same per-destination drop-call and drop-dynamic filters as HBP fanout; an owner action no longer mutes unrelated IPSC peers.
 
 ## Version 1.5.3 (2026-08-07)
 
