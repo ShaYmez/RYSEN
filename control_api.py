@@ -309,8 +309,10 @@ def _wire_handlers():
     from dmr_utils3.utils import bytes_3
     from bridge_helpers import (
         linked_ipsc_slots,
+        forget_peer_dynamic_tg,
         mark_options_dirty,
         peer_dynamic_groups,
+        unmute_peer_tg,
     )
     from selfcare_db import (
         find_connected_dmr_peer,
@@ -377,6 +379,8 @@ def _wire_handlers():
             ts2 = groups
         tmout = cfg.get('DEFAULT_UA_TIMER', 10)
         bm.make_static_tg(int(tgid), slot, tmout, system)
+        forget_peer_dynamic_tg(system, peer_id, slot, tgid)
+        unmute_peer_tg(system, peer_id, slot, tgid)
         bm.notify_bridge_table_updated()
         _persist_statics(system, peer_id, ts1, ts2)
 

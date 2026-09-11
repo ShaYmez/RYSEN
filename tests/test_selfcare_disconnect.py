@@ -6,7 +6,10 @@ import unittest
 from bridge_helpers import (
     deactivate_linked_ipsc_bridge_legs,
     deactivate_peer_dynamic_bridges,
+    dest_peer_rx_blocked,
     peer_dynamic_groups,
+    remember_peer_dynamic_tg,
+    reset_peer_rx_filters,
     selfcare_disconnect_requested,
     strip_disc_from_options,
 )
@@ -117,6 +120,12 @@ class TestHotspotProxyDiscSkip(unittest.TestCase):
 
 class TestDeactivatePeerDynamicBridges(unittest.TestCase):
 
+    def setUp(self):
+        reset_peer_rx_filters()
+
+    def tearDown(self):
+        reset_peer_rx_filters()
+
     def test_drops_only_this_peer_ua(self):
         peer_a = b'\x00\x23\xc5\x93'
         peer_b = b'\x00\x23\xc5\x94'
@@ -151,6 +160,8 @@ class TestDeactivatePeerDynamicBridges(unittest.TestCase):
         self.assertFalse(changed)
         self.assertTrue(bridges['91'][0]['ACTIVE'])
         self.assertNotIn('91', dropped)
+        self.assertTrue(dest_peer_rx_blocked('MASTER-1', peer_a, b'\x00\x00\x00\x01', 2, 91))
+        self.assertFalse(dest_peer_rx_blocked('MASTER-1', peer_b, b'\x00\x00\x00\x01', 2, 91))
 
     def test_drops_owned_dial_only(self):
         peer_a = b'\x00\x23\xc5\x93'
@@ -215,6 +226,19 @@ class TestDeactivatePeerDynamicBridges(unittest.TestCase):
             peer,
         )
         self.assertEqual(groups, [])
+
+    def test_peer_dynamic_groups_survive_unkey_via_membership(self):
+        peer = b'\x00\x23\xc5\x93'
+        remember_peer_dynamic_tg('MASTER-1', peer, 2, 89134)
+        groups = peer_dynamic_groups(
+            {},
+            {'89134': [{
+                'SYSTEM': 'MASTER-1', 'TS': 2, 'ACTIVE': True, 'TO_TYPE': 'ON',
+            }]},
+            'MASTER-1',
+            peer,
+        )
+        self.assertEqual(groups, [{'slot': 2, 'group': 89134}])
 
 
 if __name__ == '__main__':

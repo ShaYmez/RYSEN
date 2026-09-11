@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 
 import bridge_master as bm
 import control_api
+from bridge_helpers import reset_peer_rx_filters
 from control_bans import ControlBanStore, radio_id_core
 from dmr_utils3.utils import bytes_3
 from ipsc_master import IpscMasterMixin
@@ -44,7 +45,7 @@ class TestDropPeerCall(unittest.TestCase):
         self.prev_systems = dict(bm.systems)
         self.prev_sub_map = getattr(bm, 'SUB_MAP', None)
         self.prev_config = getattr(bm, 'CONFIG', None)
-        self.prev_dropped = dict(bm._CONTROL_DROPPED_STREAMS)
+        reset_peer_rx_filters()
         self.peer = bytes_3(2340189).rjust(4, b'\x00')
         self.stream = b'\x00\x00\x00\x07'
         bm.CONFIG = {'REPORTS': {'REPORT': False}}
@@ -64,8 +65,7 @@ class TestDropPeerCall(unittest.TestCase):
     def tearDown(self):
         bm.systems.clear()
         bm.systems.update(self.prev_systems)
-        bm._CONTROL_DROPPED_STREAMS.clear()
-        bm._CONTROL_DROPPED_STREAMS.update(self.prev_dropped)
+        reset_peer_rx_filters()
         if self.prev_sub_map is None:
             delattr(bm, 'SUB_MAP')
         else:
@@ -83,6 +83,47 @@ class TestDropPeerCall(unittest.TestCase):
         self.assertEqual(
             bm.systems['MASTER-1'].STATUS[2]['RX_TYPE'],
             bm.HBPF_SLT_VTERM)
+
+
+class TestPeerReconnectCleanup(unittest.TestCase):
+    def test_same_id_new_socket_clears_old_per_peer_state(self):
+        peer = (234018901).to_bytes(4, 'big')
+        previous_config = getattr(bm, 'CONFIG', None)
+        bm.CONFIG = {'SYSTEMS': {}}
+        router = bm.routerHBP.__new__(bm.routerHBP)
+        router._system = 'MASTER-1'
+        router._peers = {
+            peer: {
+                'SOCKADDR': ('10.0.0.1', 50000),
+                'CONNECTION': 'YES',
+            },
+        }
+        new_sock = ('10.0.0.2', 50001)
+        try:
+            with unittest.mock.patch.object(
+                    bm.CONTROL_BANS, 'get', return_value=None), \
+                    unittest.mock.patch.object(
+                        bm, 'selfcare_disconnect') as disconnect, \
+                    unittest.mock.patch.object(
+                        bm, '_block_peer_active_streams') as block, \
+                    unittest.mock.patch.object(
+                        bm, 'forget_peer_rx_state') as forget, \
+                    unittest.mock.patch.object(
+                        bm, 'mark_options_dirty') as dirty, \
+                    unittest.mock.patch.object(
+                        bm.HBSYSTEM, 'master_datagramReceived') as base:
+                router.master_datagramReceived(b'RPTL' + peer, new_sock)
+            disconnect.assert_called_once_with('MASTER-1', peer)
+            block.assert_called_once_with('MASTER-1', peer)
+            forget.assert_called_once_with('MASTER-1', peer)
+            dirty.assert_called_once_with(bm.CONFIG)
+            base.assert_called_once_with(
+                router, b'RPTL' + peer, new_sock)
+        finally:
+            if previous_config is None:
+                delattr(bm, 'CONFIG')
+            else:
+                bm.CONFIG = previous_config
 
 
 class TestPeerReflectorIsolation(unittest.TestCase):

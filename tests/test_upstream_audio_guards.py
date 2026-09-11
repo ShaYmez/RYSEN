@@ -272,6 +272,8 @@ class TestPacketControlSourceGuards(unittest.TestCase):
                       self.hblink_source)
         self.assertIn('_rf_src is not None and _peer == _rf_src',
                       self.hblink_source)
+        self.assertIn('dest_peer_rx_blocked(', self.hblink_source)
+        self.assertIn('and stream_is_dropped(', self.hblink_source)
 
     def test_generation_restarts_propagate_to_target_state(self):
         self.assertGreaterEqual(

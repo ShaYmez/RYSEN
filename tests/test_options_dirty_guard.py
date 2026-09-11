@@ -55,7 +55,9 @@ class TestOptionsParserGuard(unittest.TestCase):
         )
 
     def test_rpto_and_disconnect_paths_mark_dirty(self):
-        self.assertIn("from bridge_helpers import mark_options_dirty", self.hblink_source)
+        self.assertIn('from bridge_helpers import (', self.hblink_source)
+        self.assertIn('mark_options_dirty, dmr_seq_delta, reset_slot_voice_ident,',
+                      self.hblink_source)
         self.assertGreaterEqual(
             self.hblink_source.count('mark_options_dirty(self._CONFIG)'),
             4,

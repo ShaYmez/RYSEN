@@ -49,7 +49,11 @@ from dmr_utils3.utils import int_id, bytes_3, bytes_4, get_alias, mk_id_dict
 from ipsc_peer_meta import (
     lookup_peer_alias, callsign_bytes, parse_ipsc_peer_status, ipsc_peer_display_fields,
 )
-from bridge_helpers import mark_options_dirty, dmr_seq_delta, reset_slot_voice_ident
+from bridge_helpers import (
+    mark_options_dirty, dmr_seq_delta, reset_slot_voice_ident,
+    dest_peer_rx_blocked, release_dropped_stream, forget_peer_rx_state,
+    stream_is_dropped,
+)
 
 # Imports for the reporting server
 import pickle
@@ -881,6 +885,7 @@ class HBSYSTEM(DatagramProtocol):
             self.transport.write(b''.join([MSTCL, peer]),self._CONFIG['SYSTEMS'][self._system]['PEERS'][peer]['SOCKADDR'])
             # Remove any timed out peers from the configuration
             del self._CONFIG['SYSTEMS'][self._system]['PEERS'][peer]
+            forget_peer_rx_state(self._system, peer)
         if not self._peers and 'OPTIONS' in self._CONFIG['SYSTEMS'][self._system]:
             
             if '_default_options' in self._CONFIG['SYSTEMS'][self._system]:
@@ -933,11 +938,28 @@ class HBSYSTEM(DatagramProtocol):
         # Bridged return traffic must not be delivered back to the originating
         # hotspot/repeater peer — that causes a post-dekey "parrot" tail when
         # OBP or reactor lag round-trips the caller's own audio.
-        _rf_src = _packet[5:8] if _packet[:4] == DMRD and len(_packet) >= 8 else None
+        _is_dmrd = _packet[:4] == DMRD
+        _rf_src = _packet[5:8] if _is_dmrd and len(_packet) >= 8 else None
+        _dst_id = _packet[8:11] if _is_dmrd and len(_packet) >= 11 else None
+        _stream_id = _packet[16:20] if _is_dmrd and len(_packet) >= 20 else None
+        _slot = None
+        if _is_dmrd and len(_packet) >= 16:
+            _bits = _packet[15]
+            _slot = 2 if (_bits & 0x80) else 1
+            if (((_bits & 0x30) >> 4) == HBPF_DATA_SYNC
+                    and (_bits & 0xF) == HBPF_SLT_VTERM and _stream_id):
+                release_dropped_stream(
+                    self._system, _stream_id, slot=_slot)
         for _peer in self._peers:
             if (_source_rptr != b'\x00\x00\x00\x00' and _peer == _source_rptr):
                 continue
             if _rf_src is not None and _peer == _rf_src:
+                continue
+            if (_stream_id is not None and _dst_id is not None
+                    and dest_peer_rx_blocked(
+                        self._system, _peer, _stream_id, _slot,
+                        int_id(_dst_id), frame_type=(_bits & 0x30) >> 4,
+                        dtype_vseq=_bits & 0xF)):
                 continue
             _tx_pkt = _packet
             if len(_tx_pkt) < 54:
@@ -1109,6 +1131,13 @@ class HBSYSTEM(DatagramProtocol):
                 _repeat_enabled = (
                     self._config['REPEAT'] == True and len(self._peers) > 1)
                 _repeat_ok = True
+                if (_repeat_enabled
+                        and stream_is_dropped(
+                            self._system, _peer_id, _stream_id,
+                            slot=_slot,
+                            frame_type=_frame_type,
+                            dtype_vseq=_dtype_vseq)):
+                    _repeat_ok = False
                 if _repeat_enabled:
                     _repeat_key = (_peer_id, _slot, _stream_id)
                     _repeat_state = self._repeat_seq.get(_repeat_key)
@@ -1151,9 +1180,18 @@ class HBSYSTEM(DatagramProtocol):
 
                 # The basic purpose of a master is to repeat to the peers
                 if _repeat_enabled and _repeat_ok:
+                    if (_frame_type == HBPF_DATA_SYNC
+                            and _dtype_vseq == HBPF_SLT_VTERM):
+                        release_dropped_stream(
+                            self._system, _stream_id, slot=_slot)
                     pkt = [_data[:11], '', _data[15:]]
                     for _peer in self._peers:
                         if _peer != _peer_id:
+                            if dest_peer_rx_blocked(
+                                    self._system, _peer, _stream_id, _slot,
+                                    int_id(_dst_id), frame_type=_frame_type,
+                                    dtype_vseq=_dtype_vseq):
+                                continue
                             pkt[1] = _peer
                             self.transport.write(b''.join(pkt), self._peers[_peer]['SOCKADDR'])
                             #logger.debug('(%s) Packet on TS%s from %s (%s) for destination ID %s repeated to peer: %s (%s) [Stream ID: %s]', self._system, _slot, self._peers[_peer_id]['CALLSIGN'], int_id(_peer_id), int_id(_dst_id), self._peers[_peer]['CALLSIGN'], int_id(_peer), int_id(_stream_id))
@@ -1270,6 +1308,7 @@ class HBSYSTEM(DatagramProtocol):
                     logger.info('(%s) Peer is closing down: %s (%s)', self._system, self._peers[_peer_id]['CALLSIGN'], int_id(_peer_id))
                     self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                     del self._peers[_peer_id]
+                    forget_peer_rx_state(self._system, _peer_id)
                     if not self._peers and 'OPTIONS' in self._CONFIG['SYSTEMS'][self._system]:
                         if '_default_options' in self._CONFIG['SYSTEMS'][self._system]:
                             self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = self._CONFIG['SYSTEMS'][self._system]['_default_options']
