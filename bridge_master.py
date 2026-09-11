@@ -4948,7 +4948,8 @@ if __name__ == '__main__':
     identa.addErrback(loopingErrHandle)
     
     #Alias reloader
-    alias_time = CONFIG['ALIASES']['STALE_TIME'] * 86400
+    # config.py already converts STALE_DAYS to seconds.
+    alias_time = CONFIG['ALIASES']['STALE_TIME']
     aliasa_task = task.LoopingCall(threadAlias)
     aliasa = aliasa_task.start(alias_time)
     aliasa.addErrback(loopingErrHandle)

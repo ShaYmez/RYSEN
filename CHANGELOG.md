@@ -13,6 +13,7 @@ FreeSTAR hub device control on `:8765` (needs matching `freestar-api-v2` device 
 - DIAL=9 sanitization rewrites each connected peer's own OPTIONS rather than copying the MASTER stanza onto every `Clients` row.
 - Legacy/API-free HBP control remains supported: a sole hotspot's RPTO policy (`RelinkTime`/`TIMER`, `StartRef`/`DIAL`, `SINGLE`, voice/ident and language) overlays the cfg defaults, while shared MASTER stanzas keep cfg-wide policy instead of accepting an unsafe last-writer. Standard `TS1`/`TS2` and DMR+ `TS1_1`…`TS2_9` statics are activated from the per-peer union even when the stanza did not already have an `OPTIONS` key.
 - IPSC voice fanout now applies the same per-destination drop-call and drop-dynamic filters as HBP fanout; an owner action no longer mutes unrelated IPSC peers.
+- Alias reload scheduling now uses the configured `STALE_DAYS` interval once, rather than converting the already-parsed seconds a second time.
 
 ## Version 1.5.3 (2026-08-07)
 
