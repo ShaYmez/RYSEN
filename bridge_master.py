@@ -67,6 +67,8 @@ from selfcare_db import (
     SelfcareDB,
     find_hotspot_master_peer,
     find_ipsc_peer_for_radio_id,
+    effective_master_options,
+    ensure_master_default_options,
     master_has_peer_options,
     peer_own_options,
     store_peer_options,
@@ -1798,13 +1800,18 @@ def ident():
         # stick True on a reused generator slot after a VOICE=1 peer leaves.
         if voice_ident_requested(CONFIG['SYSTEMS'][system].get('OPTIONS')):
             _lang = CONFIG['SYSTEMS'][system]['ANNOUNCEMENT_LANGUAGE']
-            if CONFIG['SYSTEMS'][system]['MAX_PEERS'] > 1:
-                logger.debug("(IDENT) %s System has MAX_PEERS > 1, skipping",system)
+            _connected_peers = [
+                peer for peer in CONFIG['SYSTEMS'][system]['PEERS'].values()
+                if peer.get('CONNECTION') == 'YES'
+            ]
+            if len(_connected_peers) > 1:
+                logger.debug(
+                    "(IDENT) %s has multiple connected peers, skipping", system)
                 continue
             _callsign = False
-            for _peerid in CONFIG['SYSTEMS'][system]['PEERS']:
-                if CONFIG['SYSTEMS'][system]['PEERS'][_peerid]['CALLSIGN']:
-                    _callsign = CONFIG['SYSTEMS'][system]['PEERS'][_peerid]['CALLSIGN'].decode()
+            for _peer in _connected_peers:
+                if _peer.get('CALLSIGN'):
+                    _callsign = _peer['CALLSIGN'].decode()
             if not _callsign:
                 logger.debug("(IDENT) %s System has no peers or no recorded callsign (%s), skipping",system,_callsign)
                 continue
@@ -1896,6 +1903,10 @@ def options_config():
                 if _mode == 'MASTER' and 'PEERS' in CONFIG['SYSTEMS'][_system]:
                     for _peer_id in CONFIG['SYSTEMS'][_system]['PEERS']:
                         _peer = CONFIG['SYSTEMS'][_system]['PEERS'][_peer_id]
+                        # Omitted values mean fallback to cfg, not retention of
+                        # a previous RPTO from this peer.
+                        _peer.pop('STICKY', None)
+                        _peer.pop('LINK_IPSC', None)
                         if 'OPTIONS' in _peer and _peer['OPTIONS']:
                             try:
                                 _peer_options_str = _peer['OPTIONS'].decode() if isinstance(_peer['OPTIONS'], bytes) else str(_peer['OPTIONS'])
@@ -1935,9 +1946,22 @@ def options_config():
                             except Exception as e:
                                 logger.debug('(OPTIONS) %s - Error parsing peer %s OPTIONS: %s', _system, int_id(_peer_id), e)
                 
-                if 'OPTIONS' in CONFIG['SYSTEMS'][_system]:
+                if _mode == 'MASTER':
+                    # Preserve full legacy RPTO policy on a dedicated hotspot
+                    # stanza, but keep cfg policy when a MASTER is shared.
+                    # Static lists are unioned below in either case.
+                    _options_value = effective_master_options(
+                        CONFIG['SYSTEMS'][_system])
+                else:
+                    _options_value = CONFIG['SYSTEMS'][_system].get('OPTIONS')
+
+                if _options_value is not None:
                     _options = {}
-                    CONFIG['SYSTEMS'][_system]['OPTIONS'] = CONFIG['SYSTEMS'][_system]['OPTIONS'].rstrip('\x00')
+                    if isinstance(_options_value, bytes):
+                        _options_value = _options_value.decode(
+                            'ascii', errors='ignore')
+                    CONFIG['SYSTEMS'][_system]['OPTIONS'] = str(
+                        _options_value).rstrip('\x00')
                     CONFIG['SYSTEMS'][_system]['OPTIONS'] = CONFIG['SYSTEMS'][_system]['OPTIONS'].encode('ascii', 'ignore').decode()
                     CONFIG['SYSTEMS'][_system]['OPTIONS'] = re.sub("\'","",CONFIG['SYSTEMS'][_system]['OPTIONS'])
                     CONFIG['SYSTEMS'][_system]['OPTIONS'] = re.sub("\"","",CONFIG['SYSTEMS'][_system]['OPTIONS'])
@@ -1952,8 +1976,13 @@ def options_config():
                         _options[k] = v
                     logger.debug('(OPTIONS) Options found for %s',_system)
 
+                    if _mode == 'MASTER':
+                        # linked_ipsc_slots() reads the effective stanza and
+                        # current peer OPTIONS directly. Never retain a peer's
+                        # old choice as shared system state.
+                        CONFIG['SYSTEMS'][_system].pop('LINK_IPSC', None)
                     _link_slot = _options.get('IPSC') or _options.get('LINK_IPSC')
-                    if _link_slot:
+                    if _link_slot and _mode != 'MASTER':
                         _link_slot = _link_slot.strip()
                         if (_link_slot in CONFIG['SYSTEMS']
                                 and CONFIG['SYSTEMS'][_link_slot]['MODE'] == 'IPSC'):
@@ -2058,8 +2087,10 @@ def options_config():
                     if _new_ident != _prev_ident:
                         logger.debug("(OPTIONS) %s - Setting voice ident to %s",_system,_new_ident)
                         
-                    if 'OVERRIDE_IDENT_TG' in _options and _options['OVERRIDE_IDENT_TG'] and (CONFIG['SYSTEMS'][_system]['OVERRIDE_IDENT_TG'] != int(_options['OVERRIDE_IDENT_TG'])):
-                        CONFIG['SYSTEMS'][_system]['OVERRIDE_IDENT_TG'] = int(_options['OVERRIDE_IDENT_TG'])
+                    _override_ident_tg = int(
+                        _options.get('OVERRIDE_IDENT_TG') or 0)
+                    if int(CONFIG['SYSTEMS'][_system].get('OVERRIDE_IDENT_TG') or 0) != _override_ident_tg:
+                        CONFIG['SYSTEMS'][_system]['OVERRIDE_IDENT_TG'] = _override_ident_tg
                         logger.debug("(OPTIONS) %s - Setting OVERRIDE_IDENT_TG to %s",_system,CONFIG['SYSTEMS'][_system]['OVERRIDE_IDENT_TG'])
                         
                     if 'LANG' in _options and _options['LANG'] in words and _options['LANG'] != CONFIG['SYSTEMS'][_system]['ANNOUNCEMENT_LANGUAGE'] :
@@ -4793,15 +4824,20 @@ if __name__ == '__main__':
                     _systemname = ''.join([system,'-',str(count)])
                     generator[_systemname] = copy.deepcopy(CONFIG['SYSTEMS'][system])
                     generator[_systemname]['PORT'] = generator[_systemname]['PORT'] + count
-                    generator[_systemname]['_default_options'] = "TS1_STATIC={};TS2_STATIC={};SINGLE={};DEFAULT_UA_TIMER={};DEFAULT_REFLECTOR={};VOICE={};LANG={}".format(generator[_systemname]['TS1_STATIC'],generator[_systemname]['TS2_STATIC'],int(generator[_systemname]['SINGLE_MODE']),generator[_systemname]['DEFAULT_UA_TIMER'],generator[_systemname]['DEFAULT_REFLECTOR'],int(generator[_systemname]['VOICE_IDENT']), generator[_systemname]['ANNOUNCEMENT_LANGUAGE'])
+                    ensure_master_default_options(generator[_systemname])
                     logger.debug('(GLOBAL) Generator - generated system %s',_systemname)
-                    generator[_systemname]['_default_options']
                 systemdelete.append(system)
     
     for _system in generator:
         CONFIG['SYSTEMS'][_system] = generator[_system]
     for _system in systemdelete:
             CONFIG['SYSTEMS'].pop(_system)
+
+    # Non-generated MASTER stanzas need the same immutable cfg baseline. It is
+    # used for shared-master policy and restored when the final peer leaves.
+    for _system in CONFIG['SYSTEMS']:
+        if CONFIG['SYSTEMS'][_system].get('MODE') == 'MASTER':
+            ensure_master_default_options(CONFIG['SYSTEMS'][_system])
     
     del generator
     del systemdelete

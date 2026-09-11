@@ -22,6 +22,7 @@ from twisted.internet import reactor
 from dmr_utils3.utils import int_id
 
 from hblink import HBSYSTEM, logger, acl_check, build_peer_record
+from bridge_helpers import dest_peer_rx_blocked, release_dropped_stream
 from const import DMRD
 from ipsc_const import (
     GROUP_VOICE, PRIVATE_VOICE, MASTER_REG_REQ, MASTER_REG_REPLY,
@@ -29,7 +30,8 @@ from ipsc_const import (
     MASTER_ALIVE_REQ, MASTER_ALIVE_REPLY,
     DE_REG_REQ, DE_REG_REPLY, XCMP_XNL,
     VOICE_HEAD, VOICE_TERM,
-    GV_BURST_TYPE_OFF, GV_CALL_INFO_OFF, GV_MIN_LEN, TS_CALL_MSK,
+    GV_BURST_TYPE_OFF, GV_CALL_INFO_OFF, GV_DST_GROUP_OFF, GV_MIN_LEN,
+    TS_CALL_MSK,
     AUTH_DIGEST_LEN, IPSC_VER,
     DEFAULT_IPSC_MODE_BYTE, DEFAULT_IPSC_FLAGS_BYTES,
     PRCL, PRIN,
@@ -481,8 +483,31 @@ class IpscMasterMixin:
     def _ipsc_send(self, packet, host, port):
         self.transport.write(packet + self._auth_suffix(packet), (host, port))
 
-    def _ipsc_send_voice(self, packet):
-        for peer in self._ipsc_peers.values():
+    def _ipsc_send_voice(self, packet, route_context=None):
+        if route_context is None:
+            slot = 2 if packet[GV_CALL_INFO_OFF] & TS_CALL_MSK else 1
+            stream_id = self._voice._del_hbp_stream.get(slot)
+            burst_type = packet[GV_BURST_TYPE_OFF]
+            frame_type = 2 if burst_type in (VOICE_HEAD, VOICE_TERM) else 0
+            dtype_vseq = (
+                1 if burst_type == VOICE_HEAD
+                else 2 if burst_type == VOICE_TERM
+                else 0
+            )
+        else:
+            stream_id, slot, frame_type, dtype_vseq = route_context
+            burst_type = packet[GV_BURST_TYPE_OFF]
+        if burst_type == VOICE_TERM and stream_id:
+            release_dropped_stream(self._system, stream_id, slot=slot)
+        tgid = (
+            int_id(packet[GV_DST_GROUP_OFF:GV_DST_GROUP_OFF + 3])
+            if packet[0] == GROUP_VOICE else None
+        )
+        for peer_id, peer in self._ipsc_peers.items():
+            if dest_peer_rx_blocked(
+                    self._system, peer_id, stream_id, slot, tgid,
+                    frame_type=frame_type, dtype_vseq=dtype_vseq):
+                continue
             self._ipsc_send(packet, peer['host'], peer['port'])
 
     def _ipsc_send_voice_to_peer(self, packet, peer_id):
@@ -514,7 +539,13 @@ class IpscMasterMixin:
 
         ipsc_pkt = self._voice.handle_outbound(_packet)
         if ipsc_pkt is not None:
-            self._ipsc_send_voice(ipsc_pkt)
+            frame_type = (_bits & 0x30) >> 4
+            dtype_vseq = _bits & 0x0F
+            self._ipsc_send_voice(
+                ipsc_pkt,
+                (_packet[16:20], 2 if (_bits & 0x80) else 1,
+                 frame_type, dtype_vseq),
+            )
 
     def _sync_reflector_voice_headers(self):
         self._reflector_voice._peer_call_type = self._voice._peer_call_type

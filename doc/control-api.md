@@ -45,3 +45,20 @@ exact connected nine-digit ID; it never chooses an arbitrary hotspot.
 
 Hotspot protocol login passwords remain outside this API. Device API keys are
 HTTP owner credentials and are never sent to HBP/IPSC hotspots.
+
+## Legacy and third-party compatibility
+
+The control listener is optional. HBP login, RF user activation, reflector
+dialling, selfcare `DISC=1`, OpenBridge/IPSC routing, cfg statics and RPTO
+OPTIONS continue to work without an HTTP client.
+
+A MASTER with one connected hotspot applies that peer's legacy stanza-wide
+RPTO settings over the cfg defaults, including `TIMER`/`RelinkTime`,
+`DIAL`/`StartRef`, `SINGLE`, voice/ident and language. On a shared MASTER these
+settings remain at the cfg baseline because they cannot safely differ by
+destination; `STICKY` and `LINK_IPSC` remain per peer.
+
+Static ownership is always per peer. Standard `TS1=`/`TS2=` and DMR+
+`TS1_1=`…`TS2_9=` forms contribute to the live union with cfg defaults, even
+when the MASTER stanza had no pre-existing `OPTIONS` value. HBP and IPSC
+fanout both enforce per-destination drop-call and drop-dynamic mutes.
