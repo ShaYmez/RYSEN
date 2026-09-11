@@ -68,7 +68,9 @@ from selfcare_db import (
     find_hotspot_master_peer,
     find_ipsc_peer_for_radio_id,
     master_has_peer_options,
+    peer_own_options,
     store_peer_options,
+    ts_lists_from_options,
     union_peer_static_lists,
 )
 from bridge_helpers import iter_routing_master_systems as _iter_routing_master_systems
@@ -91,6 +93,20 @@ from bridge_helpers import (
     strip_disc_from_options,
     sanitize_invalid_default_reflector_options,
     other_peer_has_sub_map_tg,
+    other_peer_has_dynamic_tg,
+    forget_peer_dynamic_tg,
+    remember_peer_dynamic_tg,
+    remember_peer_reflector,
+    peer_remembered_reflectors,
+    forget_peer_reflector,
+    other_peer_has_reflector,
+    drop_peer_stream,
+    stream_is_dropped,
+    release_dropped_stream,
+    prune_dropped_streams,
+    unmute_peer_tg,
+    forget_peer_rx_state,
+    _DROPPED_STREAMS as _CONTROL_DROPPED_STREAMS,
     peer_options_sanitized_dial9,
     deactivate_linked_ipsc_bridge_legs,
     deactivate_peer_dynamic_bridges,
@@ -241,8 +257,6 @@ _LOOP_DIAG = {
 }
 _TERM_TOMBSTONES = {}
 _TERM_TOMBSTONE_TTL_S = 5.0
-_CONTROL_DROPPED_STREAMS = {}
-_CONTROL_DROPPED_STREAM_TTL_S = 30.0
 CONTROL_BANS = ControlBanStore(logger=logger)
 
 
@@ -817,7 +831,9 @@ def reset_static_tg(tg,ts,_tmout,system):
         logger.debug('(OPTIONS) reset_static_tg skipped, missing bridge %s for %s TS%s', tg, system, ts)
         return
     # Last static peer leaving must not mute radios that still have this TG as UA.
-    keep_ua = other_peer_has_sub_map_tg(SUB_MAP, system, ts, tg)
+    keep_ua = (
+        other_peer_has_sub_map_tg(SUB_MAP, system, ts, tg)
+        or other_peer_has_dynamic_tg(system, ts, tg))
     bridgetemp = deque()
     for bridgesystem in BRIDGES[str(tg)]:
         if bridgesystem['SYSTEM'] == system and bridgesystem['TS'] == ts:
@@ -1005,40 +1021,51 @@ def selfcare_disconnect(source_system, peer_id=None):
 
 
 def _block_peer_active_streams(system, peer_id):
-    """Block the currently active HBP streams for a peer until they expire."""
+    """Mute this peer for the live HBP stream(s) until that over's VTERM.
+
+    Incoming RX counts: STATUS RX_PEER is the talker, not the listener.
+    Outgoing TX still terminates the local RX slot so routing stops.
+    """
     runtime = systems.get(system)
     status = getattr(runtime, 'STATUS', {}) if runtime is not None else {}
     now = time()
     blocked = 0
+    seen = set()
     for slot, stream in status.items():
         if not isinstance(slot, int) or not isinstance(stream, dict):
             continue
-        stream_id = stream.get('RX_STREAM_ID')
-        if stream.get('RX_PEER') != peer_id or not stream_id:
-            continue
-        if stream.get('RX_TYPE') == HBPF_SLT_VTERM:
-            continue
-        _CONTROL_DROPPED_STREAMS[(system, peer_id, stream_id)] = (
-            now + _CONTROL_DROPPED_STREAM_TTL_S)
-        stream['RX_TYPE'] = HBPF_SLT_VTERM
-        stream['RX_TIME'] = now
-        blocked += 1
+        this_is_talker = stream.get('RX_PEER') == peer_id
+        candidates = []
+        rx_id = stream.get('RX_STREAM_ID')
+        tx_id = stream.get('TX_STREAM_ID')
+        if rx_id and stream.get('RX_TYPE') != HBPF_SLT_VTERM:
+            candidates.append(rx_id)
+        if (tx_id and stream.get('TX_TYPE', HBPF_SLT_VTERM) != HBPF_SLT_VTERM
+                and tx_id not in candidates):
+            candidates.append(tx_id)
+        for stream_id in candidates:
+            stream_key = (slot, stream_id)
+            if not stream_id or stream_key in seen:
+                continue
+            seen.add(stream_key)
+            drop_peer_stream(
+                system, peer_id, stream_id, slot=slot, now=now)
+            blocked += 1
+        if this_is_talker and rx_id and stream.get('RX_TYPE') != HBPF_SLT_VTERM:
+            stream['RX_TYPE'] = HBPF_SLT_VTERM
+            stream['RX_TIME'] = now
     return blocked
 
 
-def _control_stream_is_dropped(system, peer_id, stream_id, now=None):
-    now = time() if now is None else now
-    expired = [
-        key for key, expires in _CONTROL_DROPPED_STREAMS.items()
-        if expires <= now
-    ]
-    for key in expired:
-        _CONTROL_DROPPED_STREAMS.pop(key, None)
-    return (system, peer_id, stream_id) in _CONTROL_DROPPED_STREAMS
+def _control_stream_is_dropped(system, peer_id, stream_id, slot=None, now=None,
+                               frame_type=None, dtype_vseq=None):
+    return stream_is_dropped(
+        system, peer_id, stream_id, slot=slot, now=now,
+        frame_type=frame_type, dtype_vseq=dtype_vseq)
 
 
 def drop_peer_call(system, peer_id):
-    """Stop this peer's active HBP stream and clear its RF subscriber routes."""
+    """Mute this peer's current over (TX or RX) until that stream_id ends."""
     blocked = _block_peer_active_streams(system, peer_id)
     clear_sub_map_for_peer(peer_id)
     notify_bridge_table_updated()
@@ -1068,6 +1095,7 @@ def kick_hotspot_peer(system, peer_id):
         logger.warning('(CONTROL) MSTCL failed for peer %s on %s: %s',
                        int_id(peer_id), system, err)
     peers.pop(peer_id, None)
+    forget_peer_rx_state(system, peer_id)
     mark_options_dirty(CONFIG)
     if not peers:
         if '_default_options' in syscfg:
@@ -1111,14 +1139,26 @@ def unban_hotspot_radio(radio_id):
     return removed
 
 
+def peer_has_static_tg(system, peer_id, slot, tgid):
+    """Whether this exact peer (not merely its shared stanza) owns a static."""
+    syscfg = CONFIG.get('SYSTEMS', {}).get(system, {})
+    ts1, ts2 = ts_lists_from_options(peer_own_options(syscfg, peer_id))
+    groups = ts1 if int(slot or 2) == 1 else ts2
+    return str(int(tgid)) in groups
+
+
 def apply_selfcare_options(source_system, peer_id, options_str):
     """Process DISC=1 immediately; return remaining OPTIONS text (without DISC)."""
     _had_disc = selfcare_disconnect_requested(options_str)
     if _had_disc:
         selfcare_disconnect(source_system, peer_id)
-    if _had_disc:
-        return strip_disc_from_options(options_str), True
-    return options_str, False
+    remaining = strip_disc_from_options(options_str) if _had_disc else options_str
+    ts1, ts2 = ts_lists_from_options(remaining)
+    for slot, groups in ((1, ts1), (2, ts2)):
+        for tgid in groups:
+            forget_peer_dynamic_tg(source_system, peer_id, slot, tgid)
+            unmute_peer_tg(source_system, peer_id, slot, tgid)
+    return remaining, _had_disc
 
 
 def sanitize_dial_reflectors(system):
@@ -1156,10 +1196,25 @@ def deactivate_other_dynamic_reflectors(system, keep_bridge, slot=2, peer_id=Non
         for _sys in BRIDGES[_bridge]:
             if (_sys['SYSTEM'] == system and _sys['TS'] == slot
                     and _sys['TO_TYPE'] == 'ON' and _sys['ACTIVE']):
-                if peer_id is not None and _sys.get('LINKER_PEER') != peer_id:
+                try:
+                    _group = int(_bridge[1:])
+                except ValueError:
                     continue
+                if peer_id is not None:
+                    _memberships = peer_remembered_reflectors(system, peer_id)
+                    if ((slot, _group) not in _memberships
+                            and _sys.get('LINKER_PEER') != peer_id):
+                        continue
+                    forget_peer_reflector(system, peer_id, slot, _group)
+                    if other_peer_has_reflector(
+                            system, slot, _group,
+                            except_peer_id=peer_id):
+                        if _sys.get('LINKER_PEER') == peer_id:
+                            clear_reflector_link_owner(_sys)
+                        continue
                 _sys['ACTIVE'] = False
                 _sys['TIMER'] = time()
+                clear_reflector_link_owner(_sys)
                 _changed = True
                 logger.info('(REFLECTOR) Single dial-a-tg mode: deactivated %s for %s (keeping %s)',
                             _bridge, system, keep_bridge)
@@ -1467,6 +1522,7 @@ def SubMapTrimmer():
 def stream_trimmer_loop():
     logger.debug('(ROUTER) Trimming inactive stream IDs from system lists')
     _now = time()
+    prune_dropped_streams(_now)
     for _claim_key, _claim in list(_HBP_STREAM_CLAIMS.items()):
         if _now - _claim[2] >= _HBP_CLAIM_TIMEOUT_S:
             _HBP_STREAM_CLAIMS.pop(_claim_key, None)
@@ -3121,6 +3177,13 @@ class routerHBP(HBSYSTEM):
                     self._system, int_id(_peer_id),
                     _ban.get('reason') or 'operator ban')
                 return
+            _existing = self._peers.get(_peer_id)
+            if (_existing is not None
+                    and _existing.get('SOCKADDR') != _sockaddr):
+                selfcare_disconnect(self._system, _peer_id)
+                _block_peer_active_streams(self._system, _peer_id)
+                forget_peer_rx_state(self._system, _peer_id)
+                mark_options_dirty(CONFIG)
         if _command == RPTC:
             if _data[:5] == RPTCL and len(_data) >= 9:
                 _peer_id = _data[5:9]
@@ -3137,6 +3200,7 @@ class routerHBP(HBSYSTEM):
                         and self._peers[_peer_id]['SOCKADDR'] == _sockaddr):
                     selfcare_disconnect(self._system, _peer_id)
                     _block_peer_active_streams(self._system, _peer_id)
+                    forget_peer_rx_state(self._system, _peer_id)
                     mark_options_dirty(CONFIG)
         HBSYSTEM.master_datagramReceived(self, _data, _sockaddr)
 
@@ -3615,12 +3679,22 @@ class routerHBP(HBSYSTEM):
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pkt_time = time()
-        if _control_stream_is_dropped(
-                self._system, _peer_id, _stream_id, now=pkt_time):
+        _control_dropped = _control_stream_is_dropped(
+            self._system, _peer_id, _stream_id, slot=_slot, now=pkt_time,
+            frame_type=_frame_type, dtype_vseq=_dtype_vseq)
+        if _control_dropped:
+            if (_frame_type == HBPF_DATA_SYNC
+                    and _dtype_vseq == HBPF_SLT_VTERM):
+                release_dropped_stream(
+                    self._system, _stream_id, slot=_slot)
             logger.debug(
                 '(%s) Dropping operator-blocked stream %s from peer %s',
                 self._system, int_id(_stream_id), int_id(_peer_id))
             return
+        if (_frame_type == HBPF_DATA_SYNC
+                and _dtype_vseq == HBPF_SLT_VTERM):
+            release_dropped_stream(
+                self._system, _stream_id, slot=_slot)
         dmrpkt = _data[20:53]
         
         _ber = _data[53:54]
@@ -3898,11 +3972,16 @@ class routerHBP(HBSYSTEM):
                                 # TGID matches an ACTIVATION trigger
                                 if (not is_dial_service_code(_int_dst_id)
                                         and _int_dst_id == int(_dehash_bridge) and _system['SYSTEM'] == self._system and  _slot == _system['TS']):
+                                    _system['TIMER'] = pkt_time + _system['TIMEOUT']
+                                    remember_peer_reflector(
+                                        self._system, _peer_id, _slot,
+                                        _int_dst_id,
+                                        expires_at=_system['TIMER'])
+                                    set_reflector_link_owner(
+                                        _system, _rf_src, _peer_id)
                                     # Set the matching rule as ACTIVE
                                     if _system['ACTIVE'] == False:
                                         _system['ACTIVE'] = True
-                                        _system['TIMER'] = pkt_time + _system['TIMEOUT']
-                                        set_reflector_link_owner(_system, _rf_src, _peer_id)
                                         logger.info('(%s) [C] Reflector: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
                                         # Cancel the timer if we've enabled an "OFF" type timeout
                                         if _system['TO_TYPE'] == 'OFF':
@@ -4094,6 +4173,16 @@ class routerHBP(HBSYSTEM):
                     make_single_bridge(_dst_id,self._system,_slot,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
                 elif is_routing_master(CONFIG['SYSTEMS'][self._system]['MODE']) and str(int_id(_dst_id)) in BRIDGES:
                     activate_ua_bridge_source(str(int_id(_dst_id)), self._system, _slot, peer_id=_peer_id)
+                if (_int_dst_id >= 5
+                        and not is_dial_service_code(_int_dst_id)
+                        and not peer_has_static_tg(
+                            self._system, _peer_id, _slot, _int_dst_id)):
+                    _ua_seconds = (
+                        CONFIG['SYSTEMS'][self._system]
+                        ['DEFAULT_UA_TIMER'] * 60)
+                    remember_peer_dynamic_tg(
+                        self._system, _peer_id, _slot, _int_dst_id,
+                        expires_at=pkt_time + _ua_seconds)
                 
                 # Update SUB_MAP with the TG for this call
                 # This enables sticky TG functionality - subscriber is now associated with this TG
@@ -4318,6 +4407,15 @@ class routerHBP(HBSYSTEM):
                             if (_bridge[0:1] != '#' and (_dst_id in _system['ON'] or _dst_id in _system['RESET']) and _slot == _system['TS']):
                                 # Set the matching rule as ACTIVE
                                 if _dst_id in _system['ON']:
+                                    if not peer_has_static_tg(
+                                            self._system, _peer_id, _slot,
+                                            _int_dst_id):
+                                        remember_peer_dynamic_tg(
+                                            self._system, _peer_id, _slot,
+                                            _int_dst_id,
+                                            expires_at=(
+                                                pkt_time
+                                                + _system['TIMEOUT']))
                                     if _system['ACTIVE'] == False:
                                         _system['ACTIVE'] = True
                                         _system['TIMER'] = pkt_time + _system['TIMEOUT']
@@ -4430,6 +4528,7 @@ class routerIPSC(IpscMasterMixin, routerHBP):
         selfcare_disconnect(self._system, peer_id)
         last_peer = len(self._ipsc_peers) <= 1 and peer_id in self._ipsc_peers
         IpscMasterMixin._remove_ipsc_peer(self, peer_id)
+        forget_peer_rx_state(self._system, peer_id)
         mark_options_dirty(self._CONFIG)
         if last_peer and 'OPTIONS' in self._CONFIG['SYSTEMS'][self._system]:
             _sys = self._CONFIG['SYSTEMS'][self._system]

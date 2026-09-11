@@ -9,9 +9,10 @@ The listener binds to loopback by default and requires the bearer token in
 Root paths are operator-only and are forwarded from `/control/dmr/*`.
 
 - `POST /disconnect`, `/drop-dynamic`: clear only the target peer's RF and
-  dial-a-talkgroup state. The HBP/IPSC session remains connected.
-- `POST /drop-call`: immediately suppress the target peer's current HBP stream
-  and clear its RF route.
+  dial-a-talkgroup state, and stop that radio receiving those TGs. The HBP/IPSC
+  session remains connected. Other radios on the stanza keep the shared UA leg.
+- `POST /drop-call`: mute the current over toward this peer only (TX or incoming
+  RX) until that `stream_id` ends. The next over is forwarded again.
 - `POST /talkgroup`: raise a shared MASTER talkgroup leg.
 - `DELETE /talkgroup`: force the shared user-activated MASTER leg and its
   stanza-configured IPSC link down. This affects every radio in the stanza
