@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Shared bridge routing helpers (no Twisted / heavy imports)."""
 
+import os
 import re
 import time
+from collections import OrderedDict
 
 from dmr_utils3.utils import bytes_3, int_id
 from ipsc_const import is_routing_master
@@ -83,6 +85,86 @@ def harden_obp_stub(status, first_seen, lc):
     status.setdefault('lastSeq', False)
     status.setdefault('lastData', False)
     return status
+
+
+# Dual-TG OpenBridge: same conference, same OBP system, two TGIDs.
+# Stream IDs must differ or downstream LoopControl IGNORE / MAX HOPS the rewrite.
+OBP_TX_STREAM_CACHE_MAX = 2048
+OBP_TX_STREAM_CACHE_TTL_S = 180.0
+_ZERO_STREAM_ID = b'\x00\x00\x00\x00'
+_OBP_TX_STREAM_CACHE = OrderedDict()
+
+
+def reset_obp_tx_stream_cache():
+    """Test helper: drop translated OpenBridge stream-ID mappings."""
+    _OBP_TX_STREAM_CACHE.clear()
+
+
+def allow_bridge_target(source_system, source_tgid, target, target_mode):
+    """Whether a conference target may receive this packet.
+
+    Inactive targets are skipped. A different SYSTEM is the historic hairpin
+    rule. Same SYSTEM is allowed only for OPENBRIDGE with a different TGID.
+    Same-system PEER/MASTER (and same-TGID OPENBRIDGE) still skip.
+    """
+    if not target.get('ACTIVE'):
+        return False
+    if target.get('SYSTEM') != source_system:
+        return True
+    return (
+        target_mode == 'OPENBRIDGE'
+        and target.get('TGID') != source_tgid
+    )
+
+
+def _new_obp_stream_id(orig_stream_id):
+    while True:
+        new_id = os.urandom(4)
+        if new_id != _ZERO_STREAM_ID and new_id != orig_stream_id:
+            return new_id
+
+
+def _prune_obp_tx_stream_cache(now):
+    expired = [
+        key for key, (_, seen) in _OBP_TX_STREAM_CACHE.items()
+        if now - seen >= OBP_TX_STREAM_CACHE_TTL_S
+    ]
+    for key in expired:
+        _OBP_TX_STREAM_CACHE.pop(key, None)
+    while len(_OBP_TX_STREAM_CACHE) > OBP_TX_STREAM_CACHE_MAX:
+        _OBP_TX_STREAM_CACHE.popitem(last=False)
+
+
+def translated_obp_stream_id(orig_stream_id, dest_tgid, source_tgid, now=None):
+    """Stream ID to transmit on an OPENBRIDGE dest. Same TGID keeps original."""
+    if dest_tgid == source_tgid:
+        return orig_stream_id
+    now = time.time() if now is None else now
+    key = (orig_stream_id, dest_tgid)
+    cached = _OBP_TX_STREAM_CACHE.get(key)
+    if cached is not None:
+        new_id, seen = cached
+        if now - seen < OBP_TX_STREAM_CACHE_TTL_S:
+            _OBP_TX_STREAM_CACHE[key] = (new_id, now)
+            _OBP_TX_STREAM_CACHE.move_to_end(key)
+            return new_id
+        _OBP_TX_STREAM_CACHE.pop(key, None)
+    new_id = _new_obp_stream_id(orig_stream_id)
+    _OBP_TX_STREAM_CACHE[key] = (new_id, now)
+    _prune_obp_tx_stream_cache(now)
+    return new_id
+
+
+def originated_obp_hairpin(status, now, stream_timeout):
+    """True when inbound OBP is our own unterminated TG rewrite."""
+    if not status or not status.get('_originated'):
+        return False
+    if status.get('_fin'):
+        return False
+    last = status.get('LAST', status.get('START', 0))
+    if now - last >= stream_timeout:
+        return False
+    return True
 
 
 def hbp_claim_is_local(claim, system, slot):

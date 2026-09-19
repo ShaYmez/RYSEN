@@ -49,12 +49,15 @@ import config
 import log
 from const import *
 from bridge_helpers import (
+    allow_bridge_target,
     dmr_seq_delta,
     earliest_obp_owner,
     harden_obp_stub,
     hbp_claim_is_local,
     hbp_should_scan_obp,
     hbp_short_gap_continuation,
+    originated_obp_hairpin,
+    translated_obp_stream_id,
 )
 
 # Stuff for socket reporting
@@ -332,6 +335,10 @@ class routerOBP(OPENBRIDGE):
                 return
             # Is this a new call stream?
             _obp_previous = self.STATUS.get(_stream_id)
+            if originated_obp_hairpin(
+                    _obp_previous, pkt_time, STREAM_TO):
+                _obp_previous['LAST'] = pkt_time
+                return
             _obp_idle = (
                 _obp_previous is not None
                 and pkt_time - _obp_previous.get(
@@ -450,26 +457,37 @@ class routerOBP(OPENBRIDGE):
                     if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True):
 
                         for _target in BRIDGES[_bridge]:
-                            if (_target['SYSTEM'] != self._system) and (_target['ACTIVE']):
+                            if allow_bridge_target(
+                                    self._system, _dst_id, _target,
+                                    self._CONFIG['SYSTEMS'][_target['SYSTEM']].get('MODE')):
                                 _target_status = systems[_target['SYSTEM']].STATUS
                                 _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
                                 if _target_system['MODE'] == 'OPENBRIDGE':
+                                    _tx_stream_id = translated_obp_stream_id(
+                                        _stream_id, _target['TGID'], _dst_id,
+                                        pkt_time)
+                                    _obp_rewrite = _tx_stream_id != _stream_id
+                                    _status_tgid = (
+                                        _target['TGID'] if _obp_rewrite
+                                        else _dst_id)
                                     # Is this a new call stream on the target?
                                     _target_generation_changed = (
                                         _obp_new_stream
-                                        or (_stream_id in _target_status
-                                            and (_target_status[_stream_id].get('RFS') != _rf_src
-                                                 or _target_status[_stream_id].get('TGID') != _dst_id)))
-                                    if (_stream_id not in _target_status or _target_generation_changed):
+                                        or (_tx_stream_id in _target_status
+                                            and (_target_status[_tx_stream_id].get('RFS') != _rf_src
+                                                 or _target_status[_tx_stream_id].get('TGID') != _status_tgid)))
+                                    if (_tx_stream_id not in _target_status or _target_generation_changed):
                                         # This is a new call stream on the target
-                                        _target_status[_stream_id] = {
+                                        _target_status[_tx_stream_id] = {
                                             'START':     pkt_time,
                                             'CONTENTION':False,
                                             'RFS':       _rf_src,
-                                            'TGID':      _dst_id,
+                                            'TGID':      _status_tgid,
                                             'TARGET_LC': {},
                                         }
-                                    _target_lc_map = _target_status[_stream_id].setdefault(
+                                        if _obp_rewrite:
+                                            _target_status[_tx_stream_id]['_originated'] = True
+                                    _target_lc_map = _target_status[_tx_stream_id].setdefault(
                                         'TARGET_LC', {})
                                     if _target['TGID'] not in _target_lc_map:
                                         dst_lc = b''.join([self.STATUS[_stream_id]['LC'][0:3], _target['TGID'], _rf_src])
@@ -485,12 +503,12 @@ class routerOBP(OPENBRIDGE):
                                     _target_lc = _target_lc_map[_target['TGID']]
 
                                     # Record the time of this packet so we can later identify a stale stream
-                                    _target_status[_stream_id]['LAST'] = pkt_time
+                                    _target_status[_tx_stream_id]['LAST'] = pkt_time
                                     # Clear the TS bit -- all OpenBridge streams are effectively on TS1
                                     _tmp_bits = _bits & ~(1 << 7)
 
                                     # Assemble transmit HBP packet header
-                                    _tmp_data = b''.join([_data[:8], _target['TGID'], _data[11:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
+                                    _tmp_data = b''.join([_data[:8], _target['TGID'], _data[11:15], _tmp_bits.to_bytes(1, 'big'), _tx_stream_id])
 
                                     # MUST TEST FOR NEW STREAM AND IF SO, RE-WRITE THE LC FOR THE TARGET
                                     # MUST RE-WRITE DESTINATION TGID IF DIFFERENT
@@ -867,28 +885,39 @@ class routerHBP(HBSYSTEM):
                     if (_system['SYSTEM'] == self._system and _system['TGID'] == _dst_id and _system['TS'] == _slot and _system['ACTIVE'] == True):
 
                         for _target in BRIDGES[_bridge]:
-                            if _target['SYSTEM'] != self._system:
+                            if allow_bridge_target(
+                                    self._system, _dst_id, _target,
+                                    self._CONFIG['SYSTEMS'][_target['SYSTEM']].get('MODE')):
                                 if _target['ACTIVE']:
                                     _target_status = systems[_target['SYSTEM']].STATUS
                                     _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
 
                                     if _target_system['MODE'] == 'OPENBRIDGE':
+                                        _tx_stream_id = translated_obp_stream_id(
+                                            _stream_id, _target['TGID'], _dst_id,
+                                            pkt_time)
+                                        _obp_rewrite = _tx_stream_id != _stream_id
+                                        _status_tgid = (
+                                            _target['TGID'] if _obp_rewrite
+                                            else _dst_id)
                                         # Is this a new call stream on the target?
                                         _target_generation_changed = (
                                             _hbp_new_stream
-                                            or (_stream_id in _target_status
-                                                and (_target_status[_stream_id].get('RFS') != _rf_src
-                                                     or _target_status[_stream_id].get('TGID') != _dst_id)))
-                                        if (_stream_id not in _target_status or _target_generation_changed):
+                                            or (_tx_stream_id in _target_status
+                                                and (_target_status[_tx_stream_id].get('RFS') != _rf_src
+                                                     or _target_status[_tx_stream_id].get('TGID') != _status_tgid)))
+                                        if (_tx_stream_id not in _target_status or _target_generation_changed):
                                             # This is a new call stream on the target
-                                            _target_status[_stream_id] = {
+                                            _target_status[_tx_stream_id] = {
                                                 'START':     pkt_time,
                                                 'CONTENTION':False,
                                                 'RFS':       _rf_src,
-                                                'TGID':      _dst_id,
+                                                'TGID':      _status_tgid,
                                                 'TARGET_LC': {},
                                             }
-                                        _target_lc_map = _target_status[_stream_id].setdefault(
+                                            if _obp_rewrite:
+                                                _target_status[_tx_stream_id]['_originated'] = True
+                                        _target_lc_map = _target_status[_tx_stream_id].setdefault(
                                             'TARGET_LC', {})
                                         if _target['TGID'] not in _target_lc_map:
                                             dst_lc = b''.join([self.STATUS[_slot]['RX_LC'][0:3], _target['TGID'], _rf_src])
@@ -904,12 +933,12 @@ class routerHBP(HBSYSTEM):
                                         _target_lc = _target_lc_map[_target['TGID']]
                                             
                                         # Record the time of this packet so we can later identify a stale stream
-                                        _target_status[_stream_id]['LAST'] = pkt_time
+                                        _target_status[_tx_stream_id]['LAST'] = pkt_time
                                         # Clear the TS bit -- all OpenBridge streams are effectively on TS1
                                         _tmp_bits = _bits & ~(1 << 7)
 
                                         # Assemble transmit HBP packet header
-                                        _tmp_data = b''.join([_data[:8], _target['TGID'], _data[11:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
+                                        _tmp_data = b''.join([_data[:8], _target['TGID'], _data[11:15], _tmp_bits.to_bytes(1, 'big'), _tx_stream_id])
 
                                         # MUST TEST FOR NEW STREAM AND IF SO, RE-WRITE THE LC FOR THE TARGET
                                         # MUST RE-WRITE DESTINATION TGID IF DIFFERENT
