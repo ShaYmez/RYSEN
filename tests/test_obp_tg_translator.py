@@ -7,7 +7,9 @@ from bridge_helpers import (
     OBP_TX_STREAM_CACHE_MAX,
     OBP_TX_STREAM_CACHE_TTL_S,
     allow_bridge_target,
+    mark_originated_obp_stub,
     originated_obp_hairpin,
+    own_server_obp_echo,
     reset_obp_tx_stream_cache,
     translated_obp_stream_id,
 )
@@ -127,16 +129,48 @@ class TestOriginatedObpHairpin(unittest.TestCase):
         }
         self.assertTrue(originated_obp_hairpin(status, 10.1, 0.360))
 
-    def test_remote_or_idle_or_finished_is_not_a_hairpin(self):
+    def test_finished_originated_stub_is_still_a_hairpin(self):
+        """VHEAD after our VTERM is the HosePipe header/term storm."""
+        self.assertTrue(originated_obp_hairpin(
+            {'_originated': True, '_fin': True, 'LAST': 10.0},
+            10.1, 0.360))
+
+    def test_remote_or_idle_is_not_a_hairpin(self):
         self.assertFalse(originated_obp_hairpin(None, 10.0, 0.360))
         self.assertFalse(originated_obp_hairpin(
             {'LAST': 10.0, 'START': 9.0}, 10.1, 0.360))
         self.assertFalse(originated_obp_hairpin(
-            {'_originated': True, '_fin': True, 'LAST': 10.0},
-            10.1, 0.360))
-        self.assertFalse(originated_obp_hairpin(
             {'_originated': True, 'LAST': 9.0, 'START': 9.0},
             10.0, 0.360))
+
+
+class TestOwnServerObpEcho(unittest.TestCase):
+
+    def test_matches_this_server_only(self):
+        server = b'\x00\x00\x09\x2f'
+        self.assertTrue(own_server_obp_echo(server, server))
+        self.assertFalse(own_server_obp_echo(b'\x00\x00\x0c\x1c', server))
+        self.assertFalse(own_server_obp_echo(b'\x00\x00\x00\x00', server))
+        self.assertFalse(own_server_obp_echo(None, server))
+        self.assertFalse(own_server_obp_echo(server, None))
+
+
+class TestMarkOriginatedObpStub(unittest.TestCase):
+
+    def test_tags_stub_and_fills_1st(self):
+        status = {'START': 10.0}
+        out = mark_originated_obp_stub(status, 11.0)
+        self.assertIs(out, status)
+        self.assertTrue(status['_originated'])
+        self.assertEqual(status['1ST'], 11.0)
+        self.assertEqual(status['LAST'], 11.0)
+
+    def test_does_not_overwrite_existing_1st(self):
+        status = {'1ST': 1.0, 'LAST': 2.0}
+        mark_originated_obp_stub(status, 99.0)
+        self.assertEqual(status['1ST'], 1.0)
+        self.assertEqual(status['LAST'], 2.0)
+        self.assertTrue(status['_originated'])
 
 
 class TestLegacyBridgeSourceGuards(unittest.TestCase):
@@ -183,13 +217,29 @@ class TestLegacyBridgeSourceGuards(unittest.TestCase):
         self.assertIn('return', hairpin)
         self.assertIn('STREAM_TO', hairpin)
 
-    def test_bridge_master_is_unchanged(self):
-        self.assertNotIn('allow_bridge_target(', self.master)
-        self.assertNotIn('translated_obp_stream_id(', self.master)
-        self.assertNotIn('originated_obp_hairpin(', self.master)
+    def test_bridge_master_drops_originated_and_own_server_echo(self):
+        self.assertIn('originated_obp_hairpin,', self.master)
+        self.assertIn('own_server_obp_echo,', self.master)
+        self.assertIn('mark_originated_obp_stub,', self.master)
+        self.assertGreaterEqual(self.master.count('mark_originated_obp_stub('), 4)
+        self.assertIn('if originated_obp_hairpin(', self.master)
+        self.assertIn('if own_server_obp_echo(', self.master)
+        hairpin = self.master[
+            self.master.index('if originated_obp_hairpin('):
+            self.master.index('_obp_idle = (')
+        ]
+        self.assertIn("_obp_previous['LAST'] = pkt_time", hairpin)
+        self.assertIn('return', hairpin)
+
+    def test_max_hops_skips_bcsq_for_own_server(self):
+        with open('hblink.py', encoding='utf-8') as fh:
+            hblink = fh.read()
+        start = hblink.index('if _inthops > 10:')
+        block = hblink[start:hblink.index('#Low-level TG filtering', start)]
         self.assertIn(
-            "if (_target['SYSTEM'] != self._system) and (_target['ACTIVE']):",
-            self.master)
+            "if _source_server != self._CONFIG['GLOBAL']['SERVER_ID']:",
+            block)
+        self.assertIn('self.send_bcsq(_dst_id,_stream_id)', block)
 
 
 if __name__ == '__main__':

@@ -130,6 +130,9 @@ from bridge_helpers import (
     hbp_claim_is_local,
     hbp_should_scan_obp,
     hbp_short_gap_continuation,
+    originated_obp_hairpin,
+    own_server_obp_echo,
+    mark_originated_obp_stub,
 )
 # NOTE: 'words' is loaded dynamically via readAMBE() at runtime (see line ~2689)
 #from voice_lib import words
@@ -2447,6 +2450,8 @@ class routerOBP(OPENBRIDGE):
                             'lastData': False,
                             'TARGET_LC': {},
                         }
+                    mark_originated_obp_stub(
+                        _target_status[_stream_id], perf_counter())
                     _target_lc_map = _target_status[_stream_id].setdefault(
                         'TARGET_LC', {})
                     if _target['TGID'] not in _target_lc_map:
@@ -2646,6 +2651,7 @@ class routerOBP(OPENBRIDGE):
                 'lastData': False,
             }
             
+        mark_originated_obp_stub(_target_status[_stream_id], perf_counter())
         # Record the time of this packet so we can later identify a stale stream
         _target_status[_stream_id]['LAST'] = pkt_time
         # Clear the TS bit -- all OpenBridge streams are effectively on TS1
@@ -2877,6 +2883,19 @@ class routerOBP(OPENBRIDGE):
 
             # Is this a new call stream?
             _obp_previous = self.STATUS.get(_stream_id)
+            if originated_obp_hairpin(
+                    _obp_previous, pkt_time, STREAM_TO):
+                _obp_previous['LAST'] = pkt_time
+                return
+            if own_server_obp_echo(
+                    _source_server, CONFIG['GLOBAL']['SERVER_ID']):
+                if _obp_previous is not None:
+                    _obp_previous['LAST'] = pkt_time
+                logger.debug(
+                    '(%s) OBP own-server echo dropped STREAM ID: %s TG: %s SRC: %s',
+                    self._system, int_id(_stream_id), int_id(_dst_id),
+                    int_id(_source_server))
+                return
             _obp_idle = (
                 _obp_previous is not None
                 and pkt_time - _obp_previous.get(
@@ -3296,6 +3315,8 @@ class routerHBP(HBSYSTEM):
                                 'lastData': False,
                                 'TARGET_LC': {},
                             }
+                        mark_originated_obp_stub(
+                            _target_status[_stream_id], perf_counter())
                         _target_lc_map = _target_status[_stream_id].setdefault(
                             'TARGET_LC', {})
                         if _target['TGID'] not in _target_lc_map:
@@ -3691,6 +3712,7 @@ class routerHBP(HBSYSTEM):
                 'lastData': False,
             }
             
+        mark_originated_obp_stub(_target_status[_stream_id], perf_counter())
         # Record the time of this packet so we can later identify a stale stream
         _target_status[_stream_id]['LAST'] = pkt_time
         # Clear the TS bit -- all OpenBridge streams are effectively on TS1
