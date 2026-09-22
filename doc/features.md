@@ -1,11 +1,12 @@
 # RYSEN Features
 
-Version history and feature reference for RYSEN DMRMaster+ (SystemX). Current release: **1.5.3** on `master`.
+Version history and feature reference for RYSEN DMRMaster+ (SystemX). Current release: **1.5.4** on `master`.
 
 Maintained by **Shane Daley M0VUB** (aka **ShaYmez**) — primary RYSEN / SystemX development since v1.3.9. Lineage: HBlink3 (N0MJS) → FreeDMR (G7RZU) → RYSEN.
 
 | Version | Date | Summary |
 |---------|------|---------|
+| 1.5.4 | 2026-09-22 | Reactor stall/idle hygiene, STAT OBP hairpin, hub device control |
 | 1.5.3 | 2026-08-07 | Built-in version traceability, status page live version, monitor footer |
 | 1.5.2 | 2026-08-05 | BRIDGE_IDX bloat trim, reactor/audio stability, hotspot echo fix |
 | 1.5.1 | 2026-07-24 | Selfcare fixes, documentation overhaul, legacy cleanup |
@@ -141,6 +142,18 @@ Field-hardened on high-cardinality masters (UK / USA / Europe) under busy OBP lo
 | Reactor / audio pacing | Endpoint ordering, UA activate without BRIDGE_SND thrash, soft-client stretch cuts |
 | Hotspot dekey echo | `send_peers()` skips originating peer / RF source so round-tripped audio cannot parrot after PTT |
 | HBP continuity | Preserve ownership across short jitter gaps; generation / fanout isolation |
+
+---
+
+## v1.5.4 — Reactor, hairpin, device control
+
+Field-hardened on the FreeSTAR fleet after USA Homebrew RPTPING stalls and STAT OpenBridge TG quench.
+
+| Feature | Detail |
+|---------|--------|
+| Idle reactor | Dirty-gate OPTIONS parse; empty MASTER slots no longer reset OPTIONS every ping; rule_timer notify-on-change |
+| STAT OBP hairpin | Originated outbound stubs; drop own-server echo; no BCSQ for own SRC on MAX HOPS |
+| Hub device control | Owner `/device/*` isolated from ops; per-peer statics, drop-dynamic, drop-call |
 
 ---
 

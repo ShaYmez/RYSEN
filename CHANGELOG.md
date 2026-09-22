@@ -1,6 +1,10 @@
 # RYSEN DMRMaster+ Changelog
 
-## Unreleased
+## Version 1.5.4 (2026-09-22)
+
+Idle reactor, STAT OpenBridge hairpin, and FreeSTAR hub device control.
+
+Released on **`master`** — `shaymez/rysen:1.5.4` and `:latest`.
 
 Reactor stall (USA): idle 26s `options_config` no longer blocks Homebrew RPTPING / voice for ~2.5–3.2s.
 
