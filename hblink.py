@@ -887,18 +887,26 @@ class HBSYSTEM(DatagramProtocol):
             del self._CONFIG['SYSTEMS'][self._system]['PEERS'][peer]
             forget_peer_rx_state(self._system, peer)
         if not self._peers and 'OPTIONS' in self._CONFIG['SYSTEMS'][self._system]:
-            
-            if '_default_options' in self._CONFIG['SYSTEMS'][self._system]:
-                logger.info('(%s) Setting default Options: %s',self._system, self._CONFIG['SYSTEMS'][self._system]['_default_options'])
-                self._CONFIG['SYSTEMS'][self._system]['OPTIONS'] = self._CONFIG['SYSTEMS'][self._system]['_default_options']
-                self._CONFIG['SYSTEMS'][self._system]['_reset'] = True
-                reset_slot_voice_ident(self._CONFIG['SYSTEMS'][self._system])
-                mark_options_dirty(self._CONFIG)
+            # One-shot when the last peer leaves. Do not re-arm _reset/dirty every
+            # PING_TIME on idle generator slots that already hold cfg defaults —
+            # that rebuilt BRIDGE_IDX ~40 times per 26s on USA (~2s reactor stall).
+            _syscfg = self._CONFIG['SYSTEMS'][self._system]
+            _default = _syscfg.get('_default_options')
+            _current = _syscfg.get('OPTIONS')
+            if isinstance(_current, (bytes, bytearray)):
+                _current = _current.decode('ascii', 'ignore')
+            if _default is not None:
+                if _current != _default:
+                    logger.info('(%s) Setting default Options: %s', self._system, _default)
+                    _syscfg['OPTIONS'] = _default
+                    _syscfg['_reset'] = True
+                    reset_slot_voice_ident(_syscfg)
+                    mark_options_dirty(self._CONFIG)
             else:
-                del self._CONFIG['SYSTEMS'][self._system]['OPTIONS']
-                reset_slot_voice_ident(self._CONFIG['SYSTEMS'][self._system])
+                del _syscfg['OPTIONS']
+                reset_slot_voice_ident(_syscfg)
                 mark_options_dirty(self._CONFIG)
-                logger.info('(%s) Deleting HBP Options',self._system)
+                logger.info('(%s) Deleting HBP Options', self._system)
 
     # Aliased in __init__ to maintenance_loop if system is a peer
     def peer_maintenance_loop(self):
