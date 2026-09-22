@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+Reactor stall (USA): idle 26s `options_config` no longer blocks Homebrew RPTPING / voice for ~2.5–3.2s.
+
+- Dirty-gate actually idles: `get('_OPTIONS_DIRTY')` then set False after starting a parse; RPTO / disconnect / selfcare still `mark_options_dirty`.
+- `DEFAULT_UA_TIMER` changes no longer `remove_bridge_system` + full `BRIDGE_IDX` rebuild (~34 rebuilds/tick of 16k keys on USA).
+- `STICKY` / `LINK_IPSC` INFO only when the value actually changes.
+
 FreeSTAR hub device control on `:8765` (needs matching `freestar-api-v2` device API).
 
 - Owner endpoints are isolated under `/device/*`; root actions remain operator-only. `GET /device/peer/{radio_id}` returns connected state, per-radio statics, and active RF/dial dynamics. Exact ID wins; ESSID 01-99 falls back to the 7-digit ID.
