@@ -156,15 +156,36 @@ def translated_obp_stream_id(orig_stream_id, dest_tgid, source_tgid, now=None):
 
 
 def originated_obp_hairpin(status, now, stream_timeout):
-    """True when inbound OBP is our own unterminated TG rewrite."""
+    """True when inbound OBP is our own outbound stream still in the hang window.
+
+    VHEAD/VTERM storms set `_fin` then immediately restart; those copies are
+    still a hairpin until STREAM_TO elapses.
+    """
     if not status or not status.get('_originated'):
-        return False
-    if status.get('_fin'):
         return False
     last = status.get('LAST', status.get('START', 0))
     if now - last >= stream_timeout:
         return False
     return True
+
+
+def own_server_obp_echo(source_server, server_id):
+    """True when an inbound OBP packet was originated by this RYSEN."""
+    if not source_server or not server_id:
+        return False
+    if source_server == _ZERO_STREAM_ID:
+        return False
+    return source_server == server_id
+
+
+def mark_originated_obp_stub(status, first_seen):
+    """Tag an outbound OBP STATUS stub so the echo is dropped, not fanned."""
+    if status is None:
+        return status
+    status['_originated'] = True
+    status.setdefault('1ST', first_seen)
+    status.setdefault('LAST', first_seen)
+    return status
 
 
 def hbp_claim_is_local(claim, system, slot):

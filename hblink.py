@@ -575,7 +575,9 @@ class OPENBRIDGE(DatagramProtocol):
                     
                     if _inthops > 10:
                         logger.warning('(%s) MAX HOPS exceed, dropping. Hops: %s, DST: %s, SRC: %s', self._system, _inthops, _int_dst_id, int.from_bytes(_source_server,'big'))
-                        self.send_bcsq(_dst_id,_stream_id)
+                        # Own-server STAT mesh loops must not BCSQ the live TG (HosePipe/QuadNet).
+                        if _source_server != self._CONFIG['GLOBAL']['SERVER_ID']:
+                            self.send_bcsq(_dst_id,_stream_id)
                         return
                     
                     
