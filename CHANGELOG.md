@@ -7,6 +7,7 @@ Reactor stall (USA): idle 26s `options_config` no longer blocks Homebrew RPTPING
 - Dirty-gate actually idles: `get('_OPTIONS_DIRTY')` then set False after starting a parse; RPTO / disconnect / selfcare still `mark_options_dirty`.
 - `DEFAULT_UA_TIMER` changes no longer `remove_bridge_system` + full `BRIDGE_IDX` rebuild (~34 rebuilds/tick of 16k keys on USA).
 - `STICKY` / `LINK_IPSC` INFO only when the value actually changes.
+- Empty generator slots no longer restore default OPTIONS / `_reset` on every `PING_TIME`. That loop re-armed dirty and rebuilt `BRIDGE_IDX` ~40 times per 26s after the first fix. `_reset` now parses defaults in the same tick with one index rebuild.
 
 FreeSTAR hub device control on `:8765` (needs matching `freestar-api-v2` device API).
 

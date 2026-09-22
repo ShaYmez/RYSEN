@@ -49,6 +49,16 @@ class TestHblinkPingTimeout(unittest.TestCase):
         self.assertTrue(sys_cfg.get('_reset'))
         self.assertFalse(sys_cfg.get('VOICE_IDENT'))
 
+    def test_timeout_does_not_rereset_idle_default_slot(self):
+        stub = self._make_master_stub()
+        stub.master_maintenance_loop()
+        sys_cfg = stub._CONFIG['SYSTEMS']['MASTER-0']
+        self.assertTrue(sys_cfg.get('_reset'))
+        sys_cfg['_reset'] = False
+        stub.master_maintenance_loop()
+        self.assertFalse(sys_cfg.get('_reset'))
+        self.assertEqual(sys_cfg['OPTIONS'], 'TS1=9;')
+
     def test_timeout_keeps_options_while_peers_remain(self):
         stub = self._make_master_stub()
         other = (235288).to_bytes(4, 'big')

@@ -65,7 +65,7 @@ class TestOptionsParserGuard(unittest.TestCase):
             self.bridge_source,
         )
 
-    def test_reset_pass_rearms_restored_options(self):
+    def test_reset_pass_parses_defaults_same_tick(self):
         options_block = self.bridge_source[
             self.bridge_source.index('def options_config():'):
             self.bridge_source.index('\n\n_selfcare_db = None')
@@ -74,11 +74,20 @@ class TestOptionsParserGuard(unittest.TestCase):
             options_block.index("if '_reset' in"):
             options_block.index('        try:')
         ]
-        self.assertIn('mark_options_dirty(CONFIG)', reset_block)
-        self.assertLess(
-            reset_block.index('mark_options_dirty(CONFIG)'),
-            reset_block.index('continue'),
-        )
+        self.assertIn('remove_bridge_system(_system, rebuild=False)', reset_block)
+        self.assertIn('_need_idx = True', reset_block)
+        self.assertNotIn('mark_options_dirty(CONFIG)', reset_block)
+        self.assertNotIn('continue', reset_block)
+        self.assertIn('if _need_idx:', options_block)
+        self.assertIn('rebuild_bridge_index()', options_block)
+
+    def test_empty_master_maintenance_skips_already_default_options(self):
+        maint = self.hblink_source[
+            self.hblink_source.index('def master_maintenance_loop(self):'):
+            self.hblink_source.index('def peer_maintenance_loop(self):')
+        ]
+        self.assertIn('if _current != _default:', maint)
+        self.assertIn("that rebuilt BRIDGE_IDX", maint)
 
     def test_rpto_and_disconnect_paths_mark_dirty(self):
         self.assertIn('from bridge_helpers import (', self.hblink_source)

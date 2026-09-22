@@ -897,7 +897,7 @@ def make_single_reflector(_tgid,_tmout,_sourcesystem):
     # Keep routing index in sync
     _idx_add_bridge(_bridge)
 
-def remove_bridge_system(system):
+def remove_bridge_system(system, rebuild=True):
     _bridgestemp = {}
     _bridgetemp = {}
     for _bridge in BRIDGES:
@@ -924,8 +924,10 @@ def remove_bridge_system(system):
                 })
             
     BRIDGES.update(_bridgestemp)
-    # Entries for the system changed across ALL bridges; cheapest correct option is a full rebuild
-    rebuild_bridge_index()
+    # Entries for the system changed across ALL bridges; cheapest correct option is a full rebuild.
+    # options_config batches many empty-slot resets into one rebuild at the end of the tick.
+    if rebuild:
+        rebuild_bridge_index()
 
 
 def clear_default_reflectors(system):
@@ -1886,16 +1888,16 @@ def options_config():
     CONFIG['_OPTIONS_DIRTY'] = False
     logger.debug('(OPTIONS) Running options parser')
     _t0 = time()
+    _need_idx = False
     for _system in CONFIG['SYSTEMS']:
         if '_reset' in  CONFIG['SYSTEMS'][_system] and CONFIG['SYSTEMS'][_system]['_reset']:
             logger.debug('(OPTIONS) Bridge reset for %s - no peers',_system)
-            remove_bridge_system(_system)
+            remove_bridge_system(_system, rebuild=False)
             CONFIG['SYSTEMS'][_system]['_reset'] = False
             reset_slot_voice_ident(CONFIG['SYSTEMS'][_system])
-            # This pass removed stale bridge state. Re-run once so restored
-            # default OPTIONS are parsed instead of being lost to the dirty gate.
-            mark_options_dirty(CONFIG)
-            continue
+            _need_idx = True
+            # Fall through and parse restored default OPTIONS this tick. Do not
+            # mark_options_dirty: that re-ran the full scan every 26s on USA.
         try:
             _mode = CONFIG['SYSTEMS'][_system]['MODE']
             if _mode not in ('MASTER', 'IPSC'):
@@ -2217,6 +2219,9 @@ def options_config():
             logger.exception('(OPTIONS) caught exception: %s',e)
             mark_options_dirty(CONFIG)
             continue
+
+    if _need_idx:
+        rebuild_bridge_index()
 
     _elapsed_ms = (time() - _t0) * 1000.0
     if _elapsed_ms >= 50.0:
