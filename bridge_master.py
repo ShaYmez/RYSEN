@@ -1291,6 +1291,7 @@ def rule_timer_loop():
     logger.debug('(ROUTER) routerHBP Rule timer loop started')
     _t0 = time()
     _now = time()
+    _changed = False
     _remove_bridges = deque()
 
     # Pre-compute set of systems that have any sticky-TG feature enabled.
@@ -1377,6 +1378,7 @@ def rule_timer_loop():
                     elif _system['TIMER'] < _now:
                         # Normal timeout behavior when sticky TG not active
                         _system['ACTIVE'] = False
+                        _changed = True
                         if _bridge[0:1] == '#':
                             clear_reflector_link_owner(_system)
                         _timeout_min = int(_system['TIMEOUT'] // 60) if _system['TIMEOUT'] else 0
@@ -1397,12 +1399,13 @@ def rule_timer_loop():
                 if _system['ACTIVE'] == False:
                     if _system['TIMER'] < _now:
                         _system['ACTIVE'] = True
+                        _changed = True
                         _bridge_used = True 
                         logger.info('(ROUTER) Conference Bridge TIMEOUT: ACTIVATE System: %s, Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
                     else:
                         timeout_in = _system['TIMER'] - _now
                         _bridge_used = True
-                        logger.info('(ROUTER) Conference Bridge INACTIVE (OFF timer running): System: %s Bridge: %s, TS: %s, TGID: %s, Timeout in: %.2fs,', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']),  timeout_in)
+                        logger.debug('(ROUTER) Conference Bridge INACTIVE (OFF timer running): System: %s Bridge: %s, TS: %s, TGID: %s, Timeout in: %.2fs,', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']),  timeout_in)
                 elif _system['ACTIVE'] == True:
                     _bridge_used = True
                     logger.debug('(ROUTER) Conference Bridge ACTIVE (no change): System: %s Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
@@ -1419,9 +1422,10 @@ def rule_timer_loop():
     for _bridgerem in _remove_bridges:
         _idx_remove_bridge(_bridgerem)
         del BRIDGES[_bridgerem]
+        _changed = True
         logger.debug('(ROUTER) Unused conference bridge %s removed',_bridgerem)
 
-    if CONFIG['REPORTS']['REPORT']:
+    if _changed and CONFIG['REPORTS']['REPORT']:
         report_server.send_clients(b'bridge updated')
 
     _elapsed_ms = (time() - _t0) * 1000.0

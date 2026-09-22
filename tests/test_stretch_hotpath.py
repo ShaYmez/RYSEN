@@ -155,6 +155,25 @@ class TestObpEmptyFiOwner(unittest.TestCase):
             "logger.info('(ROUTER) Conference Bridge ACTIVE (ON timer running):",
             source)
 
+    def test_rule_timer_notifies_monitor_only_on_change(self):
+        with open('bridge_master.py', encoding='utf-8') as fh:
+            source = fh.read()
+        block = source[
+            source.index('def rule_timer_loop():'):
+            source.index('def statTrimmer():')
+        ]
+        self.assertIn('_changed = False', block)
+        self.assertIn('if _changed and CONFIG[\'REPORTS\'][\'REPORT\']:', block)
+        self.assertNotIn(
+            "    if CONFIG['REPORTS']['REPORT']:\n        report_server.send_clients(b'bridge updated')",
+            block)
+        self.assertIn(
+            "logger.debug('(ROUTER) Conference Bridge INACTIVE (OFF timer running):",
+            block)
+        self.assertNotIn(
+            "logger.info('(ROUTER) Conference Bridge INACTIVE (OFF timer running):",
+            block)
+
 
 if __name__ == '__main__':
     unittest.main()

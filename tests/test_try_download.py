@@ -17,8 +17,12 @@ class TestTryDownloadImports(unittest.TestCase):
         result = hblink.try_download('/tmp/', 'peer_ids.json', 'https://example.test/peer_ids.json', 3600)
         self.assertNotIn('NameError', result)
         mock_urlopen.assert_called_once()
+        self.assertEqual(mock_urlopen.call_args.kwargs.get('timeout'), 10)
         request = mock_urlopen.call_args[0][0]
         self.assertTrue(any(k.lower() == 'user-agent' for k in request.headers))
+        with open('hblink.py', encoding='utf-8') as fh:
+            source = fh.read()
+        self.assertIn('urlopen(request, timeout=10, context=no_verify)', source)
 
 
 if __name__ == '__main__':
