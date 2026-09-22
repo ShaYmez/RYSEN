@@ -23,14 +23,40 @@ class TestOptionsParserGuard(unittest.TestCase):
             cls.hblink_source = fh.read()
 
     def test_unchanged_periodic_tick_returns_before_full_scan(self):
-        guard = "if not CONFIG.pop('_OPTIONS_DIRTY', True):"
+        guard = "if not CONFIG.get('_OPTIONS_DIRTY', True):"
+        clear = "CONFIG['_OPTIONS_DIRTY'] = False"
         loop = "for _system in CONFIG['SYSTEMS']:"
         options_block = self.bridge_source[
             self.bridge_source.index('def options_config():'):
             self.bridge_source.index('\n\n_selfcare_db = None')
         ]
         self.assertIn(guard, options_block)
-        self.assertLess(options_block.index(guard), options_block.index(loop))
+        self.assertIn(clear, options_block)
+        self.assertNotIn("CONFIG.pop('_OPTIONS_DIRTY', True)", options_block)
+        self.assertLess(options_block.index(guard), options_block.index(clear))
+        self.assertLess(options_block.index(clear), options_block.index(loop))
+
+    def test_timer_change_does_not_rebuild_bridge_index(self):
+        options_block = self.bridge_source[
+            self.bridge_source.index('def options_config():'):
+            self.bridge_source.index('\n\n_selfcare_db = None')
+        ]
+        timer_block = options_block[
+            options_block.index("int(_options['DEFAULT_UA_TIMER']) != CONFIG"):
+            options_block.index("int(_options['DEFAULT_REFLECTOR']) != CONFIG")
+        ]
+        self.assertNotIn('remove_bridge_system(_system)', timer_block)
+        self.assertNotIn('rebuild_bridge_index()', timer_block)
+
+    def test_sticky_and_link_ipsc_info_only_on_change(self):
+        options_block = self.bridge_source[
+            self.bridge_source.index('def options_config():'):
+            self.bridge_source.index('\n\n_selfcare_db = None')
+        ]
+        self.assertIn("_prev_sticky = _peer.get('STICKY')", options_block)
+        self.assertIn("_prev_link_ipsc = _peer.get('LINK_IPSC')", options_block)
+        self.assertIn("if _peer['STICKY'] != _prev_sticky:", options_block)
+        self.assertIn("if _link_slot != _prev_link_ipsc:", options_block)
 
     def test_parser_error_rearms_dirty_flag(self):
         self.assertIn(

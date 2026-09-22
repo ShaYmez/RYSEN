@@ -1879,9 +1879,11 @@ def ident():
 def options_config():
     # RPTO/selfcare/disconnect paths mark this dirty. Keep the 26-second timer
     # for coalescing, but never rebuild unchanged bridge state on the reactor.
-    if not CONFIG.pop('_OPTIONS_DIRTY', True):
+    if not CONFIG.get('_OPTIONS_DIRTY', True):
         logger.trace('(OPTIONS) Configuration unchanged; parser skipped')
         return
+    # Clear first so a clean pass idles. _reset / except re-arm via mark_options_dirty.
+    CONFIG['_OPTIONS_DIRTY'] = False
     logger.debug('(OPTIONS) Running options parser')
     _t0 = time()
     for _system in CONFIG['SYSTEMS']:
@@ -1905,6 +1907,8 @@ def options_config():
                         _peer = CONFIG['SYSTEMS'][_system]['PEERS'][_peer_id]
                         # Omitted values mean fallback to cfg, not retention of
                         # a previous RPTO from this peer.
+                        _prev_sticky = _peer.get('STICKY')
+                        _prev_link_ipsc = _peer.get('LINK_IPSC')
                         _peer.pop('STICKY', None)
                         _peer.pop('LINK_IPSC', None)
                         if 'OPTIONS' in _peer and _peer['OPTIONS']:
@@ -1930,14 +1934,16 @@ def options_config():
                                                 logger.warning('(OPTIONS) %s - Peer %s invalid STICKY value "%s", ignoring', 
                                                              _system, int_id(_peer_id), v)
                                                 continue
-                                            logger.info('(OPTIONS) %s - Peer %s set STICKY=%s', _system, int_id(_peer_id), _peer['STICKY'])
+                                            if _peer['STICKY'] != _prev_sticky:
+                                                logger.info('(OPTIONS) %s - Peer %s set STICKY=%s', _system, int_id(_peer_id), _peer['STICKY'])
                                         elif k in ('IPSC', 'LINK_IPSC'):
                                             _link_slot = v.strip()
                                             if (_link_slot in CONFIG['SYSTEMS']
                                                     and CONFIG['SYSTEMS'][_link_slot]['MODE'] == 'IPSC'):
                                                 _peer['LINK_IPSC'] = _link_slot
-                                                logger.info('(OPTIONS) %s - Peer %s set LINK_IPSC=%s',
-                                                            _system, int_id(_peer_id), _link_slot)
+                                                if _link_slot != _prev_link_ipsc:
+                                                    logger.info('(OPTIONS) %s - Peer %s set LINK_IPSC=%s',
+                                                                _system, int_id(_peer_id), _link_slot)
                                             else:
                                                 logger.warning('(OPTIONS) %s - Peer %s invalid LINK_IPSC "%s", ignoring',
                                                              _system, int_id(_peer_id), _link_slot)
@@ -2147,28 +2153,14 @@ def options_config():
                     _tmout = int(_options['DEFAULT_UA_TIMER'])
                     
                     if int(_options['DEFAULT_UA_TIMER']) != CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']:
-                        logger.debug('(OPTIONS) %s Updating DEFAULT_UA_TIMER for existing bridges.',_system)
-                        remove_bridge_system(_system)
-                        for _bridge in BRIDGES:
-                            ts1 = False 
-                            ts2 = False
-                            for i,e in enumerate(BRIDGES[_bridge]):
-                                if e['SYSTEM'] == _system and e['TS'] == 1:
-                                    ts1 = True
-                                if e['SYSTEM'] == _system and e['TS'] == 2:
-                                    ts2 = True
-                            if _bridge[0:1] != '#':
-                                if ts1 == False:
-                                    BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 1, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
-                                if ts2 == False:
-                                    BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 2, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
-                            else:
-                                if ts2 == False:
-                                    BRIDGES[_bridge].append({'SYSTEM': _system, 'TS': 2, 'TGID': bytes_3(9),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [bytes_3(4000)],'ON': [],'RESET': [], 'TIMER': time()})
-                        # Direct appends to BRIDGES above bypass the individual index helpers;
-                        # rebuild the full index to restore consistency.
-                        rebuild_bridge_index()
-            
+                        # Assign happens below. Do not remove_bridge_system + rebuild_bridge_index
+                        # here: that walked every GEN_STAT leg and stalled USA ~2.8s every 26s.
+                        logger.debug(
+                            '(OPTIONS) %s DEFAULT_UA_TIMER %s -> %s',
+                            _system,
+                            CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER'],
+                            int(_options['DEFAULT_UA_TIMER']))
+             
                     if int(_options['DEFAULT_REFLECTOR']) != CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR']:
                         if int(_options['DEFAULT_REFLECTOR']) > 0:
                             logger.debug('(OPTIONS) %s default reflector changed, updating',_system) 
