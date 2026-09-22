@@ -98,6 +98,8 @@ from bridge_helpers import (
     other_peer_has_dynamic_tg,
     forget_peer_dynamic_tg,
     remember_peer_dynamic_tg,
+    ua_timer_minutes,
+    should_remember_peer_dynamic_tg,
     remember_peer_reflector,
     peer_remembered_reflectors,
     forget_peer_reflector,
@@ -4222,21 +4224,22 @@ class routerHBP(HBSYSTEM):
                     self.STATUS[_slot]['RX_LC'] = b''.join([LC_OPT,_dst_id,_rf_src])
 
             #Create default bridge for unknown TG
-                if int_id(_dst_id) >= 5 and int_id(_dst_id) != 9 and int_id(_dst_id) != 4000 and int_id(_dst_id) != 5000  and (str(int_id(_dst_id)) not in BRIDGES):
-                    logger.info('(%s) Bridge for TG %s does not exist. Creating as User Activated. Timeout %s',self._system, int_id(_dst_id),CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
-                    make_single_bridge(_dst_id,self._system,_slot,CONFIG['SYSTEMS'][self._system]['DEFAULT_UA_TIMER'])
+                _ua_timer = ua_timer_minutes(CONFIG['SYSTEMS'][self._system])
+                if (_ua_timer is not None
+                        and int_id(_dst_id) >= 5 and int_id(_dst_id) != 9
+                        and int_id(_dst_id) != 4000 and int_id(_dst_id) != 5000
+                        and (str(int_id(_dst_id)) not in BRIDGES)):
+                    logger.info('(%s) Bridge for TG %s does not exist. Creating as User Activated. Timeout %s',self._system, int_id(_dst_id),_ua_timer)
+                    make_single_bridge(_dst_id,self._system,_slot,_ua_timer)
                 elif is_routing_master(CONFIG['SYSTEMS'][self._system]['MODE']) and str(int_id(_dst_id)) in BRIDGES:
                     activate_ua_bridge_source(str(int_id(_dst_id)), self._system, _slot, peer_id=_peer_id)
-                if (_int_dst_id >= 5
-                        and not is_dial_service_code(_int_dst_id)
+                if (should_remember_peer_dynamic_tg(
+                        CONFIG['SYSTEMS'][self._system], _int_dst_id)
                         and not peer_has_static_tg(
                             self._system, _peer_id, _slot, _int_dst_id)):
-                    _ua_seconds = (
-                        CONFIG['SYSTEMS'][self._system]
-                        ['DEFAULT_UA_TIMER'] * 60)
                     remember_peer_dynamic_tg(
                         self._system, _peer_id, _slot, _int_dst_id,
-                        expires_at=pkt_time + _ua_seconds)
+                        expires_at=pkt_time + _ua_timer * 60)
                 
                 # Update SUB_MAP with the TG for this call
                 # This enables sticky TG functionality - subscriber is now associated with this TG

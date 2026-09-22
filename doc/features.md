@@ -6,7 +6,7 @@ Maintained by **Shane Daley M0VUB** (aka **ShaYmez**) — primary RYSEN / System
 
 | Version | Date | Summary |
 |---------|------|---------|
-| 1.5.4 | 2026-09-22 | Reactor stall/idle hygiene, STAT OBP hairpin, hub device control |
+| 1.5.4 | 2026-09-22 | Reactor stall/idle hygiene, STAT OBP hairpin, hub device control, parrot UA KeyError |
 | 1.5.3 | 2026-08-07 | Built-in version traceability, status page live version, monitor footer |
 | 1.5.2 | 2026-08-05 | BRIDGE_IDX bloat trim, reactor/audio stability, hotspot echo fix |
 | 1.5.1 | 2026-07-24 | Selfcare fixes, documentation overhaul, legacy cleanup |
@@ -154,6 +154,7 @@ Field-hardened on the FreeSTAR fleet after USA Homebrew RPTPING stalls and STAT 
 | Idle reactor | Dirty-gate OPTIONS parse; empty MASTER slots no longer reset OPTIONS every ping; rule_timer notify-on-change |
 | STAT OBP hairpin | Originated outbound stubs; drop own-server echo; no BCSQ for own SRC on MAX HOPS |
 | Hub device control | Owner `/device/*` isolated from ops; per-peer statics, drop-dynamic, drop-call |
+| PARROT UA KeyError | PEER parrot echo no longer requires `DEFAULT_UA_TIMER`; TG 9990 is not recorded as a dynamic UA |
 
 ---
 

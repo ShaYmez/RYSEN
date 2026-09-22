@@ -599,6 +599,37 @@ def _live_peer_dynamic_tgs(system, peer_id, now=None):
     return memberships
 
 
+def ua_timer_minutes(system_cfg):
+    """MASTER/IPSC UA hang time in minutes, or None when the stanza has none.
+
+    PEER (PARROT), OPENBRIDGE, and other non-master systems omit
+    DEFAULT_UA_TIMER; callers must not KeyError on those stanzas.
+    """
+    if not system_cfg:
+        return None
+    timer = system_cfg.get('DEFAULT_UA_TIMER')
+    if timer is None:
+        return None
+    try:
+        return int(timer)
+    except (TypeError, ValueError):
+        return None
+
+
+def should_remember_peer_dynamic_tg(system_cfg, tgid):
+    """True when a group call should record per-peer UA membership."""
+    if ua_timer_minutes(system_cfg) is None:
+        return False
+    if is_parrot_talkgroup(tgid):
+        return False
+    if is_dial_service_code(tgid):
+        return False
+    tg = _tg_int(tgid)
+    if tg is None or tg < 5:
+        return False
+    return True
+
+
 def remember_peer_dynamic_tg(system, peer_id, slot, tgid, expires_at=None):
     """Record that this hotspot joined a numbered UA. Clears a prior mute."""
     if peer_id is None or not system:

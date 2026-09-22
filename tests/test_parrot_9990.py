@@ -152,5 +152,32 @@ class TestParrotEchoRewrite(unittest.TestCase):
         self.assertEqual(lc[0], 0x03)  # unit FLCO
 
 
+class TestParrotSkipsUaTimer(unittest.TestCase):
+
+    def test_peer_parrot_has_no_ua_timer(self):
+        from bridge_helpers import (
+            should_remember_peer_dynamic_tg,
+            ua_timer_minutes,
+        )
+        parrot = {'MODE': 'PEER', 'ENABLED': True}
+        master = {'MODE': 'MASTER', 'DEFAULT_UA_TIMER': 10}
+        self.assertIsNone(ua_timer_minutes(parrot))
+        self.assertIsNone(ua_timer_minutes({}))
+        self.assertEqual(ua_timer_minutes(master), 10)
+        self.assertFalse(should_remember_peer_dynamic_tg(parrot, 9990))
+        self.assertFalse(should_remember_peer_dynamic_tg(master, 9990))
+        self.assertFalse(should_remember_peer_dynamic_tg(master, 9))
+        self.assertTrue(should_remember_peer_dynamic_tg(master, 326))
+
+    def test_group_call_path_uses_ua_timer_guard(self):
+        with open('bridge_master.py', encoding='utf-8') as fh:
+            source = fh.read()
+        self.assertIn('ua_timer_minutes(CONFIG[\'SYSTEMS\'][self._system])', source)
+        self.assertIn('should_remember_peer_dynamic_tg(', source)
+        self.assertNotIn(
+            "CONFIG['SYSTEMS'][self._system]\n                        ['DEFAULT_UA_TIMER'] * 60",
+            source)
+
+
 if __name__ == '__main__':
     unittest.main()

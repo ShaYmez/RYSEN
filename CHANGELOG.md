@@ -14,6 +14,7 @@ Reactor stall (USA): idle 26s `options_config` no longer blocks Homebrew RPTPING
 - Empty generator slots no longer restore default OPTIONS / `_reset` on every `PING_TIME`. That loop re-armed dirty and rebuilt `BRIDGE_IDX` ~40 times per 26s after the first fix. `_reset` now parses defaults in the same tick with one index rebuild.
 - Alias JSON `try_download` now uses a 10s `urlopen` timeout so a hung download cannot pin a thread-pool worker. `rule_timer_loop` only pokes the monitor when a leg actually changes, and OFF-timer waiting logs at debug (same as ON-timer).
 - STAT/OpenBridge hairpin: outbound OBP stubs are `_originated`, inbound copies with this server's ID are dropped, and MAX HOPS of our own SRC no longer BCSQ. Stops a key-up on a network TG (e.g. 67498) bouncing Apollo↔EU to hop 11 and stomping HosePipe.
+- PARROT (PEER) group echo no longer `KeyError`s on missing `DEFAULT_UA_TIMER`. UA membership is recorded only on MASTER/IPSC stanzas, not parrot TG 9990.
 
 FreeSTAR hub device control on `:8765` (needs matching `freestar-api-v2` device API).
 
