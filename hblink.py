@@ -1672,7 +1672,7 @@ def try_download(_path, _file, _url, _stale,):
         try:
             request = Request(_url)
             request.add_header('User-Agent', __import__('rysen_version').user_agent())
-            with urlopen(request, context=no_verify) as response:
+            with urlopen(request, timeout=10, context=no_verify) as response:
                 data = response.read()
                 #outfile.write(data)
                 response.close()
