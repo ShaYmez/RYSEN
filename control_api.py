@@ -86,6 +86,7 @@ def handle_control_request(
     kick_peer: Optional[Callable] = None,
     ban_radio: Optional[Callable] = None,
     unban_radio: Optional[Callable] = None,
+    list_bans: Optional[Callable] = None,
     path_parts: Optional[List[str]] = None,
 ) -> Tuple[int, dict]:
     path_parts = list(path_parts or [])
@@ -98,7 +99,7 @@ def handle_control_request(
 
     ops_actions = {
         'disconnect', 'drop-call', 'drop-dynamic', 'talkgroup',
-        'kick', 'ban', 'unban',
+        'kick', 'ban', 'unban', 'bans',
     }
     device_actions = {
         'peer', 'static-talkgroup', 'drop-call', 'drop-dynamic',
@@ -106,6 +107,14 @@ def handle_control_request(
     }
     if action not in (device_actions if scope == 'device' else ops_actions):
         return 404, {'error': 'Unknown control action'}
+
+    if scope == 'ops' and action == 'bans':
+        if method != 'GET' or list_bans is None:
+            return 405, {'error': 'Method not allowed'}
+        rows = list_bans()
+        if not isinstance(rows, list):
+            rows = []
+        return 200, {'ok': True, 'action': 'bans', 'bans': rows}
 
     radio_id = _radio_from(body, path_parts if action == 'peer' else [])
     if radio_id is None:
@@ -476,6 +485,9 @@ def _wire_handlers():
     def unban_radio(radio_id):
         return bm.unban_hotspot_radio(radio_id)
 
+    def list_bans():
+        return bm.CONTROL_BANS.list_active()
+
     return {
         'find_peer': find_peer,
         'disconnect': disconnect,
@@ -490,6 +502,7 @@ def _wire_handlers():
         'kick_peer': kick_peer,
         'ban_radio': ban_radio,
         'unban_radio': unban_radio,
+        'list_bans': list_bans,
     }
 
 
@@ -582,6 +595,7 @@ def start_control_api(logger=None):
                     kick_peer=self.handlers.get('kick_peer'),
                     ban_radio=self.handlers.get('ban_radio'),
                     unban_radio=self.handlers.get('unban_radio'),
+                    list_bans=self.handlers.get('list_bans'),
                     path_parts=path_parts,
                 )
             except Exception as err:

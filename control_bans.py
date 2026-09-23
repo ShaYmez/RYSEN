@@ -119,3 +119,21 @@ class ControlBanStore:
         if removed:
             self._save()
         return removed
+
+    def list_active(self):
+        """Active bans after dropping expired rows."""
+        self.prune()
+        now = float(self.now_fn())
+        rows = []
+        for entry in self.bans.values():
+            if not isinstance(entry, dict):
+                continue
+            try:
+                expires_at = float(entry.get('expires_at') or 0)
+            except (TypeError, ValueError):
+                continue
+            row = dict(entry)
+            row['remaining_seconds'] = max(0, int(expires_at - now))
+            rows.append(row)
+        rows.sort(key=lambda row: int(row.get('radio_id') or 0))
+        return rows

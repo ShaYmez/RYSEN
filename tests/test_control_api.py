@@ -244,6 +244,14 @@ class TestControlDispatch(unittest.TestCase):
         self.assertEqual(
             [call[0] for call in self.calls], ['kick', 'ban', 'unban'])
 
+    def test_ops_lists_active_bans_without_a_radio_id(self):
+        code, body = handle_control_request(
+            'bans', 'GET', {},
+            list_bans=lambda: [{'radio_id': 2145555, 'remaining_seconds': 60}],
+            **self.kw)
+        self.assertEqual(code, 200)
+        self.assertEqual(body['bans'][0]['radio_id'], 2145555)
+
     def test_ban_duration_is_bounded(self):
         code, _body = handle_control_request(
             'ban', 'POST',

@@ -21,6 +21,7 @@ Root paths are operator-only and are forwarded from `/control/dmr/*`.
 - `POST /ban`: persist a 1–86400 second Radio-ID ban, kick every connected
   ESSID in that seven-digit family, and reject HBP/IPSC registration.
 - `POST /unban`: remove a ban. The radio does not need to be connected.
+- `GET /bans`: list active bans. Expired rows are omitted. No radio ID is required.
 
 ## Owner device actions
 

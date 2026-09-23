@@ -39,6 +39,17 @@ class TestControlBanStore(unittest.TestCase):
             self.assertTrue(store.unban(234018901))
             self.assertFalse(store.unban(2340189))
 
+    def test_list_active_omits_expired(self):
+        now = [1000.0]
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ControlBanStore(path=tmp + '/bans.json', now_fn=lambda: now[0])
+            store.ban(2141111, 30, 'dead key')
+            store.ban(2142222, 600, 'loop')
+            now[0] = 1040.0
+            rows = store.list_active()
+            self.assertEqual([row['radio_id'] for row in rows], [2142222])
+            self.assertGreater(rows[0]['remaining_seconds'], 0)
+
 
 class TestDropPeerCall(unittest.TestCase):
     def setUp(self):
