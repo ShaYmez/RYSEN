@@ -1551,7 +1551,7 @@ def stream_trimmer_loop():
 
                 # Dashboard END follows the audio idle (STREAM_TO is 0.36s).
                 # The slot itself stays up until the 5s teardown below.
-                _dash_idle = 0.75
+                _dash_idle = 1.15
                 if _slot['RX_TIME'] >= _now - _dash_idle:
                     _slot['_dash_end'] = False
                 elif (not _slot.get('_dash_end')
@@ -1609,9 +1609,9 @@ def stream_trimmer_loop():
                 try:
                     _obp = systems[system].STATUS[stream_id]
                     if '_fin' not in _obp and '_to' not in _obp:
-                        if _obp['LAST'] >= _now - 0.75:
+                        if _obp['LAST'] >= _now - 1.15:
                             _obp['_dash_end'] = False
-                        elif not _obp.get('_dash_end') and _obp['LAST'] < _now - 0.75:
+                        elif not _obp.get('_dash_end') and _obp['LAST'] < _now - 1.15:
                             _obp['_dash_end'] = True
                             if CONFIG['REPORTS']['REPORT']:
                                 systems[system]._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(stream_id), int_id(_obp['RX_PEER']), int_id(_obp['RFS']), 1, int_id(_obp['TGID']), _obp['LAST'] - _obp['START']).encode(encoding='utf-8', errors='ignore'))
