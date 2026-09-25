@@ -221,6 +221,26 @@ def stream_trimmer_loop():
             for slot in range(1,3):
                 _slot  = systems[system].STATUS[slot]
 
+                # Dashboard END follows the audio idle (STREAM_TO is 0.36s).
+                # The slot itself stays up until the 5s teardown below.
+                _dash_idle = 0.75
+                if _slot['RX_TIME'] >= _now - _dash_idle:
+                    _slot['_dash_end'] = False
+                elif (not _slot.get('_dash_end')
+                      and _slot['RX_TYPE'] != HBPF_SLT_VTERM
+                      and _slot['RX_TIME'] < _now - _dash_idle):
+                    _slot['_dash_end'] = True
+                    if CONFIG['REPORTS']['REPORT']:
+                        systems[system]._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(_slot['RX_STREAM_ID']), int_id(_slot['RX_PEER']), int_id(_slot['RX_RFS']), slot, int_id(_slot['RX_TGID']), _slot['RX_TIME'] - _slot['RX_START']).encode(encoding='utf-8', errors='ignore'))
+                if _slot['TX_TIME'] >= _now - _dash_idle:
+                    _slot['_dash_end_tx'] = False
+                elif (not _slot.get('_dash_end_tx')
+                      and _slot['TX_TYPE'] != HBPF_SLT_VTERM
+                      and _slot['TX_TIME'] < _now - _dash_idle):
+                    _slot['_dash_end_tx'] = True
+                    if CONFIG['REPORTS']['REPORT']:
+                        systems[system]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(_slot['TX_STREAM_ID']), int_id(_slot['TX_PEER']), int_id(_slot['TX_RFS']), slot, int_id(_slot['TX_TGID']), _slot['TX_TIME'] - _slot['TX_START']).encode(encoding='utf-8', errors='ignore'))
+
                 # RX slot check
                 if _slot['RX_TYPE'] != HBPF_SLT_VTERM and _slot['RX_TIME'] <  _now - 5:
                     _slot['RX_TYPE'] = HBPF_SLT_VTERM
@@ -254,6 +274,15 @@ def stream_trimmer_loop():
                     continue
                 
                 #try:
+                _obp = systems[system].STATUS[stream_id]
+                if '_fin' not in _obp and '_to' not in _obp:
+                    if _obp['LAST'] >= _now - 0.75:
+                        _obp['_dash_end'] = False
+                    elif not _obp.get('_dash_end') and _obp['LAST'] < _now - 0.75:
+                        _obp['_dash_end'] = True
+                        if CONFIG['REPORTS']['REPORT']:
+                            _sysconfig = CONFIG['SYSTEMS'][system]
+                            systems[system]._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(system, int_id(stream_id), int_id(_sysconfig['NETWORK_ID']), int_id(_obp['RFS']), 1, int_id(_obp['TGID']), _obp['LAST'] - _obp['START']).encode(encoding='utf-8', errors='ignore'))
                 if '_to' not in systems[system].STATUS[stream_id] and '_fin' not in systems[system].STATUS[stream_id] and systems[system].STATUS[stream_id]['LAST'] < _now - 5:
                     _stream = systems[system].STATUS[stream_id]
                     _sysconfig = CONFIG['SYSTEMS'][system]
@@ -1253,7 +1282,7 @@ if __name__ == '__main__':
 
     # Initialize the stream trimmer
     stream_trimmer_task = task.LoopingCall(stream_trimmer_loop)
-    stream_trimmer = stream_trimmer_task.start(5)
+    stream_trimmer = stream_trimmer_task.start(1)
     stream_trimmer.addErrback(loopingErrHandle)
 
     reactor.run()
