@@ -11,6 +11,7 @@ from hytera_const import (
 )
 from hytera_master import (
     HyteraMasterMixin,
+    _HyteraServiceProtocol,
     build_ping_reply,
     build_registration_reply,
     build_service_redirect,
@@ -34,10 +35,10 @@ def p2p_packet(command):
 
 class TestHyteraModeGating(unittest.TestCase):
 
-    def test_hytera_is_generated_but_not_routed_before_voice_phase(self):
+    def test_hytera_is_generated_and_routed_after_inbound_voice_phase(self):
         self.assertTrue(is_repeater_protocol('HYTERA'))
         self.assertTrue(is_generated_master('HYTERA'))
-        self.assertFalse(is_routing_master('HYTERA'))
+        self.assertTrue(is_routing_master('HYTERA'))
         self.assertTrue(is_routing_master('IPSC'))
 
 
@@ -116,6 +117,34 @@ class TestHyteraP2P(unittest.TestCase):
             [addr for _, addr in master.transport.writes],
             [('203.0.113.9', 50000), ('203.0.113.9', 50000)])
         self.assertEqual(master._hytera_addr, ('203.0.113.9', 50000))
+
+
+class TestHyteraServices(unittest.TestCase):
+
+    def test_one_byte_keepalive_is_acknowledged_on_service_socket(self):
+        class Owner:
+            def __init__(self):
+                self.received = []
+
+            def hytera_dmr_received(self, data, addr):
+                self.received.append((data, addr))
+
+        class Transport:
+            def __init__(self):
+                self.writes = []
+
+            def write(self, data, addr):
+                self.writes.append((data, addr))
+
+        owner = Owner()
+        protocol = _HyteraServiceProtocol(owner, 'dmr')
+        protocol.transport = Transport()
+        addr = ('203.0.113.9', 50001)
+
+        protocol.datagramReceived(b'\x00', addr)
+
+        self.assertEqual(protocol.transport.writes, [(b'\x41', addr)])
+        self.assertEqual(owner.received, [(b'\x00', addr)])
 
 
 class TestHyteraMediaLayout(unittest.TestCase):

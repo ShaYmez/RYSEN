@@ -30,6 +30,7 @@ from hytera_const import (
     media_timeslot,
     p2p_command_type,
 )
+from hytera_voice import HyteraVoiceTranslator
 
 
 def build_registration_reply(data):
@@ -85,6 +86,8 @@ class _HyteraServiceProtocol(DatagramProtocol):
         self.service = service
 
     def datagramReceived(self, data, addr):
+        if data == b'\x00':
+            self.transport.write(b'\x41', addr)
         if self.service == 'dmr':
             self.owner.hytera_dmr_received(data, addr)
         else:
@@ -103,6 +106,9 @@ class HyteraMasterMixin:
             self._config.get('HYTERA_REPEATER_ID', 0)).to_bytes(4, 'big')
         self._hytera_watchdog = self._config.get('KEEPALIVE_WATCHDOG', 60)
         self._hytera_trace = self._config.get('TRACE_PACKETS', False)
+        self._hytera_voice = HyteraVoiceTranslator(
+            self._config.get('HYTERA_REPEATER_ID', 0))
+        self._hytera_zero_peer_warned = False
         self.datagramReceived = self.hytera_p2p_received
         self.maintenance_loop = self.hytera_maintenance_loop
         self.send_system = self.hytera_send_system
@@ -159,6 +165,8 @@ class HyteraMasterMixin:
         self._hytera_registered = True
         self._hytera_addr = (host, port)
         self._hytera_last_seen = now
+        if is_new:
+            self._hytera_voice.reset()
 
         if int_id(self._hytera_peer_id):
             existing = self._peers.get(self._hytera_peer_id)
@@ -194,6 +202,7 @@ class HyteraMasterMixin:
         self._hytera_registered = False
         self._hytera_addr = None
         self._hytera_last_seen = 0
+        self._hytera_voice.reset()
         if self._hytera_peer_id in self._peers:
             del self._peers[self._hytera_peer_id]
             if self._report is not None:
@@ -254,14 +263,67 @@ class HyteraMasterMixin:
                      self._system, host, port, len(data), data.hex())
 
     def hytera_dmr_received(self, data, addr):
-        if self._hytera_registered:
-            self._touch_hytera_peer(addr)
+        if not self._hytera_registered:
+            return
+        if not self._hytera_addr or addr[0] != self._hytera_addr[0]:
+            logger.warning('(%s) Hytera DMR packet rejected from unregistered IP %s',
+                           self._system, addr[0])
+            return
+        self._touch_hytera_peer(addr)
         ids = media_radio_ids(data)
         logger.debug(
             '(%s) Hytera DMR packet from %s:%s len=%s slot=%s ids=%s%s',
             self._system, addr[0], addr[1], len(data),
             media_timeslot(data), ids,
             ' data=' + data.hex() if self._hytera_trace else '')
+        dmrd = self._hytera_voice.translate_group(data)
+        if dmrd is not None:
+            self._dispatch_hytera_dmrd(dmrd, addr)
+
+    def _dispatch_hytera_dmrd(self, data, addr):
+        peer_id = data[11:15]
+        if not int_id(peer_id):
+            if not self._hytera_zero_peer_warned:
+                logger.warning(
+                    '(%s) Hytera media dropped — configure HYTERA_REPEATER_ID',
+                    self._system)
+                self._hytera_zero_peer_warned = True
+            return
+        if not self._hytera_addr or addr[0] != self._hytera_addr[0]:
+            return
+
+        seq = data[4]
+        rf_src = data[5:8]
+        dst_id = data[8:11]
+        bits = data[15]
+        slot = 2 if bits & 0x80 else 1
+        frame_type = (bits & 0x30) >> 4
+        dtype_vseq = bits & 0x0f
+        stream_id = data[16:20]
+
+        global_config = self._CONFIG.get('GLOBAL', {})
+        if global_config.get('USE_ACL'):
+            if not acl_check(rf_src, global_config.get('SUB_ACL', '')):
+                return
+            tg_acl = (
+                global_config.get('TG2_ACL', '')
+                if slot == 2 else global_config.get('TG1_ACL', ''))
+            if not acl_check(dst_id, tg_acl):
+                return
+
+        if (self._config.get('USE_ACL')
+                and not acl_check(rf_src, self._config['SUB_ACL'])):
+            return
+        if self._config.get('USE_ACL'):
+            tg_acl = (
+                self._config['TG2_ACL']
+                if slot == 2 else self._config['TG1_ACL'])
+            if not acl_check(dst_id, tg_acl):
+                return
+
+        self.dmrd_received(
+            peer_id, rf_src, dst_id, seq, slot, 'group',
+            frame_type, dtype_vseq, stream_id, data)
 
     def hytera_rdac_received(self, data, addr):
         if self._hytera_registered:

@@ -9,9 +9,9 @@
 #   (at your option) any later version.
 ###############################################################################
 
-ROUTING_MASTER_MODES = frozenset(('MASTER', 'IPSC'))
+ROUTING_MASTER_MODES = frozenset(('MASTER', 'IPSC', 'HYTERA'))
 REPEATER_PROTOCOL_MODES = frozenset(('IPSC', 'HYTERA'))
-GENERATED_MASTER_MODES = ROUTING_MASTER_MODES | frozenset(('HYTERA',))
+GENERATED_MASTER_MODES = ROUTING_MASTER_MODES
 
 
 def is_routing_master(mode):

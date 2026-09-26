@@ -52,6 +52,27 @@ TIMESLOT_2 = b'\x22\x22'
 CALL_PRIVATE = 0x00
 CALL_GROUP = 0x01
 
+SLOT_VOICE_LC_HEADER = 0x1111
+SLOT_VOICE_LC_TERMINATOR = 0x2222
+SLOT_VOICE_C = 0x7777
+SLOT_VOICE_D = 0x8888
+SLOT_VOICE_E = 0x9999
+SLOT_VOICE_F = 0xAAAA
+SLOT_VOICE_A = 0xBBBB
+SLOT_VOICE_B = 0xCCCC
+SLOT_WAKEUP = 0xDDDD
+SLOT_HYTERA_SYNC = 0xEEEE
+
+# DMRD voice subtype values represented by each Hytera slot marker.
+VOICE_SLOT_DTYPE = {
+    SLOT_VOICE_A: 0,
+    SLOT_VOICE_B: 1,
+    SLOT_VOICE_C: 2,
+    SLOT_VOICE_D: 3,
+    SLOT_VOICE_E: 4,
+    SLOT_VOICE_F: 5,
+}
+
 # Proxy control datagrams. They are private RYSEN control messages, not Hytera.
 PRIN = b'PRIN'
 PRCL = b'PRCL'
@@ -93,3 +114,18 @@ def media_radio_ids(data):
     destination = int.from_bytes(
         data[MEDIA_DESTINATION_OFFSET:MEDIA_DESTINATION_OFFSET + 4], 'little') >> 8
     return source, destination
+
+
+def media_slot_type(data):
+    """Return the 16-bit Hytera slot/burst type."""
+    if len(data) < MEDIA_MIN_LEN:
+        return None
+    return int.from_bytes(
+        data[MEDIA_SLOT_TYPE_OFFSET:MEDIA_SLOT_TYPE_OFFSET + 2], 'big')
+
+
+def media_call_type(data):
+    """Return the Hytera private/group call marker."""
+    if len(data) < MEDIA_MIN_LEN:
+        return None
+    return data[MEDIA_CALL_TYPE_OFFSET]
