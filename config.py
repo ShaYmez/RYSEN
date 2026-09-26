@@ -31,6 +31,7 @@ import sys
 
 from rysen_version import advertised_package_id
 import const
+from repeater_modes import is_repeater_protocol
 
 import socket
 import ipaddress 
@@ -59,7 +60,8 @@ def process_acls(_config):
     # System level ACLs
     for system in _config['SYSTEMS']:
         # Registration ACLs (which make no sense for peer systems)
-        if _config['SYSTEMS'][system]['MODE'] in ('MASTER', 'IPSC'):
+        if (_config['SYSTEMS'][system]['MODE'] == 'MASTER'
+                or is_repeater_protocol(_config['SYSTEMS'][system]['MODE'])):
             _config['SYSTEMS'][system]['REG_ACL'] = acl_build(_config['SYSTEMS'][system]['REG_ACL'], const.PEER_MAX)
 
         # Subscriber and TGID ACLs (valid for all system types)
@@ -412,6 +414,52 @@ def build_config(_config_file):
                         'IPSC_VERSION': _parse_ipsc_version(config.get(section, 'IPSC_VERSION', fallback='')),
                         'ALLOWED_PEER_IDS': _parse_csv_ints(config.get(section, 'ALLOWED_PEER_IDS', fallback='')),
                         'ALLOWED_PEER_IPS': _parse_csv_strings(config.get(section, 'ALLOWED_PEER_IPS', fallback='')),
+                    }})
+                    CONFIG['SYSTEMS'][section].update({'PEERS': {}})
+
+                elif config.get(section, 'MODE') == 'HYTERA':
+                    p2p_port = config.getint(section, 'PORT')
+                    CONFIG['SYSTEMS'].update({section: {
+                        'MODE': config.get(section, 'MODE'),
+                        'ENABLED': config.getboolean(section, 'ENABLED'),
+                        'REPEAT': config.getboolean(section, 'REPEAT'),
+                        'MAX_PEERS': config.getint(section, 'MAX_PEERS', fallback=1),
+                        'IP': config.get(section, 'IP'),
+                        'PORT': p2p_port,
+                        'DMR_PORT': config.getint(
+                            section, 'DMR_PORT', fallback=p2p_port + 1),
+                        'RDAC_PORT': config.getint(
+                            section, 'RDAC_PORT', fallback=p2p_port + 2),
+                        'PORTS_PER_SLOT': 3,
+                        'GROUP_HANGTIME': config.getint(section, 'GROUP_HANGTIME'),
+                        'USE_ACL': config.getboolean(section, 'USE_ACL'),
+                        'REG_ACL': config.get(section, 'REG_ACL'),
+                        'SUB_ACL': config.get(section, 'SUB_ACL'),
+                        'TG1_ACL': config.get(section, 'TGID_TS1_ACL'),
+                        'TG2_ACL': config.get(section, 'TGID_TS2_ACL'),
+                        'DEFAULT_UA_TIMER': config.getint(section, 'DEFAULT_UA_TIMER'),
+                        'SINGLE_MODE': config.getboolean(section, 'SINGLE_MODE'),
+                        'VOICE_IDENT': config.getboolean(section, 'VOICE_IDENT'),
+                        'TS1_STATIC': config.get(section, 'TS1_STATIC'),
+                        'TS2_STATIC': config.get(section, 'TS2_STATIC'),
+                        'DEFAULT_REFLECTOR': config.getint(section, 'DEFAULT_REFLECTOR'),
+                        'STICKY_TG': config.getboolean(section, 'STICKY_TG'),
+                        'OPTIONS': '',
+                        'GENERATOR': config.getint(section, 'GENERATOR'),
+                        'ANNOUNCEMENT_LANGUAGE': config.get(section, 'ANNOUNCEMENT_LANGUAGE'),
+                        'ALLOW_UNREG_ID': config.getboolean(section, 'ALLOW_UNREG_ID'),
+                        'PROXY_CONTROL': config.getboolean(section, 'PROXY_CONTROL'),
+                        'OVERRIDE_IDENT_TG': config.get(section, 'OVERRIDE_IDENT_TG'),
+                        'HYTERA_REPEATER_ID': config.getint(
+                            section, 'HYTERA_REPEATER_ID', fallback=0),
+                        'KEEPALIVE_WATCHDOG': config.getint(
+                            section, 'KEEPALIVE_WATCHDOG', fallback=60),
+                        'TRACE_PACKETS': config.getboolean(
+                            section, 'TRACE_PACKETS', fallback=False),
+                        'ALLOWED_PEER_IDS': _parse_csv_ints(
+                            config.get(section, 'ALLOWED_PEER_IDS', fallback='')),
+                        'ALLOWED_PEER_IPS': _parse_csv_strings(
+                            config.get(section, 'ALLOWED_PEER_IPS', fallback='')),
                     }})
                     CONFIG['SYSTEMS'][section].update({'PEERS': {}})
 

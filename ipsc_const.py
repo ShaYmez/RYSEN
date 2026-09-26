@@ -9,6 +9,8 @@
 #   (at your option) any later version.
 ###############################################################################
 
+from repeater_modes import ROUTING_MASTER_MODES, is_routing_master
+
 # IPSC opcodes
 GROUP_VOICE        = 0x80
 PRIVATE_VOICE      = 0x81
@@ -71,13 +73,6 @@ HBPF_FRAMETYPE_DATASYNC  = 0x20
 # Proxy control (ASCII — not valid IPSC opcodes)
 PRIN = b'PRIN'
 PRCL = b'PRCL'
-
-ROUTING_MASTER_MODES = ('MASTER', 'IPSC')
-
-
-def is_routing_master(mode):
-    return mode in ROUTING_MASTER_MODES
-
 
 def peer_id_from_packet(data):
     """Extract 4-byte radio ID from standard IPSC management/voice packets."""

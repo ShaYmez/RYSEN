@@ -61,7 +61,8 @@ import log
 from const import *
 from mk_voice import pkt_gen
 from ipsc_master import IpscMasterMixin
-from ipsc_const import is_routing_master
+from hytera_master import HyteraMasterMixin
+from repeater_modes import is_generated_master, is_routing_master
 from control_bans import ControlBanStore, radio_id_core as control_radio_id_core
 from selfcare_db import (
     SelfcareDB,
@@ -4629,6 +4630,19 @@ class routerIPSC(IpscMasterMixin, routerHBP):
 
 
 #
+# Hytera IP Multi-site Connect master (MODE: HYTERA)
+#
+class routerHYTERA(HyteraMasterMixin, routerHBP):
+
+    def __init__(self, _name, _config, _report):
+        if 'PEERS' not in _config['SYSTEMS'][_name]:
+            _config['SYSTEMS'][_name]['PEERS'] = {}
+        routerHBP.__init__(self, _name, _config, _report)
+        self._peers = _config['SYSTEMS'][_name]['PEERS']
+        self.init_hytera()
+
+
+#
 # Socket-based reporting section
 #
 class bridgeReportFactory(reportFactory):
@@ -4872,12 +4886,20 @@ if __name__ == '__main__':
     systemdelete = deque()
     for system in CONFIG['SYSTEMS']:
         if CONFIG['SYSTEMS'][system]['ENABLED']:
-            if (is_routing_master(CONFIG['SYSTEMS'][system]['MODE'])
+            if (is_generated_master(CONFIG['SYSTEMS'][system]['MODE'])
                     and (CONFIG['SYSTEMS'][system]['GENERATOR'] > 1)):
                 for count in range(CONFIG['SYSTEMS'][system]['GENERATOR']):
                     _systemname = ''.join([system,'-',str(count)])
                     generator[_systemname] = copy.deepcopy(CONFIG['SYSTEMS'][system])
-                    generator[_systemname]['PORT'] = generator[_systemname]['PORT'] + count
+                    if generator[_systemname]['MODE'] == 'HYTERA':
+                        generator[_systemname]['PORT'] += (
+                            count * generator[_systemname]['PORTS_PER_SLOT'])
+                        generator[_systemname]['DMR_PORT'] += (
+                            count * generator[_systemname]['PORTS_PER_SLOT'])
+                        generator[_systemname]['RDAC_PORT'] += (
+                            count * generator[_systemname]['PORTS_PER_SLOT'])
+                    else:
+                        generator[_systemname]['PORT'] += count
                     ensure_master_default_options(generator[_systemname])
                     logger.debug('(GLOBAL) Generator - generated system %s',_systemname)
                 systemdelete.append(system)
@@ -4970,6 +4992,8 @@ if __name__ == '__main__':
                 _OPENBRIDGE_SYSTEMS.add(system)
             elif CONFIG['SYSTEMS'][system]['MODE'] == 'IPSC':
                 systems[system] = routerIPSC(system, CONFIG, report_server)
+            elif CONFIG['SYSTEMS'][system]['MODE'] == 'HYTERA':
+                systems[system] = routerHYTERA(system, CONFIG, report_server)
             else:
                 if (is_routing_master(CONFIG['SYSTEMS'][system]['MODE'])
                         and CONFIG['SYSTEMS'][system]['ANNOUNCEMENT_LANGUAGE']

@@ -7,7 +7,7 @@ import time
 from collections import OrderedDict
 
 from dmr_utils3.utils import bytes_3, int_id
-from ipsc_const import is_routing_master
+from repeater_modes import is_routing_master
 
 DIAL_A_TG = 9
 DIAL_A_TG_BYTES = bytes_3(DIAL_A_TG)
