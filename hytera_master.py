@@ -357,20 +357,31 @@ class HyteraMasterMixin:
 
     def hytera_send_system(self, packet, _hops=b'', _ber=b'\x00',
                            _rssi=b'\x00', _source_server=b'\x00\x00\x00\x00',
-                           _source_rptr=b'\x00\x00\x00\x00'):
+                           _source_rptr=b'\x00\x00\x00\x00',
+                           _late_join=False, _late_join_sequence=None):
         """Bridge outbound group-voice DMRD to the registered RD985."""
         if (not self._config.get('REPEAT', True)
                 or not self._hytera_registered
                 or self._hytera_dmr_addr is None):
             return False
         quality = _rssi[0] if _rssi else 0
-        encoded = self._hytera_voice.encode_group(packet, quality)
+        encoded = self._hytera_voice.encode_group(
+            packet, quality, late_join=_late_join,
+            late_join_sequence=_late_join_sequence)
         if encoded is None:
             return False
         ts, wire_packet, paced = encoded
+        if (_late_join and not paced
+                and wire_packet[18:20] != b'\x11\x11'):
+            self._hytera_outbound.reset_slot(ts)
+            # Hold three slots so irregular first packets can be drained at
+            # the RD985's required steady 60 ms cadence.
+            return self._hytera_outbound.enqueue(
+                ts, wire_packet, jitter_depth=3)
         if paced:
             return self._hytera_outbound.enqueue(ts, wire_packet)
-        if ((wire_packet[8] & 0x3f) == 0x02
+        if (_late_join
+                or (wire_packet[8] & 0x3f) == 0x02
                 or wire_packet[18:20] == b'\x11\x11'):
             self._hytera_outbound.reset_slot(ts)
         self._hytera_outbound.send_control(wire_packet)

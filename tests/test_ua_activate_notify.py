@@ -26,6 +26,8 @@ class TestActivateUaNotify(unittest.TestCase):
     def setUp(self):
         self._prev_bridges = getattr(bm, 'BRIDGES', None)
         self._prev_config = getattr(bm, 'CONFIG', None)
+        self._prev_late_join = dict(bm._LATE_JOIN_TARGETS)
+        bm._LATE_JOIN_TARGETS.clear()
         bm.CONFIG = {
             'SYSTEMS': {
                 'SYSTEM-1': {
@@ -35,6 +37,10 @@ class TestActivateUaNotify(unittest.TestCase):
                     'PEERS': {},
                 },
                 'IPSC-198': {'MODE': 'IPSC'},
+                'HYTERA': {
+                    'MODE': 'HYTERA',
+                    'DEFAULT_UA_TIMER': 10,
+                },
             },
             'REPORTS': {'REPORT': True},
         }
@@ -43,6 +49,7 @@ class TestActivateUaNotify(unittest.TestCase):
                 _leg('SYSTEM-1', 1, active=True, timer=100.0),
                 _leg('SYSTEM-1', 2, active=False, timer=0.0),
                 _leg('IPSC-198', 1, active=False, timer=0.0),
+                _leg('HYTERA', 1, active=False, timer=0.0),
             ],
         }
 
@@ -55,6 +62,8 @@ class TestActivateUaNotify(unittest.TestCase):
             delattr(bm, 'CONFIG')
         else:
             bm.CONFIG = self._prev_config
+        bm._LATE_JOIN_TARGETS.clear()
+        bm._LATE_JOIN_TARGETS.update(self._prev_late_join)
 
     def test_already_active_refreshes_timer_without_notify(self):
         before = bm.BRIDGES['326'][0]['TIMER']
@@ -82,6 +91,30 @@ class TestActivateUaNotify(unittest.TestCase):
         self.assertTrue(changed)
         self.assertTrue(bm.BRIDGES['326'][2]['ACTIVE'])
         notify.assert_called_once()
+
+    def test_hytera_activation_arms_midstream_late_join(self):
+        now = bm.time()
+        with mock.patch.object(bm, 'notify_bridge_table_updated'):
+            changed = bm.activate_ua_bridge_source('326', 'HYTERA', 1)
+
+        self.assertTrue(changed)
+        self.assertTrue(bm.BRIDGES['326'][3]['ACTIVE'])
+        self.assertTrue(
+            bm._late_join_active(
+                'HYTERA', 1, b'\x00\x01\x46', now))
+
+    def test_late_join_arm_expires_after_stream_timeout(self):
+        bm._arm_late_join_target(
+            'HYTERA', 1, b'\x00\x01\x46', 100.0)
+
+        self.assertFalse(
+            bm._late_join_active(
+                'HYTERA', 1, b'\x00\x01\x46',
+                100.001 + bm._LATE_JOIN_TIMEOUT_S))
+
+    def test_late_join_reconstructs_full_hytera_sequence(self):
+        self.assertEqual(bm._late_join_wire_sequence(0x54, 341), 340)
+        self.assertEqual(bm._late_join_wire_sequence(0xe8, 745), 744)
 
     def test_source_guard_no_ua_refreshed_notify(self):
         with open('bridge_master.py', encoding='utf-8') as fh:

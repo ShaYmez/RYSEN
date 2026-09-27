@@ -62,9 +62,9 @@ def fixture(name):
 
 
 def dmrd(flags, payload, stream=b'\x10\x20\x30\x40',
-         source=2344669, destination=235):
+         source=2344669, destination=235, sequence=1):
     return (
-        DMRD + b'\x01' + source.to_bytes(3, 'big')
+        DMRD + bytes((sequence,)) + source.to_bytes(3, 'big')
         + destination.to_bytes(3, 'big') + (235287).to_bytes(4, 'big')
         + bytes((flags,)) + stream + payload + b'\x00\x00'
     )
@@ -214,6 +214,31 @@ class TestHyteraOutboundVoice(unittest.TestCase):
         self.assertEqual(replacement[1][4], 0)
         self.assertEqual(replacement[1][8], 0x02)
 
+    def test_midstream_join_starts_with_current_voice_burst(self):
+        packet = self.translator.encode_group(
+            dmrd(0x04, self.payload, stream=b'\x03\x03\x03\x03',
+                 source=2340189, destination=23426, sequence=84),
+            late_join=True, late_join_sequence=340)
+
+        ts, voice, paced = packet
+        self.assertEqual(ts, 1)
+        self.assertFalse(paced)
+        self.assertEqual(voice[4:8], b'\x54\x01\x00\x00')
+        self.assertEqual(voice[8], 0x41)
+        self.assertEqual(voice[18:20], b'\x99\x99')
+        self.assertEqual(voice[:4], b'\x5a\x5a\x5a\x5a')
+        self.assertEqual(int.from_bytes(voice[63:67], 'little') >> 8, 23426)
+        self.assertEqual(int.from_bytes(voice[67:71], 'little') >> 8, 2340189)
+
+        _, next_voice, paced = self.translator.encode_group(
+            dmrd(0x05, self.payload, stream=b'\x03\x03\x03\x03',
+                 source=2340189, destination=23426, sequence=85),
+            late_join=True)
+        self.assertTrue(paced)
+        self.assertEqual(next_voice[4:8], b'\x55\x01\x00\x00')
+        self.assertEqual(next_voice[8], 0x41)
+        self.assertEqual(next_voice[:4], b'\x5a\x5a\x5a\x5a')
+
     def test_payload_round_trip_and_quality_byte(self):
         wire = dmrd_payload_to_hytera(self.payload, quality=0x58)
         self.assertEqual(len(wire), 34)
@@ -328,6 +353,33 @@ class TestHyteraOutboundDispatch(unittest.TestCase):
             dmrd(0x21, self.payload)))
         self.assertEqual(
             self.master._hytera_services['dmr'].transport.writes, [])
+
+    def test_midstream_join_replaces_stale_queue_and_buffers_three_bursts(self):
+        self.master._hytera_outbound.enqueue(1, b'stale')
+        self.assertTrue(self.master.hytera_send_system(
+            dmrd(0x04, self.payload, stream=b'\x03\x03\x03\x03',
+                 source=2340189, destination=23426),
+            _late_join=True))
+        self.assertTrue(self.master.hytera_send_system(
+            dmrd(0x05, self.payload, stream=b'\x03\x03\x03\x03',
+                 source=2340189, destination=23426, sequence=2),
+            _late_join=True))
+        self.assertTrue(self.master.hytera_send_system(
+            dmrd(0x10, self.payload, stream=b'\x03\x03\x03\x03',
+                 source=2340189, destination=23426, sequence=3),
+            _late_join=True))
+
+        writes = self.master._hytera_services['dmr'].transport.writes
+        self.assertEqual(writes, [])
+        self.clock.advance(0.179)
+        self.assertEqual(writes, [])
+        self.clock.advance(0.001)
+        self.assertEqual(len(writes), 1)
+        self.assertEqual(writes[0][0][18:20], b'\x99\x99')
+        self.clock.advance(0.060)
+        self.assertEqual(len(writes), 2)
+        self.clock.advance(0.060)
+        self.assertEqual(len(writes), 3)
 
 
 if __name__ == '__main__':

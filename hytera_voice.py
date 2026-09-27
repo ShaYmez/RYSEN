@@ -118,13 +118,16 @@ class HyteraOutboundPacer:
     def send_control(self, packet):
         self._send_cb(packet)
 
-    def enqueue(self, ts, packet):
+    def enqueue(self, ts, packet, jitter_depth=None):
         if ts not in self._queues:
             return False
         self._queues[ts].append(packet)
         if self._timers[ts] is None:
             now = self._clock.seconds()
-            self._next[ts] = now + self._jitter_depth * self._interval
+            depth = (
+                self._jitter_depth
+                if jitter_depth is None else max(0, jitter_depth))
+            self._next[ts] = now + depth * self._interval
             self._arm(ts)
         return True
 
@@ -159,6 +162,7 @@ class HyteraVoiceTranslator:
         self._dmrd_seq = 0
         self._out_streams = {1: None, 2: None}
         self._out_seq = {1: 0, 2: 0}
+        self._out_late_join = {1: False, 2: False}
 
     def reset(self):
         self._streams = {1: None, 2: None}
@@ -167,6 +171,7 @@ class HyteraVoiceTranslator:
         self._dmrd_seq = 0
         self._out_streams = {1: None, 2: None}
         self._out_seq = {1: 0, 2: 0}
+        self._out_late_join = {1: False, 2: False}
 
     def set_peer_id(self, peer_id):
         self._peer_id = int(peer_id).to_bytes(4, 'big')
@@ -247,11 +252,15 @@ class HyteraVoiceTranslator:
     def _build_outbound(self, ts, packet_type, slot_type, source, destination,
                         payload, call_start=False):
         packet = bytearray(72)
-        packet[:4] = (
-            b'\xee\xee\x11\x11'
-            if slot_type == SLOT_VOICE_A else b'\x00' * 4)
-        packet[4] = self._out_seq[ts]
-        packet[8] = packet_type | (0x40 if ts == 2 else 0)
+        if self._out_late_join[ts]:
+            packet[:4] = b'\x5a' * 4
+        else:
+            packet[:4] = (
+                b'\xee\xee\x11\x11'
+                if slot_type == SLOT_VOICE_A else b'\x00' * 4)
+        packet[4:8] = self._out_seq[ts].to_bytes(4, 'little')
+        packet[8] = packet_type | (
+            0x40 if ts == 2 or self._out_late_join[ts] else 0)
         packet[9:16] = b'\x00\x05\x01' + bytes((ts,)) + b'\x00\x00\x00'
         packet[16:18] = b'\x11\x11' if ts == 1 else b'\x22\x22'
         packet[18:20] = slot_type.to_bytes(2, 'big')
@@ -264,7 +273,8 @@ class HyteraVoiceTranslator:
         packet[67:71] = _wire_id(source)
         return bytes(packet)
 
-    def encode_group(self, dmrd, quality=0):
+    def encode_group(self, dmrd, quality=0, late_join=False,
+                     late_join_sequence=None):
         """Return (timeslot, packet, paced), or None for gated/invalid DMRD."""
         if len(dmrd) < 53 or dmrd[:4] != DMRD:
             return None
@@ -284,6 +294,7 @@ class HyteraVoiceTranslator:
                 return None
             self._out_streams[ts] = stream
             self._out_seq[ts] = 0
+            self._out_late_join[ts] = False
             payload = dmrd_payload_to_hytera(dmrd[20:53], quality)
             if payload is None:
                 return None
@@ -295,7 +306,25 @@ class HyteraVoiceTranslator:
         if frame_type in (HBPF_VOICE, HBPF_VOICE_SYNC):
             if self._out_streams[ts] != stream:
                 self._out_streams[ts] = stream
-                self._out_seq[ts] = 0
+                self._out_late_join[ts] = late_join
+                self._out_seq[ts] = (
+                    late_join_sequence
+                    if late_join and late_join_sequence is not None
+                    else dmrd[4] if late_join else 0)
+                if late_join:
+                    slot_type = OUTBOUND_SLOT_TYPE.get(dtype)
+                    payload = dmrd_payload_to_hytera(
+                        dmrd[20:53], quality)
+                    if slot_type is None or payload is None:
+                        return None
+                    packet = self._build_outbound(
+                        ts, 0x01, slot_type, source, destination,
+                        payload)
+                    self._out_seq[ts] = (
+                        self._out_seq[ts] + 1) & 0xffffffff
+                    # IPSC2 joins a running call with the current voice burst,
+                    # without synthesizing a new LC header or EEEE call start.
+                    return ts, packet, False
                 packet = self._build_outbound(
                     ts, 0x02, SLOT_HYTERA_SYNC, source, destination,
                     _sync_payload(source, destination), call_start=True)
@@ -310,7 +339,7 @@ class HyteraVoiceTranslator:
                 return None
             packet = self._build_outbound(
                 ts, 0x01, slot_type, source, destination, payload)
-            self._out_seq[ts] = (self._out_seq[ts] + 1) & 0xff
+            self._out_seq[ts] = (self._out_seq[ts] + 1) & 0xffffffff
             return ts, packet, True
 
         if frame_type == HBPF_DATA_SYNC and dtype == HBPF_SLT_VTERM:
@@ -322,8 +351,9 @@ class HyteraVoiceTranslator:
             packet = self._build_outbound(
                 ts, 0x03, SLOT_VOICE_LC_TERMINATOR, source, destination,
                 payload)
-            self._out_seq[ts] = (self._out_seq[ts] + 1) & 0xff
+            self._out_seq[ts] = (self._out_seq[ts] + 1) & 0xffffffff
             self._out_streams[ts] = None
+            self._out_late_join[ts] = False
             return ts, packet, True
 
         return None

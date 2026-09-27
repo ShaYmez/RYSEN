@@ -160,18 +160,25 @@ acquisition and sometimes displayed stale identity data. Packet decoding
 confirmed that RYSEN's LC and metadata fields contained the correct source and
 talkgroup. Two subsequent `EEEE` acquisition variants produced no audio, so
 the audible `1111` build was restored. If a talkgroup is already active when
-the RD985 keys to activate it, RYSEN does not join the in-progress stream; the
-repeater remains idle until the next over, which then carries clean audio and
-correct identity. Outbound remains incomplete until mid-stream activation is
-handled.
+the RD985 keys to activate it, RYSEN now marks that slot for a short-lived
+late join, bypasses contention from the activation transmission, and forwards
+the current voice burst directly without synthesizing a new call start. The
+first three late-join bursts are buffered before delivery so irregular ingress
+at activation becomes a continuous 60 ms stream; ordinary calls retain the
+one-slot jitter buffer.
+
+This matches the IPSC2 oracle captured on TS1/TG23426: the RD985's third
+activation header ended at `12:24:23.454`, and IPSC2 sent the running call's
+`9999` voice burst (sequence 84) at `12:24:23.540`, with no preceding `1111`
+or `EEEE` packet.
 
 ## Implementation gates
 
 1. **Complete:** validate the native master against an RD985 cold boot.
 2. **Complete:** convert captured inbound 72-byte group voice into DMRD.
 3. **Complete:** field-test inbound bridge audio and enable Hytera routing.
-4. **Partially field-validated:** paced outbound group voice; add mid-stream
-   dynamic-TG activation.
+4. **Implemented, field retest pending:** paced outbound group voice with
+   mid-stream dynamic-TG activation.
 5. Add private voice.
 6. Add RDAC identity and optional SNMP discovery.
 7. Add the three-port, NAT-aware multi-repeater proxy.
