@@ -30,7 +30,7 @@ from hytera_const import (
     media_timeslot,
     p2p_command_type,
 )
-from hytera_voice import HyteraVoiceTranslator
+from hytera_voice import HyteraOutboundPacer, HyteraVoiceTranslator
 
 
 def build_registration_reply(data):
@@ -102,12 +102,16 @@ class HyteraMasterMixin:
         self._hytera_addr = None
         self._hytera_last_seen = 0
         self._hytera_listeners = []
+        self._hytera_services = {}
+        self._hytera_dmr_addr = None
         self._hytera_peer_id = int(
             self._config.get('HYTERA_REPEATER_ID', 0)).to_bytes(4, 'big')
         self._hytera_watchdog = self._config.get('KEEPALIVE_WATCHDOG', 60)
         self._hytera_trace = self._config.get('TRACE_PACKETS', False)
         self._hytera_voice = HyteraVoiceTranslator(
             self._config.get('HYTERA_REPEATER_ID', 0))
+        self._hytera_outbound = HyteraOutboundPacer(
+            self._send_hytera_media)
         self._hytera_zero_peer_warned = False
         self.datagramReceived = self.hytera_p2p_received
         self.maintenance_loop = self.hytera_maintenance_loop
@@ -120,9 +124,10 @@ class HyteraMasterMixin:
         for port, service in (
                 (self._config['DMR_PORT'], 'dmr'),
                 (self._config['RDAC_PORT'], 'rdac')):
+            protocol = _HyteraServiceProtocol(self, service)
             listener = reactor.listenUDP(
-                port, _HyteraServiceProtocol(self, service),
-                interface=interface)
+                port, protocol, interface=interface)
+            self._hytera_services[service] = protocol
             self._hytera_listeners.append(listener)
         logger.info(
             '(%s) Hytera IP Multi-site master listening P2P=%s DMR=%s RDAC=%s',
@@ -167,6 +172,7 @@ class HyteraMasterMixin:
         self._hytera_last_seen = now
         if is_new:
             self._hytera_voice.reset()
+            self._hytera_outbound.reset()
 
         if int_id(self._hytera_peer_id):
             existing = self._peers.get(self._hytera_peer_id)
@@ -203,6 +209,8 @@ class HyteraMasterMixin:
         self._hytera_addr = None
         self._hytera_last_seen = 0
         self._hytera_voice.reset()
+        self._hytera_outbound.reset()
+        self._hytera_dmr_addr = None
         if self._hytera_peer_id in self._peers:
             del self._peers[self._hytera_peer_id]
             if self._report is not None:
@@ -269,6 +277,7 @@ class HyteraMasterMixin:
             logger.warning('(%s) Hytera DMR packet rejected from unregistered IP %s',
                            self._system, addr[0])
             return
+        self._hytera_dmr_addr = addr
         self._touch_hytera_peer(addr)
         ids = media_radio_ids(data)
         logger.debug(
@@ -333,11 +342,39 @@ class HyteraMasterMixin:
             self._system, addr[0], addr[1], len(data),
             ' data=' + data.hex() if self._hytera_trace else '')
 
-    def hytera_send_system(self, packet, *args, **kwargs):
-        """Registration milestone intentionally does not transmit DMR media."""
-        logger.trace('(%s) Hytera media TX disabled until capture validation',
-                     self._system)
-        return False
+    def _send_hytera_media(self, packet):
+        protocol = self._hytera_services.get('dmr')
+        if (protocol is None or not hasattr(protocol, 'transport')
+                or self._hytera_dmr_addr is None):
+            return False
+        protocol.transport.write(packet, self._hytera_dmr_addr)
+        if self._hytera_trace:
+            logger.debug(
+                '(%s) Hytera DMR TX %s:%s len=%s data=%s',
+                self._system, self._hytera_dmr_addr[0],
+                self._hytera_dmr_addr[1], len(packet), packet.hex())
+        return True
+
+    def hytera_send_system(self, packet, _hops=b'', _ber=b'\x00',
+                           _rssi=b'\x00', _source_server=b'\x00\x00\x00\x00',
+                           _source_rptr=b'\x00\x00\x00\x00'):
+        """Bridge outbound group-voice DMRD to the registered RD985."""
+        if (not self._config.get('REPEAT', True)
+                or not self._hytera_registered
+                or self._hytera_dmr_addr is None):
+            return False
+        quality = _rssi[0] if _rssi else 0
+        encoded = self._hytera_voice.encode_group(packet, quality)
+        if encoded is None:
+            return False
+        ts, wire_packet, paced = encoded
+        if paced:
+            return self._hytera_outbound.enqueue(ts, wire_packet)
+        if ((wire_packet[8] & 0x3f) == 0x02
+                or wire_packet[18:20] == b'\x11\x11'):
+            self._hytera_outbound.reset_slot(ts)
+        self._hytera_outbound.send_control(wire_packet)
+        return True
 
     def hytera_dereg(self):
         self._clear_hytera_peer()

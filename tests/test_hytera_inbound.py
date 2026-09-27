@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
 import unittest
 
+from const import DMRD
 from hytera_master import HyteraMasterMixin
-from hytera_voice import HyteraVoiceTranslator, hytera_payload_to_dmrd
+from hytera_voice import (
+    HyteraOutboundPacer,
+    HyteraVoiceTranslator,
+    dmrd_payload_to_hytera,
+    hytera_payload_to_dmrd,
+)
+from twisted.internet.task import Clock
 
 
 TS1_FIXTURES = {
@@ -52,6 +59,15 @@ TS2_HEADER = bytes.fromhex(
 
 def fixture(name):
     return bytes.fromhex(TS1_FIXTURES[name])
+
+
+def dmrd(flags, payload, stream=b'\x10\x20\x30\x40',
+         source=2344669, destination=235):
+    return (
+        DMRD + b'\x01' + source.to_bytes(3, 'big')
+        + destination.to_bytes(3, 'big') + (235287).to_bytes(4, 'big')
+        + bytes((flags,)) + stream + payload + b'\x00\x00'
+    )
 
 
 class TestHyteraInboundVoice(unittest.TestCase):
@@ -122,6 +138,106 @@ class TestHyteraInboundVoice(unittest.TestCase):
         self.assertEqual(converted[:6], b'\x01\x00\x03\x02\x05\x04')
 
 
+class TestHyteraOutboundVoice(unittest.TestCase):
+
+    def setUp(self):
+        self.translator = HyteraVoiceTranslator(peer_id=235287)
+        self.payload = bytes(range(33))
+
+    def test_header_carries_voice_lc_to_rd985(self):
+        encoded = self.translator.encode_group(
+            dmrd(0xa1, self.payload, destination=2350))
+
+        self.assertEqual(encoded[0], 2)
+        self.assertFalse(encoded[2])
+        packet = encoded[1]
+        self.assertEqual(packet[8], 0x41)
+        self.assertEqual(packet[18:20], b'\x11\x11')
+        self.assertEqual(packet[26:60],
+                         dmrd_payload_to_hytera(self.payload))
+        self.assertEqual(packet[63:67], (2350 << 8).to_bytes(4, 'little'))
+
+    def test_voice_and_terminator_use_outbound_packet_types(self):
+        stream = b'\x10\x20\x30\x40'
+        self.assertIsNotNone(
+            self.translator.encode_group(dmrd(0x21, self.payload, stream)))
+
+        ts, voice, paced = self.translator.encode_group(
+            dmrd(0x02, self.payload, stream))
+        self.assertEqual(ts, 1)
+        self.assertTrue(paced)
+        self.assertEqual(voice[4], 1)
+        self.assertEqual(voice[8], 0x01)
+        self.assertEqual(voice[:4], b'\x00\x00\x00\x00')
+        self.assertEqual(voice[18:20], b'\x77\x77')
+        self.assertEqual(hytera_payload_to_dmrd(voice[26:60]), self.payload)
+
+        _, term, paced = self.translator.encode_group(
+            dmrd(0x22, self.payload, stream))
+        self.assertTrue(paced)
+        self.assertEqual(term[4], 2)
+        self.assertEqual(term[8], 0x03)
+        self.assertEqual(term[18:20], b'\x22\x22')
+
+    def test_ts2_and_private_call_gate(self):
+        ts, packet, _ = self.translator.encode_group(
+            dmrd(0xa1, self.payload, destination=2350))
+        self.assertEqual(ts, 2)
+        self.assertEqual(packet[8], 0x41)
+        self.assertEqual(packet[12], 2)
+        self.assertEqual(packet[16:18], b'\x22\x22')
+        self.assertEqual(packet[63:67], (2350 << 8).to_bytes(4, 'little'))
+        self.assertIsNone(
+            self.translator.encode_group(dmrd(0x61, self.payload)))
+
+    def test_voice_sync_uses_captured_a_burst_prefix(self):
+        stream = b'\x10\x20\x30\x40'
+        self.translator.encode_group(dmrd(0x21, self.payload, stream))
+        _, packet, _ = self.translator.encode_group(
+            dmrd(0x10, self.payload, stream))
+        self.assertEqual(packet[:4], b'\xee\xee\x11\x11')
+        self.assertEqual(packet[18:20], b'\xbb\xbb')
+
+    def test_headerless_and_replaced_streams_get_call_start(self):
+        first = self.translator.encode_group(
+            dmrd(0x02, self.payload, stream=b'\x01\x01\x01\x01'))
+        self.assertFalse(first[2])
+        self.assertEqual(first[1][8], 0x02)
+        voice = self.translator.encode_group(
+            dmrd(0x03, self.payload, stream=b'\x01\x01\x01\x01'))
+        self.assertTrue(voice[2])
+        self.assertEqual(voice[1][8], 0x01)
+
+        replacement = self.translator.encode_group(
+            dmrd(0x04, self.payload, stream=b'\x02\x02\x02\x02'))
+        self.assertFalse(replacement[2])
+        self.assertEqual(replacement[1][4], 0)
+        self.assertEqual(replacement[1][8], 0x02)
+
+    def test_payload_round_trip_and_quality_byte(self):
+        wire = dmrd_payload_to_hytera(self.payload, quality=0x58)
+        self.assertEqual(len(wire), 34)
+        self.assertEqual(wire[32], 0x58)
+        self.assertEqual(hytera_payload_to_dmrd(wire), self.payload)
+        self.assertIsNone(dmrd_payload_to_hytera(b'\x00' * 32))
+
+    def test_pacer_holds_two_slots_then_sends_at_sixty_ms(self):
+        clock = Clock()
+        sent = []
+        pacer = HyteraOutboundPacer(sent.append, clock=clock)
+        for packet in (b'a', b'b', b'c'):
+            self.assertTrue(pacer.enqueue(1, packet))
+
+        clock.advance(0.059)
+        self.assertEqual(sent, [])
+        clock.advance(0.001)
+        self.assertEqual(sent, [b'a'])
+        clock.advance(0.060)
+        self.assertEqual(sent, [b'a', b'b'])
+        clock.advance(0.060)
+        self.assertEqual(sent, [b'a', b'b', b'c'])
+
+
 class TestHyteraInboundDispatch(unittest.TestCase):
 
     def setUp(self):
@@ -158,6 +274,60 @@ class TestHyteraInboundDispatch(unittest.TestCase):
         self.master.hytera_dmr_received(
             fixture('header'), ('198.51.100.7', 50001))
         self.assertEqual(self.received, [])
+
+
+class TestHyteraOutboundDispatch(unittest.TestCase):
+
+    def setUp(self):
+        class Transport:
+            def __init__(self):
+                self.writes = []
+
+            def write(self, packet, addr):
+                self.writes.append((packet, addr))
+
+        class Protocol:
+            def __init__(self):
+                self.transport = Transport()
+
+        self.clock = Clock()
+        self.master = object.__new__(HyteraMasterMixin)
+        self.master._system = 'HYTERA'
+        self.master._config = {'REPEAT': True}
+        self.master._hytera_registered = True
+        self.master._hytera_dmr_addr = ('203.0.113.9', 50001)
+        self.master._hytera_services = {'dmr': Protocol()}
+        self.master._hytera_trace = False
+        self.master._hytera_voice = HyteraVoiceTranslator(peer_id=235287)
+        self.master._hytera_outbound = HyteraOutboundPacer(
+            self.master._send_hytera_media, clock=self.clock)
+        self.payload = bytes(range(33))
+
+    def test_lc_header_immediate_then_voice_is_paced_to_dmr_endpoint(self):
+        stream = b'\x10\x20\x30\x40'
+        self.assertTrue(self.master.hytera_send_system(
+            dmrd(0x21, self.payload, stream)))
+        writes = self.master._hytera_services['dmr'].transport.writes
+        self.assertEqual(len(writes), 1)
+        self.assertEqual(writes[0][1], ('203.0.113.9', 50001))
+        self.assertEqual(writes[0][0][8], 0x01)
+        self.assertEqual(writes[0][0][18:20], b'\x11\x11')
+
+        self.assertTrue(self.master.hytera_send_system(
+            dmrd(0x02, self.payload, stream)))
+        self.assertEqual(len(writes), 1)
+        self.clock.advance(0.120)
+        self.assertEqual(len(writes), 2)
+        self.assertEqual(writes[1][0][8], 0x01)
+
+    def test_private_and_unregistered_transmit_are_blocked(self):
+        self.assertFalse(self.master.hytera_send_system(
+            dmrd(0x61, self.payload)))
+        self.master._hytera_registered = False
+        self.assertFalse(self.master.hytera_send_system(
+            dmrd(0x21, self.payload)))
+        self.assertEqual(
+            self.master._hytera_services['dmr'].transport.writes, [])
 
 
 if __name__ == '__main__':

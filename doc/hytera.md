@@ -14,7 +14,8 @@ Motorola IPSC.
 
 The CPS repeater type is `Slave`. Network Authentication is blank. Voice and
 Data and RDAC are enabled. Registration, service negotiation and inbound group
-voice routing are field-validated. Outbound and private voice remain gated.
+voice routing are field-validated. Capture-derived outbound group voice is
+implemented and partially field-validated; private voice remains gated.
 
 ## Capture oracle
 
@@ -132,12 +133,45 @@ Inbound translation pair-swaps the 34-byte Hytera burst into the internal
 stream ID, suppresses duplicate wire sequences, and rejects private calls and
 unknown packet lengths until their implementation gates are opened.
 
+## Outbound group voice
+
+The DMRD-to-Hytera path uses the master-to-repeater forms observed in the
+IPSC2 capture:
+
+- TS1 packet types are `01` voice, `02` call start and `03` terminator.
+- TS2 sets bit `0x40`, producing `41`, `42` and `43`.
+- DMRD Voice LC Headers are currently sent as Hytera `1111` headers. This is
+  the only tested form that has produced repeatable clear audio with the
+  correct talkgroup and subscriber identity.
+- Headerless streams fall back to `EEEE` with the captured interleaved 24-bit
+  destination/source identity payload.
+- Voice bursts use `BBBB`, `CCCC`, `7777`, `8888`, `9999`, `AAAA`.
+- The `BBBB` packet uses the captured `EEEE1111` prefix; other master-originated
+  packets use `00000000`, matching the working bridge and reflector captures.
+- Voice and terminator packets pass through a one-slot jitter buffer and are
+  emitted at 60 ms intervals on the negotiated DMR service endpoint.
+
+Only group calls are admitted. Private calls, malformed DMRD and traffic for
+an unregistered repeater remain blocked.
+
+The first live outbound test produced clear audio on TS1/TG31777. A follow-up
+test using `1111` Voice LC Headers produced good audio only after delayed call
+acquisition and sometimes displayed stale identity data. Packet decoding
+confirmed that RYSEN's LC and metadata fields contained the correct source and
+talkgroup. Two subsequent `EEEE` acquisition variants produced no audio, so
+the audible `1111` build was restored. If a talkgroup is already active when
+the RD985 keys to activate it, RYSEN does not join the in-progress stream; the
+repeater remains idle until the next over, which then carries clean audio and
+correct identity. Outbound remains incomplete until mid-stream activation is
+handled.
+
 ## Implementation gates
 
 1. **Complete:** validate the native master against an RD985 cold boot.
 2. **Complete:** convert captured inbound 72-byte group voice into DMRD.
 3. **Complete:** field-test inbound bridge audio and enable Hytera routing.
-4. Add paced outbound group voice with the captured 60 ms cadence.
+4. **Partially field-validated:** paced outbound group voice; add mid-stream
+   dynamic-TG activation.
 5. Add private voice.
 6. Add RDAC identity and optional SNMP discovery.
 7. Add the three-port, NAT-aware multi-repeater proxy.
