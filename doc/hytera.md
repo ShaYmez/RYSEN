@@ -282,12 +282,13 @@ LC, and this delayed-admission path does not use the `EEEE` fallback. The
 headerless `EEEE` path remains only for a stream that never presented a Voice
 LC Header.
 
-This is committed on `feature/HYTERA` as `3250e3c` and is running on the test
-server through the temporary `bridge_master.py` bind mount. Still open:
+This is committed on `feature/HYTERA` as `3250e3c`. On September 28, 2026 the
+test server image `rysen:feature-hytera` was rebuilt from that source and the
+temporary `bridge_master.py` bind mount was removed. The running container
+loads the deferred-header code from the image. Still open:
 
 - Field-confirm TS1 static audio and identity after the previous call on that
   slot releases.
-- Rebuild the RYSEN image and remove the temporary bind mount.
 
 ## Implementation gates
 
@@ -304,9 +305,9 @@ server through the temporary `bridge_master.py` bind mount. Still open:
 8. **Complete:** collect and publish RDAC firmware, hardware/model, serial,
    callsign, raw mode and TX/RX frequency metadata. SNMP remains out of scope.
 9. **In progress:** replay the original Voice LC Header when slot contention
-   delays a Hytera static. Code is on `feature/HYTERA` (`3250e3c`). Field
-   confirmation, an image rebuild, and removal of the test bind mount remain.
-   One RF slot still carries only one call at a time.
+   delays a Hytera static. Code is on `feature/HYTERA` (`3250e3c`) and the test
+   server is running that image without the temporary bind mount. Field
+   confirmation remains. One RF slot still carries only one call at a time.
 
 Unknown packet variants, including reported 103-byte media packets, must be
 rejected or traced until capture-validated.
