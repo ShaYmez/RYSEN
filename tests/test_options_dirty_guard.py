@@ -105,6 +105,16 @@ class TestOptionsParserGuard(unittest.TestCase):
         )
         self.assertIn('mark_options_dirty(self._CONFIG)', self.bridge_source)
 
+    def test_hytera_routing_master_options_are_parsed(self):
+        options_block = self.bridge_source[
+            self.bridge_source.index('def options_config():'):
+            self.bridge_source.index('\n\n_selfcare_db = None')
+        ]
+        self.assertIn(
+            "if _mode not in ('MASTER', 'IPSC', 'HYTERA'):",
+            options_block,
+        )
+
 
 if __name__ == '__main__':
     unittest.main()

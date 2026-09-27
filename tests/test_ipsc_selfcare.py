@@ -249,12 +249,12 @@ class TestIpscSelfcareHooks(unittest.TestCase):
         self.assertIn('flag_modified = 1 if seed_options else 0', source)
 
 
-class TestOptionsConfigIpscMode(unittest.TestCase):
+class TestOptionsConfigRepeaterModes(unittest.TestCase):
 
-    def test_ipsc_mode_allowed_in_options_config(self):
+    def test_native_repeater_modes_allowed_in_options_config(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
             source = fh.read()
-        self.assertIn("if _mode not in ('MASTER', 'IPSC'):", source)
+        self.assertIn("if _mode not in ('MASTER', 'IPSC', 'HYTERA'):", source)
         self.assertIn("if _mode == 'MASTER' and 'PEERS' in CONFIG['SYSTEMS'][_system]:", source)
 
 

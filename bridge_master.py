@@ -1977,7 +1977,7 @@ def options_config():
             # mark_options_dirty: that re-ran the full scan every 26s on USA.
         try:
             _mode = CONFIG['SYSTEMS'][_system]['MODE']
-            if _mode not in ('MASTER', 'IPSC'):
+            if _mode not in ('MASTER', 'IPSC', 'HYTERA'):
                 continue
             if CONFIG['SYSTEMS'][_system]['ENABLED'] == True:
                 # Process per-peer OPTIONS first (MMDVM hotspots on MASTER only)
