@@ -15,7 +15,8 @@ Motorola IPSC.
 The CPS repeater type is `Slave`. Network Authentication is blank. Voice and
 Data and RDAC are enabled. Registration, service negotiation and inbound group
 voice routing are field-validated. Capture-derived outbound group voice is
-implemented and partially field-validated; private voice remains gated.
+implemented and field-validated. Dial-a-TG private activation and private
+parrot echo are also field-validated.
 
 ## Capture oracle
 
@@ -130,8 +131,37 @@ the live OpenBridge:
 
 Inbound translation pair-swaps the 34-byte Hytera burst into the internal
 33-byte DMRD payload, ignores Hytera-only sync packets, synthesizes a DMRD
-stream ID, suppresses duplicate wire sequences, and rejects private calls and
-unknown packet lengths until their implementation gates are opened.
+stream ID, suppresses duplicate wire sequences, and rejects unknown packet
+lengths until their implementation gates are opened.
+
+## Dial-a-TG private calls
+
+The RD985's private-call marker `0x00` is converted to the internal DMRD unit
+call flag. This enters the existing routing-master Dial-a-TG path: private-call
+a reflector ID to create or select its link, `4000` to disconnect, and `5000`
+for status. Private signaling is handled locally and is never forwarded as a
+subscriber-to-subscriber call.
+
+The known-good IPSC2 capture shows the resulting announcement as a *group*
+call from source `4400` to TG9, not a private call. RYSEN deliberately keeps
+that established group TG9 announcement behavior for HYTERA.
+
+Field validation on September 27, 2026 confirmed a TS2 private call from
+`2348831` to reflector `2350`: RYSEN activated the `#2350` link and the RD985
+received the announcement on TG9. The capture is retained outside the
+repository because it contains live network metadata.
+
+The IPSC2 private-parrot capture further confirms the RD985's complete
+72-byte private ingress form (`2348831 → 9990`, TS2). IPSC2 returned no
+private media because of its independent fault, but OK-DMR's outbound
+translator uses the same validated layout and changes the Hytera call marker
+to `0x00` for a private DMRD unit call. RYSEN therefore encodes outbound
+private calls with the existing paced media path and the `0x00` marker.
+
+Field validation on the native master confirmed that a TS2 private call to
+`9990` receives a clear private parrot echo from `9990` back to `2348831`.
+The successful capture is retained outside the repository because it contains
+live network metadata.
 
 ## Outbound group voice
 
@@ -151,7 +181,7 @@ IPSC2 capture:
 - Voice and terminator packets pass through a one-slot jitter buffer and are
   emitted at 60 ms intervals on the negotiated DMR service endpoint.
 
-Only group calls are admitted. Private calls, malformed DMRD and traffic for
+Outbound group and private voice are admitted. Malformed DMRD and traffic for
 an unregistered repeater remain blocked.
 
 The first live outbound test produced clear audio on TS1/TG31777. A follow-up
@@ -179,10 +209,32 @@ or `EEEE` packet.
 3. **Complete:** field-test inbound bridge audio and enable Hytera routing.
 4. **Implemented, field retest pending:** paced outbound group voice with
    mid-stream dynamic-TG activation.
-5. Add private voice.
-6. Add RDAC identity and optional SNMP discovery.
-7. Add the three-port, NAT-aware multi-repeater proxy.
-8. Complete monitor and selfcare integration.
+5. **Complete:** field-test Dial-a-TG private-call ingress and group TG9
+   announcement return.
+6. **In progress:** add the three-port, NAT-aware multi-repeater proxy.
+7. Complete monitor and selfcare integration.
+8. Complete optional RDAC/SNMP metadata discovery.
 
 Unknown packet variants, including reported 103-byte media packets, must be
 rejected or traced until capture-validated.
+
+## Multi-repeater proxy
+
+`hytera_proxy.py` is the Hytera equivalent of the IPSC proxy. Its first public
+session preserves the BrandMeister CPS ports: P2P `50000`, DMR `50001`, RDAC
+`50002`. Nine further public triples continue from `50003–50029`, while RYSEN
+runs ten private generated backend triples from `50003–50032` with
+`PROXY_CONTROL: True`.
+
+The P2P registration has no repeater ID, so a slot is provisional until the
+proxy observes the RDAC identity response. In proxy mode RYSEN runs the
+capture-validated RDAC exchange to request that response, and the proxy binds
+the extracted 24-bit ID to the session. A duplicate or blacklisted ID releases
+the session. The proxy separately tracks the NAT source endpoint of P2P, DMR
+and RDAC traffic; service redirects are rewritten from backend to public
+ports.
+
+Run it with `python3 hytera_proxy.py -c hytera-proxy.cfg`, using
+`hytera-proxy-SAMPLE.cfg` as the template. This is not yet deployed or
+field-validated in proxy mode. Full RDAC metadata and SNMP collection remain
+out of scope for this phase.

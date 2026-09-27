@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
+import json
 import unittest
 
 from const import DMRD
+from hytera_const import (
+    PRIN,
+    RDAC_STEP0_REQUEST,
+    RDAC_STEP1_REQUEST,
+    RDAC_STEP3_REQUEST,
+)
 from hytera_master import HyteraMasterMixin
 from hytera_voice import (
     HyteraOutboundPacer,
@@ -125,10 +132,14 @@ class TestHyteraInboundVoice(unittest.TestCase):
     def test_voice_without_header_is_dropped(self):
         self.assertIsNone(self.translator.translate_group(fixture('c')))
 
-    def test_private_and_unknown_length_are_gated(self):
+    def test_private_call_sets_unit_flag(self):
         private = bytearray(fixture('header'))
         private[62] = 0
-        self.assertIsNone(self.translator.translate_group(private))
+        dmrd = self.translator.translate_voice(private)
+        self.assertIsNotNone(dmrd)
+        self.assertEqual(dmrd[15], 0x61)
+
+    def test_unknown_length_is_gated(self):
         self.assertIsNone(self.translator.translate_group(b'\x00' * 103))
 
     def test_payload_conversion_requires_exact_length(self):
@@ -189,6 +200,26 @@ class TestHyteraOutboundVoice(unittest.TestCase):
         self.assertEqual(packet[63:67], (2350 << 8).to_bytes(4, 'little'))
         self.assertIsNone(
             self.translator.encode_group(dmrd(0x61, self.payload)))
+
+    def test_private_call_uses_captured_private_marker(self):
+        stream = b'\x12\x34\x56\x78'
+        encoded = self.translator.encode_voice(
+            dmrd(0xe1, self.payload, stream, source=9990,
+                 destination=2348831))
+
+        ts, header, paced = encoded
+        self.assertEqual(ts, 2)
+        self.assertFalse(paced)
+        self.assertEqual(header[62], 0x00)
+        self.assertEqual(header[63:67],
+                         (2348831 << 8).to_bytes(4, 'little'))
+        self.assertEqual(header[67:71], (9990 << 8).to_bytes(4, 'little'))
+
+        _, voice, paced = self.translator.encode_voice(
+            dmrd(0xc2, self.payload, stream, source=9990,
+                 destination=2348831))
+        self.assertTrue(paced)
+        self.assertEqual(voice[62], 0x00)
 
     def test_voice_sync_uses_captured_a_burst_prefix(self):
         stream = b'\x10\x20\x30\x40'
@@ -295,10 +326,81 @@ class TestHyteraInboundDispatch(unittest.TestCase):
         self.assertEqual(slot, 1)
         self.assertEqual(call_type, 'group')
 
+    def test_registered_dmr_endpoint_dispatches_private_voice(self):
+        private = bytearray(fixture('header'))
+        private[62] = 0
+        private[63:67] = (4400 << 8).to_bytes(4, 'little')
+        self.master.hytera_dmr_received(
+            bytes(private), ('203.0.113.9', 50001))
+
+        self.assertEqual(len(self.received), 1)
+        peer, source, destination, seq, slot, call_type = self.received[0][:6]
+        self.assertEqual(peer, (235287).to_bytes(4, 'big'))
+        self.assertEqual(source, (2348831).to_bytes(3, 'big'))
+        self.assertEqual(destination, (4400).to_bytes(3, 'big'))
+        self.assertEqual(seq, 0)
+        self.assertEqual(slot, 1)
+        self.assertEqual(call_type, 'unit')
+
     def test_unregistered_source_ip_is_rejected(self):
         self.master.hytera_dmr_received(
             fixture('header'), ('198.51.100.7', 50001))
         self.assertEqual(self.received, [])
+
+
+class TestHyteraProxyControl(unittest.TestCase):
+
+    class Transport:
+        def __init__(self):
+            self.writes = []
+
+        def write(self, data, address):
+            self.writes.append((data, address))
+
+    def setUp(self):
+        self.master = object.__new__(HyteraMasterMixin)
+        self.master._system = 'HYTERA-0'
+        self.master._config = {
+            'PROXY_CONTROL': True,
+            'HYTERA_REPEATER_ID': 0,
+        }
+        self.master._hytera_proxy_enabled = True
+        self.master._hytera_proxy_info = None
+        self.master._hytera_rdac_step = 0
+        self.master._hytera_registered = False
+        self.master._hytera_addr = None
+        self.master._hytera_peer_id = b'\x00\x00\x00\x00'
+        self.master._hytera_voice = HyteraVoiceTranslator()
+        self.master._hytera_outbound = HyteraOutboundPacer(lambda _: None)
+        self.master._hytera_dmr_addr = None
+        self.master._peers = {}
+        self.master._report = None
+        self.master._hytera_services = {
+            'rdac': type('Protocol', (), {'transport': self.Transport()})(),
+        }
+
+    def test_proxy_identity_sets_voice_peer_id(self):
+        control = PRIN + json.dumps({'repeater_id': 235287}).encode()
+
+        self.assertTrue(self.master._proxy_control_received(control))
+        self.assertEqual(self.master._hytera_peer_id,
+                         (235287).to_bytes(4, 'big'))
+        self.assertEqual(self.master._hytera_voice._peer_id,
+                         (235287).to_bytes(4, 'big'))
+
+    def test_rdac_identity_sequence_requests_capture_validated_steps(self):
+        addr = ('172.16.238.31', 50005)
+        self.master._advance_rdac_identification(b'\x00', addr)
+        writes = self.master._hytera_services['rdac'].transport.writes
+        self.assertEqual(writes[-1], (RDAC_STEP0_REQUEST, addr))
+
+        self.master._advance_rdac_identification(b'\x7e\x04\x00\xfd', addr)
+        self.assertEqual(writes[-1], (RDAC_STEP1_REQUEST, addr))
+        self.master._advance_rdac_identification(b'\x7e\x04\x00\x10', addr)
+        identity = bytearray(b'\x7e\x04\x00\x00' + b'\x00' * 20)
+        identity[18:21] = (235287).to_bytes(3, 'little')
+        self.master._advance_rdac_identification(bytes(identity), addr)
+        self.assertEqual(writes[-1], (RDAC_STEP3_REQUEST, addr))
 
 
 class TestHyteraOutboundDispatch(unittest.TestCase):
@@ -345,14 +447,16 @@ class TestHyteraOutboundDispatch(unittest.TestCase):
         self.assertEqual(len(writes), 2)
         self.assertEqual(writes[1][0][8], 0x01)
 
-    def test_private_and_unregistered_transmit_are_blocked(self):
-        self.assertFalse(self.master.hytera_send_system(
-            dmrd(0x61, self.payload)))
+    def test_private_transmit_and_unregistered_transmit_gate(self):
+        self.assertTrue(self.master.hytera_send_system(
+            dmrd(0x61, self.payload, source=9990, destination=2348831)))
+        writes = self.master._hytera_services['dmr'].transport.writes
+        self.assertEqual(len(writes), 1)
+        self.assertEqual(writes[0][0][62], 0x00)
         self.master._hytera_registered = False
         self.assertFalse(self.master.hytera_send_system(
             dmrd(0x21, self.payload)))
-        self.assertEqual(
-            self.master._hytera_services['dmr'].transport.writes, [])
+        self.assertEqual(len(writes), 1)
 
     def test_midstream_join_replaces_stale_queue_and_buffers_three_bursts(self):
         self.master._hytera_outbound.enqueue(1, b'stale')

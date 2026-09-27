@@ -1753,12 +1753,12 @@ def _send_voice_from_worker(*args):
     return done.wait(1.0) and sent[0]
 
 
-def sendSpeech(self, speech):
+def sendSpeech(self, speech, source_id=None, destination_id=None, slot_number=2):
     logger.debug('(%s) Inside sendspeech thread', self._system)
     sleep(1)
-    _nine = bytes_3(9)
-    _source_id = bytes_3(5000)
-    _slot = systems[self._system].STATUS[2]
+    _destination_id = destination_id or bytes_3(9)
+    _source_id = source_id or bytes_3(5000)
+    _slot = systems[self._system].STATUS[slot_number]
     while True:
         try:
             pkt = next(speech)
@@ -1767,7 +1767,7 @@ def sendSpeech(self, speech):
         #Packet every 60ms
         sleep(0.058)
         if not _send_voice_from_worker(
-                self, pkt, _source_id, _nine, _slot):
+                self, pkt, _source_id, _destination_id, _slot):
             break
 
     logger.debug('(%s) Sendspeech thread ended',self._system)
@@ -3690,6 +3690,13 @@ class routerHBP(HBSYSTEM):
             speech = pkt_gen(reply_as, rf_src, peer_id, hbp_slot, _say, private_call=True)
             reactor.callInThread(
                 self.ipsc_reflector_speech, speech, slot, peer_id, _gen, int_dst_id)
+        elif CONFIG['SYSTEMS'][self._system]['MODE'] == 'HYTERA':
+            # The RD985 capture returns the announcement as group voice from
+            # the reflector that was private-called, to TG9 on the same slot.
+            source_id = bytes_3(int_dst_id if int_dst_id is not None else 5000)
+            speech = pkt_gen(source_id, bytes_3(9), bytes_4(9), slot - 1, _say)
+            reactor.callInThread(
+                sendSpeech, self, speech, source_id, bytes_3(9), slot)
         else:
             speech = pkt_gen(bytes_3(5000), bytes_3(9), bytes_4(9), 1, _say)
             reactor.callInThread(sendSpeech, self, speech)

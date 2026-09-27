@@ -77,6 +77,30 @@ VOICE_SLOT_DTYPE = {
 PRIN = b'PRIN'
 PRCL = b'PRCL'
 
+# The first capture-validated RDAC identity response is emitted after the
+# OK-DMR step-1 request. It exposes the repeater's 24-bit DMR ID at 18:21.
+RDAC_ID_RESPONSE_PREFIX = b'\x7e\x04\x00\x00'
+RDAC_REPEATER_ID_OFFSET = 18
+RDAC_STEP0_REQUEST = bytes.fromhex('7e0400fe20100000000c60e1')
+RDAC_STEP0_RESPONSE = bytes.fromhex('7e0400fd')
+RDAC_STEP1_REQUEST = bytes.fromhex(
+    '7e0400002010000100189b6002040005006400000001c403')
+RDAC_STEP1_RESPONSE = bytes.fromhex('7e040010')
+RDAC_STEP3_REQUEST = bytes.fromhex('7e04001020100001000c61ce')
+RDAC_STEP4_REQUEST_1 = bytes.fromhex('7e04001020100002000c61cd')
+RDAC_STEP4_REQUEST_2 = bytes.fromhex(
+    '7e04000020100002001958a002d4020600640000000200f003')
+RDAC_STEP6_REQUEST_1 = bytes.fromhex('7e04001020100003000c61cc')
+RDAC_STEP6_REQUEST_2 = bytes.fromhex(
+    '7e040000201000030019738402d68206000064000000026e03')
+RDAC_STEP7_REQUEST = bytes.fromhex(
+    '7e040000201000040019579f02d4020600640000000201ef03')
+RDAC_STEP10_REQUEST = bytes.fromhex(
+    '7e0400002010001500189c4b02050005006400000001c303')
+RDAC_STEP12_REQUEST_1 = bytes.fromhex('7e04001020100015000c61ba')
+RDAC_STEP12_REQUEST_2 = bytes.fromhex('7e0400fb20100016000c60ce')
+RDAC_STEP12_RESPONSE = bytes.fromhex('7e0400fa')
+
 
 def p2p_command_type(data):
     """Return the P2P negotiation command type, or None for other packets."""
@@ -129,3 +153,13 @@ def media_call_type(data):
     if len(data) < MEDIA_MIN_LEN:
         return None
     return data[MEDIA_CALL_TYPE_OFFSET]
+
+
+def rdac_repeater_id(data):
+    """Return the 24-bit repeater ID from the validated RDAC identity response."""
+    if (len(data) < RDAC_REPEATER_ID_OFFSET + 3
+            or not data.startswith(RDAC_ID_RESPONSE_PREFIX)):
+        return None
+    repeater_id = int.from_bytes(
+        data[RDAC_REPEATER_ID_OFFSET:RDAC_REPEATER_ID_OFFSET + 3], 'little')
+    return repeater_id or None

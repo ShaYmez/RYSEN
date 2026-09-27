@@ -23,6 +23,7 @@ from const import (
     HBPF_VOICE_SYNC,
 )
 from hytera_const import (
+    CALL_PRIVATE,
     CALL_GROUP,
     MEDIA_MIN_LEN,
     MEDIA_PAYLOAD_LEN,
@@ -151,7 +152,7 @@ class HyteraOutboundPacer:
 
 
 class HyteraVoiceTranslator:
-    """Translate capture-validated RD985 group voice in both directions."""
+    """Translate capture-validated RD985 group and private voice."""
 
     def __init__(self, peer_id=0, stream_factory=None):
         self._peer_id = int(peer_id).to_bytes(4, 'big')
@@ -163,6 +164,7 @@ class HyteraVoiceTranslator:
         self._out_streams = {1: None, 2: None}
         self._out_seq = {1: 0, 2: 0}
         self._out_late_join = {1: False, 2: False}
+        self._out_private = {1: False, 2: False}
 
     def reset(self):
         self._streams = {1: None, 2: None}
@@ -172,16 +174,18 @@ class HyteraVoiceTranslator:
         self._out_streams = {1: None, 2: None}
         self._out_seq = {1: 0, 2: 0}
         self._out_late_join = {1: False, 2: False}
+        self._out_private = {1: False, 2: False}
 
     def set_peer_id(self, peer_id):
         self._peer_id = int(peer_id).to_bytes(4, 'big')
 
-    def translate_group(self, data):
+    def translate_voice(self, data):
         """Return one 55-byte DMRD packet, or None for ignored/invalid input."""
         # Only the field-validated A9 72-byte form is admitted in this phase.
         if len(data) != MEDIA_MIN_LEN:
             return None
-        if media_call_type(data) != CALL_GROUP:
+        call_type = media_call_type(data)
+        if call_type not in (CALL_GROUP, CALL_PRIVATE):
             return None
 
         ts = media_timeslot(data)
@@ -197,7 +201,7 @@ class HyteraVoiceTranslator:
             return None
 
         source, destination = ids
-        call_key = (source, destination, CALL_GROUP)
+        call_key = (source, destination, call_type)
         stream_id = self._streams[ts]
 
         if slot_type == SLOT_VOICE_LC_HEADER:
@@ -229,6 +233,8 @@ class HyteraVoiceTranslator:
 
         if ts == 2:
             flags |= 0x80
+        if call_type == CALL_PRIVATE:
+            flags |= 0x40
         dmrd = (
             DMRD
             + bytes([self._dmrd_seq])
@@ -249,8 +255,12 @@ class HyteraVoiceTranslator:
 
         return dmrd
 
+    def translate_group(self, data):
+        """Compatibility wrapper for callers predating private voice support."""
+        return self.translate_voice(data)
+
     def _build_outbound(self, ts, packet_type, slot_type, source, destination,
-                        payload, call_start=False):
+                        payload, call_start=False, private_call=False):
         packet = bytearray(72)
         if self._out_late_join[ts]:
             packet[:4] = b'\x5a' * 4
@@ -268,20 +278,19 @@ class HyteraVoiceTranslator:
         packet[22:24] = b'\x11\x11' if call_start else b'\x00\x00'
         packet[24:26] = b'\x00\x00' if call_start else b'\x10\x00'
         packet[26:60] = payload
-        packet[62] = CALL_GROUP
+        packet[62] = CALL_PRIVATE if private_call else CALL_GROUP
         packet[63:67] = _wire_id(destination)
         packet[67:71] = _wire_id(source)
         return bytes(packet)
 
-    def encode_group(self, dmrd, quality=0, late_join=False,
+    def encode_voice(self, dmrd, quality=0, late_join=False,
                      late_join_sequence=None):
-        """Return (timeslot, packet, paced), or None for gated/invalid DMRD."""
+        """Encode capture-validated group or private DMRD voice to Hytera."""
         if len(dmrd) < 53 or dmrd[:4] != DMRD:
             return None
 
         flags = dmrd[15]
-        if flags & 0x40:
-            return None
+        private_call = bool(flags & 0x40)
         ts = 2 if flags & 0x80 else 1
         frame_type = (flags & 0x30) >> 4
         dtype = flags & 0x0f
@@ -295,23 +304,26 @@ class HyteraVoiceTranslator:
             self._out_streams[ts] = stream
             self._out_seq[ts] = 0
             self._out_late_join[ts] = False
+            self._out_private[ts] = private_call
             payload = dmrd_payload_to_hytera(dmrd[20:53], quality)
             if payload is None:
                 return None
             packet = self._build_outbound(
-                ts, 0x01, SLOT_VOICE_LC_HEADER, source, destination, payload)
+                ts, 0x01, SLOT_VOICE_LC_HEADER, source, destination, payload,
+                private_call=private_call)
             self._out_seq[ts] = 1
             return ts, packet, False
 
         if frame_type in (HBPF_VOICE, HBPF_VOICE_SYNC):
             if self._out_streams[ts] != stream:
                 self._out_streams[ts] = stream
-                self._out_late_join[ts] = late_join
+                self._out_late_join[ts] = late_join and not private_call
+                self._out_private[ts] = private_call
                 self._out_seq[ts] = (
                     late_join_sequence
                     if late_join and late_join_sequence is not None
                     else dmrd[4] if late_join else 0)
-                if late_join:
+                if late_join and not private_call:
                     slot_type = OUTBOUND_SLOT_TYPE.get(dtype)
                     payload = dmrd_payload_to_hytera(
                         dmrd[20:53], quality)
@@ -319,7 +331,7 @@ class HyteraVoiceTranslator:
                         return None
                     packet = self._build_outbound(
                         ts, 0x01, slot_type, source, destination,
-                        payload)
+                        payload, private_call=private_call)
                     self._out_seq[ts] = (
                         self._out_seq[ts] + 1) & 0xffffffff
                     # IPSC2 joins a running call with the current voice burst,
@@ -327,7 +339,8 @@ class HyteraVoiceTranslator:
                     return ts, packet, False
                 packet = self._build_outbound(
                     ts, 0x02, SLOT_HYTERA_SYNC, source, destination,
-                    _sync_payload(source, destination), call_start=True)
+                    _sync_payload(source, destination), call_start=True,
+                    private_call=private_call)
                 self._out_seq[ts] = 1
                 # OpenBridge streams often begin with voice rather than VHEAD.
                 # Acquire the call first; losing this one 60 ms burst is safer
@@ -338,7 +351,8 @@ class HyteraVoiceTranslator:
             if slot_type is None or payload is None:
                 return None
             packet = self._build_outbound(
-                ts, 0x01, slot_type, source, destination, payload)
+                ts, 0x01, slot_type, source, destination, payload,
+                private_call=self._out_private[ts])
             self._out_seq[ts] = (self._out_seq[ts] + 1) & 0xffffffff
             return ts, packet, True
 
@@ -350,10 +364,20 @@ class HyteraVoiceTranslator:
                 return None
             packet = self._build_outbound(
                 ts, 0x03, SLOT_VOICE_LC_TERMINATOR, source, destination,
-                payload)
+                payload, private_call=self._out_private[ts])
             self._out_seq[ts] = (self._out_seq[ts] + 1) & 0xffffffff
             self._out_streams[ts] = None
             self._out_late_join[ts] = False
+            self._out_private[ts] = False
             return ts, packet, True
 
         return None
+
+    def encode_group(self, dmrd, quality=0, late_join=False,
+                     late_join_sequence=None):
+        """Encode group DMRD voice; retain the historical private-call gate."""
+        if len(dmrd) < 16 or dmrd[15] & 0x40:
+            return None
+        return self.encode_voice(
+            dmrd, quality, late_join=late_join,
+            late_join_sequence=late_join_sequence)
