@@ -65,6 +65,9 @@ class TestHyteraProxy(unittest.TestCase):
 
     def test_redirect_and_media_follow_one_assigned_triple(self):
         self._register()
+        dmr_endpoint = ('198.51.100.7', 62006)
+        self.proxy.datagram_received(
+            50000, p2p(P2P_DMR_STARTUP), dmr_endpoint)
         redirect = bytearray(p2p(P2P_DMR_STARTUP))
         redirect[3] = P2P_COMMAND_REPLY
         redirect[4] = P2P_REDIRECT_ID
@@ -76,7 +79,6 @@ class TestHyteraProxy(unittest.TestCase):
         self.assertEqual(address, self.REPEATER)
         self.assertEqual(int.from_bytes(reply[-2:], 'little'), 50004)
 
-        dmr_endpoint = ('198.51.100.7', 62006)
         self.proxy.datagram_received(50004, b'media', dmr_endpoint)
         self.assertEqual(self.dmr.writes[-1], (b'media', (self.MASTER, 61001)))
 

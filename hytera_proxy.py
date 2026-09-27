@@ -16,6 +16,8 @@ from twisted.internet.protocol import DatagramProtocol
 
 from hytera_const import (
     P2P_COMMAND_REPLY,
+    P2P_DMR_STARTUP,
+    P2P_RDAC_STARTUP,
     P2P_REDIRECT_ID,
     P2P_REGISTRATION,
     PORTS_PER_SLOT,
@@ -189,7 +191,11 @@ class HyteraProxy:
                 return
             self._notify(session)
         else:
-            session.endpoints['p2p'] = address
+            # The RD985 sends DMR/RDAC startup commands *to* P2P from its
+            # service source ports. They must not replace the registered P2P
+            # endpoint: redirect replies still belong on the P2P socket.
+            if command not in (P2P_DMR_STARTUP, P2P_RDAC_STARTUP):
+                session.endpoints['p2p'] = address
             self._touch(session)
         self._write(self.p2p_port, data, (self.master, session.backend_base))
 
