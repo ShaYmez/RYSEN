@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import unittest
+from unittest.mock import MagicMock
 
 from const import DMRD
 from hytera_const import (
@@ -17,6 +18,7 @@ from hytera_voice import (
     dmrd_payload_to_hytera,
     hytera_payload_to_dmrd,
 )
+from twisted.internet.defer import succeed
 from twisted.internet.task import Clock
 
 
@@ -465,6 +467,42 @@ class TestHyteraProxyControl(unittest.TestCase):
         self.assertEqual(peer['TX_FREQ'], 439500000)
         self.assertEqual(peer['RX_FREQ'], 430500000)
         self.assertEqual(self.master._report.calls, 1)
+
+    def test_rdac_metadata_creates_hytera_selfcare_client(self):
+        db = MagicMock()
+        db.upsert_hytera_client.return_value = succeed(None)
+        db.upsert_hytera_metadata.return_value = succeed(None)
+        db.mark_hytera_options_pending.return_value = succeed(None)
+        self.master._CONFIG = {
+            'SELF SERVICE': {'ENABLED': True},
+            '_SELF_SERVICE_DB': db,
+        }
+        self.master._config.update({
+            'TS1_STATIC': '235',
+            'TS2_STATIC': '2350',
+        })
+        self.master._hytera_addr = ('198.51.100.8', 50000)
+        self.master._hytera_peer_id = (235287).to_bytes(4, 'big')
+        self.master._peers = {
+            self.master._hytera_peer_id: {'CALLSIGN': 'GB7NR'},
+        }
+        self.master._hytera_rdac_meta = {
+            'firmware': 'A9.02.03.009',
+            'hardware': 'RD985-00000000-000000-U1-0-F',
+            'serial': '14218D0441',
+            'callsign': 'GB7NR',
+            'mode_raw': 0,
+            'tx_frequency': 439437500,
+            'rx_frequency': 430437500,
+        }
+
+        self.master._sync_hytera_selfcare_register()
+
+        db.upsert_hytera_client.assert_called_once_with(
+            235287, self.master._hytera_peer_id, 'GB7NR',
+            '198.51.100.8', 'TS1=235;TS2=2350;')
+        db.upsert_hytera_metadata.assert_called_once_with(
+            235287, self.master._hytera_rdac_meta)
 
 
 class TestHyteraOutboundDispatch(unittest.TestCase):

@@ -65,8 +65,11 @@ from hytera_master import HyteraMasterMixin
 from repeater_modes import is_generated_master, is_routing_master
 from control_bans import ControlBanStore, radio_id_core as control_radio_id_core
 from selfcare_db import (
+    HYTERA_CLIENT_MODE,
+    IPSC_CLIENT_MODE,
     SelfcareDB,
     find_hotspot_master_peer,
+    find_hytera_peer_for_radio_id,
     find_ipsc_peer_for_radio_id,
     effective_master_options,
     ensure_master_default_options,
@@ -2363,28 +2366,32 @@ def _persist_sanitized_options_to_selfcare(system, options_str=None):
 
 @inlineCallbacks
 def ipsc_selfcare_poll():
-    """Apply selfcare TS1/TS2 options for connected IPSC repeaters (mode = 0)."""
+    """Apply selfcare TS1/TS2 options for connected IPSC and Hytera repeaters."""
     ss = CONFIG.get('SELF SERVICE', {})
     if not ss.get('ENABLED') or _selfcare_db is None:
         return
     try:
-        rows = yield _selfcare_db.select_modified_ipsc()
+        rows = yield _selfcare_db.select_modified_repeaters()
         if not rows:
             return
-        for int_id_val, options in rows:
+        for int_id_val, options, mode in rows:
+            protocol = 'HYTERA' if mode == HYTERA_CLIENT_MODE else 'IPSC'
             opt_str = (options.decode('utf-8', errors='ignore')
                        if isinstance(options, bytes) else str(options))
             if not opt_str or not opt_str.strip():
                 logger.warning(
-                    '(SELF SERVICE) IPSC int_id %s modified but options empty — clearing flag',
-                    int_id_val)
+                    '(SELF SERVICE) %s int_id %s modified but options empty — clearing flag',
+                    protocol, int_id_val)
                 yield _selfcare_db.clear_modified(int_id_val)
                 continue
-            slot, peer_id = find_ipsc_peer_for_radio_id(CONFIG['SYSTEMS'], int_id_val)
+            finder = (find_hytera_peer_for_radio_id
+                      if mode == HYTERA_CLIENT_MODE
+                      else find_ipsc_peer_for_radio_id)
+            slot, peer_id = finder(CONFIG['SYSTEMS'], int_id_val)
             if not slot:
                 logger.warning(
-                    '(SELF SERVICE) IPSC int_id %s modified but no connected IPSC slot',
-                    int_id_val)
+                    '(SELF SERVICE) %s int_id %s modified but no connected %s slot',
+                    protocol, int_id_val, protocol)
                 continue
             CONFIG['SYSTEMS'][slot]['OPTIONS'] = opt_str
             mark_options_dirty(CONFIG)
@@ -2398,12 +2405,13 @@ def ipsc_selfcare_poll():
                     options_config()
             except Exception:
                 logger.exception(
-                    '(SELF SERVICE) options_config failed for IPSC %s on %s',
-                    int_id_val, slot)
+                    '(SELF SERVICE) options_config failed for %s %s on %s',
+                    protocol, int_id_val, slot)
                 continue
             yield _selfcare_db.clear_modified(int_id_val)
-            logger.info('(SELF SERVICE) Applied options for IPSC %s on %s: %s',
-                        int_id_val, slot, remaining if had_disc else opt_str)
+            logger.info('(SELF SERVICE) Applied options for %s %s on %s: %s',
+                        protocol, int_id_val, slot,
+                        remaining if had_disc else opt_str)
     except Exception as err:
         logger.exception('(SELF SERVICE) poll error: %s', err)
 
@@ -3735,7 +3743,7 @@ class routerHBP(HBSYSTEM):
             if _d_system == self._system:
                 continue
             _mode = CONFIG['SYSTEMS'][_d_system].get('MODE')
-            if _mode not in ('MASTER', 'IPSC'):
+            if _mode not in ('MASTER', 'IPSC', 'HYTERA'):
                 continue
             _peers = CONFIG['SYSTEMS'][_d_system].get('PEERS') or {}
             for _to_peer in _peers:
@@ -5102,7 +5110,7 @@ if __name__ == '__main__':
     options = options_task.start(26)
     options.addErrback(loopingErrHandle)
 
-    # IPSC selfcare — poll Clients (mode=0) and apply static TG options on master
+    # Native repeater selfcare — poll IPSC (0) and Hytera (-1) static options.
     if CONFIG.get('SELF SERVICE', {}).get('ENABLED'):
         ss = CONFIG['SELF SERVICE']
         _selfcare_db = SelfcareDB(
@@ -5112,7 +5120,8 @@ if __name__ == '__main__':
         ipsc_sc_task = task.LoopingCall(ipsc_selfcare_poll)
         ipsc_sc = ipsc_sc_task.start(ss.get('POLL_INTERVAL', 5))
         ipsc_sc.addErrback(loopingErrHandle)
-        logger.info('(SELF SERVICE) IPSC selfcare enabled (poll every %ss)', ss.get('POLL_INTERVAL', 5))
+        logger.info('(SELF SERVICE) Repeater selfcare enabled (poll every %ss)',
+                    ss.get('POLL_INTERVAL', 5))
         hs_disc_task = task.LoopingCall(hotspot_selfcare_disc_poll)
         hs_disc = hs_disc_task.start(ss.get('DISC_POLL_INTERVAL', 2))
         hs_disc.addErrback(loopingErrHandle)

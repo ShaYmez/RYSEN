@@ -163,6 +163,28 @@ Field validation on the native master confirmed that a TS2 private call to
 The successful capture is retained outside the repository because it contains
 live network metadata.
 
+## Monitor and selfcare
+
+Hytera peers report to RYSEN-MONITOR as `PROTOCOL: HYTERA`. Linked Systems
+renders them in the repeater section with a yellow **Hytera** ID pill and black
+text, matching the dashboard hotspot-count card. The peer tooltip retains the
+protocol, timeslot statics, and RDAC radio information, but displays only the
+short model prefix (for example, `RD985`) rather than the full hardware suffix.
+
+Native RDAC registration also enables the existing repeater selfcare lifecycle:
+
+- a `Clients` record is created or refreshed with database `mode = -1`;
+- first-time claim, callsign/DMR-ID login, password changes, TS1/TS2 static
+  talkgroups, and one-shot dynamic disconnect behave like IPSC repeaters;
+- saved options are re-applied after a fresh Hytera registration;
+- no CPS settings, SNMP, or device runtime controls are exposed.
+
+The PHP selfcare UI cannot read the monitor process's in-memory peer report, so
+validated RDAC metadata is copied to `HyteraMetadata` as a presentation cache.
+It stores firmware, full hardware string, serial, callsign, raw mode, and
+TX/RX frequency. It is best-effort only: the live Hytera peer record remains
+the protocol source of truth, and the cache cannot send commands to a repeater.
+
 ## RDAC metadata
 
 The capture-validated RDAC sequence now collects and publishes metadata in the
@@ -235,7 +257,8 @@ or `EEEE` packet.
 5. **Complete:** field-test Dial-a-TG private-call ingress and group TG9
    announcement return.
 6. **Complete:** field-test the three-port, NAT-aware multi-repeater proxy.
-7. **Deferred:** monitor and selfcare integration.
+7. **Complete:** monitor and selfcare integration, including read-only RDAC
+   metadata display and IPSC-parity repeater selfcare lifecycle.
 8. **Complete:** collect and publish RDAC firmware, hardware/model, serial,
    callsign, raw mode and TX/RX frequency metadata. SNMP remains out of scope.
 

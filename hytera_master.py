@@ -50,6 +50,7 @@ from hytera_const import (
 )
 from hytera_rdac_meta import parse_rdac_channel, parse_rdac_identity
 from hytera_voice import HyteraOutboundPacer, HyteraVoiceTranslator
+from selfcare_db import build_ipsc_seed_options
 
 
 def build_registration_reply(data):
@@ -236,6 +237,7 @@ class HyteraMasterMixin:
             peer['PINGS_RECEIVED'] = peer.get('PINGS_RECEIVED', 0) + 1
 
     def _clear_hytera_peer(self):
+        self._sync_hytera_selfcare_logout()
         self._hytera_registered = False
         self._hytera_addr = None
         self._hytera_last_seen = 0
@@ -512,9 +514,72 @@ class HyteraMasterMixin:
         if peer is None:
             return
         self._apply_hytera_rdac_metadata(peer)
+        self._sync_hytera_selfcare_register()
         if self._report is not None:
             self._report.send_config()
         self._log_hytera_rdac_metadata()
+
+    def _sync_hytera_selfcare_register(self):
+        """Make validated Hytera identity available to the IPSC-style selfcare UI."""
+        full_config = getattr(self, '_CONFIG', {})
+        ss = full_config.get('SELF SERVICE', {})
+        if not ss.get('ENABLED'):
+            return
+        db = full_config.get('_SELF_SERVICE_DB')
+        if db is None or not int_id(self._hytera_peer_id):
+            return
+        peer = self._peers.get(self._hytera_peer_id, {})
+        callsign = peer.get('CALLSIGN') or self._hytera_rdac_meta.get('callsign')
+        if isinstance(callsign, bytes):
+            callsign = callsign.decode('utf-8', errors='ignore').strip()
+        else:
+            callsign = str(callsign or '').strip()
+        repeater_id = int_id(self._hytera_peer_id)
+        if not callsign:
+            callsign = str(repeater_id)
+        host = (self._hytera_addr or ('', 0))[0]
+        seed = build_ipsc_seed_options(self._config)
+        d = db.upsert_hytera_client(
+            repeater_id, self._hytera_peer_id, callsign, host, seed)
+
+        def _store_metadata(_):
+            metadata = db.upsert_hytera_metadata(
+                repeater_id, self._hytera_rdac_meta)
+            metadata.addErrback(
+                lambda f: logger.error(
+                    '(%s) Hytera selfcare metadata cache failed for %s: %s',
+                    self._system, repeater_id, f.getErrorMessage()))
+            return metadata
+
+        def _mark_pending(_):
+            pending = db.mark_hytera_options_pending(repeater_id)
+            pending.addErrback(
+                lambda f: logger.error(
+                    '(%s) Hytera selfcare mark pending failed for %s: %s',
+                    self._system, repeater_id, f.getErrorMessage()))
+            return pending
+
+        d.addCallback(_store_metadata)
+        d.addCallback(_mark_pending)
+        d.addErrback(
+            lambda f: logger.error(
+                '(%s) Hytera selfcare upsert failed for %s: %s',
+                self._system, repeater_id, f.getErrorMessage()))
+
+    def _sync_hytera_selfcare_logout(self):
+        full_config = getattr(self, '_CONFIG', {})
+        ss = full_config.get('SELF SERVICE', {})
+        if not ss.get('ENABLED'):
+            return
+        db = full_config.get('_SELF_SERVICE_DB')
+        if db is None or not int_id(self._hytera_peer_id):
+            return
+        repeater_id = int_id(self._hytera_peer_id)
+        d = db.logout_hytera_client(repeater_id)
+        d.addErrback(
+            lambda f: logger.error(
+                '(%s) Hytera selfcare logout failed for %s: %s',
+                self._system, repeater_id, f.getErrorMessage()))
 
     def _log_hytera_rdac_metadata(self):
         logger.info(
