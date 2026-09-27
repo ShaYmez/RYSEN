@@ -247,6 +247,48 @@ activation header ended at `12:24:23.454`, and IPSC2 sent the running call's
 `9999` voice burst (sequence 84) at `12:24:23.540`, with no preceding `1111`
 or `EEEE` packet.
 
+## Audio and static hardening
+
+Stress testing on September 27, 2026, with several busy TS1 statics, showed
+intermittent missing audio and incorrect talkgroup or subscriber displays.
+One RF timeslot can transmit only one call. Every configured static stays
+subscribed, but the first admitted call owns that slot. Other simultaneous
+talkgroups are blocked for the call and its group hangtime. They are not
+queued or replayed.
+
+OpenBridge ingress on UDP `62039` was correlated with RD985 egress on the
+private DMR backend UDP `50004`:
+
+- Reliable calls, including TS2/TG2350 and TG67498, began with a Hytera
+  `1111` Voice LC Header and continued on the normal voice cycle at about
+  60 ms.
+- Incomplete TG31777 calls began with the headerless `EEEE` fallback, packet
+  type `0x02` and sequence 0, even though the OpenBridge stream contained a
+  real Voice LC Header (`flags 0x21`) before its voice bursts.
+- Target-slot contention dropped that header. A later voice burst was then
+  admitted. The encoder had no output stream, so it emitted `EEEE` and
+  discarded the triggering 60 ms frame. The RD985 therefore started without
+  valid call context, which matches the missing audio and stale or random
+  talkgroup and DMR ID.
+- ZL2BEZ traffic that originated on XLXD and arrived over OpenBridge used a
+  normal `1111` header and 60 ms cadence in the same capture. No separate
+  XLXD pacing defect was proven.
+
+The router now keeps the original OpenBridge Voice LC Header while a Hytera
+slot rejects the new stream. When a later frame from that same stream is
+admitted, and the header is still inside the stream timeout, RYSEN sends that
+captured header before the voice burst. It does not synthesize a replacement
+LC, and this delayed-admission path does not use the `EEEE` fallback. The
+headerless `EEEE` path remains only for a stream that never presented a Voice
+LC Header.
+
+This is committed on `feature/HYTERA` as `3250e3c` and is running on the test
+server through the temporary `bridge_master.py` bind mount. Still open:
+
+- Field-confirm TS1 static audio and identity after the previous call on that
+  slot releases.
+- Rebuild the RYSEN image and remove the temporary bind mount.
+
 ## Implementation gates
 
 1. **Complete:** validate the native master against an RD985 cold boot.
@@ -261,6 +303,10 @@ or `EEEE` packet.
    metadata display and IPSC-parity repeater selfcare lifecycle.
 8. **Complete:** collect and publish RDAC firmware, hardware/model, serial,
    callsign, raw mode and TX/RX frequency metadata. SNMP remains out of scope.
+9. **In progress:** replay the original Voice LC Header when slot contention
+   delays a Hytera static. Code is on `feature/HYTERA` (`3250e3c`). Field
+   confirmation, an image rebuild, and removal of the test bind mount remain.
+   One RF slot still carries only one call at a time.
 
 Unknown packet variants, including reported 103-byte media packets, must be
 rejected or traced until capture-validated.
