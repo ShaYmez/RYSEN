@@ -207,13 +207,13 @@ or `EEEE` packet.
 1. **Complete:** validate the native master against an RD985 cold boot.
 2. **Complete:** convert captured inbound 72-byte group voice into DMRD.
 3. **Complete:** field-test inbound bridge audio and enable Hytera routing.
-4. **Implemented, field retest pending:** paced outbound group voice with
-   mid-stream dynamic-TG activation.
+4. **Deferred:** mid-stream join into an already-active talkgroup. Ordinary
+   outbound group voice is field-validated.
 5. **Complete:** field-test Dial-a-TG private-call ingress and group TG9
    announcement return.
-6. **In progress:** add the three-port, NAT-aware multi-repeater proxy.
-7. Complete monitor and selfcare integration.
-8. Complete optional RDAC/SNMP metadata discovery.
+6. **Complete:** field-test the three-port, NAT-aware multi-repeater proxy.
+7. **Deferred:** monitor and selfcare integration.
+8. **Deferred:** optional RDAC/SNMP metadata beyond the repeater ID.
 
 Unknown packet variants, including reported 103-byte media packets, must be
 rejected or traced until capture-validated.
@@ -235,6 +235,30 @@ and RDAC traffic; service redirects are rewritten from backend to public
 ports.
 
 Run it with `python3 hytera_proxy.py -c hytera-proxy.cfg`, using
-`hytera-proxy-SAMPLE.cfg` as the template. This is not yet deployed or
-field-validated in proxy mode. Full RDAC metadata and SNMP collection remain
-out of scope for this phase.
+`hytera-proxy-SAMPLE.cfg` as the template.
+
+### Proxy field validation
+
+The proxy is deployed on `hytera.freestar.network` from the local
+`feature/HYTERA` build. The RD985 CPS uses the BrandMeister-compatible public
+ports `50000/50001/50002`. RYSEN's generated backends stay private, starting at
+`50003/50004/50005`.
+
+Validated on September 27, 2026:
+
+- The RD985 registers as `HYTERA-0`. Service redirects leave RYSEN on the
+  private backend ports and the proxy rewrites them to public `50001/50002`.
+- RDAC identity binding learns repeater `235287`.
+- Group voice, Dial-a-TG, the TG9 status announcement, and private parrot echo
+  all pass through the proxy.
+- A quick power cycle replaces the existing `HYTERA-0` session and restores
+  both service redirects without waiting for the idle timeout.
+- A second dummy client, from a different source address, is allocated
+  `HYTERA-1` and public DMR/RDAC ports `50004/50005` while the RD985 remains
+  on the first slot. A second physical repeater has not been tested.
+- Startup requests originate from the repeater's DMR and RDAC source ports,
+  but redirect replies must remain on the registered P2P socket.
+
+The proxy process stayed near zero CPU and about 3 MB. The only reactor-lag
+warning was the one-time alias load during a full stack restart. Full RDAC
+metadata and SNMP collection remain out of scope.
