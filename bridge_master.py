@@ -2474,6 +2474,18 @@ class routerOBP(OPENBRIDGE):
                 _late_join = _late_join_active(
                     _target['SYSTEM'], _target['TS'], _target['TGID'],
                     pkt_time)
+                # A Hytera RF slot can reject a new stream while its previous
+                # call is winding down. Retain a real incoming VHEAD until the
+                # stream is admitted so a delayed start keeps valid LC and
+                # identity context rather than requiring a synthetic header.
+                _hytera_header_key = (
+                    _target['SYSTEM'], _target['TS'], _target['TGID'])
+                if (_target_system['MODE'] == 'HYTERA'
+                        and _frame_type == HBPF_DATA_SYNC
+                        and _dtype_vseq == HBPF_SLT_VHEAD):
+                    self.STATUS[_stream_id].setdefault(
+                        '_HYTERA_DEFERRED_VHEAD', {})[_hytera_header_key] = (
+                            _data, _bits, dmrpkt, pkt_time)
                 # A destination system/slot may appear through several bridge
                 # aliases. Send this packet only once: delivering the same
                 # stream ID under multiple TGIDs corrupts single-stream
@@ -2693,6 +2705,46 @@ class routerOBP(OPENBRIDGE):
 
                 # Transmit the packet to the destination system
                 if _target_system['MODE'] == 'HYTERA':
+                    # If contention suppressed the real VHEAD but later
+                    # admitted a voice burst, send that original header first.
+                    # Otherwise the Hytera encoder starts with the headerless
+                    # EEEE fallback, which causes intermittent audio and stale
+                    # TG/source displays on an RD985.
+                    _deferred_headers = self.STATUS[_stream_id].get(
+                        '_HYTERA_DEFERRED_VHEAD', {})
+                    _deferred_vhead = _deferred_headers.pop(
+                        _hytera_header_key, None)
+                    _is_vhead = (
+                        _frame_type == HBPF_DATA_SYNC
+                        and _dtype_vseq == HBPF_SLT_VHEAD)
+                    if (_deferred_vhead is not None and not _is_vhead):
+                        (_header_data, _header_bits, _header_dmrd,
+                         _header_time) = _deferred_vhead
+                        # Do not replay a header after a stream has gone idle.
+                        if pkt_time - _header_time < STREAM_TO:
+                            if _system['TS'] != _target['TS']:
+                                _header_bits ^= 1 << 7
+                            _header_lc_bits = bitarray(endian='big')
+                            _header_lc_bits.frombytes(_header_dmrd)
+                            _header_lc_bits = (
+                                _target_status[_target['TS']]['TX_H_LC'][0:98]
+                                + _header_lc_bits[98:166]
+                                + _target_status[_target['TS']]['TX_H_LC'][98:197])
+                            _header_packet = b''.join([
+                                _header_data[:8], _target['TGID'],
+                                _header_data[11:15],
+                                _header_bits.to_bytes(1, 'big'),
+                                _header_data[16:20],
+                                _header_lc_bits.tobytes()])
+                            systems[_target['SYSTEM']].send_system(
+                                _header_packet, _hops, _ber, _rssi,
+                                _source_server, _source_rptr)
+                            logger.info(
+                                '(%s) Replayed deferred Hytera VHEAD to %s '
+                                'TS%s TGID %s after %.2fs contention',
+                                self._system, _target['SYSTEM'],
+                                _target['TS'], int_id(_target['TGID']),
+                                pkt_time - _header_time)
                     _late_join_sequence = None
                     if _late_join:
                         _late_join_sequence = _late_join_wire_sequence(
