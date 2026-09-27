@@ -163,6 +163,29 @@ Field validation on the native master confirmed that a TS2 private call to
 The successful capture is retained outside the repository because it contains
 live network metadata.
 
+## RDAC metadata
+
+The capture-validated RDAC sequence now collects and publishes metadata in the
+existing RYSEN peer report. It validates packet prefixes and minimum lengths
+before decoding fixed-width UTF-16LE fields, then retains the raw channel mode
+without assigning semantics that have not been independently verified.
+
+The published fields are:
+
+- repeater DMR ID;
+- firmware (`SOFTWARE_ID`);
+- hardware/model (`DESCRIPTION` and `HYTERA_HARDWARE`);
+- serial number (`SERIAL` and `HYTERA_SERIAL`);
+- callsign (`HYTERA_CALLSIGN`, and `CALLSIGN` where it was previously only the
+  numeric DMR ID);
+- raw channel mode, TX frequency and RX frequency.
+
+Live RD985 validation on September 27, 2026 published firmware
+`A9.02.03.009`, hardware `RD985-00000000-000000-U1-0-F`, callsign `GB7NR`,
+and TX/RX frequencies `439437500`/`430437500` Hz for repeater `235287`.
+The serial number was also populated in the peer report. SNMP is deliberately
+out of scope: all implemented metadata comes from the native RDAC exchange.
+
 ## Outbound group voice
 
 The DMRD-to-Hytera path uses the master-to-repeater forms observed in the
@@ -213,7 +236,8 @@ or `EEEE` packet.
    announcement return.
 6. **Complete:** field-test the three-port, NAT-aware multi-repeater proxy.
 7. **Deferred:** monitor and selfcare integration.
-8. **Deferred:** optional RDAC/SNMP metadata beyond the repeater ID.
+8. **Complete:** collect and publish RDAC firmware, hardware/model, serial,
+   callsign, raw mode and TX/RX frequency metadata. SNMP remains out of scope.
 
 Unknown packet variants, including reported 103-byte media packets, must be
 rejected or traced until capture-validated.
@@ -260,5 +284,5 @@ Validated on September 27, 2026:
   but redirect replies must remain on the registered P2P socket.
 
 The proxy process stayed near zero CPU and about 3 MB. The only reactor-lag
-warning was the one-time alias load during a full stack restart. Full RDAC
-metadata and SNMP collection remain out of scope.
+warning was the one-time alias load during a full stack restart. RDAC metadata
+is collected by the RYSEN backend; SNMP collection remains out of scope.

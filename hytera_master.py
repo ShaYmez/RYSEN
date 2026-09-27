@@ -48,6 +48,7 @@ from hytera_const import (
     media_timeslot,
     p2p_command_type,
 )
+from hytera_rdac_meta import parse_rdac_channel, parse_rdac_identity
 from hytera_voice import HyteraOutboundPacer, HyteraVoiceTranslator
 
 
@@ -128,8 +129,12 @@ class HyteraMasterMixin:
         self._hytera_watchdog = self._config.get('KEEPALIVE_WATCHDOG', 60)
         self._hytera_trace = self._config.get('TRACE_PACKETS', False)
         self._hytera_proxy_enabled = self._config.get('PROXY_CONTROL', False)
+        self._hytera_rdac_enabled = (
+            self._hytera_proxy_enabled
+            or self._config.get('RDAC_DISCOVERY', False))
         self._hytera_proxy_info = None
         self._hytera_rdac_step = 0
+        self._hytera_rdac_meta = {}
         self._hytera_voice = HyteraVoiceTranslator(
             self._config.get('HYTERA_REPEATER_ID', 0))
         self._hytera_outbound = HyteraOutboundPacer(
@@ -207,7 +212,11 @@ class HyteraMasterMixin:
                 full_config=self._CONFIG,
             )
             record['PACKAGE_ID'] = 'Hytera IP Multi-site Connect'
-            record['SOFTWARE_ID'] = 'Firmware pending RDAC/SNMP discovery'
+            if self._hytera_rdac_meta:
+                self._apply_hytera_rdac_metadata(record)
+                self._log_hytera_rdac_metadata()
+            elif not record['SOFTWARE_ID']:
+                record['SOFTWARE_ID'] = 'RDAC metadata pending'
             self._peers[self._hytera_peer_id] = record
             if self._report is not None:
                 self._report.send_config()
@@ -235,6 +244,7 @@ class HyteraMasterMixin:
         self._hytera_dmr_addr = None
         self._hytera_proxy_info = None
         self._hytera_rdac_step = 0
+        self._hytera_rdac_meta = {}
         if self._hytera_peer_id in self._peers:
             del self._peers[self._hytera_peer_id]
             if self._report is not None:
@@ -403,7 +413,7 @@ class HyteraMasterMixin:
             '(%s) Hytera RDAC packet from %s:%s len=%s%s',
             self._system, addr[0], addr[1], len(data),
             ' data=' + data.hex() if self._hytera_trace else '')
-        if self._hytera_proxy_enabled:
+        if self._hytera_rdac_enabled:
             self._advance_rdac_identification(data, addr)
 
     def _send_rdac(self, packet, addr):
@@ -412,7 +422,7 @@ class HyteraMasterMixin:
             protocol.transport.write(packet, addr)
 
     def _advance_rdac_identification(self, data, addr):
-        """Run the capture-validated RDAC exchange needed for proxy identity."""
+        """Run the capture-validated RDAC exchange and collect peer metadata."""
         step = self._hytera_rdac_step
         if data == b'\x00' and step != 14:
             self._hytera_rdac_step = 1
@@ -423,6 +433,12 @@ class HyteraMasterMixin:
         elif step == 2 and data.startswith(RDAC_STEP1_RESPONSE):
             self._hytera_rdac_step = 3
         elif step == 3 and rdac_repeater_id(data):
+            repeater_id = rdac_repeater_id(data)
+            if not int_id(self._hytera_peer_id):
+                self._hytera_peer_id = repeater_id.to_bytes(4, 'big')
+                self._hytera_voice.set_peer_id(repeater_id)
+                if self._hytera_registered and self._hytera_addr:
+                    self._register_hytera_peer(*self._hytera_addr)
             self._hytera_rdac_step = 4
             self._send_rdac(RDAC_STEP3_REQUEST, addr)
         elif step == 4 and data.startswith(b'\x7e\x04\x00\x00'):
@@ -432,6 +448,7 @@ class HyteraMasterMixin:
         elif step == 5 and data.startswith(RDAC_STEP1_RESPONSE):
             self._hytera_rdac_step = 6
         elif step == 6 and data.startswith(b'\x7e\x04\x00\x00'):
+            self._hytera_rdac_meta.update(parse_rdac_identity(data))
             self._hytera_rdac_step = 7
             self._send_rdac(RDAC_STEP6_REQUEST_1, addr)
             self._send_rdac(RDAC_STEP6_REQUEST_2, addr)
@@ -441,6 +458,7 @@ class HyteraMasterMixin:
         elif step == 8 and data.startswith(RDAC_STEP1_RESPONSE):
             self._hytera_rdac_step = 10
         elif step == 10 and data.startswith(b'\x7e\x04\x00\x00'):
+            self._hytera_rdac_meta.update(parse_rdac_channel(data))
             self._hytera_rdac_step = 11
             self._send_rdac(RDAC_STEP10_REQUEST, addr)
         elif step == 11 and data.startswith(RDAC_STEP1_RESPONSE):
@@ -451,8 +469,66 @@ class HyteraMasterMixin:
             self._send_rdac(RDAC_STEP12_REQUEST_2, addr)
         elif step == 13 and data.startswith(RDAC_STEP12_RESPONSE):
             self._hytera_rdac_step = 14
+            self._publish_hytera_rdac_metadata()
             logger.info('(%s) Hytera RDAC identity exchange completed',
                         self._system)
+
+    def _apply_hytera_rdac_metadata(self, peer):
+        """Merge validated RDAC fields into an existing monitor peer record."""
+        meta = self._hytera_rdac_meta
+        firmware = meta.get('firmware')
+        hardware = meta.get('hardware')
+        serial = meta.get('serial')
+        callsign = meta.get('callsign')
+        if firmware:
+            peer['SOFTWARE_ID'] = firmware
+        if hardware:
+            peer['DESCRIPTION'] = hardware
+            peer['HYTERA_HARDWARE'] = hardware
+        if serial:
+            peer['SERIAL'] = serial
+            peer['HYTERA_SERIAL'] = serial
+        if callsign:
+            peer['HYTERA_CALLSIGN'] = callsign
+            current = peer.get('CALLSIGN', '')
+            if isinstance(current, bytes):
+                current = current.decode('utf-8', errors='ignore').rstrip()
+            if not current or current == str(int_id(self._hytera_peer_id)):
+                peer['CALLSIGN'] = callsign
+        for source, target in (
+                ('mode_raw', 'HYTERA_MODE'),
+                ('tx_frequency', 'TX_FREQ'),
+                ('rx_frequency', 'RX_FREQ')):
+            if source in meta:
+                peer[target] = meta[source]
+
+    def _publish_hytera_rdac_metadata(self):
+        if not int_id(self._hytera_peer_id):
+            return
+        peer = self._peers.get(self._hytera_peer_id)
+        if peer is None and self._hytera_registered and self._hytera_addr:
+            self._register_hytera_peer(*self._hytera_addr)
+            peer = self._peers.get(self._hytera_peer_id)
+        if peer is None:
+            return
+        self._apply_hytera_rdac_metadata(peer)
+        if self._report is not None:
+            self._report.send_config()
+        self._log_hytera_rdac_metadata()
+
+    def _log_hytera_rdac_metadata(self):
+        logger.info(
+            '(%s) Hytera RDAC metadata published: firmware=%r hardware=%r '
+            'serial=%r callsign=%r mode=%r tx_frequency=%r rx_frequency=%r',
+            self._system,
+            self._hytera_rdac_meta.get('firmware'),
+            self._hytera_rdac_meta.get('hardware'),
+            self._hytera_rdac_meta.get('serial'),
+            self._hytera_rdac_meta.get('callsign'),
+            self._hytera_rdac_meta.get('mode_raw'),
+            self._hytera_rdac_meta.get('tx_frequency'),
+            self._hytera_rdac_meta.get('rx_frequency'),
+        )
 
     def _send_hytera_media(self, packet):
         protocol = self._hytera_services.get('dmr')

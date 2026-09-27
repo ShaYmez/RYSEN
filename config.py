@@ -405,6 +405,8 @@ def build_config(_config_file):
                         'ANNOUNCEMENT_LANGUAGE': config.get(section, 'ANNOUNCEMENT_LANGUAGE'),
                         'ALLOW_UNREG_ID': config.getboolean(section, 'ALLOW_UNREG_ID'),
                         'PROXY_CONTROL': config.getboolean(section, 'PROXY_CONTROL'),
+                        'RDAC_DISCOVERY': config.getboolean(
+                            section, 'RDAC_DISCOVERY', fallback=False),
                         'OVERRIDE_IDENT_TG': config.get(section, 'OVERRIDE_IDENT_TG'),
                         'IPSC_MASTER_ID': config.getint(section, 'IPSC_MASTER_ID'),
                         'AUTH_ENABLED': config.getboolean(section, 'AUTH_ENABLED'),

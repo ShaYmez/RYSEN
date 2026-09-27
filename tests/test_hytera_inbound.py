@@ -10,6 +10,7 @@ from hytera_const import (
     RDAC_STEP3_REQUEST,
 )
 from hytera_master import HyteraMasterMixin
+from hytera_rdac_meta import parse_rdac_channel, parse_rdac_identity
 from hytera_voice import (
     HyteraOutboundPacer,
     HyteraVoiceTranslator,
@@ -401,6 +402,69 @@ class TestHyteraProxyControl(unittest.TestCase):
         identity[18:21] = (235287).to_bytes(3, 'little')
         self.master._advance_rdac_identification(bytes(identity), addr)
         self.assertEqual(writes[-1], (RDAC_STEP3_REQUEST, addr))
+
+    def test_rdac_metadata_parsers_reject_short_packets(self):
+        self.assertEqual(parse_rdac_identity(b'\x7e\x04\x00\x00'), {})
+        self.assertEqual(parse_rdac_channel(b'\x7e\x04\x00\x00'), {})
+
+    def test_rdac_metadata_is_published_after_full_exchange(self):
+        class Report:
+            def __init__(self):
+                self.calls = 0
+
+            def send_config(self):
+                self.calls += 1
+
+        addr = ('172.16.238.31', 50005)
+        self.master._hytera_peer_id = (235287).to_bytes(4, 'big')
+        self.master._hytera_rdac_meta = {}
+        self.master._peers = {
+            self.master._hytera_peer_id: {
+                'CALLSIGN': '235287',
+                'SOFTWARE_ID': '',
+            },
+        }
+        self.master._report = Report()
+        identity = bytearray(b'\x7e\x04\x00\x00' + b'\x00' * 212)
+        identity[18:21] = (235287).to_bytes(3, 'little')
+        identity[56:88] = 'A9.02.03.009'.encode('utf-16le').ljust(32, b'\x00')
+        identity[88:108] = 'GB7TEST'.encode('utf-16le').ljust(20, b'\x00')
+        identity[120:184] = 'RD985'.encode('utf-16le').ljust(64, b'\x00')
+        identity[184:216] = '12345678'.encode('utf-16le').ljust(32, b'\x00')
+        channel = bytearray(b'\x7e\x04\x00\x00' + b'\x00' * 40)
+        channel[26] = 3
+        channel[29:33] = (439500000).to_bytes(4, 'little')
+        channel[33:37] = (430500000).to_bytes(4, 'little')
+
+        self.assertEqual(parse_rdac_identity(bytes(identity))['hardware'], 'RD985')
+        self.assertEqual(parse_rdac_channel(bytes(channel))['mode_raw'], 3)
+
+        for response in (
+                b'\x00',
+                b'\x7e\x04\x00\xfd',
+                b'\x7e\x04\x00\x10',
+                bytes(identity),
+                b'\x7e\x04\x00\x00',
+                b'\x7e\x04\x00\x10',
+                bytes(identity),
+                b'\x7e\x04\x00\x10',
+                b'\x7e\x04\x00\x10',
+                bytes(channel),
+                b'\x7e\x04\x00\x10',
+                bytes(channel),
+                b'\x7e\x04\x00\xfa'):
+            self.master._advance_rdac_identification(response, addr)
+
+        peer = self.master._peers[self.master._hytera_peer_id]
+        self.assertEqual(self.master._hytera_rdac_step, 14)
+        self.assertEqual(peer['SOFTWARE_ID'], 'A9.02.03.009')
+        self.assertEqual(peer['DESCRIPTION'], 'RD985')
+        self.assertEqual(peer['SERIAL'], '12345678')
+        self.assertEqual(peer['CALLSIGN'], 'GB7TEST')
+        self.assertEqual(peer['HYTERA_MODE'], 3)
+        self.assertEqual(peer['TX_FREQ'], 439500000)
+        self.assertEqual(peer['RX_FREQ'], 430500000)
+        self.assertEqual(self.master._report.calls, 1)
 
 
 class TestHyteraOutboundDispatch(unittest.TestCase):
