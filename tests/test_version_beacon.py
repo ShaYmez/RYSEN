@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Tests for version ping and install_id."""
+import json
 import os
 import tempfile
 import unittest
 from unittest import mock
 
-from rysen_trace import get_install_id, install_id_path, persist_runtime_version, ping_version_async, post_version_ping, runtime_version_path
+from rysen_trace import get_install_id, install_id_path, persist_reactor_status, persist_runtime_version, ping_version_async, post_version_ping, reactor_status_path, runtime_version_path
 from rysen_version import __version__, user_agent
 
 
@@ -34,6 +35,15 @@ class TestRuntimeVersion(unittest.TestCase):
             persist_runtime_version(tmp)
             with open(runtime_version_path(tmp), encoding='utf-8') as fh:
                 self.assertEqual(fh.read().strip(), __version__)
+
+    def test_persist_reactor_status_replaces_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            persist_reactor_status(tmp, {'lag_s': 0.012, 'keys': 3})
+            with open(reactor_status_path(tmp), encoding='utf-8') as fh:
+                self.assertEqual(json.load(fh), {'lag_s': 0.012, 'keys': 3})
+            self.assertFalse(os.path.exists(reactor_status_path(tmp) + '.tmp'))
+            if os.name == 'posix':
+                self.assertEqual(os.stat(reactor_status_path(tmp)).st_mode & 0o777, 0o644)
 
 
 class TestVersionPing(unittest.TestCase):

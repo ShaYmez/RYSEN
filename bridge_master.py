@@ -252,6 +252,9 @@ _ROUTE_STATS_NEXT_LOG = [0.0]        # mutable list so inner functions can write
 # Reactor-lag diagnostics
 _REACTOR_LAG_INTERVAL = 5.0          # expected loop-call interval (seconds)
 _REACTOR_LAG_LAST = [None]           # timestamp of last check
+_REACTOR_LAG_WORST = [0.0]           # worst lag in the current routing window
+_REACTOR_WINDOW_START = [0.0]
+_REACTOR_STATUS_DIR = [None]         # log dir for the status-page snapshot
 
 # Coalesce hot-path full index rebuilds so a miss storm cannot rebuild once per packet.
 _BRIDGE_IDX_REBUILD_MIN_INTERVAL_S = 1.0
@@ -419,9 +422,34 @@ def _maybe_rebuild_bridge_index_on_miss(system_name, slot, dst_id):
             system_name, system_name, slot, int_id(dst_id))
 
 
+def _publish_reactor_status(_now, _lag):
+    """Write a small snapshot for the host status page. Called from the 5s diagnostic only."""
+    _dir = _REACTOR_STATUS_DIR[0]
+    if not _dir:
+        return
+    if not _REACTOR_WINDOW_START[0]:
+        _REACTOR_WINDOW_START[0] = _now
+    from rysen_trace import persist_reactor_status
+    persist_reactor_status(_dir, {
+        'lag_s': round(_lag, 3),
+        'lag_worst_s': round(_REACTOR_LAG_WORST[0], 3),
+        'interval_s': _REACTOR_LAG_INTERVAL,
+        'keys': len(BRIDGE_IDX),
+        'bridges': len(BRIDGES),
+        'packets': _ROUTE_STATS['packets'],
+        'index_hits': _ROUTE_STATS['index_hits'],
+        'index_misses': _ROUTE_STATS['index_misses'],
+        'fallbacks': _ROUTE_STATS['fallbacks'],
+        'window_s': _ROUTE_STATS_INTERVAL,
+        'window_age_s': int(_now - _REACTOR_WINDOW_START[0]),
+        'updated_at': int(_now),
+    })
+
+
 def reactorLagCheck():
     """Looping diagnostic: warn when the Twisted reactor falls behind schedule."""
     _now = time()
+    _lag = 0.0
     if _REACTOR_LAG_LAST[0] is not None:
         _actual = _now - _REACTOR_LAG_LAST[0]
         _lag = _actual - _REACTOR_LAG_INTERVAL
@@ -432,7 +460,12 @@ def reactorLagCheck():
                 'Bridge index size: %d keys / %d bridges.',
                 _lag, _actual, _REACTOR_LAG_INTERVAL,
                 len(BRIDGE_IDX), len(BRIDGES))
+    if _lag < 0.0:
+        _lag = 0.0
+    if _lag > _REACTOR_LAG_WORST[0]:
+        _REACTOR_LAG_WORST[0] = _lag
     _REACTOR_LAG_LAST[0] = _now
+    _publish_reactor_status(_now, _lag)
 
 
 def _log_route_stats():
@@ -457,6 +490,8 @@ def _log_route_stats():
         _ROUTE_STATS['fallbacks'] = 0
         for _diag_key in _LOOP_DIAG:
             _LOOP_DIAG[_diag_key] = 0
+        _REACTOR_LAG_WORST[0] = 0.0
+        _REACTOR_WINDOW_START[0] = _now
         _ROUTE_STATS_NEXT_LOG[0] = _now + _ROUTE_STATS_INTERVAL
 
 
@@ -5209,6 +5244,8 @@ if __name__ == '__main__':
 
     _log_file = CONFIG['LOGGER'].get('LOG_FILE', '/opt/rysen/log/rysen.log')
     _log_dir = os.path.dirname(_log_file) or '/opt/rysen/log'
+    _REACTOR_STATUS_DIR[0] = _log_dir
+    _REACTOR_WINDOW_START[0] = time()
     from rysen_trace import persist_runtime_version, schedule_version_ping
     persist_runtime_version(_log_dir)
     schedule_version_ping(reactor, _log_dir)
