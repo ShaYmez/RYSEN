@@ -224,8 +224,9 @@ IPSC2 capture:
 - The `BBBB` packet uses the captured `EEEE1111` prefix. Ordinary ongoing
   master voice uses `00000000`; a synthesized `EEEE` call start uses
   `5A5A5A5A`, matching the IPSC2 normal-call oracle.
-- Voice and terminator packets pass through a one-slot jitter buffer and are
-  emitted at 60 ms intervals on the negotiated DMR service endpoint.
+- Voice and terminator packets pass through a three-slot (180 ms) jitter
+  buffer and are emitted at 60 ms intervals on the negotiated DMR service
+  endpoint. Late-entry retains its separate one-slot release path.
 
 Outbound group and private voice are admitted. Malformed DMRD and traffic for
 an unregistered repeater remain blocked.

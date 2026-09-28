@@ -55,7 +55,9 @@ OUTBOUND_SLOT_TYPE = {
     5: SLOT_VOICE_F,
 }
 OUTBOUND_INTERVAL = 0.060
-OUTBOUND_JITTER_DEPTH = 1
+# OpenBridge ingress can arrive in short bursts.  Three queued bursts provide
+# 180 ms of playout cover while preserving a prompt normal call start.
+OUTBOUND_JITTER_DEPTH = 3
 
 
 def hytera_payload_to_dmrd(payload):

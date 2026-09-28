@@ -305,14 +305,14 @@ class TestHyteraOutboundVoice(unittest.TestCase):
         self.assertEqual(hytera_payload_to_dmrd(wire), self.payload)
         self.assertIsNone(dmrd_payload_to_hytera(b'\x00' * 32))
 
-    def test_pacer_holds_two_slots_then_sends_at_sixty_ms(self):
+    def test_pacer_buffers_three_bursts_then_sends_at_sixty_ms(self):
         clock = Clock()
         sent = []
         pacer = HyteraOutboundPacer(sent.append, clock=clock)
-        for packet in (b'a', b'b', b'c'):
+        for packet in (b'a', b'b', b'c', b'd'):
             self.assertTrue(pacer.enqueue(1, packet))
 
-        clock.advance(0.059)
+        clock.advance(0.179)
         self.assertEqual(sent, [])
         clock.advance(0.001)
         self.assertEqual(sent, [b'a'])
@@ -320,6 +320,8 @@ class TestHyteraOutboundVoice(unittest.TestCase):
         self.assertEqual(sent, [b'a', b'b'])
         clock.advance(0.060)
         self.assertEqual(sent, [b'a', b'b', b'c'])
+        clock.advance(0.060)
+        self.assertEqual(sent, [b'a', b'b', b'c', b'd'])
 
 
 class TestHyteraInboundDispatch(unittest.TestCase):
@@ -570,7 +572,9 @@ class TestHyteraOutboundDispatch(unittest.TestCase):
         self.assertTrue(self.master.hytera_send_system(
             dmrd(0x02, self.payload, stream)))
         self.assertEqual(len(writes), 1)
-        self.clock.advance(0.120)
+        self.clock.advance(0.179)
+        self.assertEqual(len(writes), 1)
+        self.clock.advance(0.001)
         self.assertEqual(len(writes), 2)
         self.assertEqual(writes[1][0][8], 0x01)
 
