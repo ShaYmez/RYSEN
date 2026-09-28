@@ -269,8 +269,11 @@ class HyteraVoiceTranslator:
                 b'\xee\xee\x11\x11'
                 if slot_type == SLOT_VOICE_A else b'\x00' * 4)
         packet[4:8] = self._out_seq[ts].to_bytes(4, 'little')
+        # Normal TS2 traffic uses the 0x40 packet-type bit. IPSC2's
+        # capture-validated late entry uses ordinary master voice type 0x01
+        # on both slots, while retaining the slot marker at bytes 16:18.
         packet[8] = packet_type | (
-            0x40 if ts == 2 or self._out_late_join[ts] else 0)
+            0x40 if ts == 2 and not self._out_late_join[ts] else 0)
         packet[9:16] = b'\x00\x05\x01' + bytes((ts,)) + b'\x00\x00\x00'
         packet[16:18] = b'\x11\x11' if ts == 1 else b'\x22\x22'
         packet[18:20] = slot_type.to_bytes(2, 'big')

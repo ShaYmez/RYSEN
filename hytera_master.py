@@ -627,10 +627,11 @@ class HyteraMasterMixin:
         if (_late_join and not paced
                 and wire_packet[18:20] != b'\x11\x11'):
             self._hytera_outbound.reset_slot(ts)
-            # Hold three slots so irregular first packets can be drained at
-            # the RD985's required steady 60 ms cadence.
+            # IPSC2 waits one 60 ms slot after the RD985's activation headers,
+            # then continues the live voice stream. A longer prebuffer misses
+            # the active transmission instead of joining it.
             return self._hytera_outbound.enqueue(
-                ts, wire_packet, jitter_depth=3)
+                ts, wire_packet, jitter_depth=1)
         if paced:
             return self._hytera_outbound.enqueue(ts, wire_packet)
         if (_late_join

@@ -258,7 +258,7 @@ class TestHyteraOutboundVoice(unittest.TestCase):
         self.assertEqual(ts, 1)
         self.assertFalse(paced)
         self.assertEqual(voice[4:8], b'\x54\x01\x00\x00')
-        self.assertEqual(voice[8], 0x41)
+        self.assertEqual(voice[8], 0x01)
         self.assertEqual(voice[18:20], b'\x99\x99')
         self.assertEqual(voice[:4], b'\x5a\x5a\x5a\x5a')
         self.assertEqual(int.from_bytes(voice[63:67], 'little') >> 8, 23426)
@@ -270,8 +270,17 @@ class TestHyteraOutboundVoice(unittest.TestCase):
             late_join=True)
         self.assertTrue(paced)
         self.assertEqual(next_voice[4:8], b'\x55\x01\x00\x00')
-        self.assertEqual(next_voice[8], 0x41)
+        self.assertEqual(next_voice[8], 0x01)
         self.assertEqual(next_voice[:4], b'\x5a\x5a\x5a\x5a')
+
+        ts2 = HyteraVoiceTranslator(peer_id=235287)
+        _, ts2_voice, _ = ts2.encode_group(
+            dmrd(0x84, self.payload, stream=b'\x04\x04\x04\x04',
+                 source=2340189, destination=2352, sequence=84),
+            late_join=True, late_join_sequence=1029)
+        self.assertEqual(ts2_voice[8], 0x01)
+        self.assertEqual(ts2_voice[16:18], b'\x22\x22')
+        self.assertEqual(ts2_voice[18:20], b'\x99\x99')
 
     def test_payload_round_trip_and_quality_byte(self):
         wire = dmrd_payload_to_hytera(self.payload, quality=0x58)
@@ -577,10 +586,11 @@ class TestHyteraOutboundDispatch(unittest.TestCase):
 
         writes = self.master._hytera_services['dmr'].transport.writes
         self.assertEqual(writes, [])
-        self.clock.advance(0.179)
+        self.clock.advance(0.059)
         self.assertEqual(writes, [])
         self.clock.advance(0.001)
         self.assertEqual(len(writes), 1)
+        self.assertEqual(writes[0][0][8], 0x01)
         self.assertEqual(writes[0][0][18:20], b'\x99\x99')
         self.clock.advance(0.060)
         self.assertEqual(len(writes), 2)

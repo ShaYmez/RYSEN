@@ -247,6 +247,30 @@ activation header ended at `12:24:23.454`, and IPSC2 sent the running call's
 `9999` voice burst (sequence 84) at `12:24:23.540`, with no preceding `1111`
 or `EEEE` packet.
 
+### IPSC2 mid-stream oracle
+
+The September 28, 2026, two-way captures on `ipsc2.freestar.network` prove
+the same behaviour on both RF slots:
+
+- The RD985 sends three Voice LC Headers (`1111`) to announce its activation.
+  Those packets have type `0x41`, source `2348831`, and group call marker
+  `0x01`.
+- IPSC2 resumes the already-active call about one 60 ms slot after the third
+  header. It sends an ordinary master voice packet with type `0x01` on both
+  TS1 and TS2, retaining the timeslot marker (`1111` or `2222`) at bytes
+  `16:18`.
+- On TS1/TG235, the first reply was `AAAA`, sequence 398, source `2345875`,
+  66 ms after the third activation header. On TS2/TG2352, it was `7777`,
+  sequence 1029, source `2345875`, 65 ms after the third activation header.
+- Neither exchange used a new `1111` header, `EEEE` call start, or `DDDD`
+  wakeup. The following packets continued at the normal 60 ms cadence.
+
+RYSEN's late-entry encoder therefore sends a one-slot buffered current voice
+burst with packet type `0x01` on both slots. It preserves the `5A5A5A5A`
+prefix, source, destination, sequence and voice slot type from the active
+stream. Normal TS2 call setup remains `0x41`; this exception applies only to
+an authenticated group-call late join.
+
 ## Audio and static hardening
 
 Stress testing on September 27, 2026, with several busy TS1 statics, showed
