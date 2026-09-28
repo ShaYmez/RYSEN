@@ -272,6 +272,22 @@ voice phase, `5A5A5A5A` prefix (or `EEEE1111` for Voice A), and the active
 timeslot. Normal TS2 call setup remains `0x41`; this exception applies only to
 an authenticated group-call late join.
 
+### Late-entry field result: deferred
+
+The September 28 test-server comparison has deferred this milestone. During a
+TS1/TG235 activation, the RD985 sent its three `1111` headers at 0, 58 and
+118 ms. RYSEN began the running stream 176–220 ms after the third header and
+continued with 60 ms cadence. The backend packets carried the expected type
+`0x01`, TS1 marker, current voice phase, source, destination, call type and
+prefixes. The Hytera proxy forwarded each packet byte-for-byte to the RD985 in
+about 0.3 ms.
+
+Despite that observable parity with the IPSC2 captures, the RD985 did not
+decode the late-entry audio after de-key. The outstanding work is a controlled
+IPSC2-oracle replay through the test-server/proxy path to distinguish an
+unobserved native packet semantic from repeater session-state behaviour. Do
+not make further framing, timing or sequence changes without that evidence.
+
 ### Normal call identity oracle
 
 The same IPSC2 capture includes a clean TS1/TG235 normal call start. Its
@@ -329,9 +345,10 @@ loads the deferred-header code from the image. Still open:
 1. **Complete:** validate the native master against an RD985 cold boot.
 2. **Complete:** convert captured inbound 72-byte group voice into DMRD.
 3. **Complete:** field-test inbound bridge audio and enable Hytera routing.
-4. **In progress:** capture-validated mid-stream group join. The RD985-facing
-   activation, phase, sequence and identity rules are implemented; field
-   validation on the test server remains.
+4. **Deferred:** mid-stream group join. RYSEN and proxy field captures match
+   the observable IPSC2 framing and timing, but the RD985 does not decode
+   audio after de-key. A controlled IPSC2-oracle replay is required before
+   further implementation changes.
 5. **Complete:** field-test Dial-a-TG private-call ingress and group TG9
    announcement return.
 6. **Complete:** field-test the three-port, NAT-aware multi-repeater proxy.
