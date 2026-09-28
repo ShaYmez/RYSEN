@@ -99,9 +99,13 @@ class TestActivateUaNotify(unittest.TestCase):
 
         self.assertTrue(changed)
         self.assertTrue(bm.BRIDGES['326'][3]['ACTIVE'])
-        self.assertTrue(
+        self.assertFalse(
             bm._late_join_active(
                 'HYTERA', 1, b'\x00\x01\x46', now))
+        self.assertTrue(
+            bm._late_join_active(
+                'HYTERA', 1, b'\x00\x01\x46',
+                now + bm._HYTERA_LATE_JOIN_ARM_S + 0.001))
 
     def test_late_join_arm_expires_after_stream_timeout(self):
         bm._arm_late_join_target(

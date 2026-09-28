@@ -264,6 +264,9 @@ _HBP_STREAM_CLAIMS = {}
 _HBP_CLAIM_TIMEOUT_S = 1.0
 _LATE_JOIN_TARGETS = {}
 _LATE_JOIN_TIMEOUT_S = 3.0
+# The RD985 sends three VHEAD bursts at 60 ms intervals.  IPSC2 does not
+# resume an already-active call until the following RF burst boundary.
+_HYTERA_LATE_JOIN_ARM_S = 0.180
 _LOOP_DIAG = {
     'claim_expired': 0,
     'short_resumes': 0,
@@ -290,6 +293,12 @@ def _late_join_active(system, slot, tgid, now):
     key = (system, slot, tgid)
     armed_at = _LATE_JOIN_TARGETS.get(key)
     if armed_at is None:
+        return False
+    # An RD985 sends three VHEAD bursts at 60 ms intervals when it activates
+    # a running talkgroup. IPSC2 resumes only on the next RF burst boundary,
+    # so retain the active stream until the activation sequence has completed.
+    if (CONFIG['SYSTEMS'].get(system, {}).get('MODE') == 'HYTERA'
+            and now - armed_at < _HYTERA_LATE_JOIN_ARM_S):
         return False
     if now - armed_at >= _LATE_JOIN_TIMEOUT_S:
         _LATE_JOIN_TARGETS.pop(key, None)

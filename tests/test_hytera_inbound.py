@@ -234,9 +234,17 @@ class TestHyteraOutboundVoice(unittest.TestCase):
 
     def test_headerless_and_replaced_streams_get_call_start(self):
         first = self.translator.encode_group(
-            dmrd(0x02, self.payload, stream=b'\x01\x01\x01\x01'))
+            dmrd(0x02, self.payload, stream=b'\x01\x01\x01\x01',
+                 source=2341980, destination=235))
         self.assertFalse(first[2])
         self.assertEqual(first[1][8], 0x02)
+        self.assertEqual(first[1][:4], b'\x5a\x5a\x5a\x5a')
+        self.assertEqual(first[1][22:26], b'\x11\x11\x00\x00')
+        self.assertEqual(
+            first[1][26:44],
+            b'\x00' * 6
+            + b'\x00\x00\x00\x00\xeb\x00'
+            + b'\x23\x00\xbc\x00\x5c\x00')
         voice = self.translator.encode_group(
             dmrd(0x03, self.payload, stream=b'\x01\x01\x01\x01'))
         self.assertTrue(voice[2])
@@ -272,6 +280,14 @@ class TestHyteraOutboundVoice(unittest.TestCase):
         self.assertEqual(next_voice[4:8], b'\x55\x01\x00\x00')
         self.assertEqual(next_voice[8], 0x01)
         self.assertEqual(next_voice[:4], b'\x5a\x5a\x5a\x5a')
+
+        _, a_voice, paced = self.translator.encode_group(
+            dmrd(0x10, self.payload, stream=b'\x03\x03\x03\x03',
+                 source=2340189, destination=23426, sequence=86),
+            late_join=True)
+        self.assertTrue(paced)
+        self.assertEqual(a_voice[18:20], b'\xbb\xbb')
+        self.assertEqual(a_voice[:4], b'\xee\xee\x11\x11')
 
         ts2 = HyteraVoiceTranslator(peer_id=235287)
         _, ts2_voice, _ = ts2.encode_group(

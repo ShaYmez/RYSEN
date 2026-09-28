@@ -221,8 +221,9 @@ IPSC2 capture:
 - Headerless streams fall back to `EEEE` with the captured interleaved 24-bit
   destination/source identity payload.
 - Voice bursts use `BBBB`, `CCCC`, `7777`, `8888`, `9999`, `AAAA`.
-- The `BBBB` packet uses the captured `EEEE1111` prefix; other master-originated
-  packets use `00000000`, matching the working bridge and reflector captures.
+- The `BBBB` packet uses the captured `EEEE1111` prefix. Ordinary ongoing
+  master voice uses `00000000`; a synthesized `EEEE` call start uses
+  `5A5A5A5A`, matching the IPSC2 normal-call oracle.
 - Voice and terminator packets pass through a one-slot jitter buffer and are
   emitted at 60 ms intervals on the negotiated DMR service endpoint.
 
@@ -242,10 +243,10 @@ first three late-join bursts are buffered before delivery so irregular ingress
 at activation becomes a continuous 60 ms stream; ordinary calls retain the
 one-slot jitter buffer.
 
-This matches the IPSC2 oracle captured on TS1/TG23426: the RD985's third
-activation header ended at `12:24:23.454`, and IPSC2 sent the running call's
-`9999` voice burst (sequence 84) at `12:24:23.540`, with no preceding `1111`
-or `EEEE` packet.
+The late-entry output is held through the three-header activation sequence,
+then released on the next available burst from the active OpenBridge stream.
+This avoids transmitting while the RD985 is still acquiring the call and
+preserves the source, destination, sequence and current voice phase.
 
 ### IPSC2 mid-stream oracle
 
@@ -255,21 +256,30 @@ the same behaviour on both RF slots:
 - The RD985 sends three Voice LC Headers (`1111`) to announce its activation.
   Those packets have type `0x41`, source `2348831`, and group call marker
   `0x01`.
-- IPSC2 resumes the already-active call about one 60 ms slot after the third
-  header. It sends an ordinary master voice packet with type `0x01` on both
-  TS1 and TS2, retaining the timeslot marker (`1111` or `2222`) at bytes
-  `16:18`.
-- On TS1/TG235, the first reply was `AAAA`, sequence 398, source `2345875`,
-  66 ms after the third activation header. On TS2/TG2352, it was `7777`,
-  sequence 1029, source `2345875`, 65 ms after the third activation header.
+- IPSC2 resumes at the active stream's next RF burst boundary. The observed
+  delay varies with phase: TS1/TG235 resumed 200 ms after the third activation
+  header (`9999`), while TS2/TG2352 resumed after 64 ms (`9999`) and 85 ms
+  (`AAAA`) in separate captures.
+- It sends ordinary master voice type `0x01` on both slots, retaining the
+  timeslot marker (`1111` or `2222`) at bytes `16:18`.
 - Neither exchange used a new `1111` header, `EEEE` call start, or `DDDD`
   wakeup. The following packets continued at the normal 60 ms cadence.
 
-RYSEN's late-entry encoder therefore sends a one-slot buffered current voice
-burst with packet type `0x01` on both slots. It preserves the `5A5A5A5A`
-prefix, source, destination, sequence and voice slot type from the active
-stream. Normal TS2 call setup remains `0x41`; this exception applies only to
+RYSEN's late-entry encoder therefore waits for the RD985's full 180 ms
+activation interval, then emits the next current voice burst with packet type
+`0x01` on both slots. It preserves the source, destination, sequence, current
+voice phase, `5A5A5A5A` prefix (or `EEEE1111` for Voice A), and the active
+timeslot. Normal TS2 call setup remains `0x41`; this exception applies only to
 an authenticated group-call late join.
+
+### Normal call identity oracle
+
+The same IPSC2 capture includes a clean TS1/TG235 normal call start. Its
+`EEEE` packet is type `0x02`, carries the group marker and source/destination
+in the outer fields, and contains the same IDs interleaved in its 34-byte
+payload. Its prefix is `5A5A5A5A`, not zeroes. RYSEN now uses that prefix for
+the headerless call-start fallback so an RD985 cannot retain stale display
+identity before the following voice bursts arrive.
 
 ## Audio and static hardening
 
@@ -319,8 +329,9 @@ loads the deferred-header code from the image. Still open:
 1. **Complete:** validate the native master against an RD985 cold boot.
 2. **Complete:** convert captured inbound 72-byte group voice into DMRD.
 3. **Complete:** field-test inbound bridge audio and enable Hytera routing.
-4. **Deferred:** mid-stream join into an already-active talkgroup. Ordinary
-   outbound group voice is field-validated.
+4. **In progress:** capture-validated mid-stream group join. The RD985-facing
+   activation, phase, sequence and identity rules are implemented; field
+   validation on the test server remains.
 5. **Complete:** field-test Dial-a-TG private-call ingress and group TG9
    announcement return.
 6. **Complete:** field-test the three-port, NAT-aware multi-repeater proxy.
