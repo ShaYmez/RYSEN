@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock
 
 from const import DMRD
@@ -65,10 +66,20 @@ TS2_HEADER = bytes.fromhex(
     '5a5a5a5a16000000410005010200000022221111111100004099c30fde09b405'
     '7820100741bb6dc457ff5dd7def5a432d007e039611c005783900028de090100'
     '2e0900001fd72300')
+FIXTURE_DIR = Path(__file__).parent / 'fixtures' / 'hytera'
 
 
 def fixture(name):
     return bytes.fromhex(TS1_FIXTURES[name])
+
+
+def wire_fixture(name):
+    """Load redacted, one-packet-per-line native Hytera capture data."""
+    return [
+        bytes.fromhex(line)
+        for line in (FIXTURE_DIR / name).read_text().splitlines()
+        if line and not line.startswith('#')
+    ]
 
 
 def dmrd(flags, payload, stream=b'\x10\x20\x30\x40',
@@ -323,6 +334,24 @@ class TestHyteraOutboundVoice(unittest.TestCase):
         clock.advance(0.060)
         self.assertEqual(sent, [b'a', b'b', b'c', b'd'])
 
+    def test_ts1_normal_call_capture_has_complete_native_cycle(self):
+        packets = wire_fixture('normal_ts1.hex')
+        self.assertEqual(len(packets), 8)
+        self.assertTrue(all(len(packet) == 72 for packet in packets))
+        self.assertEqual(
+            [packet[18:20] for packet in packets],
+            [b'\x11\x11', b'\x77\x77', b'\x88\x88', b'\x99\x99',
+             b'\xaa\xaa', b'\xbb\xbb', b'\xcc\xcc', b'\x22\x22'])
+        self.assertEqual(
+            [int.from_bytes(packet[4:8], 'little') for packet in packets],
+            [0x1c, 0x1f, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25])
+        self.assertEqual(packets[0][8] & 0x3f, 0x01)
+        self.assertEqual(packets[-1][8] & 0x3f, 0x03)
+        self.assertTrue(all(packet[62] == 0x01 for packet in packets))
+        self.assertTrue(all(
+            int.from_bytes(packet[63:67], 'little') >> 8 == 235
+            for packet in packets))
+
 
 class TestHyteraInboundDispatch(unittest.TestCase):
 
@@ -431,6 +460,16 @@ class TestHyteraProxyControl(unittest.TestCase):
         identity[18:21] = (235287).to_bytes(3, 'little')
         self.master._advance_rdac_identification(bytes(identity), addr)
         self.assertEqual(writes[-1], (RDAC_STEP3_REQUEST, addr))
+
+    def test_rdac_keepalive_does_not_restart_active_exchange(self):
+        addr = ('172.16.238.31', 50005)
+        self.master._hytera_rdac_step = 6
+        writes = self.master._hytera_services['rdac'].transport.writes
+
+        self.master._advance_rdac_identification(b'\x00', addr)
+
+        self.assertEqual(self.master._hytera_rdac_step, 6)
+        self.assertEqual(writes, [])
 
     def test_rdac_metadata_parsers_reject_short_packets(self):
         self.assertEqual(parse_rdac_identity(b'\x7e\x04\x00\x00'), {})

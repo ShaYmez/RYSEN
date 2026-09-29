@@ -289,6 +289,12 @@ IPSC2-oracle replay through the test-server/proxy path to distinguish an
 unobserved native packet semantic from repeater session-state behaviour. Do
 not make further framing, timing or sequence changes without that evidence.
 
+This remains deliberately deferred for the A8.09.00.001 RD985 until that unit
+is available. Its validation starts with the existing A9 cold-boot and normal
+call matrix, followed by the same controlled IPSC2 late-entry replay. Firmware
+compatibility must be recorded from capture results, not inferred from the
+shared IP Multi-site Connect configuration.
+
 ### Normal call identity oracle
 
 The same IPSC2 capture includes a clean TS1/TG235 normal call start. Its
@@ -325,13 +331,13 @@ private DMR backend UDP `50004`:
   normal `1111` header and 60 ms cadence in the same capture. No separate
   XLXD pacing defect was proven.
 
-The router now keeps the original OpenBridge Voice LC Header while a Hytera
-slot rejects the new stream. When a later frame from that same stream is
-admitted, and the header is still inside the stream timeout, RYSEN sends that
-captured header before the voice burst. It does not synthesize a replacement
-LC, and this delayed-admission path does not use the `EEEE` fallback. The
-headerless `EEEE` path remains only for a stream that never presented a Voice
-LC Header.
+The router now keeps the original Voice LC Header while a Hytera slot rejects
+a new stream, for both OpenBridge and Homebrew ingress. When a later frame
+from that same stream is admitted, and the header is still inside the stream
+timeout plus one 60 ms burst boundary, RYSEN sends that captured header before
+the voice burst. It does not synthesize a replacement LC, and this
+delayed-admission path does not use the `EEEE` fallback. The headerless
+`EEEE` path remains only for a stream that never presented a Voice LC Header.
 
 This is committed on `feature/HYTERA` as `3250e3c`. On September 28, 2026 the
 test server image `rysen:feature-hytera` was rebuilt from that source and the
@@ -340,6 +346,37 @@ loads the deferred-header code from the image. Still open:
 
 - Field-confirm TS1 static audio and identity after the previous call on that
   slot releases.
+
+### Reliability regression coverage
+
+The automated suite includes a sanitized, capture-derived TS1 native call
+fixture, validates its 72-byte Hytera framing, and tests the contention
+release boundary used to preserve a delayed Voice LC Header. It also protects
+the RDAC exchange from harmless `0x00` service polls while identity discovery
+is in progress. `RDAC_DISCOVERY` is parsed for direct Hytera masters; it was
+previously documented but omitted by the configuration loader.
+
+These checks prove packet construction and routing decisions only. They do not
+constitute an RF result. The next field run must verify clean audio and stable
+source/TG display after a contended static becomes the admitted call.
+
+### Next RD985 validation matrix
+
+With the repeater powered and registered, capture P2P, DMR and RDAC while
+performing the following in order:
+
+1. Cold boot: confirm the negotiated DMR endpoint and complete RDAC identity
+   exchange remain stable through keepalive polls.
+2. Normal TS1 and TS2 calls: confirm every call starts with `1111`, then
+   compare displayed source and TG for the entire call.
+3. Contended static release from both an OpenBridge and Homebrew source:
+   confirm the first admitted voice follows the retained `1111` header and
+   has neither an `EEEE` fallback nor an initial missing frame.
+4. Proxy power-cycle recovery: confirm only one session exists and outbound
+   media is not suppressed after the DMR redirect is renegotiated.
+
+Keep binary captures outside Git and analyse copies with
+`tools/analyze_hytera_capture.py`.
 
 ## Implementation gates
 

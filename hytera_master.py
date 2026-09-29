@@ -141,6 +141,7 @@ class HyteraMasterMixin:
         self._hytera_outbound = HyteraOutboundPacer(
             self._send_hytera_media)
         self._hytera_zero_peer_warned = False
+        self._hytera_outbound_not_ready_reason = None
         self.datagramReceived = self.hytera_p2p_received
         self.maintenance_loop = self.hytera_maintenance_loop
         self.send_system = self.hytera_send_system
@@ -426,7 +427,10 @@ class HyteraMasterMixin:
     def _advance_rdac_identification(self, data, addr):
         """Run the capture-validated RDAC exchange and collect peer metadata."""
         step = self._hytera_rdac_step
-        if data == b'\x00' and step != 14:
+        # The service socket can send keepalive polls during an identity
+        # exchange. Only an idle state may use one to begin the sequence;
+        # restarting in-flight RDAC loses metadata and selfcare identity.
+        if data == b'\x00' and step == 0:
             self._hytera_rdac_step = 1
             self._send_rdac(RDAC_STEP0_REQUEST, addr)
         elif step == 1 and data.startswith(RDAC_STEP0_RESPONSE):
@@ -613,10 +617,21 @@ class HyteraMasterMixin:
                            _source_rptr=b'\x00\x00\x00\x00',
                            _late_join=False, _late_join_sequence=None):
         """Bridge outbound group or private DMRD voice to the RD985."""
-        if (not self._config.get('REPEAT', True)
-                or not self._hytera_registered
-                or self._hytera_dmr_addr is None):
+        if not self._config.get('REPEAT', True):
+            reason = 'repeater output disabled'
+        elif not self._hytera_registered:
+            reason = 'repeater is not registered'
+        elif self._hytera_dmr_addr is None:
+            reason = 'DMR service endpoint has not been negotiated'
+        else:
+            reason = None
+        if reason is not None:
+            if getattr(self, '_hytera_outbound_not_ready_reason', None) != reason:
+                logger.warning('(%s) Hytera media suppressed: %s',
+                               self._system, reason)
+                self._hytera_outbound_not_ready_reason = reason
             return False
+        self._hytera_outbound_not_ready_reason = None
         quality = _rssi[0] if _rssi else 0
         encoded = self._hytera_voice.encode_voice(
             packet, quality, late_join=_late_join,

@@ -267,6 +267,9 @@ _LATE_JOIN_TIMEOUT_S = 3.0
 # The RD985 sends three VHEAD bursts at 60 ms intervals.  IPSC2 does not
 # resume an already-active call until the following RF burst boundary.
 _HYTERA_LATE_JOIN_ARM_S = 0.180
+# A slot can release only after group hangtime, then the next admitted burst
+# arrives on a 60 ms boundary. Keep the captured VHEAD through that boundary.
+_HYTERA_DEFERRED_VHEAD_GRACE_S = 0.120
 _LOOP_DIAG = {
     'claim_expired': 0,
     'short_resumes': 0,
@@ -315,6 +318,12 @@ def _late_join_wire_sequence(sequence, packet_count):
     elif candidate > packet_index + 128 and candidate >= 256:
         candidate -= 256
     return candidate & 0xffffffff
+
+
+def _hytera_deferred_vhead_valid(header_time, packet_time, group_hangtime):
+    """Whether a contention-delayed RD985 header is still safe to replay."""
+    return (packet_time - header_time) <= (
+        float(group_hangtime) + _HYTERA_DEFERRED_VHEAD_GRACE_S + 0.000001)
 
 
 def _active_hbp_stream_claim(stream_id, rf_src, now):
@@ -2772,8 +2781,9 @@ class routerOBP(OPENBRIDGE):
                         # enough to replay it when the first voice burst is
                         # admitted, rather than falling back to headerless
                         # native framing. Never replay it for a terminator.
-                        if (pkt_time - _header_time
-                                < _target_system['GROUP_HANGTIME']):
+                        if _hytera_deferred_vhead_valid(
+                                _header_time, pkt_time,
+                                _target_system['GROUP_HANGTIME']):
                             if _system['TS'] != _target['TS']:
                                 _header_bits ^= 1 << 7
                             _header_lc_bits = bitarray(endian='big')
@@ -3464,6 +3474,15 @@ class routerHBP(HBSYSTEM):
                 #if _target['ACTIVE']:
                     _target_status = systems[_target['SYSTEM']].STATUS
                     _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
+                    _hytera_header_key = (
+                        _target['SYSTEM'], _target['TS'], _target['TGID'])
+                    if (_target_system['MODE'] == 'HYTERA'
+                            and _frame_type == HBPF_DATA_SYNC
+                            and _dtype_vseq == HBPF_SLT_VHEAD):
+                        self.STATUS[_slot].setdefault(
+                            '_HYTERA_DEFERRED_VHEAD', {})[
+                                _hytera_header_key] = (
+                                    _data, _bits, dmrpkt, pkt_time)
 
                     # Deduplicate aliases by physical destination, not TGID.
                     # One packet sent twice with the same stream ID can make
@@ -3660,8 +3679,59 @@ class routerHBP(HBSYSTEM):
                             
                         _tmp_data = b''.join([_tmp_data, _tx_dmrpkt, _data[53:55]])
 
+                    # Hytera requires the real Voice LC Header when a target
+                    # admitted voice after contention. Mirror the OpenBridge
+                    # path so an HBP-fed call cannot fall back to headerless
+                    # EEEE acquisition and stale RF display context.
+                    if _target_system['MODE'] == 'HYTERA':
+                        _deferred_headers = self.STATUS[_slot].get(
+                            '_HYTERA_DEFERRED_VHEAD', {})
+                        _deferred_vhead = _deferred_headers.pop(
+                            _hytera_header_key, None)
+                        _is_vhead = (
+                            _frame_type == HBPF_DATA_SYNC
+                            and _dtype_vseq == HBPF_SLT_VHEAD)
+                        _is_voice = _frame_type in (
+                            HBPF_VOICE, HBPF_VOICE_SYNC)
+                        if _is_vhead:
+                            # The header is being forwarded immediately, so it
+                            # must not be replayed again before the next burst.
+                            _deferred_headers.pop(_hytera_header_key, None)
+                        elif (_deferred_vhead is not None
+                                and _is_voice):
+                            (_header_data, _header_bits, _header_dmrd,
+                             _header_time) = _deferred_vhead
+                            if _hytera_deferred_vhead_valid(
+                                    _header_time, pkt_time,
+                                    _target_system['GROUP_HANGTIME']):
+                                if _system['TS'] != _target['TS']:
+                                    _header_bits ^= 1 << 7
+                                _header_lc_bits = bitarray(endian='big')
+                                _header_lc_bits.frombytes(_header_dmrd)
+                                _header_lc_bits = (
+                                    _target_status[_target['TS']]['TX_H_LC'][0:98]
+                                    + _header_lc_bits[98:166]
+                                    + _target_status[_target['TS']]['TX_H_LC'][98:197])
+                                _header_packet = b''.join([
+                                    _header_data[:8], _target['TGID'],
+                                    _header_data[11:15],
+                                    _header_bits.to_bytes(1, 'big'),
+                                    _header_data[16:20],
+                                    _header_lc_bits.tobytes(),
+                                    _header_data[53:55]])
+                                systems[_target['SYSTEM']].send_system(
+                                    _header_packet, b'', _ber, _rssi,
+                                    _source_server, _source_rptr)
+                                logger.info(
+                                    '(%s) Replayed deferred Hytera VHEAD to %s '
+                                    'TS%s TGID %s after %.2fs contention',
+                                    self._system, _target['SYSTEM'],
+                                    _target['TS'], int_id(_target['TGID']),
+                                    pkt_time - _header_time)
                     # Transmit the packet to the destination system
-                    systems[_target['SYSTEM']].send_system(_tmp_data,b'',_ber,_rssi,_source_server, _source_rptr)
+                    systems[_target['SYSTEM']].send_system(
+                        _tmp_data, b'', _ber, _rssi, _source_server,
+                        _source_rptr)
                     _sysIgnore.append(_ignore_key)
        
         return _sysIgnore

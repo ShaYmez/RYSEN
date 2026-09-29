@@ -120,6 +120,20 @@ class TestActivateUaNotify(unittest.TestCase):
         self.assertEqual(bm._late_join_wire_sequence(0x54, 341), 340)
         self.assertEqual(bm._late_join_wire_sequence(0xe8, 745), 744)
 
+    def test_deferred_header_survives_hangtime_release_boundary(self):
+        hangtime = 5.0
+        self.assertTrue(
+            bm._hytera_deferred_vhead_valid(100.0, 105.0, hangtime))
+        self.assertTrue(
+            bm._hytera_deferred_vhead_valid(
+                100.0, 105.0 + bm._HYTERA_DEFERRED_VHEAD_GRACE_S,
+                hangtime))
+        self.assertFalse(
+            bm._hytera_deferred_vhead_valid(
+                100.0,
+                105.0 + bm._HYTERA_DEFERRED_VHEAD_GRACE_S + 0.001,
+                hangtime))
+
     def test_source_guard_no_ua_refreshed_notify(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
             source = fh.read()
