@@ -277,6 +277,10 @@ class HyteraMasterMixin:
             del self._peers[self._hytera_peer_id]
             if self._report is not None:
                 self._report.send_config()
+        if (self._hytera_proxy_enabled
+                and not int(self._config.get('HYTERA_REPEATER_ID', 0))):
+            self._hytera_peer_id = b'\x00\x00\x00\x00'
+            self._hytera_voice.set_peer_id(0)
 
     def _send_p2p(self, packet, addr):
         if packet is not None:

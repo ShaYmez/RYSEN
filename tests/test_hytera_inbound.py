@@ -561,6 +561,25 @@ class TestHyteraProxyControl(unittest.TestCase):
             invalid, ('172.16.238.31', 50003)))
         self.assertEqual(self.master._hytera_peer_id, b'\x00\x00\x00\x00')
 
+    def test_proxy_close_clears_dynamic_discovered_identity(self):
+        discovered = (235287).to_bytes(4, 'big')
+        self.master._hytera_peer_id = discovered
+        self.master._hytera_voice.set_peer_id(235287)
+        self.master._hytera_registered = True
+        self.master._hytera_addr = ('172.16.238.31', 50003)
+        self.master._hytera_last_seen = 1
+        self.master._hytera_service_negotiated_at = 1
+        self.master._hytera_rdac_meta = {'firmware': 'A9'}
+        self.master._hytera_rdac_addr = ('172.16.238.31', 50005)
+        self.master._peers[discovered] = {}
+
+        self.master._clear_hytera_peer()
+
+        self.assertEqual(self.master._hytera_peer_id, b'\x00\x00\x00\x00')
+        self.assertEqual(
+            self.master._hytera_voice._peer_id, b'\x00\x00\x00\x00')
+        self.assertNotIn(discovered, self.master._peers)
+
     def test_rdac_identity_sequence_requests_capture_validated_steps(self):
         addr = ('172.16.238.31', 50005)
         self.master._advance_rdac_identification(b'\x00', addr)
