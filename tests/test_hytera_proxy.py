@@ -100,6 +100,22 @@ class TestHyteraProxy(unittest.TestCase):
         self.assertIsNone(self.proxy.sessions[50003])
         self.assertEqual(self.p2p.writes[-1], (PRCL, (self.MASTER, 61000)))
 
+    def test_later_rdac_metadata_cannot_replace_bound_identity(self):
+        session = self._register()
+        identity = bytearray(b'\x7e\x04\x00\x00' + b'\x00' * 20)
+        identity[18:21] = (235287).to_bytes(3, 'little')
+        self.proxy.datagram_received(
+            50005, bytes(identity), ('198.51.100.7', 62007))
+
+        later_metadata = bytearray(b'\x7e\x04\x00\x00' + b'\x00' * 20)
+        later_metadata[18:21] = (919).to_bytes(3, 'little')
+        self.proxy.datagram_received(
+            50005, bytes(later_metadata), ('198.51.100.7', 62007))
+
+        self.assertEqual(session.repeater_id, 235287)
+        self.assertIs(self.proxy.by_repeater_id[235287], session)
+        self.assertNotIn(919, self.proxy.by_repeater_id)
+
     def test_non_registration_cannot_allocate_a_slot(self):
         self.proxy.datagram_received(
             50000, p2p(P2P_DMR_STARTUP), self.REPEATER)

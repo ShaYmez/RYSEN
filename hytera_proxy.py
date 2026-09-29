@@ -153,6 +153,12 @@ class HyteraProxy:
         repeater_id = rdac_repeater_id(data)
         if not repeater_id:
             return True
+        if session.repeater_id:
+            if session.repeater_id != repeater_id:
+                logging.debug(
+                    'Ignored later RDAC payload ID %s for Hytera repeater %s',
+                    repeater_id, session.repeater_id)
+            return True
         if repeater_id in self.black_list:
             logging.warning('Rejected blacklisted Hytera repeater %s', repeater_id)
             self._release(session.public_base)
@@ -162,8 +168,6 @@ class HyteraProxy:
             logging.warning('Rejected duplicate Hytera repeater %s', repeater_id)
             self._release(session.public_base)
             return False
-        if session.repeater_id and session.repeater_id != repeater_id:
-            self.by_repeater_id.pop(session.repeater_id, None)
         session.repeater_id = repeater_id
         self.by_repeater_id[repeater_id] = session
         self._notify(session)
