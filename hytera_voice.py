@@ -121,10 +121,10 @@ class HyteraOutboundPacer:
     def send_control(self, packet):
         self._send_cb(packet)
 
-    def enqueue(self, ts, packet, jitter_depth=None):
+    def enqueue(self, ts, packet, jitter_depth=None, trailing_packet=None):
         if ts not in self._queues:
             return False
-        self._queues[ts].append(packet)
+        self._queues[ts].append((packet, trailing_packet))
         if self._timers[ts] is None:
             now = self._clock.seconds()
             depth = (
@@ -143,7 +143,10 @@ class HyteraOutboundPacer:
         if not self._queues[ts]:
             self._next[ts] = 0.0
             return
-        self._send_cb(self._queues[ts].popleft())
+        packet, trailing_packet = self._queues[ts].popleft()
+        self._send_cb(packet)
+        if trailing_packet is not None:
+            self._send_cb(trailing_packet)
         if self._queues[ts]:
             now = self._clock.seconds()
             self._next[ts] = max(
@@ -380,6 +383,23 @@ class HyteraVoiceTranslator:
             return ts, packet, True
 
         return None
+
+    def encode_recurring_sync(self, ts, voice_packet):
+        """Return the Voice-D follow-up sync packet used by native repeaters."""
+        if (ts not in self._out_streams
+                or self._out_late_join[ts]
+                or len(voice_packet) != MEDIA_MIN_LEN
+                or voice_packet[18:20] != SLOT_VOICE_D.to_bytes(2, 'big')):
+            return None
+        source = int.from_bytes(voice_packet[67:71], 'little') >> 8
+        destination = int.from_bytes(voice_packet[63:67], 'little') >> 8
+        private_call = voice_packet[62] == CALL_PRIVATE
+        packet = self._build_outbound(
+            ts, 0x02, SLOT_HYTERA_SYNC, source, destination,
+            _sync_payload(source, destination), call_start=True,
+            private_call=private_call)
+        self._out_seq[ts] = (self._out_seq[ts] + 1) & 0xffffffff
+        return packet
 
     def encode_group(self, dmrd, quality=0, late_join=False,
                      late_join_sequence=None):

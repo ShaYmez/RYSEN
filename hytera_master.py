@@ -624,6 +624,10 @@ class HyteraMasterMixin:
         if encoded is None:
             return False
         ts, wire_packet, paced = encoded
+        trailing_sync = None
+        if paced and not _late_join:
+            trailing_sync = self._hytera_voice.encode_recurring_sync(
+                ts, wire_packet)
         if (_late_join and not paced
                 and wire_packet[18:20] != b'\x11\x11'):
             self._hytera_outbound.reset_slot(ts)
@@ -633,7 +637,8 @@ class HyteraMasterMixin:
             return self._hytera_outbound.enqueue(
                 ts, wire_packet, jitter_depth=1)
         if paced:
-            return self._hytera_outbound.enqueue(ts, wire_packet)
+            return self._hytera_outbound.enqueue(
+                ts, wire_packet, trailing_packet=trailing_sync)
         if (_late_join
                 or (wire_packet[8] & 0x3f) == 0x02
                 or wire_packet[18:20] == b'\x11\x11'):

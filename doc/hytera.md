@@ -224,6 +224,10 @@ IPSC2 capture:
 - The `BBBB` packet uses the captured `EEEE1111` prefix. Ordinary ongoing
   master voice uses `00000000`; a synthesized `EEEE` call start uses
   `5A5A5A5A`, matching the IPSC2 normal-call oracle.
+- After every Voice D (`8888`) burst, RYSEN emits the recurring `EEEE` native
+  voice-sync packet with the interleaved source/destination link-control
+  payload. This is the RD985-tested pattern in OK-DMR's Homebrew bridge and
+  keeps a receiving repeater's display context synchronized through a QSO.
 - Voice and terminator packets pass through a three-slot (180 ms) jitter
   buffer and are emitted at 60 ms intervals on the negotiated DMR service
   endpoint. Late-entry retains its separate one-slot release path.
