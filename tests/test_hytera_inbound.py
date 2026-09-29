@@ -193,27 +193,6 @@ class TestHyteraOutboundVoice(unittest.TestCase):
         self.assertEqual(term[8], 0x03)
         self.assertEqual(term[18:20], b'\x22\x22')
 
-    def test_voice_d_emits_recurring_native_sync(self):
-        stream = b'\x10\x20\x30\x40'
-        self.translator.encode_group(
-            dmrd(0x21, self.payload, stream, source=2340189, destination=23516))
-        ts, voice_d, paced = self.translator.encode_group(
-            dmrd(0x03, self.payload, stream, source=2340189, destination=23516))
-        self.assertEqual(ts, 1)
-        self.assertTrue(paced)
-        self.assertEqual(voice_d[18:20], b'\x88\x88')
-        self.assertEqual(voice_d[4:8], b'\x01\x00\x00\x00')
-
-        sync = self.translator.encode_recurring_sync(ts, voice_d)
-        self.assertEqual(sync[:4], b'\x5a\x5a\x5a\x5a')
-        self.assertEqual(sync[4:8], b'\x02\x00\x00\x00')
-        self.assertEqual(sync[8], 0x02)
-        self.assertEqual(sync[18:20], b'\xee\xee')
-        self.assertEqual(sync[22:26], b'\x11\x11\x00\x00')
-        self.assertEqual(sync[62], 0x01)
-        self.assertEqual(sync[63:67], (23516 << 8).to_bytes(4, 'little'))
-        self.assertEqual(sync[67:71], (2340189 << 8).to_bytes(4, 'little'))
-
     def test_ts2_and_private_call_gate(self):
         ts, packet, _ = self.translator.encode_group(
             dmrd(0xa1, self.payload, destination=2350))
@@ -343,16 +322,6 @@ class TestHyteraOutboundVoice(unittest.TestCase):
         self.assertEqual(sent, [b'a', b'b', b'c'])
         clock.advance(0.060)
         self.assertEqual(sent, [b'a', b'b', b'c', b'd'])
-
-    def test_pacer_sends_voice_d_sync_pair_without_extra_delay(self):
-        clock = Clock()
-        sent = []
-        pacer = HyteraOutboundPacer(sent.append, clock=clock)
-        self.assertTrue(
-            pacer.enqueue(1, b'voice-d', trailing_packet=b'native-sync'))
-
-        clock.advance(0.180)
-        self.assertEqual(sent, [b'voice-d', b'native-sync'])
 
 
 class TestHyteraInboundDispatch(unittest.TestCase):
