@@ -2761,11 +2761,19 @@ class routerOBP(OPENBRIDGE):
                     _is_vhead = (
                         _frame_type == HBPF_DATA_SYNC
                         and _dtype_vseq == HBPF_SLT_VHEAD)
-                    if (_deferred_vhead is not None and not _is_vhead):
+                    _is_voice = _frame_type in (
+                        HBPF_VOICE, HBPF_VOICE_SYNC)
+                    if (_deferred_vhead is not None and not _is_vhead
+                            and _is_voice):
                         (_header_data, _header_bits, _header_dmrd,
                          _header_time) = _deferred_vhead
-                        # Do not replay a header after a stream has gone idle.
-                        if pkt_time - _header_time < STREAM_TO:
+                        # A target can suppress a new stream for its whole
+                        # group-hangtime window. Keep its genuine VHEAD long
+                        # enough to replay it when the first voice burst is
+                        # admitted, rather than falling back to headerless
+                        # native framing. Never replay it for a terminator.
+                        if (pkt_time - _header_time
+                                < _target_system['GROUP_HANGTIME']):
                             if _system['TS'] != _target['TS']:
                                 _header_bits ^= 1 << 7
                             _header_lc_bits = bitarray(endian='big')
