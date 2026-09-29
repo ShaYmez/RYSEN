@@ -502,6 +502,16 @@ class TestHyteraInboundDispatch(unittest.TestCase):
             self.master._hytera_dmr_addr, ('203.0.113.9', 50001))
         self.assertEqual(self.master._hytera_last_seen, 123)
 
+    def test_expected_hytera_sync_is_ignored_without_malformed_warning(self):
+        sync = bytearray(fixture('header'))
+        sync[18:20] = b'\xee\xee'
+
+        with self.assertNoLogs('hblink', level='WARNING'):
+            self.master.hytera_dmr_received(
+                bytes(sync), ('203.0.113.9', 50001))
+
+        self.assertEqual(self.received, [])
+
 
 class TestHyteraProxyControl(unittest.TestCase):
 

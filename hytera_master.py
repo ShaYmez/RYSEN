@@ -41,10 +41,13 @@ from hytera_const import (
     RDAC_STEP12_REQUEST_1,
     RDAC_STEP12_REQUEST_2,
     RDAC_STEP12_RESPONSE,
+    SLOT_HYTERA_SYNC,
+    SLOT_WAKEUP,
     rdac_repeater_id,
     is_p2p_ack,
     is_p2p_ping,
     media_radio_ids,
+    media_slot_type,
     media_timeslot,
     p2p_command_type,
 )
@@ -420,6 +423,11 @@ class HyteraMasterMixin:
             return
         dmrd = self._hytera_voice.translate_voice(data)
         if dmrd is None:
+            if media_slot_type(data) in (SLOT_WAKEUP, SLOT_HYTERA_SYNC):
+                logger.debug(
+                    '(%s) Ignored expected Hytera control-media burst from '
+                    '%s:%s', self._system, addr[0], addr[1])
+                return
             logger.warning(
                 '(%s) Ignored malformed Hytera DMR packet from %s:%s len=%s',
                 self._system, addr[0], addr[1], len(data))
