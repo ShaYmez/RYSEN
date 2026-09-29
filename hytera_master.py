@@ -98,6 +98,17 @@ def build_ping_reply(data):
     return bytes(reply)
 
 
+def is_expected_service_followup_registration(
+        registered, registered_addr, host, negotiated_at, now):
+    """Recognize the RD985's normal second registration after redirects."""
+    return (
+        registered
+        and registered_addr is not None
+        and negotiated_at is not None
+        and host == registered_addr[0]
+        and now - negotiated_at <= 10)
+
+
 class _HyteraServiceProtocol(DatagramProtocol):
     """Forward an auxiliary DMR/RDAC socket into its owning master."""
 
@@ -121,6 +132,7 @@ class HyteraMasterMixin:
         self._hytera_registered = False
         self._hytera_addr = None
         self._hytera_last_seen = 0
+        self._hytera_service_negotiated_at = None
         self._hytera_listeners = []
         self._hytera_services = {}
         self._hytera_dmr_addr = None
@@ -253,6 +265,7 @@ class HyteraMasterMixin:
         self._hytera_registered = False
         self._hytera_addr = None
         self._hytera_last_seen = 0
+        self._hytera_service_negotiated_at = None
         self._hytera_voice.reset()
         self._hytera_outbound.reset()
         self._hytera_dmr_addr = None
@@ -344,7 +357,12 @@ class HyteraMasterMixin:
         if command == P2P_REGISTRATION:
             if not self._registration_allowed(host):
                 return
-            self._register_hytera_peer(host, port, reset_session=True)
+            expected_followup = is_expected_service_followup_registration(
+                self._hytera_registered, self._hytera_addr, host,
+                self._hytera_service_negotiated_at, time())
+            self._hytera_service_negotiated_at = None
+            self._register_hytera_peer(
+                host, port, reset_session=not expected_followup)
             self._send_p2p(build_registration_reply(data), addr)
             return
 
@@ -354,6 +372,7 @@ class HyteraMasterMixin:
                 return
             response_addr = self._hytera_addr
             self._touch_hytera_peer(addr)
+            self._hytera_service_negotiated_at = time()
             self._send_p2p(build_startup_reply(data), response_addr)
             service_port = (
                 self._config['DMR_PORT']

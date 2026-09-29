@@ -150,6 +150,26 @@ class TestHyteraProxy(unittest.TestCase):
         self.assertEqual(session.repeater_id, 0)
         self.assertNotIn(235287, self.proxy.by_repeater_id)
 
+    def test_expected_post_redirect_registration_preserves_session(self):
+        session = self._register()
+        dmr_endpoint = ('198.51.100.7', 62006)
+        rdac_endpoint = ('198.51.100.7', 62007)
+        session.endpoints['dmr'] = dmr_endpoint
+        session.endpoints['rdac'] = rdac_endpoint
+        session.repeater_id = 235287
+        self.proxy.by_repeater_id[235287] = session
+
+        self.proxy.datagram_received(
+            50000, p2p(P2P_DMR_STARTUP), dmr_endpoint)
+        self.clock.advance(1)
+        self.proxy.datagram_received(
+            50000, p2p(P2P_REGISTRATION), self.REPEATER)
+
+        self.assertEqual(session.endpoints['dmr'], dmr_endpoint)
+        self.assertEqual(session.endpoints['rdac'], rdac_endpoint)
+        self.assertEqual(session.repeater_id, 235287)
+        self.assertIs(self.proxy.by_repeater_id[235287], session)
+
     def test_explicit_public_triples_separate_same_nat_repeaters(self):
         proxy = HyteraProxy(
             master=self.MASTER, p2p_port=50000,

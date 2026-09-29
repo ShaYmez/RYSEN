@@ -43,6 +43,7 @@ class HyteraProxySession:
     p2p_public_port: int
     endpoints: dict = field(default_factory=dict)
     repeater_id: int = 0
+    service_negotiated_at: object = None
     timer: object = None
 
 
@@ -214,12 +215,21 @@ class HyteraProxy:
             # endpoint: redirect replies still belong on the P2P socket.
             if command not in (P2P_DMR_STARTUP, P2P_RDAC_STARTUP):
                 if command == P2P_REGISTRATION:
-                    if session.repeater_id:
-                        self.by_repeater_id.pop(session.repeater_id, None)
-                    session.repeater_id = 0
-                    session.endpoints.pop('dmr', None)
-                    session.endpoints.pop('rdac', None)
+                    expected_followup = (
+                        session.service_negotiated_at is not None
+                        and self.clock.seconds()
+                        - session.service_negotiated_at <= 10)
+                    session.service_negotiated_at = None
+                    if not expected_followup:
+                        if session.repeater_id:
+                            self.by_repeater_id.pop(
+                                session.repeater_id, None)
+                        session.repeater_id = 0
+                        session.endpoints.pop('dmr', None)
+                        session.endpoints.pop('rdac', None)
                 session.endpoints['p2p'] = address
+            else:
+                session.service_negotiated_at = self.clock.seconds()
             self._touch(session)
             if command == P2P_REGISTRATION:
                 self._notify(session)

@@ -16,6 +16,7 @@ from hytera_master import (
     build_registration_reply,
     build_service_redirect,
     build_startup_reply,
+    is_expected_service_followup_registration,
 )
 from hytera_voice import HyteraOutboundPacer, HyteraVoiceTranslator
 from repeater_modes import (
@@ -90,6 +91,14 @@ class TestHyteraP2P(unittest.TestCase):
         reply = build_ping_reply(bytes(ping))
         self.assertEqual(reply[12], 0xff)
         self.assertEqual(reply[14], 0x01)
+
+    def test_expected_second_registration_preserves_negotiated_session(self):
+        self.assertTrue(is_expected_service_followup_registration(
+            True, ('203.0.113.9', 50000), '203.0.113.9', 100.0, 105.0))
+        self.assertFalse(is_expected_service_followup_registration(
+            True, ('203.0.113.9', 50000), '203.0.113.9', None, 105.0))
+        self.assertFalse(is_expected_service_followup_registration(
+            True, ('203.0.113.9', 50000), '203.0.113.9', 100.0, 111.0))
 
     def test_service_negotiation_replies_to_registered_p2p_port(self):
         class Transport:
