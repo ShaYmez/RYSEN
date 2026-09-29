@@ -105,6 +105,7 @@ class HyteraOutboundPacer:
         self._queues = {1: deque(), 2: deque()}
         self._timers = {1: None, 2: None}
         self._next = {1: 0.0, 2: 0.0}
+        self._active = {1: False, 2: False}
 
     def reset(self):
         for ts in (1, 2):
@@ -117,6 +118,7 @@ class HyteraOutboundPacer:
         self._queues[ts].clear()
         self._timers[ts] = None
         self._next[ts] = 0.0
+        self._active[ts] = False
 
     def send_control(self, packet):
         self._send_cb(packet)
@@ -127,9 +129,13 @@ class HyteraOutboundPacer:
         self._queues[ts].append(packet)
         if self._timers[ts] is None:
             now = self._clock.seconds()
-            depth = (
-                self._jitter_depth
-                if jitter_depth is None else max(0, jitter_depth))
+            # Buffer only at call acquisition. Once RF playout is active, a
+            # missing upstream burst must not trigger another 180 ms startup
+            # delay in the middle of the call. IPSC2 forwards the next
+            # available burst immediately after such a gap.
+            depth = (0 if self._active[ts] else self._jitter_depth)
+            if jitter_depth is not None:
+                depth = max(0, jitter_depth)
             self._next[ts] = now + depth * self._interval
             self._arm(ts)
         return True
@@ -143,7 +149,13 @@ class HyteraOutboundPacer:
         if not self._queues[ts]:
             self._next[ts] = 0.0
             return
-        self._send_cb(self._queues[ts].popleft())
+        packet = self._queues[ts].popleft()
+        self._send_cb(packet)
+        self._active[ts] = True
+        if (len(packet) >= 20
+                and packet[18:20]
+                == SLOT_VOICE_LC_TERMINATOR.to_bytes(2, 'big')):
+            self._active[ts] = False
         if self._queues[ts]:
             now = self._clock.seconds()
             self._next[ts] = max(

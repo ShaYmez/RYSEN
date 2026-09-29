@@ -295,6 +295,34 @@ call matrix, followed by the same controlled IPSC2 late-entry replay. Firmware
 compatibility must be recorded from capture results, not inferred from the
 shared IP Multi-site Connect configuration.
 
+### Matched IPSC2 late-entry oracle
+
+On September 29 a timestamped, bidirectional IPSC2 capture recorded successful
+late entry on both slots. On TS2/TG2352 the RD985 sent activation Voice LC
+Headers at `19:48:56.277910`, `.335696` and `.397190` UTC. IPSC2 sent the
+running stream's current Voice D burst at `.496385`: 99.195 ms after the third
+header and while the repeater was still sending its activation call. No new
+downlink header, sync or wakeup preceded that burst. RF audio and the remote
+TG/source display appeared immediately after de-key. TS1/TG235 behaved the
+same way.
+
+The failed RYSEN comparison exposed two measurable differences:
+
+- Its first running-stream burst was 159.612 ms after the third activation
+  header, one 60 ms RF slot later than the IPSC2 oracle.
+- When a Voice C burst was absent, IPSC2 continued from Voice B to Voice D in
+  119.623 ms. RYSEN's output pacer drained and applied its 180 ms startup
+  buffer again, extending the equivalent gap to 226.271 ms. Rebuffering in the
+  middle of a live call breaks audio acquisition and embedded-LC continuity.
+
+The candidate fix arms routing when the third activation header is due at
+120 ms, leaving the existing one-slot pacer acquisition to match IPSC2. The
+pacer now applies its three-burst jitter buffer only at initial call
+acquisition; after playout starts, the next available burst after an underflow
+is sent immediately. A terminator restores startup buffering for the next
+call. This candidate still requires the RF matrix on RYSEN before late entry
+can be marked complete.
+
 ### Normal call identity oracle
 
 The same IPSC2 capture includes a clean TS1/TG235 normal call start. Its

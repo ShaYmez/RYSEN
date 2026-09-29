@@ -264,9 +264,10 @@ _HBP_STREAM_CLAIMS = {}
 _HBP_CLAIM_TIMEOUT_S = 1.0
 _LATE_JOIN_TARGETS = {}
 _LATE_JOIN_TIMEOUT_S = 3.0
-# The RD985 sends three VHEAD bursts at 60 ms intervals.  IPSC2 does not
-# resume an already-active call until the following RF burst boundary.
-_HYTERA_LATE_JOIN_ARM_S = 0.180
+# The RD985 sends VHEAD at 0, 60 and 120 ms. The outbound pacer contributes
+# one further 60 ms acquisition slot; admitting after the third header matches
+# IPSC2's first downlink burst instead of starting one RF slot late.
+_HYTERA_LATE_JOIN_ARM_S = 0.120
 # A slot can release only after group hangtime, then the next admitted burst
 # arrives on a 60 ms boundary. Keep the captured VHEAD through that boundary.
 _HYTERA_DEFERRED_VHEAD_GRACE_S = 0.120
@@ -297,9 +298,9 @@ def _late_join_active(system, slot, tgid, now):
     armed_at = _LATE_JOIN_TARGETS.get(key)
     if armed_at is None:
         return False
-    # An RD985 sends three VHEAD bursts at 60 ms intervals when it activates
-    # a running talkgroup. IPSC2 resumes only on the next RF burst boundary,
-    # so retain the active stream until the activation sequence has completed.
+    # An RD985 sends three VHEAD bursts at 0, 60 and 120 ms when it activates
+    # a running talkgroup. The Hytera pacer adds the following 60 ms
+    # acquisition slot, so routing may resume once the third header is due.
     if (CONFIG['SYSTEMS'].get(system, {}).get('MODE') == 'HYTERA'
             and now - armed_at < _HYTERA_LATE_JOIN_ARM_S):
         return False

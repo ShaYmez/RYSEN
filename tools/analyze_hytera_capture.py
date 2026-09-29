@@ -6,6 +6,7 @@ capture comparison and emits one deterministic JSON object per media packet.
 """
 
 import argparse
+from datetime import datetime, timezone
 import ipaddress
 import json
 import struct
@@ -79,14 +80,15 @@ def _pcap_records(handle):
     header = handle.read(24)
     magic = header[:4]
     formats = {
-        b'\xd4\xc3\xb2\xa1': '<',
-        b'\xa1\xb2\xc3\xd4': '>',
-        b'\x4d\x3c\xb2\xa1': '<',
-        b'\xa1\xb2\x3c\x4d': '>',
+        b'\xd4\xc3\xb2\xa1': ('<', 1000000.0),
+        b'\xa1\xb2\xc3\xd4': ('>', 1000000.0),
+        b'\x4d\x3c\xb2\xa1': ('<', 1000000000.0),
+        b'\xa1\xb2\x3c\x4d': ('>', 1000000000.0),
     }
-    endian = formats.get(magic)
-    if endian is None or len(header) != 24:
+    capture_format = formats.get(magic)
+    if capture_format is None or len(header) != 24:
         raise ValueError('not a supported PCAP capture')
+    endian, timestamp_divisor = capture_format
     link_type = struct.unpack(endian + 'I', header[20:24])[0]
     while True:
         record = handle.read(16)
@@ -98,7 +100,7 @@ def _pcap_records(handle):
         data = handle.read(captured)
         if len(data) != captured:
             raise ValueError('truncated PCAP frame')
-        yield seconds + fraction / 1000000.0, link_type, data
+        yield seconds + fraction / timestamp_divisor, link_type, data
 
 
 def _pcapng_records(handle):
@@ -155,6 +157,8 @@ def _describe(timestamp, previous, udp, redact):
         return None
     slot = int.from_bytes(packet[18:20], 'big')
     entry = {
+        'timestamp': datetime.fromtimestamp(
+            timestamp, timezone.utc).isoformat(timespec='microseconds'),
         'delta_ms': None if previous is None else round(
             (timestamp - previous) * 1000, 3),
         'source': _redact(source) if redact else source,
@@ -174,6 +178,15 @@ def _describe(timestamp, previous, udp, redact):
     return entry
 
 
+def _parse_timestamp(value):
+    if value is None:
+        return None
+    parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.timestamp()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('capture', help='PCAP or PCAPNG input')
@@ -181,10 +194,20 @@ def main():
                         help='UDP port to inspect (default: 50001)')
     parser.add_argument('--redact-addresses', action='store_true',
                         help='replace the final two IPv4 octets in output')
+    parser.add_argument('--start',
+                        help='include packets at/after this ISO-8601 timestamp')
+    parser.add_argument('--end',
+                        help='include packets before this ISO-8601 timestamp')
     args = parser.parse_args()
 
+    start = _parse_timestamp(args.start)
+    end = _parse_timestamp(args.end)
     previous = None
     for timestamp, link_type, frame in _records(args.capture):
+        if start is not None and timestamp < start:
+            continue
+        if end is not None and timestamp >= end:
+            continue
         udp = _read_ipv4_udp(frame, link_type)
         if udp is None or args.port not in udp[1:4:2]:
             continue

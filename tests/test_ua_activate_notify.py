@@ -94,6 +94,7 @@ class TestActivateUaNotify(unittest.TestCase):
 
     def test_hytera_activation_arms_midstream_late_join(self):
         now = bm.time()
+        self.assertEqual(bm._HYTERA_LATE_JOIN_ARM_S, 0.120)
         with mock.patch.object(bm, 'notify_bridge_table_updated'):
             changed = bm.activate_ua_bridge_source('326', 'HYTERA', 1)
 

@@ -334,6 +334,41 @@ class TestHyteraOutboundVoice(unittest.TestCase):
         clock.advance(0.060)
         self.assertEqual(sent, [b'a', b'b', b'c', b'd'])
 
+    def test_pacer_does_not_rebuffer_after_midcall_underflow(self):
+        clock = Clock()
+        sent = []
+        pacer = HyteraOutboundPacer(sent.append, clock=clock)
+
+        pacer.enqueue(1, b'a')
+        clock.advance(0.180)
+        self.assertEqual(sent, [b'a'])
+
+        # Model one missing 60 ms upstream burst after the queue drains. The
+        # next available burst is due immediately, not after a new 180 ms
+        # startup buffer.
+        clock.advance(0.120)
+        pacer.enqueue(1, b'b')
+        clock.advance(0)
+        self.assertEqual(sent, [b'a', b'b'])
+
+    def test_pacer_terminator_restores_startup_buffer(self):
+        clock = Clock()
+        sent = []
+        pacer = HyteraOutboundPacer(sent.append, clock=clock)
+        terminator = bytearray(72)
+        terminator[18:20] = b'\x22\x22'
+
+        pacer.enqueue(1, b'a')
+        clock.advance(0.180)
+        pacer.enqueue(1, bytes(terminator))
+        clock.advance(0)
+
+        pacer.enqueue(1, b'new-call')
+        clock.advance(0.179)
+        self.assertEqual(sent, [b'a', bytes(terminator)])
+        clock.advance(0.001)
+        self.assertEqual(sent, [b'a', bytes(terminator), b'new-call'])
+
     def test_ts1_normal_call_capture_has_complete_native_cycle(self):
         packets = wire_fixture('normal_ts1.hex')
         self.assertEqual(len(packets), 8)
