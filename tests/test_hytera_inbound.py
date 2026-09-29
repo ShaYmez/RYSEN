@@ -309,6 +309,34 @@ class TestHyteraOutboundVoice(unittest.TestCase):
         self.assertEqual(ts2_voice[16:18], b'\x22\x22')
         self.assertEqual(ts2_voice[18:20], b'\x99\x99')
 
+    def test_midstream_join_reacquires_an_existing_normal_stream_once(self):
+        stream = b'\x04\x04\x04\x04'
+        self.translator.encode_group(
+            dmrd(0xa1, self.payload, stream, source=5301034,
+                 destination=23516))
+        _, normal, paced = self.translator.encode_group(
+            dmrd(0x82, self.payload, stream, source=5301034,
+                 destination=23516, sequence=84))
+        self.assertTrue(paced)
+        self.assertEqual(normal[8], 0x41)
+
+        _, resumed, paced = self.translator.encode_group(
+            dmrd(0x83, self.payload, stream, source=5301034,
+                 destination=23516, sequence=85),
+            late_join=True, late_join_sequence=341)
+        self.assertFalse(paced)
+        self.assertEqual(resumed[:4], b'\x5a\x5a\x5a\x5a')
+        self.assertEqual(resumed[8], 0x01)
+        self.assertEqual(int.from_bytes(resumed[4:8], 'little'), 341)
+
+        _, continued, paced = self.translator.encode_group(
+            dmrd(0x84, self.payload, stream, source=5301034,
+                 destination=23516, sequence=86),
+            late_join=True)
+        self.assertTrue(paced)
+        self.assertEqual(continued[8], 0x01)
+        self.assertEqual(int.from_bytes(continued[4:8], 'little'), 342)
+
     def test_midstream_join_preserves_missing_wire_sequence(self):
         stream = b'\x03\x03\x03\x03'
         _, first, _ = self.translator.encode_group(

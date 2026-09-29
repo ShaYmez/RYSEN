@@ -355,6 +355,17 @@ class HyteraVoiceTranslator:
             slot_type = OUTBOUND_SLOT_TYPE.get(dtype)
             if slot_type is None or not any(stream):
                 return None
+            # A local RF activation can interrupt a network stream that this
+            # encoder had already started.  Once routing releases that stream
+            # after RF de-key, treat the first resumed burst as a new
+            # capture-compatible late entry.  This reset is deliberately
+            # one-shot: the branch below marks the stream as late-join, so
+            # subsequent bursts retain sequence and normal 60 ms pacing.
+            if (late_join and not private_call
+                    and self._out_streams[ts] == stream
+                    and not self._out_late_join[ts]):
+                self._out_streams[ts] = None
+                self._out_last_dmrd_seq[ts] = None
             if self._out_streams[ts] != stream:
                 self._out_streams[ts] = stream
                 self._out_late_join[ts] = late_join and not private_call

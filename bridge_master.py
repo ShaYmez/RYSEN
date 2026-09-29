@@ -333,6 +333,22 @@ def _late_join_wire_sequence(sequence, packet_count):
     return candidate & 0xffffffff
 
 
+def _target_rx_call_active(target_status, slot, tgid, _now):
+    """Whether RF is still receiving this group on the target slot.
+
+    Do not infer de-key from an inter-packet timeout.  The RD985's accepted
+    inbound status can update in roughly 360 ms groups, equal to STREAM_TO,
+    which let isolated network bursts escape during the RF uplink and consume
+    the one-shot late-entry acquisition before the real terminator arrived.
+    The explicit VTERM is authoritative; the existing status timer supplies
+    the lost-terminator fallback.
+    """
+    status = target_status[slot]
+    return (
+        status['RX_TGID'] == tgid
+        and status['RX_TYPE'] != HBPF_SLT_VTERM)
+
+
 def _hytera_deferred_vhead_valid(header_time, packet_time, group_hangtime):
     """Whether a contention-delayed RD985 header is still safe to replay."""
     return (packet_time - header_time) <= (
@@ -943,9 +959,19 @@ def reset_static_tg(tg,ts,_tmout,system):
     if str(tg) not in BRIDGES:
         logger.debug('(OPTIONS) reset_static_tg skipped, missing bridge %s for %s TS%s', tg, system, ts)
         return
-    # Last static peer leaving must not mute radios that still have this TG as UA.
+    # Last static peer leaving must not mute radios that still have this TG as
+    # UA.  SUB_MAP is only subscriber-location history (retained for up to a
+    # day), not proof of a live Hytera dynamic.  Treating it as membership left
+    # removed RD985 statics active on their old slot, so later dynamics on the
+    # other slot were routed to both/wrong slots.  Hytera dynamics have explicit
+    # peer membership and must use that authoritative state.
+    _runtime_config = globals().get('CONFIG', {})
+    _system_mode = (
+        _runtime_config.get('SYSTEMS', {}).get(system, {}).get('MODE')
+        if isinstance(_runtime_config, dict) else None)
     keep_ua = (
-        other_peer_has_sub_map_tg(SUB_MAP, system, ts, tg)
+        (_system_mode != 'HYTERA'
+         and other_peer_has_sub_map_tg(SUB_MAP, system, ts, tg))
         or other_peer_has_dynamic_tg(system, ts, tg))
     bridgetemp = deque()
     for bridgesystem in BRIDGES[str(tg)]:
@@ -2692,10 +2718,14 @@ class routerOBP(OPENBRIDGE):
                             self.STATUS[_stream_id]['CONTENTION'] = True
                             logger.info('(%s) Call not routed to TGID%s, target in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']))
                         continue
-                    if (not _late_join
-                            and (_target['TGID'] == _target_status[_target['TS']]['RX_TGID'])
-                            and _target_status[_target['TS']]['RX_TYPE'] != HBPF_SLT_VTERM
-                            and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < STREAM_TO)):
+                    # Late join is armed by the RF activation call, but an
+                    # RD985 cannot acquire the network stream while that same
+                    # slot is still receiving the user's uplink.  Keep
+                    # suppressing until its VTERM; the next network burst is
+                    # then the first late-join burst sent to the repeater.
+                    if _target_rx_call_active(
+                            _target_status, _target['TS'],
+                            _target['TGID'], pkt_time):
                         if self.STATUS[_stream_id]['CONTENTION'] == False:
                             self.STATUS[_stream_id]['CONTENTION'] = True
                             logger.info('(%s) Call not routed to TGID%s, matching call already active on target: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
@@ -3621,10 +3651,9 @@ class routerHBP(HBSYSTEM):
                             if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
                                 logger.info('(%s) Call not routed to TGID%s, target in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']))
                             continue
-                        if (not _late_join
-                                and (_target['TGID'] == _target_status[_target['TS']]['RX_TGID'])
-                                and _target_status[_target['TS']]['RX_TYPE'] != HBPF_SLT_VTERM
-                                and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < STREAM_TO)):
+                        if _target_rx_call_active(
+                                _target_status, _target['TS'],
+                                _target['TGID'], pkt_time):
                             if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
                                 logger.info('(%s) Call not routed to TGID%s, matching call already active on target: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
                             continue

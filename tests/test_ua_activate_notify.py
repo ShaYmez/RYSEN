@@ -162,6 +162,29 @@ class TestActivateUaNotify(unittest.TestCase):
                 105.0 + bm._HYTERA_DEFERRED_VHEAD_GRACE_S + 0.001,
                 hangtime))
 
+    def test_late_join_waits_for_rf_dekey(self):
+        tgid = b'\x00\x5b\xdc'
+        status = {
+            2: {
+                'RX_TGID': tgid,
+                'RX_TYPE': bm.HBPF_SLT_VHEAD,
+                'RX_TIME': 100.0,
+            },
+        }
+        self.assertTrue(
+            bm._target_rx_call_active(status, 2, tgid, 100.5))
+        self.assertTrue(
+            bm._target_rx_call_active(status, 2, tgid, 110.0))
+
+        status[2]['RX_TYPE'] = bm.HBPF_SLT_VTERM
+        self.assertFalse(
+            bm._target_rx_call_active(status, 2, tgid, 100.6))
+
+    def test_both_routing_paths_guard_active_rf_late_join(self):
+        with open('bridge_master.py', encoding='utf-8') as fh:
+            source = fh.read()
+        self.assertEqual(source.count('if _target_rx_call_active('), 2)
+
     def test_source_guard_no_ua_refreshed_notify(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
             source = fh.read()
@@ -212,6 +235,23 @@ class TestResetStaticKeepsUaMembers(unittest.TestCase):
     def test_drops_live_when_no_ua_members(self):
         bm.SUB_MAP = {}
         bm.reset_static_tg(91, 2, 10, 'SYSTEM-1')
+        leg = bm.BRIDGES['91'][0]
+        self.assertFalse(leg['ACTIVE'])
+        self.assertEqual(leg['TO_TYPE'], 'ON')
+
+    def test_hytera_drops_stale_subscriber_map_membership(self):
+        peer = b'\x00\x03\x97\x17'
+        bm.SUB_MAP = {
+            b'\x00#\xcb#': ('HYTERA-0', 1, b'\x00\x00[', 1, peer),
+        }
+        bm.BRIDGES = {
+            '91': [_leg('HYTERA-0', 1, active=True, to_type='OFF')],
+        }
+        with mock.patch.object(
+                bm, 'CONFIG',
+                {'SYSTEMS': {'HYTERA-0': {'MODE': 'HYTERA'}}},
+                create=True):
+            bm.reset_static_tg(91, 1, 10, 'HYTERA-0')
         leg = bm.BRIDGES['91'][0]
         self.assertFalse(leg['ACTIVE'])
         self.assertEqual(leg['TO_TYPE'], 'ON')
