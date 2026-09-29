@@ -17,6 +17,7 @@ from hytera_master import (
     build_service_redirect,
     build_startup_reply,
 )
+from hytera_voice import HyteraOutboundPacer, HyteraVoiceTranslator
 from repeater_modes import (
     is_generated_master,
     is_repeater_protocol,
@@ -118,6 +119,37 @@ class TestHyteraP2P(unittest.TestCase):
             [('203.0.113.9', 50000), ('203.0.113.9', 50000)])
         self.assertEqual(master._hytera_addr, ('203.0.113.9', 50000))
 
+    def test_reregistration_resets_stale_service_and_voice_state(self):
+        master = object.__new__(HyteraMasterMixin)
+        master._system = 'HYTERA'
+        master._config = {
+            'HYTERA_REPEATER_ID': 0,
+            'PROXY_CONTROL': False,
+        }
+        master._hytera_proxy_enabled = False
+        master._hytera_registered = True
+        master._hytera_addr = ('203.0.113.9', 50000)
+        master._hytera_last_seen = 1
+        master._hytera_peer_id = (235287).to_bytes(4, 'big')
+        master._hytera_voice = HyteraVoiceTranslator(peer_id=235287)
+        master._hytera_outbound = HyteraOutboundPacer(lambda _packet: None)
+        master._hytera_dmr_addr = ('203.0.113.9', 50001)
+        master._hytera_rdac_addr = ('203.0.113.9', 50002)
+        master._hytera_rdac_step = 9
+        master._hytera_rdac_meta = {'firmware': 'stale'}
+        master._peers = {master._hytera_peer_id: {}}
+        master._report = None
+
+        master._register_hytera_peer(
+            '203.0.113.9', 51000, reset_session=True)
+
+        self.assertIsNone(master._hytera_dmr_addr)
+        self.assertIsNone(master._hytera_rdac_addr)
+        self.assertEqual(master._hytera_rdac_step, 0)
+        self.assertEqual(master._hytera_rdac_meta, {})
+        self.assertEqual(master._hytera_peer_id, b'\x00\x00\x00\x00')
+        self.assertEqual(master._hytera_addr, ('203.0.113.9', 51000))
+
 
 class TestHyteraServices(unittest.TestCase):
 
@@ -145,6 +177,28 @@ class TestHyteraServices(unittest.TestCase):
 
         self.assertEqual(protocol.transport.writes, [(b'\x41', addr)])
         self.assertEqual(owner.received, [(b'\x00', addr)])
+
+    def test_proxy_mode_keepalive_is_also_acknowledged(self):
+        class Owner:
+            _hytera_proxy_enabled = True
+
+            def hytera_dmr_received(self, _data, _addr):
+                pass
+
+        class Transport:
+            def __init__(self):
+                self.writes = []
+
+            def write(self, data, addr):
+                self.writes.append((data, addr))
+
+        protocol = _HyteraServiceProtocol(Owner(), 'dmr')
+        protocol.transport = Transport()
+        addr = ('172.16.238.31', 61001)
+
+        protocol.datagramReceived(b'\x00', addr)
+
+        self.assertEqual(protocol.transport.writes, [(b'\x41', addr)])
 
 
 class TestHyteraMediaLayout(unittest.TestCase):

@@ -105,6 +105,7 @@ class HyteraOutboundPacer:
         self._queues = {1: deque(), 2: deque()}
         self._timers = {1: None, 2: None}
         self._next = {1: 0.0, 2: 0.0}
+        self._last_sent = {1: None, 2: None}
         self._active = {1: False, 2: False}
 
     def reset(self):
@@ -118,6 +119,7 @@ class HyteraOutboundPacer:
         self._queues[ts].clear()
         self._timers[ts] = None
         self._next[ts] = 0.0
+        self._last_sent[ts] = None
         self._active[ts] = False
 
     def send_control(self, packet):
@@ -133,10 +135,16 @@ class HyteraOutboundPacer:
             # missing upstream burst must not trigger another 180 ms startup
             # delay in the middle of the call. IPSC2 forwards the next
             # available burst immediately after such a gap.
-            depth = (0 if self._active[ts] else self._jitter_depth)
-            if jitter_depth is not None:
+            if self._active[ts]:
+                depth = 0
+                self._next[ts] = max(
+                    now, (self._last_sent[ts] or now) + self._interval)
+            else:
+                depth = self._jitter_depth
+                self._next[ts] = now + depth * self._interval
+            if jitter_depth is not None and not self._active[ts]:
                 depth = max(0, jitter_depth)
-            self._next[ts] = now + depth * self._interval
+                self._next[ts] = now + depth * self._interval
             self._arm(ts)
         return True
 
@@ -151,15 +159,21 @@ class HyteraOutboundPacer:
             return
         packet = self._queues[ts].popleft()
         self._send_cb(packet)
+        self._last_sent[ts] = self._clock.seconds()
         self._active[ts] = True
-        if (len(packet) >= 20
-                and packet[18:20]
-                == SLOT_VOICE_LC_TERMINATOR.to_bytes(2, 'big')):
+        terminated = (
+            len(packet) >= 20
+            and packet[18:20]
+            == SLOT_VOICE_LC_TERMINATOR.to_bytes(2, 'big'))
+        if terminated:
             self._active[ts] = False
         if self._queues[ts]:
             now = self._clock.seconds()
-            self._next[ts] = max(
-                self._next[ts] + self._interval, now + self._interval)
+            if terminated:
+                self._next[ts] = now + self._jitter_depth * self._interval
+            else:
+                self._next[ts] = max(
+                    self._next[ts] + self._interval, now + self._interval)
             self._arm(ts)
         else:
             self._next[ts] = 0.0
@@ -177,6 +191,7 @@ class HyteraVoiceTranslator:
         self._dmrd_seq = 0
         self._out_streams = {1: None, 2: None}
         self._out_seq = {1: 0, 2: 0}
+        self._out_last_dmrd_seq = {1: None, 2: None}
         self._out_late_join = {1: False, 2: False}
         self._out_private = {1: False, 2: False}
 
@@ -187,6 +202,7 @@ class HyteraVoiceTranslator:
         self._dmrd_seq = 0
         self._out_streams = {1: None, 2: None}
         self._out_seq = {1: 0, 2: 0}
+        self._out_last_dmrd_seq = {1: None, 2: None}
         self._out_late_join = {1: False, 2: False}
         self._out_private = {1: False, 2: False}
 
@@ -323,6 +339,7 @@ class HyteraVoiceTranslator:
                 return None
             self._out_streams[ts] = stream
             self._out_seq[ts] = 0
+            self._out_last_dmrd_seq[ts] = None
             self._out_late_join[ts] = False
             self._out_private[ts] = private_call
             payload = dmrd_payload_to_hytera(dmrd[20:53], quality)
@@ -335,6 +352,9 @@ class HyteraVoiceTranslator:
             return ts, packet, False
 
         if frame_type in (HBPF_VOICE, HBPF_VOICE_SYNC):
+            slot_type = OUTBOUND_SLOT_TYPE.get(dtype)
+            if slot_type is None or not any(stream):
+                return None
             if self._out_streams[ts] != stream:
                 self._out_streams[ts] = stream
                 self._out_late_join[ts] = late_join and not private_call
@@ -343,8 +363,8 @@ class HyteraVoiceTranslator:
                     late_join_sequence
                     if late_join and late_join_sequence is not None
                     else dmrd[4] if late_join else 0)
+                self._out_last_dmrd_seq[ts] = dmrd[4]
                 if late_join and not private_call:
-                    slot_type = OUTBOUND_SLOT_TYPE.get(dtype)
                     payload = dmrd_payload_to_hytera(
                         dmrd[20:53], quality)
                     if slot_type is None or payload is None:
@@ -366,7 +386,14 @@ class HyteraVoiceTranslator:
                 # Acquire the call first; losing this one 60 ms burst is safer
                 # than transmitting media before the RD985 has call context.
                 return ts, packet, False
-            slot_type = OUTBOUND_SLOT_TYPE.get(dtype)
+            if self._out_late_join[ts]:
+                if late_join_sequence is not None:
+                    self._out_seq[ts] = late_join_sequence
+                elif self._out_last_dmrd_seq[ts] is not None:
+                    delta = (dmrd[4] - self._out_last_dmrd_seq[ts]) & 0xff
+                    self._out_seq[ts] = (
+                        self._out_seq[ts] - 1 + delta) & 0xffffffff
+                self._out_last_dmrd_seq[ts] = dmrd[4]
             payload = dmrd_payload_to_hytera(dmrd[20:53], quality)
             if slot_type is None or payload is None:
                 return None
@@ -387,6 +414,7 @@ class HyteraVoiceTranslator:
                 payload, private_call=self._out_private[ts])
             self._out_seq[ts] = (self._out_seq[ts] + 1) & 0xffffffff
             self._out_streams[ts] = None
+            self._out_last_dmrd_seq[ts] = None
             self._out_late_join[ts] = False
             self._out_private[ts] = False
             return ts, packet, True

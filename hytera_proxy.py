@@ -40,6 +40,7 @@ def is_ipv4_address(ip):
 class HyteraProxySession:
     public_base: int
     backend_base: int
+    p2p_public_port: int
     endpoints: dict = field(default_factory=dict)
     repeater_id: int = 0
     timer: object = None
@@ -100,7 +101,9 @@ class HyteraProxy:
                 'rdac': session.endpoints.get('rdac'),
                 'repeater_id': session.repeater_id,
             }, separators=(',', ':')).encode('utf-8'))
-        self._write(self.p2p_port, payload, (self.master, session.backend_base))
+        self._write(
+            session.p2p_public_port, payload,
+            (self.master, session.backend_base))
 
     def _release(self, public_base):
         session = self.sessions.get(public_base)
@@ -125,9 +128,11 @@ class HyteraProxy:
         else:
             session.timer.reset(self.timeout)
 
-    def _allocate(self, endpoint):
-        available = [base for base, session in self.sessions.items()
-                     if session is None]
+    def _allocate(self, endpoint, preferred_base=None, p2p_public_port=None):
+        available = [
+            base for base, session in self.sessions.items()
+            if session is None
+            and (preferred_base is None or base == preferred_base)]
         if not available:
             return None
         # Keep the first repeater on the familiar 50000/50001/50002 CPS
@@ -137,6 +142,7 @@ class HyteraProxy:
             public_base - self.public_slot_start)
         session = HyteraProxySession(
             public_base=public_base, backend_base=backend_base,
+            p2p_public_port=p2p_public_port or self.p2p_port,
             endpoints={'p2p': endpoint})
         self.sessions[public_base] = session
         self._touch(session)
@@ -177,16 +183,28 @@ class HyteraProxy:
         reply[-2:] = (session.public_base + offset).to_bytes(2, 'little')
         return bytes(reply)
 
-    def _from_client_p2p(self, data, address):
+    def _from_client_p2p(self, local_port, data, address):
         host, _port = address
         if host in self.ip_black_list:
             return
-        session = self._session_for_host(host)
         command = p2p_command_type(data)
+        explicit_base = self.by_public_port.get(local_port)
+        if (explicit_base is not None
+                and local_port - explicit_base == 0
+                and local_port != self.p2p_port):
+            session = self.sessions.get(explicit_base)
+            if (session is not None
+                    and session.endpoints.get('p2p', (None,))[0] != host):
+                return
+        else:
+            explicit_base = None
+            session = self._session_for_host(host)
         if session is None:
             if command != P2P_REGISTRATION:
                 return
-            session = self._allocate(address)
+            session = self._allocate(
+                address, preferred_base=explicit_base,
+                p2p_public_port=local_port)
             if session is None:
                 return
             self._notify(session)
@@ -195,14 +213,25 @@ class HyteraProxy:
             # service source ports. They must not replace the registered P2P
             # endpoint: redirect replies still belong on the P2P socket.
             if command not in (P2P_DMR_STARTUP, P2P_RDAC_STARTUP):
+                if command == P2P_REGISTRATION:
+                    if session.repeater_id:
+                        self.by_repeater_id.pop(session.repeater_id, None)
+                    session.repeater_id = 0
+                    session.endpoints.pop('dmr', None)
+                    session.endpoints.pop('rdac', None)
                 session.endpoints['p2p'] = address
             self._touch(session)
-        self._write(self.p2p_port, data, (self.master, session.backend_base))
+            if command == P2P_REGISTRATION:
+                self._notify(session)
+        self._write(
+            session.p2p_public_port, data,
+            (self.master, session.backend_base))
 
     def _from_client_service(self, local_port, data, address):
         public_base = self.by_public_port.get(local_port)
         session = self.sessions.get(public_base)
-        if session is None or address[0] in self.ip_black_list:
+        if (session is None or address[0] in self.ip_black_list
+                or address[0] != session.endpoints['p2p'][0]):
             return
         offset = local_port - session.public_base
         service = 'dmr' if offset == 1 else 'rdac'
@@ -220,7 +249,7 @@ class HyteraProxy:
             return
         self._touch(session)
         self._write(
-            self.p2p_port, self._rewrite_redirect(session, data),
+            session.p2p_public_port, self._rewrite_redirect(session, data),
             session.endpoints['p2p'])
 
     def _from_master_service(self, local_port, data):
@@ -239,12 +268,17 @@ class HyteraProxy:
     def datagram_received(self, local_port, data, address):
         """Route a datagram received by one of the proxy's UDP listeners."""
         if address[0] == self.master:
-            if local_port == self.p2p_port:
+            public_base = self.by_public_port.get(local_port)
+            if (local_port == self.p2p_port
+                    or (public_base is not None
+                        and local_port - public_base == 0)):
                 self._from_master_p2p(data, address)
             else:
                 self._from_master_service(local_port, data)
-        elif local_port == self.p2p_port:
-            self._from_client_p2p(data, address)
+        elif (local_port == self.p2p_port
+              or (local_port in self.by_public_port
+                  and local_port - self.by_public_port[local_port] == 0)):
+            self._from_client_p2p(local_port, data, address)
         elif local_port in self.by_public_port:
             self._from_client_service(local_port, data, address)
 

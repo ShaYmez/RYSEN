@@ -135,6 +135,46 @@ class TestHyteraProxy(unittest.TestCase):
         self.assertIsNone(self.proxy.sessions[50003])
         self.assertEqual(self.p2p.writes[-1], (PRCL, (self.MASTER, 61000)))
 
+    def test_reregistration_clears_stale_service_endpoints_and_identity(self):
+        session = self._register()
+        session.endpoints['dmr'] = ('198.51.100.7', 62006)
+        session.endpoints['rdac'] = ('198.51.100.7', 62007)
+        session.repeater_id = 235287
+        self.proxy.by_repeater_id[235287] = session
+
+        replacement = ('198.51.100.7', 63004)
+        self.proxy.datagram_received(
+            50000, p2p(P2P_REGISTRATION), replacement)
+
+        self.assertEqual(session.endpoints, {'p2p': replacement})
+        self.assertEqual(session.repeater_id, 0)
+        self.assertNotIn(235287, self.proxy.by_repeater_id)
+
+    def test_explicit_public_triples_separate_same_nat_repeaters(self):
+        proxy = HyteraProxy(
+            master=self.MASTER, p2p_port=50000,
+            public_slot_start=50000, backend_slot_start=61000,
+            slots=2, timeout=60, clock=self.clock)
+        first_transport = Transport()
+        second_transport = Transport()
+        proxy.set_transport(50000, first_transport)
+        proxy.set_transport(50003, second_transport)
+
+        proxy.datagram_received(
+            50000, p2p(P2P_REGISTRATION), ('198.51.100.7', 62004))
+        proxy.datagram_received(
+            50003, p2p(P2P_REGISTRATION), ('198.51.100.7', 63004))
+
+        self.assertEqual(
+            proxy.sessions[50000].endpoints['p2p'],
+            ('198.51.100.7', 62004))
+        self.assertEqual(
+            proxy.sessions[50003].endpoints['p2p'],
+            ('198.51.100.7', 63004))
+        self.assertEqual(
+            second_transport.writes[-1],
+            (p2p(P2P_REGISTRATION), (self.MASTER, 61003)))
+
 
 if __name__ == '__main__':
     unittest.main()

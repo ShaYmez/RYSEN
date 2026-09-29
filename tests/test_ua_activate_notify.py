@@ -117,6 +117,33 @@ class TestActivateUaNotify(unittest.TestCase):
                 'HYTERA', 1, b'\x00\x01\x46',
                 100.001 + bm._LATE_JOIN_TIMEOUT_S))
 
+    def test_late_join_is_hytera_only_and_stream_bound(self):
+        tgid = b'\x00\x01\x46'
+        first_stream = b'\x01\x02\x03\x04'
+        other_stream = b'\x05\x06\x07\x08'
+
+        self.assertFalse(
+            bm._arm_late_join_target('SYSTEM-1', 1, tgid, 100.0))
+        self.assertFalse(
+            bm._late_join_active(
+                'SYSTEM-1', 1, tgid, 101.0, first_stream))
+
+        self.assertTrue(
+            bm._arm_late_join_target('HYTERA', 1, tgid, 100.0))
+        self.assertFalse(
+            bm._late_join_active(
+                'HYTERA', 1, tgid, 100.01, first_stream))
+        self.assertTrue(
+            bm._late_join_active(
+                'HYTERA', 1, tgid,
+                100.0 + bm._HYTERA_LATE_JOIN_ARM_S + 0.001,
+                first_stream))
+        self.assertFalse(
+            bm._late_join_active(
+                'HYTERA', 1, tgid,
+                100.0 + bm._HYTERA_LATE_JOIN_ARM_S + 0.001,
+                other_stream))
+
     def test_late_join_reconstructs_full_hytera_sequence(self):
         self.assertEqual(bm._late_join_wire_sequence(0x54, 341), 340)
         self.assertEqual(bm._late_join_wire_sequence(0xe8, 745), 744)

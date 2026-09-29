@@ -303,8 +303,10 @@ Headers at `19:48:56.277910`, `.335696` and `.397190` UTC. IPSC2 sent the
 running stream's current Voice D burst at `.496385`: 99.195 ms after the third
 header and while the repeater was still sending its activation call. No new
 downlink header, sync or wakeup preceded that burst. RF audio and the remote
-TG/source display appeared immediately after de-key. TS1/TG235 behaved the
-same way.
+TG/source display appeared immediately after de-key. TS1/TG235 also completed
+late entry correctly in the RF test, but its first captured downlink burst was
+239.837 ms after the third activation header and therefore did not have TS2's
+same timing or initial-burst retention.
 
 The failed RYSEN comparison exposed two measurable differences:
 
@@ -318,10 +320,14 @@ The failed RYSEN comparison exposed two measurable differences:
 The candidate fix arms routing when the third activation header is due at
 120 ms, leaving the existing one-slot pacer acquisition to match IPSC2. The
 pacer now applies its three-burst jitter buffer only at initial call
-acquisition; after playout starts, the next available burst after an underflow
-is sent immediately. A terminator restores startup buffering for the next
-call. This candidate still requires the RF matrix on RYSEN before late entry
-can be marked complete.
+acquisition. After playout starts, an underflow does not reapply that buffer;
+the next burst is sent at the first valid 60 ms boundary after the preceding
+transmission. Missing DMRD sequence positions remain missing in the Hytera
+wire sequence instead of being compressed. A terminator restores startup
+buffering for the next call. Late-entry authorization is Hytera-only, is bound
+to one stream, and is applied to both OpenBridge- and Homebrew-originated
+traffic. This candidate still requires the RF matrix on RYSEN before late
+entry can be marked complete.
 
 ### Normal call identity oracle
 
@@ -436,7 +442,10 @@ rejected or traced until capture-validated.
 session preserves the BrandMeister CPS ports: P2P `50000`, DMR `50001`, RDAC
 `50002`. Nine further public triples continue from `50003–50029`, while RYSEN
 runs ten private generated backend triples from `50003–50032` with
-`PROXY_CONTROL: True`.
+`PROXY_CONTROL: True`. Each generated master must also set
+`PROXY_CONTROL_IP` to the sidecar's trusted source address (the supplied
+Compose network uses `172.16.238.31`); lifecycle control from any other source
+is ignored.
 
 The P2P registration has no repeater ID, so a slot is provisional until the
 proxy observes the RDAC identity response. In proxy mode RYSEN runs the
@@ -444,7 +453,9 @@ capture-validated RDAC exchange to request that response, and the proxy binds
 the extracted 24-bit ID to the session. A duplicate or blacklisted ID releases
 the session. The proxy separately tracks the NAT source endpoint of P2P, DMR
 and RDAC traffic; service redirects are rewritten from backend to public
-ports.
+ports. A fresh P2P registration clears stale DMR/RDAC endpoints and identity
+before service renegotiation. Repeaters behind the same NAT can use separate
+public triples (`50000`, `50003`, and so on) without sharing a session.
 
 Run it with `python3 hytera_proxy.py -c hytera-proxy.cfg`, using
 `hytera-proxy-SAMPLE.cfg` as the template.

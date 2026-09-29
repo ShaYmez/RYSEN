@@ -309,6 +309,39 @@ class TestHyteraOutboundVoice(unittest.TestCase):
         self.assertEqual(ts2_voice[16:18], b'\x22\x22')
         self.assertEqual(ts2_voice[18:20], b'\x99\x99')
 
+    def test_midstream_join_preserves_missing_wire_sequence(self):
+        stream = b'\x03\x03\x03\x03'
+        _, first, _ = self.translator.encode_group(
+            dmrd(0x03, self.payload, stream=stream, sequence=84),
+            late_join=True, late_join_sequence=340)
+        _, after_gap, _ = self.translator.encode_group(
+            dmrd(0x05, self.payload, stream=stream, sequence=86),
+            late_join=True)
+
+        self.assertEqual(int.from_bytes(first[4:8], 'little'), 340)
+        self.assertEqual(int.from_bytes(after_gap[4:8], 'little'), 342)
+
+    def test_midstream_join_sequence_wrap_remains_contiguous(self):
+        stream = b'\x04\x04\x04\x04'
+        _, first, _ = self.translator.encode_group(
+            dmrd(0x03, self.payload, stream=stream, sequence=255),
+            late_join=True, late_join_sequence=511)
+        _, wrapped, _ = self.translator.encode_group(
+            dmrd(0x04, self.payload, stream=stream, sequence=0),
+            late_join=True)
+
+        self.assertEqual(int.from_bytes(first[4:8], 'little'), 511)
+        self.assertEqual(int.from_bytes(wrapped[4:8], 'little'), 512)
+
+    def test_unknown_voice_subtype_cannot_replace_active_stream(self):
+        malformed = self.translator.encode_group(
+            dmrd(0x1f, self.payload, stream=b'\x09\x09\x09\x09'))
+        self.assertIsNone(malformed)
+
+        valid = self.translator.encode_group(
+            dmrd(0x10, self.payload, stream=b'\x01\x01\x01\x01'))
+        self.assertEqual(valid[1][18:20], b'\xee\xee')
+
     def test_payload_round_trip_and_quality_byte(self):
         wire = dmrd_payload_to_hytera(self.payload, quality=0x58)
         self.assertEqual(len(wire), 34)
@@ -351,6 +384,20 @@ class TestHyteraOutboundVoice(unittest.TestCase):
         clock.advance(0)
         self.assertEqual(sent, [b'a', b'b'])
 
+    def test_pacer_never_shortens_cadence_after_underflow(self):
+        clock = Clock()
+        sent = []
+        pacer = HyteraOutboundPacer(sent.append, clock=clock)
+
+        pacer.enqueue(1, b'a')
+        clock.advance(0.180)
+        clock.advance(0.030)
+        pacer.enqueue(1, b'b')
+        clock.advance(0.029)
+        self.assertEqual(sent, [b'a'])
+        clock.advance(0.001)
+        self.assertEqual(sent, [b'a', b'b'])
+
     def test_pacer_terminator_restores_startup_buffer(self):
         clock = Clock()
         sent = []
@@ -361,9 +408,11 @@ class TestHyteraOutboundVoice(unittest.TestCase):
         pacer.enqueue(1, b'a')
         clock.advance(0.180)
         pacer.enqueue(1, bytes(terminator))
-        clock.advance(0)
-
         pacer.enqueue(1, b'new-call')
+        clock.advance(0.059)
+        self.assertEqual(sent, [b'a'])
+        clock.advance(0.001)
+        self.assertEqual(sent, [b'a', bytes(terminator)])
         clock.advance(0.179)
         self.assertEqual(sent, [b'a', bytes(terminator)])
         clock.advance(0.001)
@@ -404,6 +453,7 @@ class TestHyteraInboundDispatch(unittest.TestCase):
         self.master._hytera_zero_peer_warned = False
         self.master._hytera_voice = HyteraVoiceTranslator(
             peer_id=235287, stream_factory=lambda: b'\x01\x02\x03\x04')
+        self.master._hytera_dmr_addr = None
         self.received = []
         self.master.dmrd_received = lambda *args: self.received.append(args)
 
@@ -441,6 +491,17 @@ class TestHyteraInboundDispatch(unittest.TestCase):
             fixture('header'), ('198.51.100.7', 50001))
         self.assertEqual(self.received, [])
 
+    def test_malformed_dmr_does_not_replace_endpoint_or_touch_watchdog(self):
+        self.master._hytera_dmr_addr = ('203.0.113.9', 50001)
+        self.master._hytera_last_seen = 123
+
+        self.master.hytera_dmr_received(
+            b'\x01\x02\x03', ('203.0.113.9', 59999))
+
+        self.assertEqual(
+            self.master._hytera_dmr_addr, ('203.0.113.9', 50001))
+        self.assertEqual(self.master._hytera_last_seen, 123)
+
 
 class TestHyteraProxyControl(unittest.TestCase):
 
@@ -459,6 +520,7 @@ class TestHyteraProxyControl(unittest.TestCase):
             'HYTERA_REPEATER_ID': 0,
         }
         self.master._hytera_proxy_enabled = True
+        self.master._hytera_proxy_control_ip = '172.16.238.31'
         self.master._hytera_proxy_info = None
         self.master._hytera_rdac_step = 0
         self.master._hytera_registered = False
@@ -467,8 +529,10 @@ class TestHyteraProxyControl(unittest.TestCase):
         self.master._hytera_voice = HyteraVoiceTranslator()
         self.master._hytera_outbound = HyteraOutboundPacer(lambda _: None)
         self.master._hytera_dmr_addr = None
+        self.master._hytera_rdac_addr = None
         self.master._peers = {}
         self.master._report = None
+        self.master._CONFIG = {'GLOBAL': {}}
         self.master._hytera_services = {
             'rdac': type('Protocol', (), {'transport': self.Transport()})(),
         }
@@ -476,11 +540,26 @@ class TestHyteraProxyControl(unittest.TestCase):
     def test_proxy_identity_sets_voice_peer_id(self):
         control = PRIN + json.dumps({'repeater_id': 235287}).encode()
 
-        self.assertTrue(self.master._proxy_control_received(control))
+        self.assertTrue(self.master._proxy_control_received(
+            control, ('172.16.238.31', 50003)))
         self.assertEqual(self.master._hytera_peer_id,
                          (235287).to_bytes(4, 'big'))
         self.assertEqual(self.master._hytera_voice._peer_id,
                          (235287).to_bytes(4, 'big'))
+
+    def test_proxy_control_rejects_untrusted_or_invalid_payload(self):
+        valid = PRIN + json.dumps({'repeater_id': 235287}).encode()
+        self.assertTrue(self.master._proxy_control_received(
+            valid, ('198.51.100.7', 50003)))
+        self.assertEqual(self.master._hytera_peer_id, b'\x00\x00\x00\x00')
+
+        invalid = PRIN + json.dumps({
+            'repeater_id': 0x1000000,
+            'p2p': ['198.51.100.7', 50000],
+        }).encode()
+        self.assertTrue(self.master._proxy_control_received(
+            invalid, ('172.16.238.31', 50003)))
+        self.assertEqual(self.master._hytera_peer_id, b'\x00\x00\x00\x00')
 
     def test_rdac_identity_sequence_requests_capture_validated_steps(self):
         addr = ('172.16.238.31', 50005)

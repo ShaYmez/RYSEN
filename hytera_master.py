@@ -106,8 +106,7 @@ class _HyteraServiceProtocol(DatagramProtocol):
         self.service = service
 
     def datagramReceived(self, data, addr):
-        if data == b'\x00' and not getattr(
-                self.owner, '_hytera_proxy_enabled', False):
+        if data == b'\x00':
             self.transport.write(b'\x41', addr)
         if self.service == 'dmr':
             self.owner.hytera_dmr_received(data, addr)
@@ -125,11 +124,14 @@ class HyteraMasterMixin:
         self._hytera_listeners = []
         self._hytera_services = {}
         self._hytera_dmr_addr = None
+        self._hytera_rdac_addr = None
         self._hytera_peer_id = int(
             self._config.get('HYTERA_REPEATER_ID', 0)).to_bytes(4, 'big')
         self._hytera_watchdog = self._config.get('KEEPALIVE_WATCHDOG', 60)
         self._hytera_trace = self._config.get('TRACE_PACKETS', False)
         self._hytera_proxy_enabled = self._config.get('PROXY_CONTROL', False)
+        self._hytera_proxy_control_ip = self._config.get(
+            'PROXY_CONTROL_IP', '')
         self._hytera_rdac_enabled = (
             self._hytera_proxy_enabled
             or self._config.get('RDAC_DISCOVERY', False))
@@ -193,16 +195,25 @@ class HyteraMasterMixin:
                 return False
         return True
 
-    def _register_hytera_peer(self, host, port):
+    def _register_hytera_peer(self, host, port, reset_session=False):
         now = time()
         is_new = not self._hytera_registered
+        if reset_session:
+            old_peer_id = self._hytera_peer_id
+            self._hytera_voice.reset()
+            self._hytera_outbound.reset()
+            self._hytera_dmr_addr = None
+            self._hytera_rdac_addr = None
+            self._hytera_rdac_step = 0
+            self._hytera_rdac_meta = {}
+            if (not self._hytera_proxy_enabled
+                    and not int(self._config.get('HYTERA_REPEATER_ID', 0))):
+                self._hytera_peer_id = b'\x00\x00\x00\x00'
+                self._hytera_voice.set_peer_id(0)
+                self._peers.pop(old_peer_id, None)
         self._hytera_registered = True
         self._hytera_addr = (host, port)
         self._hytera_last_seen = now
-        if is_new:
-            self._hytera_voice.reset()
-            self._hytera_outbound.reset()
-
         if int_id(self._hytera_peer_id):
             existing = self._peers.get(self._hytera_peer_id)
             record = build_peer_record(
@@ -245,6 +256,7 @@ class HyteraMasterMixin:
         self._hytera_voice.reset()
         self._hytera_outbound.reset()
         self._hytera_dmr_addr = None
+        self._hytera_rdac_addr = None
         self._hytera_proxy_info = None
         self._hytera_rdac_step = 0
         self._hytera_rdac_meta = {}
@@ -257,9 +269,17 @@ class HyteraMasterMixin:
         if packet is not None:
             self.transport.write(packet, addr)
 
-    def _proxy_control_received(self, data):
+    def _proxy_control_received(self, data, addr=None):
         """Apply sidecar lifecycle data; never accept it in direct mode."""
         if not getattr(self, '_hytera_proxy_enabled', False):
+            return False
+        trusted_ip = getattr(self, '_hytera_proxy_control_ip', '')
+        if not trusted_ip or addr is None or addr[0] != trusted_ip:
+            if data == PRCL or data.startswith(PRIN):
+                logger.warning(
+                    '(%s) Ignored Hytera proxy control from untrusted IP %s',
+                    self._system, addr[0] if addr else '<unknown>')
+                return True
             return False
         if data == PRCL:
             self._clear_hytera_peer()
@@ -268,12 +288,29 @@ class HyteraMasterMixin:
             return False
         try:
             info = json.loads(data[len(PRIN):].decode('utf-8'))
-        except (UnicodeDecodeError, json.JSONDecodeError):
+            if not isinstance(info, dict):
+                raise ValueError('proxy control payload is not an object')
+            repeater_id = info.get('repeater_id') or 0
+            if isinstance(repeater_id, bool):
+                raise ValueError('invalid repeater ID type')
+            repeater_id = int(repeater_id)
+            if not 0 <= repeater_id <= 0xffffff:
+                raise ValueError('repeater ID out of range')
+            for name in ('p2p', 'dmr', 'rdac'):
+                endpoint = info.get(name)
+                if endpoint is not None and (
+                        not isinstance(endpoint, (list, tuple))
+                        or len(endpoint) != 2
+                        or not isinstance(endpoint[0], str)
+                        or isinstance(endpoint[1], bool)
+                        or not isinstance(endpoint[1], int)
+                        or not 1 <= endpoint[1] <= 65535):
+                    raise ValueError(f'invalid {name} endpoint')
+        except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError):
             logger.warning('(%s) Ignored malformed Hytera proxy control packet',
                            self._system)
             return True
         self._hytera_proxy_info = info
-        repeater_id = int(info.get('repeater_id') or 0)
         configured_id = int(self._config.get('HYTERA_REPEATER_ID', 0))
         if repeater_id:
             if configured_id and repeater_id != configured_id:
@@ -285,6 +322,10 @@ class HyteraMasterMixin:
             old_peer_id = self._hytera_peer_id
             self._hytera_peer_id = repeater_id.to_bytes(4, 'big')
             self._hytera_voice.set_peer_id(repeater_id)
+            if not self._registration_allowed(
+                    (info.get('p2p') or (addr[0], 0))[0]):
+                self._clear_hytera_peer()
+                return True
             if old_peer_id != self._hytera_peer_id:
                 self._peers.pop(old_peer_id, None)
                 if self._hytera_registered and self._hytera_addr:
@@ -297,13 +338,13 @@ class HyteraMasterMixin:
             logger.debug('(%s) Hytera P2P RX %s:%s %s',
                          self._system, host, port, data.hex())
 
-        if self._proxy_control_received(data):
+        if self._proxy_control_received(data, addr):
             return
         command = p2p_command_type(data)
         if command == P2P_REGISTRATION:
             if not self._registration_allowed(host):
                 return
-            self._register_hytera_peer(host, port)
+            self._register_hytera_peer(host, port, reset_session=True)
             self._send_p2p(build_registration_reply(data), addr)
             return
 
@@ -350,6 +391,16 @@ class HyteraMasterMixin:
             logger.warning('(%s) Hytera DMR packet rejected from unregistered IP %s',
                            self._system, addr[0])
             return
+        if data == b'\x00':
+            self._hytera_dmr_addr = addr
+            self._touch_hytera_peer(addr)
+            return
+        dmrd = self._hytera_voice.translate_voice(data)
+        if dmrd is None:
+            logger.warning(
+                '(%s) Ignored malformed Hytera DMR packet from %s:%s len=%s',
+                self._system, addr[0], addr[1], len(data))
+            return
         self._hytera_dmr_addr = addr
         self._touch_hytera_peer(addr)
         ids = media_radio_ids(data)
@@ -358,9 +409,7 @@ class HyteraMasterMixin:
             self._system, addr[0], addr[1], len(data),
             media_timeslot(data), ids,
             ' data=' + data.hex() if self._hytera_trace else '')
-        dmrd = self._hytera_voice.translate_voice(data)
-        if dmrd is not None:
-            self._dispatch_hytera_dmrd(dmrd, addr)
+        self._dispatch_hytera_dmrd(dmrd, addr)
 
     def _dispatch_hytera_dmrd(self, data, addr):
         peer_id = data[11:15]
@@ -410,8 +459,11 @@ class HyteraMasterMixin:
             frame_type, dtype_vseq, stream_id, data)
 
     def hytera_rdac_received(self, data, addr):
-        if self._hytera_registered:
-            self._touch_hytera_peer(addr)
+        if (not self._hytera_registered or not self._hytera_addr
+                or addr[0] != self._hytera_addr[0]):
+            return
+        self._hytera_rdac_addr = addr
+        self._touch_hytera_peer(addr)
         logger.debug(
             '(%s) Hytera RDAC packet from %s:%s len=%s%s',
             self._system, addr[0], addr[1], len(data),
@@ -443,6 +495,9 @@ class HyteraMasterMixin:
             if not int_id(self._hytera_peer_id):
                 self._hytera_peer_id = repeater_id.to_bytes(4, 'big')
                 self._hytera_voice.set_peer_id(repeater_id)
+                if not self._registration_allowed(addr[0]):
+                    self._clear_hytera_peer()
+                    return
                 if self._hytera_registered and self._hytera_addr:
                     self._register_hytera_peer(*self._hytera_addr)
             self._hytera_rdac_step = 4

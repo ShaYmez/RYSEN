@@ -285,19 +285,31 @@ CONTROL_BANS = ControlBanStore(logger=logger)
 
 def _arm_late_join_target(system, slot, tgid, now):
     """Allow one routing-master slot to join an already-running OBP stream."""
-    key = (system, slot, tgid)
-    _LATE_JOIN_TARGETS[key] = now
-    if len(_LATE_JOIN_TARGETS) > 512:
-        for old_key, armed_at in list(_LATE_JOIN_TARGETS.items()):
-            if now - armed_at >= _LATE_JOIN_TIMEOUT_S:
-                _LATE_JOIN_TARGETS.pop(old_key, None)
-
-
-def _late_join_active(system, slot, tgid, now):
-    key = (system, slot, tgid)
-    armed_at = _LATE_JOIN_TARGETS.get(key)
-    if armed_at is None:
+    if CONFIG['SYSTEMS'].get(system, {}).get('MODE') != 'HYTERA':
         return False
+    key = (system, slot, tgid)
+    _LATE_JOIN_TARGETS[key] = {
+        'armed_at': now,
+        'stream_id': None,
+    }
+    if len(_LATE_JOIN_TARGETS) > 512:
+        for old_key, entry in list(_LATE_JOIN_TARGETS.items()):
+            if now - entry['armed_at'] >= _LATE_JOIN_TIMEOUT_S:
+                _LATE_JOIN_TARGETS.pop(old_key, None)
+    return True
+
+
+def _late_join_active(system, slot, tgid, now, stream_id=None):
+    key = (system, slot, tgid)
+    entry = _LATE_JOIN_TARGETS.get(key)
+    if entry is None:
+        return False
+    armed_at = entry['armed_at']
+    if stream_id is not None:
+        if entry['stream_id'] is None:
+            entry['stream_id'] = stream_id
+        elif entry['stream_id'] != stream_id:
+            return False
     # An RD985 sends three VHEAD bursts at 0, 60 and 120 ms when it activates
     # a running talkgroup. The Hytera pacer adds the following 60 ms
     # acquisition slot, so routing may resume once the third header is due.
@@ -2527,7 +2539,7 @@ class routerOBP(OPENBRIDGE):
                 _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
                 _late_join = _late_join_active(
                     _target['SYSTEM'], _target['TS'], _target['TGID'],
-                    pkt_time)
+                    pkt_time, _stream_id)
                 # A Hytera RF slot can reject a new stream while its previous
                 # call is winding down. Retain a real incoming VHEAD until the
                 # stream is admitted so a delayed start keeps valid LC and
@@ -3475,6 +3487,9 @@ class routerHBP(HBSYSTEM):
                 #if _target['ACTIVE']:
                     _target_status = systems[_target['SYSTEM']].STATUS
                     _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
+                    _late_join = _late_join_active(
+                        _target['SYSTEM'], _target['TS'], _target['TGID'],
+                        pkt_time, _stream_id)
                     _hytera_header_key = (
                         _target['SYSTEM'], _target['TS'], _target['TGID'])
                     if (_target_system['MODE'] == 'HYTERA'
@@ -3594,21 +3609,27 @@ class routerHBP(HBSYSTEM):
                         #   From the same group as the last TX to this HBSystem, but from a different subscriber, and it has been less than stream timeout
                         # The "continue" at the end of each means the next iteration of the for loop that tests for matching rules
                         #
-                        if ((_target['TGID'] != _target_status[_target['TS']]['RX_TGID']) and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < _target_system['GROUP_HANGTIME'])):
+                        if (not _late_join
+                                and (_target['TGID'] != _target_status[_target['TS']]['RX_TGID'])
+                                and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < _target_system['GROUP_HANGTIME'])):
                             if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
                                 logger.info('(%s) Call not routed to TGID %s, target active or in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
                             continue
-                        if ((_target['TGID'] != _target_status[_target['TS']]['TX_TGID']) and ((pkt_time - _target_status[_target['TS']]['TX_TIME']) < _target_system['GROUP_HANGTIME'])):
+                        if (not _late_join
+                                and (_target['TGID'] != _target_status[_target['TS']]['TX_TGID'])
+                                and ((pkt_time - _target_status[_target['TS']]['TX_TIME']) < _target_system['GROUP_HANGTIME'])):
                             if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
                                 logger.info('(%s) Call not routed to TGID%s, target in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']))
                             continue
-                        if ((_target['TGID'] == _target_status[_target['TS']]['RX_TGID'])
+                        if (not _late_join
+                                and (_target['TGID'] == _target_status[_target['TS']]['RX_TGID'])
                                 and _target_status[_target['TS']]['RX_TYPE'] != HBPF_SLT_VTERM
                                 and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < STREAM_TO)):
                             if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
                                 logger.info('(%s) Call not routed to TGID%s, matching call already active on target: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
                             continue
-                        if ((_target['TGID'] == _target_status[_target['TS']]['TX_TGID'])
+                        if (not _late_join
+                                and (_target['TGID'] == _target_status[_target['TS']]['TX_TGID'])
                                 and _target_status[_target['TS']]['TX_TYPE'] != HBPF_SLT_VTERM
                                 and (_rf_src != _target_status[_target['TS']]['TX_RFS'])
                                 and ((pkt_time - _target_status[_target['TS']]['TX_TIME']) < STREAM_TO)):
@@ -3730,9 +3751,19 @@ class routerHBP(HBSYSTEM):
                                     _target['TS'], int_id(_target['TGID']),
                                     pkt_time - _header_time)
                     # Transmit the packet to the destination system
-                    systems[_target['SYSTEM']].send_system(
-                        _tmp_data, b'', _ber, _rssi, _source_server,
-                        _source_rptr)
+                    if _target_system['MODE'] == 'HYTERA':
+                        systems[_target['SYSTEM']].send_system(
+                            _tmp_data, b'', _ber, _rssi, _source_server,
+                            _source_rptr, _late_join=_late_join,
+                            _late_join_sequence=(
+                                _late_join_wire_sequence(
+                                    _seq,
+                                    self.STATUS[_slot].get('packets', 1))
+                                if _late_join else None))
+                    else:
+                        systems[_target['SYSTEM']].send_system(
+                            _tmp_data, b'', _ber, _rssi, _source_server,
+                            _source_rptr)
                     _sysIgnore.append(_ignore_key)
        
         return _sysIgnore

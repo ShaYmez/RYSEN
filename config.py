@@ -451,6 +451,8 @@ def build_config(_config_file):
                         'ANNOUNCEMENT_LANGUAGE': config.get(section, 'ANNOUNCEMENT_LANGUAGE'),
                         'ALLOW_UNREG_ID': config.getboolean(section, 'ALLOW_UNREG_ID'),
                         'PROXY_CONTROL': config.getboolean(section, 'PROXY_CONTROL'),
+                        'PROXY_CONTROL_IP': config.get(
+                            section, 'PROXY_CONTROL_IP', fallback='').strip(),
                         'OVERRIDE_IDENT_TG': config.get(section, 'OVERRIDE_IDENT_TG'),
                         'HYTERA_REPEATER_ID': config.getint(
                             section, 'HYTERA_REPEATER_ID', fallback=0),
