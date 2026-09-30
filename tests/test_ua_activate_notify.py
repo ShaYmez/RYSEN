@@ -26,8 +26,6 @@ class TestActivateUaNotify(unittest.TestCase):
     def setUp(self):
         self._prev_bridges = getattr(bm, 'BRIDGES', None)
         self._prev_config = getattr(bm, 'CONFIG', None)
-        self._prev_late_join = dict(bm._LATE_JOIN_TARGETS)
-        bm._LATE_JOIN_TARGETS.clear()
         bm.CONFIG = {
             'SYSTEMS': {
                 'SYSTEM-1': {
@@ -62,8 +60,6 @@ class TestActivateUaNotify(unittest.TestCase):
             delattr(bm, 'CONFIG')
         else:
             bm.CONFIG = self._prev_config
-        bm._LATE_JOIN_TARGETS.clear()
-        bm._LATE_JOIN_TARGETS.update(self._prev_late_join)
 
     def test_already_active_refreshes_timer_without_notify(self):
         before = bm.BRIDGES['326'][0]['TIMER']
@@ -92,61 +88,21 @@ class TestActivateUaNotify(unittest.TestCase):
         self.assertTrue(bm.BRIDGES['326'][2]['ACTIVE'])
         notify.assert_called_once()
 
-    def test_hytera_activation_arms_midstream_late_join(self):
-        now = bm.time()
-        self.assertEqual(bm._HYTERA_LATE_JOIN_ARM_S, 0.120)
+    def test_hytera_key_up_activates_the_leg_like_any_repeater(self):
         with mock.patch.object(bm, 'notify_bridge_table_updated'):
             changed = bm.activate_ua_bridge_source('326', 'HYTERA', 1)
 
         self.assertTrue(changed)
         self.assertTrue(bm.BRIDGES['326'][3]['ACTIVE'])
-        self.assertFalse(
-            bm._late_join_active(
-                'HYTERA', 1, b'\x00\x01\x46', now))
-        self.assertTrue(
-            bm._late_join_active(
-                'HYTERA', 1, b'\x00\x01\x46',
-                now + bm._HYTERA_LATE_JOIN_ARM_S + 0.001))
 
-    def test_late_join_arm_expires_after_stream_timeout(self):
-        bm._arm_late_join_target(
-            'HYTERA', 1, b'\x00\x01\x46', 100.0)
-
-        self.assertFalse(
-            bm._late_join_active(
-                'HYTERA', 1, b'\x00\x01\x46',
-                100.001 + bm._LATE_JOIN_TIMEOUT_S))
-
-    def test_late_join_is_hytera_only_and_stream_bound(self):
-        tgid = b'\x00\x01\x46'
-        first_stream = b'\x01\x02\x03\x04'
-        other_stream = b'\x05\x06\x07\x08'
-
-        self.assertFalse(
-            bm._arm_late_join_target('SYSTEM-1', 1, tgid, 100.0))
-        self.assertFalse(
-            bm._late_join_active(
-                'SYSTEM-1', 1, tgid, 101.0, first_stream))
-
-        self.assertTrue(
-            bm._arm_late_join_target('HYTERA', 1, tgid, 100.0))
-        self.assertFalse(
-            bm._late_join_active(
-                'HYTERA', 1, tgid, 100.01, first_stream))
-        self.assertTrue(
-            bm._late_join_active(
-                'HYTERA', 1, tgid,
-                100.0 + bm._HYTERA_LATE_JOIN_ARM_S + 0.001,
-                first_stream))
-        self.assertFalse(
-            bm._late_join_active(
-                'HYTERA', 1, tgid,
-                100.0 + bm._HYTERA_LATE_JOIN_ARM_S + 0.001,
-                other_stream))
-
-    def test_late_join_reconstructs_full_hytera_sequence(self):
-        self.assertEqual(bm._late_join_wire_sequence(0x54, 341), 340)
-        self.assertEqual(bm._late_join_wire_sequence(0xe8, 745), 744)
+    def test_hytera_uses_the_same_slot_rules_as_hbp(self):
+        with open('bridge_master.py', encoding='utf-8') as fh:
+            source = fh.read()
+        self.assertNotIn('_late_join', source)
+        self.assertNotIn('_target_rx_call_active', source)
+        self.assertEqual(
+            source.count("and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < STREAM_TO)"),
+            2)
 
     def test_deferred_header_survives_hangtime_release_boundary(self):
         hangtime = 5.0
@@ -161,29 +117,6 @@ class TestActivateUaNotify(unittest.TestCase):
                 100.0,
                 105.0 + bm._HYTERA_DEFERRED_VHEAD_GRACE_S + 0.001,
                 hangtime))
-
-    def test_late_join_waits_for_rf_dekey(self):
-        tgid = b'\x00\x5b\xdc'
-        status = {
-            2: {
-                'RX_TGID': tgid,
-                'RX_TYPE': bm.HBPF_SLT_VHEAD,
-                'RX_TIME': 100.0,
-            },
-        }
-        self.assertTrue(
-            bm._target_rx_call_active(status, 2, tgid, 100.5))
-        self.assertTrue(
-            bm._target_rx_call_active(status, 2, tgid, 110.0))
-
-        status[2]['RX_TYPE'] = bm.HBPF_SLT_VTERM
-        self.assertFalse(
-            bm._target_rx_call_active(status, 2, tgid, 100.6))
-
-    def test_both_routing_paths_guard_active_rf_late_join(self):
-        with open('bridge_master.py', encoding='utf-8') as fh:
-            source = fh.read()
-        self.assertEqual(source.count('if _target_rx_call_active('), 2)
 
     def test_source_guard_no_ua_refreshed_notify(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
