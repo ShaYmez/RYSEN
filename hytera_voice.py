@@ -292,15 +292,13 @@ class HyteraVoiceTranslator:
     def _build_outbound(self, ts, packet_type, slot_type, source, destination,
                         payload, call_start=False, private_call=False):
         packet = bytearray(72)
-        # IPSC2 retains the EEEE1111 marker on every Voice A burst, including
-        # a late-entry stream.  Its EEEE call-start and all late-entry bursts
-        # use the normal 5A prefix; ordinary ongoing traffic uses zeroes.
+        # IPSC2's master downlink keeps 5A5A5A5A on every burst except Voice
+        # A, for the whole call, including the voice LC header. Voice A is
+        # EEEE1111. A zero prefix does not appear on that downlink.
         if slot_type == SLOT_VOICE_A:
             packet[:4] = b'\xee\xee\x11\x11'
-        elif self._out_late_join[ts] or call_start:
-            packet[:4] = b'\x5a' * 4
         else:
-            packet[:4] = b'\x00' * 4
+            packet[:4] = b'\x5a' * 4
         packet[4:8] = self._out_seq[ts].to_bytes(4, 'little')
         # Normal TS2 traffic uses the 0x40 packet-type bit. IPSC2's
         # capture-validated late entry uses ordinary master voice type 0x01

@@ -177,6 +177,7 @@ class TestHyteraOutboundVoice(unittest.TestCase):
         self.assertFalse(encoded[2])
         packet = encoded[1]
         self.assertEqual(packet[8], 0x41)
+        self.assertEqual(packet[:4], b'\x5a\x5a\x5a\x5a')
         self.assertEqual(packet[18:20], b'\x11\x11')
         self.assertEqual(packet[26:60],
                          dmrd_payload_to_hytera(self.payload))
@@ -193,7 +194,7 @@ class TestHyteraOutboundVoice(unittest.TestCase):
         self.assertTrue(paced)
         self.assertEqual(voice[4], 1)
         self.assertEqual(voice[8], 0x01)
-        self.assertEqual(voice[:4], b'\x00\x00\x00\x00')
+        self.assertEqual(voice[:4], b'\x5a\x5a\x5a\x5a')
         self.assertEqual(voice[18:20], b'\x77\x77')
         self.assertEqual(hytera_payload_to_dmrd(voice[26:60]), self.payload)
 
@@ -237,11 +238,19 @@ class TestHyteraOutboundVoice(unittest.TestCase):
 
     def test_voice_sync_uses_captured_a_burst_prefix(self):
         stream = b'\x10\x20\x30\x40'
-        self.translator.encode_group(dmrd(0x21, self.payload, stream))
+        _, header, _ = self.translator.encode_group(
+            dmrd(0x21, self.payload, stream))
+        self.assertEqual(header[:4], b'\x5a\x5a\x5a\x5a')
+        self.assertEqual(header[18:20], b'\x11\x11')
         _, packet, _ = self.translator.encode_group(
             dmrd(0x10, self.payload, stream))
         self.assertEqual(packet[:4], b'\xee\xee\x11\x11')
         self.assertEqual(packet[18:20], b'\xbb\xbb')
+        _, ongoing, paced = self.translator.encode_group(
+            dmrd(0x02, self.payload, stream))
+        self.assertTrue(paced)
+        self.assertEqual(ongoing[:4], b'\x5a\x5a\x5a\x5a')
+        self.assertEqual(ongoing[18:20], b'\x77\x77')
 
     def test_headerless_and_replaced_streams_get_call_start(self):
         first = self.translator.encode_group(
@@ -260,6 +269,7 @@ class TestHyteraOutboundVoice(unittest.TestCase):
             dmrd(0x03, self.payload, stream=b'\x01\x01\x01\x01'))
         self.assertTrue(voice[2])
         self.assertEqual(voice[1][8], 0x01)
+        self.assertEqual(voice[1][:4], b'\x5a\x5a\x5a\x5a')
 
         replacement = self.translator.encode_group(
             dmrd(0x04, self.payload, stream=b'\x02\x02\x02\x02'))

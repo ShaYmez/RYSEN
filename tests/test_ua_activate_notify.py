@@ -26,6 +26,8 @@ class TestActivateUaNotify(unittest.TestCase):
     def setUp(self):
         self._prev_bridges = getattr(bm, 'BRIDGES', None)
         self._prev_config = getattr(bm, 'CONFIG', None)
+        self._prev_late_join = dict(bm._LATE_JOIN_TARGETS)
+        bm._LATE_JOIN_TARGETS.clear()
         bm.CONFIG = {
             'SYSTEMS': {
                 'SYSTEM-1': {
@@ -60,6 +62,8 @@ class TestActivateUaNotify(unittest.TestCase):
             delattr(bm, 'CONFIG')
         else:
             bm.CONFIG = self._prev_config
+        bm._LATE_JOIN_TARGETS.clear()
+        bm._LATE_JOIN_TARGETS.update(self._prev_late_join)
 
     def test_already_active_refreshes_timer_without_notify(self):
         before = bm.BRIDGES['326'][0]['TIMER']
@@ -88,21 +92,25 @@ class TestActivateUaNotify(unittest.TestCase):
         self.assertTrue(bm.BRIDGES['326'][2]['ACTIVE'])
         notify.assert_called_once()
 
-    def test_hytera_key_up_activates_the_leg_like_any_repeater(self):
+    def test_hytera_key_up_joins_during_the_activation_headers(self):
+        now = bm.time()
         with mock.patch.object(bm, 'notify_bridge_table_updated'):
             changed = bm.activate_ua_bridge_source('326', 'HYTERA', 1)
 
         self.assertTrue(changed)
         self.assertTrue(bm.BRIDGES['326'][3]['ACTIVE'])
+        tgid = b'\x00\x01\x46'
+        self.assertFalse(bm._late_join_active('HYTERA', 1, tgid, now))
+        self.assertTrue(bm._late_join_active(
+            'HYTERA', 1, tgid, now + bm._HYTERA_LATE_JOIN_ARM_S + 0.001))
+        self.assertFalse(bm._arm_late_join_target('SYSTEM-1', 1, tgid, now))
 
-    def test_hytera_uses_the_same_slot_rules_as_hbp(self):
+    def test_hytera_join_bypasses_only_the_active_slot_hold(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
             source = fh.read()
-        self.assertNotIn('_late_join', source)
         self.assertNotIn('_target_rx_call_active', source)
-        self.assertEqual(
-            source.count("and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < STREAM_TO)"),
-            2)
+        self.assertEqual(source.count('if (not _late_join'), 4)
+        self.assertEqual(bm._HYTERA_LATE_JOIN_ARM_S, 0.120)
 
     def test_deferred_header_survives_hangtime_release_boundary(self):
         hangtime = 5.0
