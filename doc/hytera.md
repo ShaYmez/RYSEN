@@ -516,6 +516,9 @@ the value is non-zero.
 10. **Complete:** A8 firmware. GB7RE, an RD985 running `A8.00.09.001`,
     registered, carried voice, and was confirmed working by its sysop on
     1 October 2026 while the A9 repeater remained connected.
+11. **Complete:** live RSSI on Linked Systems. GB7NR TS2 TG 2352 showed
+    `-107 dBm` on 1 October 2026 after the RDAC call-state poll. START may
+    still be blank for the first second.
 
 Unknown packet variants, including reported 103-byte media packets, must be
 rejected or traced until capture-validated.

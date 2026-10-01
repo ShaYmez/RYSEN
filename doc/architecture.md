@@ -119,7 +119,7 @@ Optional host helpers in [scripts/](../scripts/) (`systemx-start`, `menu`, etc.)
 | `ipsc_master.py` | IPSC registration and opcode dispatch |
 | `ipsc_voice.py` | IPSC voice encode/decode + jitter buffer |
 | `ipsc_proxy.py` | Public 56002 front-end |
-| `hytera_master.py` | Hytera P2P/DMR/RDAC registration and dispatch |
+| `hytera_master.py` | Hytera P2P/DMR/RDAC registration, dispatch and live RSSI poll |
 | `hytera_voice.py` | Hytera voice translation, pacing and late entry |
 | `hytera_proxy.py` | NAT-aware public Hytera port triples |
 | `hotspot_proxy_v2.py` | HBP hotspot multiplexing |
