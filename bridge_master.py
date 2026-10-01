@@ -3,7 +3,7 @@
 ###############################################################################
 # Copyright (C) 2020 Simon Adlem, G7RZU <g7rzu@gb7fr.org.uk>  
 # Copyright (C) 2016-2019 Cortney T. Buffington, N0MJS <n0mjs@me.com>
-# Copyright (C) 2024-2026 Shane Daley, M0VUB <shane@freestar.network> (IPSC / SystemX)
+# Copyright (C) 2024-2026 Shane Daley, M0VUB <shane@freestar.network> (IPSC / Hytera / SystemX)
 #
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by

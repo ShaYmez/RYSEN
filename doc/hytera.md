@@ -4,6 +4,15 @@ Native Hytera support is developed on `feature/HYTERA` and field-tested with an
 RD985 running firmware `A9.02.03.009`. It is a separate protocol stack from
 Motorola IPSC.
 
+This is an independent interoperability implementation. It is not affiliated
+with, endorsed by, or derived from Hytera source code. Hytera's published
+application notes describe IP Multi-site Connect as Hytera's application-layer
+protocol and as a paid repeater feature. RYSEN does not enable that feature.
+The repeater owner must already have it authorised in CPS. The wire behaviour
+here was observed from an operator-owned RD985 connected to an operator-owned
+master. Hytera names are used only to identify the protocol and tested
+hardware.
+
 ## Test master
 
 - Hostname: `hytera.freestar.network`

@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
-"""Describe Hytera 72-byte UDP media from PCAP or PCAPNG captures.
-
-This deliberately has no RYSEN runtime dependency. It is intended for offline
-capture comparison and emits one deterministic JSON object per media packet.
-"""
+###############################################################################
+#   Describe Hytera 72-byte UDP media from PCAP or PCAPNG captures.
+#   This deliberately has no RYSEN runtime dependency. It is intended for
+#   offline capture comparison and emits one deterministic JSON object per
+#   media packet.
+#
+#   Copyright (C) 2026 Shane Daley, M0VUB <shane@freestar.network>
+#
+#   This program is free software; you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation; either version 3 of the License, or
+#   (at your option) any later version.
+###############################################################################
 
 import argparse
 from datetime import datetime, timezone
