@@ -28,13 +28,11 @@ on RD985 repeaters running `A9.02.03.009` and `A8.00.09.001`.
   OpenBridge v4/v5 already carry that byte. A Hytera repeater does not put
   the level in the voice frame; RYSEN keeps the RDAC session open, waits for
   the call-state event, then polls and copies the latest slot sample into
-  DMRD byte 54. Field-validated on GB7NR at `-107 dBm`. Classic OpenBridge
-  and Motorola IPSC are unchanged.
-- A8 firmware is field-validated. On 1 October 2026 GB7RE, repeater `235240`,
-  running `A8.00.09.001`, registered beside the A9 repeater and passed voice.
-  Its sysop confirmed operation.
+  DMRD byte 54. Classic OpenBridge and Motorola IPSC are unchanged.
+- A8 firmware is field-validated. An RD985 running `A8.00.09.001` registered
+  beside an A9 repeater and passed voice.
 
-See [doc/hytera.md](doc/hytera.md) for the protocol evidence and field results.
+See [doc/hytera.md](doc/hytera.md) for operator setup and supported behaviour.
 
 ## Version 1.5.4 (2026-09-22)
 

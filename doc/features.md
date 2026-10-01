@@ -172,17 +172,17 @@ Field-validated on RD985 repeaters running firmware `A9.02.03.009` and
 | Parrot 9990 | Clear normal-speed group and private/unit echo without duplicate unit relay |
 | Proxy | NAT-aware multi-repeater allocation, service redirect rewriting and byte-transparent media |
 | Monitor/selfcare | Hytera peer reporting, repeater ownership/statics and read-only RDAC metadata |
-| Live RSSI | Homebrew byte 54 on call start and a throttled in-call update; Hytera reads it from the RDAC call-state poll; Linked Systems showed `-107 dBm` on GB7NR |
-| A8 firmware | GB7RE (`A8.00.09.001`) registered beside the A9 repeater and passed voice on 1 October 2026 |
+| Live RSSI | Homebrew byte 54 on call start and a throttled in-call update; Hytera reads it from the RDAC call-state poll |
+| A8 firmware | RD985 `A8.00.09.001` registered beside an A9 repeater and passed voice |
 
-Full protocol and field-validation reference: [hytera.md](hytera.md).
+Operator setup: [hytera.md](hytera.md).
 
 ---
 
 ## Related documentation
 
 - [architecture.md](architecture.md) — stack overview
-- [hytera.md](hytera.md) — native Hytera protocol and field validation
+- [hytera.md](hytera.md) — native Hytera setup and supported behaviour
 - [options.md](options.md) — OPTIONS string syntax
 - [install.md](install.md) — Docker install
 - [selfcare.md](selfcare.md) — MariaDB selfcare

@@ -35,7 +35,7 @@ Must be run as **root** on Debian 10+, Pi OS, or recent Ubuntu. See [doc/install
 | [doc/selfcare.md](doc/selfcare.md) | MariaDB selfcare for hotspots, IPSC and Hytera |
 | [doc/ipsc.md](doc/ipsc.md) | Motorola IPSC reference (CPS, config, field tests) |
 | [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md) | IPSC future phases |
-| [doc/hytera.md](doc/hytera.md) | Native Hytera protocol, captures and field validation |
+| [doc/hytera.md](doc/hytera.md) | Native Hytera setup and supported behaviour |
 | [doc/hotspot-proxy-v2.md](doc/hotspot-proxy-v2.md) | Hotspot UDP proxy |
 | [doc/why-docker.md](doc/why-docker.md) | Why Docker is recommended |
 | [doc/satellite-proxy-repos.md](doc/satellite-proxy-repos.md) | Satellite proxy image workflow |
