@@ -53,6 +53,7 @@ from hytera_const import (
 )
 from hytera_rdac_meta import (
     HYTERA_RSSI_POLL_INTERVAL,
+    build_hrnp_ack,
     build_rdac_rssi_request,
     parse_rdac_channel,
     parse_rdac_identity,
@@ -531,6 +532,11 @@ class HyteraMasterMixin:
             return
         rssi[1] = reading[1]
         rssi[2] = reading[2]
+        sequence = int.from_bytes(data[6:8], 'big')
+        self._hytera_rdac_seq = sequence
+        if self._hytera_rdac_addr is not None:
+            self._send_rdac(
+                build_hrnp_ack(sequence), self._hytera_rdac_addr)
 
     def _poll_hytera_rssi(self, now):
         """Ask the repeater for both slot levels while it is sending voice."""
@@ -543,8 +549,6 @@ class HyteraMasterMixin:
             return
         self._hytera_rssi_polled_at = now
         sequence = getattr(self, '_hytera_rdac_seq', 0x17) & 0xffff
-        nxt = (sequence + 1) & 0xffff
-        self._hytera_rdac_seq = nxt or 1
         self._send_rdac(build_rdac_rssi_request(sequence), addr)
 
     def _stamp_hytera_rssi(self, dmrd):
@@ -619,6 +623,10 @@ class HyteraMasterMixin:
             self._send_rdac(RDAC_STEP12_REQUEST_2, addr)
         elif step == 13 and data.startswith(RDAC_STEP12_RESPONSE):
             self._hytera_rdac_step = 14
+            if len(data) >= 12:
+                sequence = int.from_bytes(data[6:8], 'big')
+                self._hytera_rdac_seq = sequence
+                self._send_rdac(build_hrnp_ack(sequence), addr)
             self._publish_hytera_rdac_metadata()
             logger.info('(%s) Hytera RDAC identity exchange completed',
                         self._system)

@@ -71,6 +71,14 @@ def hrnp_checksum(packet):
     return (~total) & 0xffff
 
 
+def build_hrnp_ack(sequence):
+    """Acknowledge an inbound HRNP transaction using its packet number."""
+    packet = bytearray.fromhex('7e04001020100000000c0000')
+    packet[6:8] = (sequence & 0xffff).to_bytes(2, 'big')
+    packet[10:12] = hrnp_checksum(packet).to_bytes(2, 'big')
+    return bytes(packet)
+
+
 def build_rdac_rssi_request(sequence):
     """Master-to-repeater RSSI poll. Sequence is the HRNP packet number."""
     packet = bytearray(12 + len(RDAC_RSSI_REQUEST_BODY))

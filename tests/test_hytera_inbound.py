@@ -13,6 +13,7 @@ from hytera_const import (
 )
 from hytera_master import HyteraMasterMixin
 from hytera_rdac_meta import (
+    build_hrnp_ack,
     build_rdac_rssi_request,
     parse_rdac_channel,
     parse_rdac_identity,
@@ -708,6 +709,9 @@ class TestHyteraProxyControl(unittest.TestCase):
             '7e040000102000180022b91d02d4820f0000179703000180000048c30000a8c22603')
 
         self.assertEqual(build_rdac_rssi_request(6), request)
+        self.assertEqual(
+            build_hrnp_ack(6),
+            bytes.fromhex('7e04001020100006000c61c9'))
         self.assertEqual(parse_rdac_rssi(reply), {
             'repeater_id': 235287, 1: 0, 2: 71,
         })
@@ -731,6 +735,9 @@ class TestHyteraProxyControl(unittest.TestCase):
 
         self.master.hytera_rdac_received(reply, ('172.16.238.31', 50005))
         self.assertEqual(self.master._hytera_rssi, {1: 0, 2: 71})
+        self.assertEqual(
+            self.master._hytera_services['rdac'].transport.writes[-1][0],
+            build_hrnp_ack(6))
 
         self.master._hytera_voice = HyteraVoiceTranslator(
             peer_id=235287, stream_factory=lambda: b'\x01\x02\x03\x04')
@@ -753,7 +760,7 @@ class TestHyteraProxyControl(unittest.TestCase):
         self.assertEqual(received[0][9][54], 71)
         header[4] = (header[4] + 1) & 0xff
         self.master.hytera_dmr_received(bytes(header), ('172.16.238.31', 50001))
-        self.assertEqual(len(writes), 1)
+        self.assertEqual(len(writes), 2)
 
     def test_rdac_metadata_parsers_reject_short_packets(self):
         self.assertEqual(parse_rdac_identity(b'\x7e\x04\x00\x00'), {})
