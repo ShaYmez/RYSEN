@@ -292,25 +292,29 @@ class HyteraVoiceTranslator:
     def _build_outbound(self, ts, packet_type, slot_type, source, destination,
                         payload, call_start=False, private_call=False):
         packet = bytearray(72)
-        # IPSC2's master downlink keeps 5A5A5A5A on every burst except Voice
-        # A, for the whole call, including the voice LC header. Voice A is
-        # EEEE1111. A zero prefix does not appear on that downlink.
-        if slot_type == SLOT_VOICE_A:
+        # The field-proven RYSEN 1111 header is zero-prefixed. IPSC2 does not
+        # send that header form: its master downlink uses 5A5A5A5A on EEEE,
+        # ordinary voice and terminators. The BBBB envelope (DMR Voice E)
+        # uses EEEE1111.
+        if slot_type == SLOT_VOICE_E:
             packet[:4] = b'\xee\xee\x11\x11'
+        elif slot_type == SLOT_VOICE_LC_HEADER:
+            packet[:4] = b'\x00' * 4
         else:
             packet[:4] = b'\x5a' * 4
         packet[4:8] = self._out_seq[ts].to_bytes(4, 'little')
-        # Normal TS2 traffic uses the 0x40 packet-type bit. IPSC2's
-        # capture-validated late entry uses ordinary master voice type 0x01
-        # on both slots, while retaining the slot marker at bytes 16:18.
-        packet[8] = packet_type | (
-            0x40 if ts == 2 and not self._out_late_join[ts] else 0)
+        # IPSC2 master-to-repeater traffic uses 01/02/03 on both slots. The
+        # 0x40 bit is present in repeater-to-master traffic, not TS2 downlink.
+        packet[8] = packet_type
         packet[9:16] = b'\x00\x05\x01' + bytes((ts,)) + b'\x00\x00\x00'
         packet[16:18] = b'\x11\x11' if ts == 1 else b'\x22\x22'
         packet[18:20] = slot_type.to_bytes(2, 'big')
-        packet[20:22] = b'\x11\x11'
-        packet[22:24] = b'\x11\x11' if call_start else b'\x00\x00'
-        packet[24:26] = b'\x00\x00' if call_start else b'\x10\x00'
+        if slot_type == SLOT_VOICE_LC_TERMINATOR:
+            packet[20:26] = b'\x00' * 6
+        else:
+            packet[20:22] = b'\x11\x11'
+            packet[22:24] = b'\x11\x11' if call_start else b'\x00\x00'
+            packet[24:26] = b'\x00\x00' if call_start else b'\x10\x00'
         packet[26:60] = payload
         packet[62] = CALL_PRIVATE if private_call else CALL_GROUP
         packet[63:67] = _wire_id(destination)

@@ -21,12 +21,12 @@ LINK_LINUX_SLL2 = 276
 SLOT_NAMES = {
     0x1111: 'voice_lc_header',
     0x2222: 'voice_lc_terminator',
-    0x7777: 'voice_c',
-    0x8888: 'voice_d',
-    0x9999: 'voice_e',
-    0xAAAA: 'voice_f',
-    0xBBBB: 'voice_a',
-    0xCCCC: 'voice_b',
+    0x7777: 'voice_a',
+    0x8888: 'voice_b',
+    0x9999: 'voice_c',
+    0xAAAA: 'voice_d',
+    0xBBBB: 'voice_e',
+    0xCCCC: 'voice_f',
     0xDDDD: 'wakeup',
     0xEEEE: 'hytera_sync',
 }

@@ -115,12 +115,12 @@ class TestHyteraInboundVoice(unittest.TestCase):
     def test_captured_voice_cycle_and_terminator_flags(self):
         self.assertIsNotNone(self.translator.translate_group(fixture('header')))
         expected = {
-            'c': 0x02,
-            'd': 0x03,
-            'e': 0x04,
-            'f': 0x05,
-            'a': 0x10,
-            'b': 0x01,
+            'c': 0x10,
+            'd': 0x01,
+            'e': 0x02,
+            'f': 0x03,
+            'a': 0x04,
+            'b': 0x05,
             'term': 0x22,
         }
         for name in ('c', 'd', 'e', 'f'):
@@ -176,9 +176,11 @@ class TestHyteraOutboundVoice(unittest.TestCase):
         self.assertEqual(encoded[0], 2)
         self.assertFalse(encoded[2])
         packet = encoded[1]
-        self.assertEqual(packet[8], 0x41)
-        self.assertEqual(packet[:4], b'\x5a\x5a\x5a\x5a')
-        self.assertEqual(packet[18:20], b'\x11\x11')
+        self.assertEqual(
+            packet[:26],
+            bytes.fromhex(
+                '00000000000000000100050102000000'
+                '22221111111100001000'))
         self.assertEqual(packet[26:60],
                          dmrd_payload_to_hytera(self.payload))
         self.assertEqual(packet[63:67], (2350 << 8).to_bytes(4, 'little'))
@@ -195,7 +197,8 @@ class TestHyteraOutboundVoice(unittest.TestCase):
         self.assertEqual(voice[4], 1)
         self.assertEqual(voice[8], 0x01)
         self.assertEqual(voice[:4], b'\x5a\x5a\x5a\x5a')
-        self.assertEqual(voice[18:20], b'\x77\x77')
+        self.assertEqual(voice[18:20], b'\x99\x99')
+        self.assertEqual(voice[20:26], b'\x11\x11\x00\x00\x10\x00')
         self.assertEqual(hytera_payload_to_dmrd(voice[26:60]), self.payload)
 
         _, term, paced = self.translator.encode_group(
@@ -203,13 +206,15 @@ class TestHyteraOutboundVoice(unittest.TestCase):
         self.assertTrue(paced)
         self.assertEqual(term[4], 2)
         self.assertEqual(term[8], 0x03)
+        self.assertEqual(term[:4], b'\x5a\x5a\x5a\x5a')
         self.assertEqual(term[18:20], b'\x22\x22')
+        self.assertEqual(term[20:26], b'\x00' * 6)
 
     def test_ts2_and_private_call_gate(self):
         ts, packet, _ = self.translator.encode_group(
             dmrd(0xa1, self.payload, destination=2350))
         self.assertEqual(ts, 2)
-        self.assertEqual(packet[8], 0x41)
+        self.assertEqual(packet[8], 0x01)
         self.assertEqual(packet[12], 2)
         self.assertEqual(packet[16:18], b'\x22\x22')
         self.assertEqual(packet[63:67], (2350 << 8).to_bytes(4, 'little'))
@@ -236,21 +241,42 @@ class TestHyteraOutboundVoice(unittest.TestCase):
         self.assertTrue(paced)
         self.assertEqual(voice[62], 0x00)
 
-    def test_voice_sync_uses_captured_a_burst_prefix(self):
+    def test_voice_cycle_uses_captured_envelope_prefixes(self):
         stream = b'\x10\x20\x30\x40'
         _, header, _ = self.translator.encode_group(
             dmrd(0x21, self.payload, stream))
-        self.assertEqual(header[:4], b'\x5a\x5a\x5a\x5a')
+        self.assertEqual(header[:4], b'\x00\x00\x00\x00')
         self.assertEqual(header[18:20], b'\x11\x11')
-        _, packet, _ = self.translator.encode_group(
+        _, sync, _ = self.translator.encode_group(
             dmrd(0x10, self.payload, stream))
-        self.assertEqual(packet[:4], b'\xee\xee\x11\x11')
-        self.assertEqual(packet[18:20], b'\xbb\xbb')
+        self.assertEqual(sync[:4], b'\x5a\x5a\x5a\x5a')
+        self.assertEqual(sync[18:20], b'\x77\x77')
+        _, e_burst, _ = self.translator.encode_group(
+            dmrd(0x04, self.payload, stream))
+        self.assertEqual(e_burst[:4], b'\xee\xee\x11\x11')
+        self.assertEqual(e_burst[18:20], b'\xbb\xbb')
         _, ongoing, paced = self.translator.encode_group(
             dmrd(0x02, self.payload, stream))
         self.assertTrue(paced)
         self.assertEqual(ongoing[:4], b'\x5a\x5a\x5a\x5a')
-        self.assertEqual(ongoing[18:20], b'\x77\x77')
+        self.assertEqual(ongoing[18:20], b'\x99\x99')
+
+    def test_outbound_burst_phase_matches_ipsc2_downlink(self):
+        stream = b'\x50\x60\x70\x80'
+        self.translator.encode_group(dmrd(0x21, self.payload, stream))
+        expected = (
+            (0x10, b'\x77\x77', b'\x5a\x5a\x5a\x5a'),
+            (0x01, b'\x88\x88', b'\x5a\x5a\x5a\x5a'),
+            (0x02, b'\x99\x99', b'\x5a\x5a\x5a\x5a'),
+            (0x03, b'\xaa\xaa', b'\x5a\x5a\x5a\x5a'),
+            (0x04, b'\xbb\xbb', b'\xee\xee\x11\x11'),
+            (0x05, b'\xcc\xcc', b'\x5a\x5a\x5a\x5a'),
+        )
+        for flags, envelope, prefix in expected:
+            _, packet, _ = self.translator.encode_group(
+                dmrd(flags, self.payload, stream))
+            self.assertEqual(packet[18:20], envelope)
+            self.assertEqual(packet[:4], prefix)
 
     def test_headerless_and_replaced_streams_get_call_start(self):
         first = self.translator.encode_group(
@@ -288,8 +314,8 @@ class TestHyteraOutboundVoice(unittest.TestCase):
         self.assertFalse(paced)
         self.assertEqual(voice[4:8], b'\x54\x01\x00\x00')
         self.assertEqual(voice[8], 0x01)
-        self.assertEqual(voice[18:20], b'\x99\x99')
-        self.assertEqual(voice[:4], b'\x5a\x5a\x5a\x5a')
+        self.assertEqual(voice[18:20], b'\xbb\xbb')
+        self.assertEqual(voice[:4], b'\xee\xee\x11\x11')
         self.assertEqual(int.from_bytes(voice[63:67], 'little') >> 8, 23426)
         self.assertEqual(int.from_bytes(voice[67:71], 'little') >> 8, 2340189)
 
@@ -301,14 +327,15 @@ class TestHyteraOutboundVoice(unittest.TestCase):
         self.assertEqual(next_voice[4:8], b'\x55\x01\x00\x00')
         self.assertEqual(next_voice[8], 0x01)
         self.assertEqual(next_voice[:4], b'\x5a\x5a\x5a\x5a')
+        self.assertEqual(next_voice[18:20], b'\xcc\xcc')
 
-        _, a_voice, paced = self.translator.encode_group(
+        _, sync_voice, paced = self.translator.encode_group(
             dmrd(0x10, self.payload, stream=b'\x03\x03\x03\x03',
                  source=2340189, destination=23426, sequence=86),
             late_join=True)
         self.assertTrue(paced)
-        self.assertEqual(a_voice[18:20], b'\xbb\xbb')
-        self.assertEqual(a_voice[:4], b'\xee\xee\x11\x11')
+        self.assertEqual(sync_voice[18:20], b'\x77\x77')
+        self.assertEqual(sync_voice[:4], b'\x5a\x5a\x5a\x5a')
 
         ts2 = HyteraVoiceTranslator(peer_id=235287)
         _, ts2_voice, _ = ts2.encode_group(
@@ -317,7 +344,7 @@ class TestHyteraOutboundVoice(unittest.TestCase):
             late_join=True, late_join_sequence=1029)
         self.assertEqual(ts2_voice[8], 0x01)
         self.assertEqual(ts2_voice[16:18], b'\x22\x22')
-        self.assertEqual(ts2_voice[18:20], b'\x99\x99')
+        self.assertEqual(ts2_voice[18:20], b'\xbb\xbb')
 
     def test_midstream_join_reacquires_an_existing_normal_stream_once(self):
         stream = b'\x04\x04\x04\x04'
@@ -328,7 +355,7 @@ class TestHyteraOutboundVoice(unittest.TestCase):
             dmrd(0x82, self.payload, stream, source=5301034,
                  destination=23516, sequence=84))
         self.assertTrue(paced)
-        self.assertEqual(normal[8], 0x41)
+        self.assertEqual(normal[8], 0x01)
 
         _, resumed, paced = self.translator.encode_group(
             dmrd(0x83, self.payload, stream, source=5301034,
@@ -831,7 +858,7 @@ class TestHyteraOutboundDispatch(unittest.TestCase):
         self.clock.advance(0.001)
         self.assertEqual(len(writes), 1)
         self.assertEqual(writes[0][0][8], 0x01)
-        self.assertEqual(writes[0][0][18:20], b'\x99\x99')
+        self.assertEqual(writes[0][0][18:20], b'\xbb\xbb')
         self.clock.advance(0.060)
         self.assertEqual(len(writes), 2)
         self.clock.advance(0.060)

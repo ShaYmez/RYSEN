@@ -4399,7 +4399,11 @@ class routerHBP(HBSYSTEM):
                     self._play_reflector_announcement(
                         _say, _rf_src, _peer_id, _slot, _stream_id, _int_dst_id)
 
-            if (not is_reflector_private_destination(_int_dst_id)
+            # PARROT playback was already relayed by the dedicated branch
+            # above. Sending it through the generic unit path as well queues
+            # every AMBE burst twice and stretches private echo to ~2x length.
+            if (self._system != 'PARROT'
+                    and not is_reflector_private_destination(_int_dst_id)
                     and _int_dst_id not in (8, 9)):
                 self._forward_unit_voice(
                     _dst_id, _slot, _bits, _data, dmrpkt, _stream_id, _peer_id)

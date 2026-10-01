@@ -54,12 +54,15 @@ CALL_GROUP = 0x01
 
 SLOT_VOICE_LC_HEADER = 0x1111
 SLOT_VOICE_LC_TERMINATOR = 0x2222
-SLOT_VOICE_C = 0x7777
-SLOT_VOICE_D = 0x8888
-SLOT_VOICE_E = 0x9999
-SLOT_VOICE_F = 0xAAAA
-SLOT_VOICE_A = 0xBBBB
-SLOT_VOICE_B = 0xCCCC
+# Hytera's envelope markers do not begin at BBBB. Capture comparison against
+# the successful IPSC2 downlink proves that the DMR A-F burst cycle begins at
+# 7777. BBBB is DMR Voice E and carries Hytera's EEEE1111 envelope prefix.
+SLOT_VOICE_A = 0x7777
+SLOT_VOICE_B = 0x8888
+SLOT_VOICE_C = 0x9999
+SLOT_VOICE_D = 0xAAAA
+SLOT_VOICE_E = 0xBBBB
+SLOT_VOICE_F = 0xCCCC
 SLOT_WAKEUP = 0xDDDD
 SLOT_HYTERA_SYNC = 0xEEEE
 
