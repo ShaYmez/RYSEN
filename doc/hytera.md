@@ -21,6 +21,10 @@ hardware.
 - Voice and Data UDP: `50001`
 - RDAC UDP: `50002`
 
+Every repeater uses those three ports. The proxy assigns a free internal slot
+after registration and redirects that repeater onto it. A second repeater is
+not programmed to `50003/50004/50005`.
+
 The CPS repeater type is `Slave`. Network Authentication is blank. Voice and
 Data and RDAC are enabled. Registration, service negotiation and inbound group
 voice routing are field-validated. Capture-derived outbound group voice is
@@ -462,10 +466,16 @@ rejected or traced until capture-validated.
 
 ## Multi-repeater proxy
 
-`hytera_proxy.py` is the Hytera equivalent of the IPSC proxy. Its first public
-session preserves the BrandMeister CPS ports: P2P `50000`, DMR `50001`, RDAC
-`50002`. Nine further public triples continue from `50003–50029`, while RYSEN
-runs ten private generated backend triples from `50003–50032` with
+`hytera_proxy.py` is the Hytera equivalent of the IPSC proxy. Every repeater
+is programmed with the same BrandMeister-compatible CPS ports: P2P `50000`,
+DMR `50001`, and RDAC `50002`. A registration from a new public address takes
+the next free slot. The first repeater stays on `50000/50001/50002`. A second
+repeater, still programmed to those same ports, is redirected to public
+DMR/RDAC `50004/50005`. Its P2P registration remains on `50000`. Further
+repeaters continue through the public triples
+`50003–50029`. The sysop does not program those later ports.
+
+RYSEN runs ten private generated backend triples from `50003–50032` with
 `PROXY_CONTROL: True`. Each generated master must also set
 `PROXY_CONTROL_IP` to the sidecar's trusted source address (the supplied
 Compose network uses `172.16.238.31`); lifecycle control from any other source
@@ -478,8 +488,11 @@ the extracted 24-bit ID to the session. A duplicate or blacklisted ID releases
 the session. The proxy separately tracks the NAT source endpoint of P2P, DMR
 and RDAC traffic; service redirects are rewritten from backend to public
 ports. A fresh P2P registration clears stale DMR/RDAC endpoints and identity
-before service renegotiation. Repeaters behind the same NAT can use separate
-public triples (`50000`, `50003`, and so on) without sharing a session.
+before service renegotiation. Two repeaters behind the same public address
+cannot both register on `50000`, because the proxy identifies a session by
+that address. The second repeater then uses the next master port, `50003`,
+and the proxy keeps the two sessions separate. Repeaters at different sites
+keep the normal `50000/50001/50002` programming.
 
 Run it with `python3 hytera_proxy.py -c hytera-proxy.cfg`, using
 `hytera-proxy-SAMPLE.cfg` as the template.
@@ -500,9 +513,10 @@ Validated on September 27, 2026:
   all pass through the proxy.
 - A quick power cycle replaces the existing `HYTERA-0` session and restores
   both service redirects without waiting for the idle timeout.
-- A second dummy client, from a different source address, is allocated
-  `HYTERA-1` and public DMR/RDAC ports `50004/50005` while the RD985 remains
-  on the first slot. A second physical repeater has not been tested.
+- A second dummy client, from a different source address, also registered on
+  `50000/50001/50002`. The proxy allocated `HYTERA-1` and rewrote its service
+  redirect to public DMR/RDAC `50004/50005` while the RD985 remained on the
+  first slot. A second physical repeater has not been tested.
 - Startup requests originate from the repeater's DMR and RDAC source ports,
   but redirect replies must remain on the registered P2P socket.
 
