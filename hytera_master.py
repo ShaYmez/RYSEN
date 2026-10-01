@@ -51,7 +51,13 @@ from hytera_const import (
     media_timeslot,
     p2p_command_type,
 )
-from hytera_rdac_meta import parse_rdac_channel, parse_rdac_identity
+from hytera_rdac_meta import (
+    HYTERA_RSSI_POLL_INTERVAL,
+    build_rdac_rssi_request,
+    parse_rdac_channel,
+    parse_rdac_identity,
+    parse_rdac_rssi,
+)
 from hytera_voice import HyteraOutboundPacer, HyteraVoiceTranslator
 from selfcare_db import build_ipsc_seed_options
 
@@ -153,6 +159,9 @@ class HyteraMasterMixin:
         self._hytera_proxy_info = None
         self._hytera_rdac_step = 0
         self._hytera_rdac_meta = {}
+        self._hytera_rdac_seq = 0x17
+        self._hytera_rssi = {1: 0, 2: 0}
+        self._hytera_rssi_polled_at = 0.0
         self._hytera_voice = HyteraVoiceTranslator(
             self._config.get('HYTERA_REPEATER_ID', 0))
         self._hytera_outbound = HyteraOutboundPacer(
@@ -276,6 +285,9 @@ class HyteraMasterMixin:
         self._hytera_proxy_info = None
         self._hytera_rdac_step = 0
         self._hytera_rdac_meta = {}
+        self._hytera_rdac_seq = 0x17
+        self._hytera_rssi = {1: 0, 2: 0}
+        self._hytera_rssi_polled_at = 0.0
         if self._hytera_peer_id in self._peers:
             del self._peers[self._hytera_peer_id]
             if self._report is not None:
@@ -422,6 +434,9 @@ class HyteraMasterMixin:
             self._touch_hytera_peer(addr)
             return
         dmrd = self._hytera_voice.translate_voice(data)
+        if dmrd is not None:
+            self._poll_hytera_rssi(time())
+            dmrd = self._stamp_hytera_rssi(dmrd)
         if dmrd is None:
             if media_slot_type(data) in (SLOT_WAKEUP, SLOT_HYTERA_SYNC):
                 logger.debug(
@@ -495,12 +510,55 @@ class HyteraMasterMixin:
             return
         self._hytera_rdac_addr = addr
         self._touch_hytera_peer(addr)
+        self._note_hytera_rssi(data)
         logger.debug(
             '(%s) Hytera RDAC packet from %s:%s len=%s%s',
             self._system, addr[0], addr[1], len(data),
             ' data=' + data.hex() if self._hytera_trace else '')
         if self._hytera_rdac_enabled:
             self._advance_rdac_identification(data, addr)
+
+    def _note_hytera_rssi(self, data):
+        """Store a capture-validated RDAC slot reading for the registered peer."""
+        reading = parse_rdac_rssi(data)
+        if reading is None:
+            return
+        peer = int_id(self._hytera_peer_id)
+        if peer and reading['repeater_id'] != peer:
+            return
+        rssi = getattr(self, '_hytera_rssi', None)
+        if rssi is None:
+            return
+        rssi[1] = reading[1]
+        rssi[2] = reading[2]
+
+    def _poll_hytera_rssi(self, now):
+        """Ask the repeater for both slot levels while it is sending voice."""
+        if getattr(self, '_hytera_rdac_step', 0) < 14:
+            return
+        addr = getattr(self, '_hytera_rdac_addr', None)
+        if addr is None:
+            return
+        if now - getattr(self, '_hytera_rssi_polled_at', 0.0) < HYTERA_RSSI_POLL_INTERVAL:
+            return
+        self._hytera_rssi_polled_at = now
+        sequence = getattr(self, '_hytera_rdac_seq', 0x17) & 0xffff
+        nxt = (sequence + 1) & 0xffff
+        self._hytera_rdac_seq = nxt or 1
+        self._send_rdac(build_rdac_rssi_request(sequence), addr)
+
+    def _stamp_hytera_rssi(self, dmrd):
+        """Overlay the latest RDAC sample onto DMRD byte 54 for this slot."""
+        rssi = getattr(self, '_hytera_rssi', None)
+        if not rssi or len(dmrd) < 55:
+            return dmrd
+        slot = 2 if dmrd[15] & 0x80 else 1
+        value = rssi.get(slot, 0) & 0xff
+        if not value or dmrd[54] == value:
+            return dmrd
+        patched = bytearray(dmrd)
+        patched[54] = value
+        return bytes(patched)
 
     def _send_rdac(self, packet, addr):
         protocol = self._hytera_services.get('rdac')

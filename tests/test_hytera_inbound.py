@@ -12,7 +12,12 @@ from hytera_const import (
     RDAC_STEP3_REQUEST,
 )
 from hytera_master import HyteraMasterMixin
-from hytera_rdac_meta import parse_rdac_channel, parse_rdac_identity
+from hytera_rdac_meta import (
+    build_rdac_rssi_request,
+    parse_rdac_channel,
+    parse_rdac_identity,
+    parse_rdac_rssi,
+)
 from hytera_voice import (
     HyteraOutboundPacer,
     HyteraVoiceTranslator,
@@ -693,6 +698,62 @@ class TestHyteraProxyControl(unittest.TestCase):
 
         self.assertEqual(self.master._hytera_rdac_step, 6)
         self.assertEqual(writes, [])
+
+    def test_rdac_rssi_poll_matches_ipsc2_and_stamps_the_busy_slot(self):
+        request = bytes.fromhex(
+            '7e040000201000060019d91b02d40206006400000001807103')
+        reply = bytes.fromhex(
+            '7e040000102000060022b92f02d4820f0000179703000180000048c300008ec24003')
+        later = bytes.fromhex(
+            '7e040000102000180022b91d02d4820f0000179703000180000048c30000a8c22603')
+
+        self.assertEqual(build_rdac_rssi_request(6), request)
+        self.assertEqual(parse_rdac_rssi(reply), {
+            'repeater_id': 235287, 1: 0, 2: 71,
+        })
+        self.assertEqual(parse_rdac_rssi(later)[2], 84)
+        broken = bytearray(reply)
+        broken[30] ^= 0xff
+        self.assertIsNone(parse_rdac_rssi(bytes(broken)))
+
+        self.master._hytera_registered = True
+        self.master._hytera_addr = ('172.16.238.31', 50000)
+        self.master._hytera_peer_id = (235287).to_bytes(4, 'big')
+        self.master._hytera_rssi = {1: 0, 2: 0}
+        self.master._hytera_rdac_step = 14
+        self.master._hytera_rdac_seq = 6
+        self.master._hytera_rssi_polled_at = 0.0
+        self.master._hytera_rdac_addr = ('172.16.238.31', 50005)
+        self.master._hytera_rdac_enabled = False
+        self.master._hytera_trace = False
+        self.master._hytera_last_seen = 0
+        self.master._peers = {}
+
+        self.master.hytera_rdac_received(reply, ('172.16.238.31', 50005))
+        self.assertEqual(self.master._hytera_rssi, {1: 0, 2: 71})
+
+        self.master._hytera_voice = HyteraVoiceTranslator(
+            peer_id=235287, stream_factory=lambda: b'\x01\x02\x03\x04')
+        self.master._config = {'USE_ACL': False}
+        self.master._CONFIG = {'GLOBAL': {'USE_ACL': False}}
+        self.master._hytera_zero_peer_warned = False
+        self.master._system = 'HYTERA-1'
+        received = []
+        self.master.dmrd_received = lambda *args: received.append(args)
+        header = bytearray(bytes.fromhex(
+            '5a5a5a5a1c0000004100050101000000111111111111000040990103b8091805'
+            '28358067c1b26d4457ff5dd7def510328804803e2094c143038c005bb8090100'
+            'eb0000001fd72300'))
+        header[16:18] = b'\x22\x22'
+        writes = self.master._hytera_services['rdac'].transport.writes
+
+        self.master.hytera_dmr_received(bytes(header), ('172.16.238.31', 50001))
+
+        self.assertEqual(writes[-1][0], request)
+        self.assertEqual(received[0][9][54], 71)
+        header[4] = (header[4] + 1) & 0xff
+        self.master.hytera_dmr_received(bytes(header), ('172.16.238.31', 50001))
+        self.assertEqual(len(writes), 1)
 
     def test_rdac_metadata_parsers_reject_short_packets(self):
         self.assertEqual(parse_rdac_identity(b'\x7e\x04\x00\x00'), {})

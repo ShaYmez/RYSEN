@@ -172,7 +172,7 @@ Field-validated on RD985 repeaters running firmware `A9.02.03.009` and
 | Parrot 9990 | Clear normal-speed group and private/unit echo without duplicate unit relay |
 | Proxy | NAT-aware multi-repeater allocation, service redirect rewriting and byte-transparent media |
 | Monitor/selfcare | Hytera peer reporting, repeater ownership/statics and read-only RDAC metadata |
-| Live RSSI | Homebrew byte 54 on call start and a throttled in-call update; Linked Systems shows `-N dBm` |
+| Live RSSI | Homebrew byte 54 on call start and a throttled in-call update; Hytera reads it from the RDAC slot poll; Linked Systems shows `-N dBm` |
 | A8 firmware | GB7RE (`A8.00.09.001`) registered beside the A9 repeater and passed voice on 1 October 2026 |
 
 Full protocol and field-validation reference: [hytera.md](hytera.md).
