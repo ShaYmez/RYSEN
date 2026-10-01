@@ -160,7 +160,8 @@ Field-hardened on the FreeSTAR fleet after USA Homebrew RPTPING stalls and STAT 
 
 ## Unreleased — Native Hytera
 
-Field-validated on an RD985 running firmware `A9.02.03.009`.
+Field-validated on RD985 repeaters running firmware `A9.02.03.009` and
+`A8.00.09.001`.
 
 | Feature | Detail |
 |---------|--------|
@@ -171,9 +172,9 @@ Field-validated on an RD985 running firmware `A9.02.03.009`.
 | Parrot 9990 | Clear normal-speed group and private/unit echo without duplicate unit relay |
 | Proxy | NAT-aware multi-repeater allocation, service redirect rewriting and byte-transparent media |
 | Monitor/selfcare | Hytera peer reporting, repeater ownership/statics and read-only RDAC metadata |
+| A8 firmware | GB7RE (`A8.00.09.001`) registered beside the A9 repeater and passed voice on 1 October 2026 |
 
 Full protocol and field-validation reference: [hytera.md](hytera.md).
-A8 firmware compatibility remains a separate capture-backed validation gate.
 
 ---
 

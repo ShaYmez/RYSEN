@@ -3,7 +3,7 @@
 ## Unreleased — Native Hytera
 
 Capture-derived native Hytera IP Multi-site Connect support is field-validated
-on an RD985 running `A9.02.03.009`.
+on RD985 repeaters running `A9.02.03.009` and `A8.00.09.001`.
 
 - Three-port P2P/DMR/RDAC registration, service redirects, keepalives, identity
   discovery and read-only repeater metadata.
@@ -23,9 +23,11 @@ on an RD985 running `A9.02.03.009`.
   forwarding and clean session replacement after a repeater power cycle.
 - Regression suite covers capture fixtures, burst phase, identity, pacing,
   late-entry sequence continuity, proxy lifecycle and parrot routing.
+- A8 firmware is field-validated. On 1 October 2026 GB7RE, repeater `235240`,
+  running `A8.00.09.001`, registered beside the A9 repeater and passed voice.
+  Its sysop confirmed operation.
 
-See [doc/hytera.md](doc/hytera.md) for the protocol evidence, field results and
-remaining A8 firmware compatibility gate.
+See [doc/hytera.md](doc/hytera.md) for the protocol evidence and field results.
 
 ## Version 1.5.4 (2026-09-22)
 

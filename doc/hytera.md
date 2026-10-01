@@ -1,8 +1,8 @@
 # Native Hytera IP Multi-site Connect
 
-Native Hytera support is developed on `feature/HYTERA` and field-tested with an
-RD985 running firmware `A9.02.03.009`. It is a separate protocol stack from
-Motorola IPSC.
+Native Hytera support is developed on `feature/HYTERA` and field-tested with
+RD985 repeaters running firmware `A9.02.03.009` and `A8.00.09.001`. It is a
+separate protocol stack from Motorola IPSC.
 
 This is an independent interoperability implementation. It is not affiliated
 with, endorsed by, or derived from Hytera source code. Hytera's published
@@ -307,11 +307,9 @@ IPSC2-oracle replay through the test-server/proxy path to distinguish an
 unobserved native packet semantic from repeater session-state behaviour. Do
 not make further framing, timing or sequence changes without that evidence.
 
-Compatibility with an A8.09.00.001 RD985 remains unverified until that unit is
-available. Its validation starts with the existing A9 cold-boot and normal
-call matrix, followed by the same controlled IPSC2 late-entry replay. Firmware
-compatibility must be recorded from capture results, not inferred from the
-shared IP Multi-site Connect configuration.
+An earlier note left A8 compatibility open until an A8 RD985 could be tested.
+That test is recorded below. The repeater reported `A8.00.09.001`, rather than
+the `A8.09.00.001` string expected when the gate was written.
 
 ### Matched IPSC2 late-entry oracle
 
@@ -440,6 +438,27 @@ static becomes the admitted call.
 6. **Complete:** mid-stream join on active TG `67498` produces immediate RF
    audio and correct display identity.
 
+### A8 RD985 field validation
+
+On 1 October 2026, GB7RE registered to `hytera.freestar.network` through the
+shared CPS ports and completed the RDAC identity exchange on `HYTERA-0`:
+
+- Repeater ID `235240`, callsign `GB7RE`.
+- Firmware `A8.00.09.001`.
+- Hardware `RD985-00000000-001000-U1-0-F`, serial `14N22A0011`.
+- TX/RX `439712500`/`430712500` Hz.
+- Selfcare applied `TS1=235,23426` and `TS2=2350,2351`.
+
+G0EAK (`2344512`) then passed calls on TG `23426`, TG `235`, TG `23591`, TG
+`80`, and the TG9 dial announcement. The master recorded 0% packet loss. The
+sysop confirmed that the repeater works on this firmware. This closes the A8
+compatibility milestone.
+
+GB7NR, the A9 RD985 repeater `235287`, was online at the same time on
+`HYTERA-1`. Both repeaters registered through public port `50000` from
+different sites. This is the first test with two physical repeaters connected
+together.
+
 Keep binary captures outside Git and analyse copies with
 `tools/analyze_hytera_capture.py`.
 
@@ -460,6 +479,9 @@ Keep binary captures outside Git and analyse copies with
 9. **Complete:** replay the original Voice LC Header when slot contention
    delays a Hytera static. Field testing confirmed clean audio and stable
    identity after release. One RF slot still carries only one call at a time.
+10. **Complete:** A8 firmware. GB7RE, an RD985 running `A8.00.09.001`,
+    registered, carried voice, and was confirmed working by its sysop on
+    1 October 2026 while the A9 repeater remained connected.
 
 Unknown packet variants, including reported 103-byte media packets, must be
 rejected or traced until capture-validated.
@@ -516,7 +538,11 @@ Validated on September 27, 2026:
 - A second dummy client, from a different source address, also registered on
   `50000/50001/50002`. The proxy allocated `HYTERA-1` and rewrote its service
   redirect to public DMR/RDAC `50004/50005` while the RD985 remained on the
-  first slot. A second physical repeater has not been tested.
+  first slot.
+- On 1 October 2026 two physical repeaters were connected together. GB7RE
+  (`A8.00.09.001`, repeater `235240`) held `HYTERA-0`. GB7NR
+  (`A9.02.03.009`, repeater `235287`) registered through the same public
+  ports and was allocated `HYTERA-1`.
 - Startup requests originate from the repeater's DMR and RDAC source ports,
   but redirect replies must remain on the registered P2P socket.
 

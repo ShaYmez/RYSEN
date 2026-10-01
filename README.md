@@ -20,7 +20,7 @@ Must be run as **root** on Debian 10+, Pi OS, or recent Ubuntu. See [doc/install
 - **Hotspot proxy** — Single UDP port for many hotspots
 - **Motorola IPSC** — IP Site Connect repeaters (v1.5.0)
 - **Native Hytera** — Field-validated RD985 group/private voice, late entry,
-  RDAC metadata and multi-repeater proxy (development branch)
+  A8 and A9 firmware, RDAC metadata and multi-repeater proxy (development branch)
 - **Selfcare** — Dashboard-driven static TG and settings via MariaDB
 - **Reporting** — TCP feed for [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR)
 
