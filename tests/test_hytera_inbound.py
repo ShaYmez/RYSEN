@@ -707,6 +707,8 @@ class TestHyteraProxyControl(unittest.TestCase):
             '7e040000102000060022b92f02d4820f0000179703000180000048c300008ec24003')
         later = bytes.fromhex(
             '7e040000102000180022b91d02d4820f0000179703000180000048c30000a8c22603')
+        call_start = bytes.fromhex(
+            '7e040000102000050019d12402d6020600179703000201a003')
 
         self.assertEqual(build_rdac_rssi_request(6), request)
         self.assertEqual(
@@ -725,13 +727,27 @@ class TestHyteraProxyControl(unittest.TestCase):
         self.master._hytera_peer_id = (235287).to_bytes(4, 'big')
         self.master._hytera_rssi = {1: 0, 2: 0}
         self.master._hytera_rdac_step = 14
-        self.master._hytera_rdac_seq = 6
+        self.master._hytera_rdac_seq = 17
+        self.master._hytera_rdac_last_poll = 16
+        self.master._hytera_rssi_ready = False
         self.master._hytera_rssi_polled_at = 0.0
         self.master._hytera_rdac_addr = ('172.16.238.31', 50005)
         self.master._hytera_rdac_enabled = False
         self.master._hytera_trace = False
         self.master._hytera_last_seen = 0
         self.master._peers = {}
+
+        repeater_ack = bytes.fromhex('7e04001010200005000c71ba')
+        self.master.hytera_rdac_received(
+            repeater_ack, ('172.16.238.31', 50005))
+        self.assertEqual(self.master._hytera_rdac_seq, 5)
+        self.master._hytera_rdac_seq = 6
+
+        self.master.hytera_rdac_received(call_start, ('172.16.238.31', 50005))
+        self.assertTrue(self.master._hytera_rssi_ready)
+        self.assertEqual(
+            self.master._hytera_services['rdac'].transport.writes[-1][0],
+            build_hrnp_ack(5))
 
         self.master.hytera_rdac_received(reply, ('172.16.238.31', 50005))
         self.assertEqual(self.master._hytera_rssi, {1: 0, 2: 71})
@@ -760,7 +776,7 @@ class TestHyteraProxyControl(unittest.TestCase):
         self.assertEqual(received[0][9][54], 71)
         header[4] = (header[4] + 1) & 0xff
         self.master.hytera_dmr_received(bytes(header), ('172.16.238.31', 50001))
-        self.assertEqual(len(writes), 2)
+        self.assertEqual(len(writes), 3)
 
     def test_rdac_metadata_parsers_reject_short_packets(self):
         self.assertEqual(parse_rdac_identity(b'\x7e\x04\x00\x00'), {})

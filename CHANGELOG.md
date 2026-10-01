@@ -26,9 +26,10 @@ on RD985 repeaters running `A9.02.03.009` and `A8.00.09.001`.
 - Live RSSI is appended to `GROUP VOICE,START` and updated at most once per
   second while the raw Homebrew byte changes. Direct Homebrew and enhanced
   OpenBridge v4/v5 already carry that byte. A Hytera repeater does not put
-  the level in the voice frame; during a transmission RYSEN polls RDAC and
-  copies the latest slot sample into DMRD byte 54. Classic OpenBridge and
-  Motorola IPSC are unchanged.
+  the level in the voice frame; RYSEN keeps the RDAC session open, waits for
+  the call-state event, then polls and copies the latest slot sample into
+  DMRD byte 54. Field-validated on GB7NR at `-107 dBm`. Classic OpenBridge
+  and Motorola IPSC are unchanged.
 - A8 firmware is field-validated. On 1 October 2026 GB7RE, repeater `235240`,
   running `A8.00.09.001`, registered beside the A9 repeater and passed voice.
   Its sysop confirmed operation.

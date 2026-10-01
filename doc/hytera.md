@@ -469,15 +469,22 @@ same offset outbound voice uses for the Homebrew RSSI byte. Inbound
 translation still copies a non-zero voice byte into DMRD byte 54.
 
 The reading IPSC2 shows comes from a separate RDAC poll, sent about once a
-second while the repeater is transmitting. The repeater answers with a
-34-byte `02 d4 82` reply. Each slot is a float32 whose high 16 bits sit in
-the reply: timeslot 1 at bytes 26–27, timeslot 2 at bytes 30–31, both
-little-endian. The idle slot is the sentinel -200. A sample inside -150 to
--30 dBm is rounded to a positive integer and written to DMRD byte 54, so the
-Linked Systems badge shows `-N dBm`. The tenths place IPSC2 prints is the
-result of its own running average; RYSEN publishes the latest sample. The
-bit-error byte stays zero. The existing downlink copy from the network RSSI
-is unchanged.
+second while the repeater is transmitting. The RDAC monitoring session stays
+open after identity discovery. Closing it with the captured `FB`/`FA`
+exchange stops the repeater publishing call-state events. On PTT the
+repeater sends a 25-byte `02 d6 02` event; the master acknowledges that
+transaction, then polls. The repeater answers with a 34-byte `02 d4 82`
+reply. Each slot is a float32 whose high 16 bits sit in the reply: timeslot
+1 at bytes 26–27, timeslot 2 at bytes 30–31, both little-endian. The idle
+slot is the sentinel -200. A sample inside -150 to -30 dBm is rounded to a
+positive integer and written to DMRD byte 54, so the Linked Systems badge
+shows `-N dBm`. The tenths place IPSC2 prints is the result of its own
+running average; RYSEN publishes the latest sample. START can still be 0
+because the first poll returns after call start. The bit-error byte stays
+zero. The existing downlink copy from the network RSSI is unchanged.
+
+Field-validated 1 October 2026 on GB7NR `235287`, TS2 TG 2352: seven replies
+during a 7.7 s key-up, Linked Systems showed `-107 dBm`.
 
 Direct Homebrew and enhanced OpenBridge versions 4 and 5 already carry bytes
 53 and 54 in both directions. Classic OpenBridge versions 1–3 and Motorola

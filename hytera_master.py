@@ -39,8 +39,6 @@ from hytera_const import (
     RDAC_STEP7_REQUEST,
     RDAC_STEP10_REQUEST,
     RDAC_STEP12_REQUEST_1,
-    RDAC_STEP12_REQUEST_2,
-    RDAC_STEP12_RESPONSE,
     SLOT_HYTERA_SYNC,
     SLOT_WAKEUP,
     rdac_repeater_id,
@@ -160,8 +158,10 @@ class HyteraMasterMixin:
         self._hytera_proxy_info = None
         self._hytera_rdac_step = 0
         self._hytera_rdac_meta = {}
-        self._hytera_rdac_seq = 0x17
+        self._hytera_rdac_seq = 0x16
+        self._hytera_rdac_last_poll = None
         self._hytera_rssi = {1: 0, 2: 0}
+        self._hytera_rssi_ready = False
         self._hytera_rssi_polled_at = 0.0
         self._hytera_voice = HyteraVoiceTranslator(
             self._config.get('HYTERA_REPEATER_ID', 0))
@@ -286,8 +286,10 @@ class HyteraMasterMixin:
         self._hytera_proxy_info = None
         self._hytera_rdac_step = 0
         self._hytera_rdac_meta = {}
-        self._hytera_rdac_seq = 0x17
+        self._hytera_rdac_seq = 0x16
+        self._hytera_rdac_last_poll = None
         self._hytera_rssi = {1: 0, 2: 0}
+        self._hytera_rssi_ready = False
         self._hytera_rssi_polled_at = 0.0
         if self._hytera_peer_id in self._peers:
             del self._peers[self._hytera_peer_id]
@@ -511,6 +513,8 @@ class HyteraMasterMixin:
             return
         self._hytera_rdac_addr = addr
         self._touch_hytera_peer(addr)
+        self._note_hytera_transport_ack(data)
+        self._note_hytera_call_state(data)
         self._note_hytera_rssi(data)
         logger.debug(
             '(%s) Hytera RDAC packet from %s:%s len=%s%s',
@@ -518,6 +522,31 @@ class HyteraMasterMixin:
             ' data=' + data.hex() if self._hytera_trace else '')
         if self._hytera_rdac_enabled:
             self._advance_rdac_identification(data, addr)
+
+    def _note_hytera_transport_ack(self, data):
+        """Resynchronize the master transaction counter from the repeater ACK."""
+        if (getattr(self, '_hytera_rdac_step', 0) < 14
+                or len(data) != 12
+                or data[:6] != b'\x7e\x04\x00\x10\x10\x20'):
+            return
+        sequence = int.from_bytes(data[6:8], 'big')
+        if sequence != getattr(self, '_hytera_rdac_last_poll', None):
+            self._hytera_rdac_seq = sequence
+
+    def _note_hytera_call_state(self, data):
+        """Acknowledge the repeater's D6 call-state event and arm slot polling."""
+        if (getattr(self, '_hytera_rdac_step', 0) < 14
+                or len(data) != 25
+                or data[12:15] != b'\x02\xd6\x02'):
+            return
+        sequence = int.from_bytes(data[6:8], 'big')
+        if self._hytera_rdac_addr is not None:
+            self._send_rdac(
+                build_hrnp_ack(sequence), self._hytera_rdac_addr)
+        self._hytera_rssi_ready = data[-3] == 1
+        if not self._hytera_rssi_ready:
+            self._hytera_rssi[1] = 0
+            self._hytera_rssi[2] = 0
 
     def _note_hytera_rssi(self, data):
         """Store a capture-validated RDAC slot reading for the registered peer."""
@@ -533,7 +562,6 @@ class HyteraMasterMixin:
         rssi[1] = reading[1]
         rssi[2] = reading[2]
         sequence = int.from_bytes(data[6:8], 'big')
-        self._hytera_rdac_seq = sequence
         if self._hytera_rdac_addr is not None:
             self._send_rdac(
                 build_hrnp_ack(sequence), self._hytera_rdac_addr)
@@ -542,13 +570,18 @@ class HyteraMasterMixin:
         """Ask the repeater for both slot levels while it is sending voice."""
         if getattr(self, '_hytera_rdac_step', 0) < 14:
             return
+        if not getattr(self, '_hytera_rssi_ready', False):
+            return
         addr = getattr(self, '_hytera_rdac_addr', None)
         if addr is None:
             return
         if now - getattr(self, '_hytera_rssi_polled_at', 0.0) < HYTERA_RSSI_POLL_INTERVAL:
             return
         self._hytera_rssi_polled_at = now
-        sequence = getattr(self, '_hytera_rdac_seq', 0x17) & 0xffff
+        sequence = getattr(self, '_hytera_rdac_seq', 0x16) & 0xffff
+        nxt = (sequence + 1) & 0xffff
+        self._hytera_rdac_seq = nxt or 1
+        self._hytera_rdac_last_poll = sequence
         self._send_rdac(build_rdac_rssi_request(sequence), addr)
 
     def _stamp_hytera_rssi(self, dmrd):
@@ -618,15 +651,11 @@ class HyteraMasterMixin:
         elif step == 11 and data.startswith(RDAC_STEP1_RESPONSE):
             self._hytera_rdac_step = 12
         elif step == 12 and data.startswith(b'\x7e\x04\x00\x00'):
-            self._hytera_rdac_step = 13
-            self._send_rdac(RDAC_STEP12_REQUEST_1, addr)
-            self._send_rdac(RDAC_STEP12_REQUEST_2, addr)
-        elif step == 13 and data.startswith(RDAC_STEP12_RESPONSE):
+            # Acknowledge the final metadata response but keep the monitoring
+            # session open. Sending the captured FB/FA close exchange here
+            # prevents the repeater from publishing D6 call-state events.
             self._hytera_rdac_step = 14
-            if len(data) >= 12:
-                sequence = int.from_bytes(data[6:8], 'big')
-                self._hytera_rdac_seq = sequence
-                self._send_rdac(build_hrnp_ack(sequence), addr)
+            self._send_rdac(RDAC_STEP12_REQUEST_1, addr)
             self._publish_hytera_rdac_metadata()
             logger.info('(%s) Hytera RDAC identity exchange completed',
                         self._system)
