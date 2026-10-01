@@ -69,6 +69,19 @@ def hytera_payload_to_dmrd(payload):
     return bytes(swapped[:33])
 
 
+def hytera_uplink_rssi(packet):
+    """Raw byte at the voice-payload quality offset.
+
+    IPSC2 oracle uplinks from the RD985 leave this byte at 0. The same offset
+    is where outbound voice writes Homebrew RSSI toward the repeater. A
+    non-zero uplink value is copied into DMRD byte 54 unchanged.
+    """
+    offset = MEDIA_PAYLOAD_OFFSET + 32
+    if len(packet) <= offset:
+        return 0
+    return packet[offset]
+
+
 def dmrd_payload_to_hytera(payload, quality=0):
     """Convert a 33-byte DMRD burst to Hytera's pair-swapped 34-byte form."""
     if len(payload) != 33:
@@ -260,6 +273,7 @@ class HyteraVoiceTranslator:
             data[MEDIA_PAYLOAD_OFFSET:MEDIA_PAYLOAD_OFFSET + MEDIA_PAYLOAD_LEN])
         if payload is None:
             return None
+        rssi = hytera_uplink_rssi(data)
 
         if ts == 2:
             flags |= 0x80
@@ -274,7 +288,7 @@ class HyteraVoiceTranslator:
             + bytes([flags])
             + stream_id
             + payload
-            + b'\x00\x00'
+            + bytes([0, rssi])
         )
         self._dmrd_seq = (self._dmrd_seq + 1) & 0xff
         self._last_wire_seq[ts] = wire_seq

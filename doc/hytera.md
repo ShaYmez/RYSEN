@@ -462,6 +462,24 @@ together.
 Keep binary captures outside Git and analyse copies with
 `tools/analyze_hytera_capture.py`.
 
+## Signal strength
+
+RD985 uplink voice toward IPSC2 leaves the 34-byte payload's offset 32 at 0.
+That is the same offset outbound voice uses for the Homebrew RSSI byte.
+Inbound translation copies a non-zero value into DMRD byte 54 and leaves a
+zero at zero. The bit-error byte stays zero. The existing downlink copy from
+the network RSSI is unchanged.
+
+Direct Homebrew and enhanced OpenBridge versions 4 and 5 already carry bytes
+53 and 54 in both directions. Classic OpenBridge versions 1–3 and Motorola
+IPSC have no RSSI field, so those packets stay zero.
+
+`GROUP VOICE,START` now ends with the raw RSSI byte. During a call,
+`GROUP VOICE,RSSI` is sent only when that byte changes, and no more than once
+per second. Call end clears the slot. The Linked Systems Source cell shows
+the value as `-N dBm` beside the subscriber while the timeslot is busy and
+the value is non-zero.
+
 ## Implementation gates
 
 1. **Complete:** validate the native master against an RD985 cold boot.

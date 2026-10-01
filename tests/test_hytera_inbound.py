@@ -18,6 +18,7 @@ from hytera_voice import (
     HyteraVoiceTranslator,
     dmrd_payload_to_hytera,
     hytera_payload_to_dmrd,
+    hytera_uplink_rssi,
 )
 from twisted.internet.defer import succeed
 from twisted.internet.task import Clock
@@ -161,6 +162,20 @@ class TestHyteraInboundVoice(unittest.TestCase):
         converted = hytera_payload_to_dmrd(bytes(range(34)))
         self.assertEqual(len(converted), 33)
         self.assertEqual(converted[:6], b'\x01\x00\x03\x02\x05\x04')
+
+    def test_oracle_uplink_rssi_stays_zero(self):
+        dmrd = self.translator.translate_group(fixture('header'))
+        self.assertEqual(hytera_uplink_rssi(fixture('header')), 0)
+        self.assertEqual(dmrd[53], 0)
+        self.assertEqual(dmrd[54], 0)
+
+    def test_non_zero_uplink_quality_byte_is_dmrd_rssi(self):
+        self.assertIsNotNone(self.translator.translate_group(fixture('header')))
+        voice = bytearray(fixture('c'))
+        voice[58] = 87
+        dmrd = self.translator.translate_group(bytes(voice))
+        self.assertEqual(dmrd[53], 0)
+        self.assertEqual(dmrd[54], 87)
 
 
 class TestHyteraOutboundVoice(unittest.TestCase):

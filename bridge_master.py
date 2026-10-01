@@ -139,6 +139,9 @@ from bridge_helpers import (
     originated_obp_hairpin,
     own_server_obp_echo,
     mark_originated_obp_stub,
+    group_voice_event,
+    seed_stream_rssi,
+    changed_stream_rssi,
 )
 # NOTE: 'words' is loaded dynamically via readAMBE() at runtime (see line ~2689)
 #from voice_lib import words
@@ -2629,7 +2632,7 @@ class routerOBP(OPENBRIDGE):
                         }
                         logger.debug('(%s) Conference Bridge: %s, Call Bridged to OBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                         if CONFIG['REPORTS']['REPORT']:
-                            systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID'])).encode(encoding='utf-8', errors='ignore'))
+                            systems[_target['SYSTEM']]._report.send_bridgeEvent(group_voice_event('START', 'TX', _target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), _rssi))
                     _target_lc = _target_lc_map[_target['TGID']]
 
                     # Record the time of this packet so we can later identify a stale stream
@@ -2732,7 +2735,7 @@ class routerOBP(OPENBRIDGE):
                         logger.debug('(%s) Generating TX FULL and EMB LCs for HomeBrew destination: System: %s, TS: %s, TGID: %s', self._system, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                         logger.debug('(%s) Conference Bridge: %s, Call Bridged to HBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                         if CONFIG['REPORTS']['REPORT']:
-                            systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID'])).encode(encoding='utf-8', errors='ignore'))
+                            systems[_target['SYSTEM']]._report.send_bridgeEvent(group_voice_event('START', 'TX', _target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), _rssi))
 
                     # Set other values for the contention handler to test next time there is a frame to forward
                     _target_status[_target['TS']]['TX_TIME'] = pkt_time
@@ -3173,7 +3176,8 @@ class routerOBP(OPENBRIDGE):
                 logger.info('(%s) *CALL START* STREAM ID: %s, SUB: %s (%s), RPTR: %s (%s), PEER: %s (%s) TGID %s (%s), TS %s, SRC: %s, HOPS %s', 
                         self._system, int_id(_stream_id),get_alias(_rf_src, subscriber_ids),int_id(_rf_src),self.get_rptr(_source_rptr), int_id(_source_rptr),  get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot,int_id(_source_server),_inthops)
                 if CONFIG['REPORTS']['REPORT']:
-                    self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                    self._report.send_bridgeEvent(group_voice_event('START', 'RX', self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), _rssi))
+                    seed_stream_rssi(self.STATUS[_stream_id], _rssi, pkt_time)
 
 
             else:
@@ -3285,7 +3289,14 @@ class routerOBP(OPENBRIDGE):
 
             
             self.STATUS[_stream_id]['LAST'] = pkt_time
-            
+            if _call_type == 'group' and CONFIG['REPORTS']['REPORT']:
+                _rssi_now = changed_stream_rssi(
+                    self.STATUS[_stream_id], _rssi, pkt_time)
+                if _rssi_now is not None:
+                    self._report.send_bridgeEvent(group_voice_event(
+                        'RSSI', 'RX', self._system, int_id(_stream_id),
+                        int_id(_peer_id), int_id(_rf_src), _slot,
+                        int_id(_dst_id), _rssi_now))
             
             #Create STAT bridge for unknown TG
             if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:
@@ -3565,7 +3576,7 @@ class routerHBP(HBSYSTEM):
                             }
                             logger.debug('(%s) Conference Bridge: %s, Call Bridged to OBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                             if CONFIG['REPORTS']['REPORT']:
-                                systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID'])).encode(encoding='utf-8', errors='ignore'))
+                                systems[_target['SYSTEM']]._report.send_bridgeEvent(group_voice_event('START', 'TX', _target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), _rssi))
                         _target_lc = _target_lc_map[_target['TGID']]
                             
                         # Record the time of this packet so we can later identify a stale stream
@@ -3655,7 +3666,7 @@ class routerHBP(HBSYSTEM):
                                 logger.debug('(%s) Generating TX FULL and EMB LCs for HomeBrew destination: System: %s, TS: %s, TGID: %s', self._system, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                                 logger.debug('(%s) Conference Bridge: %s, Call Bridged to HBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                                 if CONFIG['REPORTS']['REPORT']:
-                                    systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID'])).encode(encoding='utf-8', errors='ignore'))
+                                    systems[_target['SYSTEM']]._report.send_bridgeEvent(group_voice_event('START', 'TX', _target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), _rssi))
 
                         # Set other values for the contention handler to test next time there is a frame to forward
                         _target_status[_target['TS']]['TX_TIME'] = pkt_time
@@ -4513,7 +4524,8 @@ class routerHBP(HBSYSTEM):
                         logger.info('(%s) *CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
                             self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
                         if CONFIG['REPORTS']['REPORT']:
-                            self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                            self._report.send_bridgeEvent(group_voice_event('START', 'RX', self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), _rssi))
+                            seed_stream_rssi(self.STATUS[_slot], _rssi, pkt_time)
                 else:
                     logger.info('(%s) *VCSBK* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s _dtype_vseq: %s', 
                             self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, _dtype_vseq)
@@ -4677,6 +4689,15 @@ class routerHBP(HBSYSTEM):
         
             #Save this sequence number 
             self.STATUS[_slot]['lastSeq'] = _seq
+            if (_call_type == 'group' and CONFIG['REPORTS']['REPORT']
+                    and not _hbp_is_vterm):
+                _rssi_now = changed_stream_rssi(
+                    self.STATUS[_slot], _rssi, pkt_time)
+                if _rssi_now is not None:
+                    self._report.send_bridgeEvent(group_voice_event(
+                        'RSSI', 'RX', self._system, int_id(_stream_id),
+                        int_id(_peer_id), int_id(_rf_src), _slot,
+                        int_id(_dst_id), _rssi_now))
             #Save this packet
             self.STATUS[_slot]['lastData'] = _data
             if not _hbp_is_vterm:
