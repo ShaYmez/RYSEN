@@ -16,7 +16,8 @@ The CPS repeater type is `Slave`. Network Authentication is blank. Voice and
 Data and RDAC are enabled. Registration, service negotiation and inbound group
 voice routing are field-validated. Capture-derived outbound group voice is
 implemented and field-validated. Dial-a-TG private activation and private
-parrot echo are also field-validated.
+and group parrot echo are field-validated. Mid-stream group join (late entry)
+is field-validated with immediate RF audio and stable source/TG display.
 
 ## Capture oracle
 
@@ -152,16 +153,17 @@ received the announcement on TG9. The capture is retained outside the
 repository because it contains live network metadata.
 
 The IPSC2 private-parrot capture further confirms the RD985's complete
-72-byte private ingress form (`2348831 → 9990`, TS2). IPSC2 returned no
-private media because of its independent fault, but OK-DMR's outbound
+72-byte private ingress form (`2348831 → 9990`, TS2). RYSEN's outbound
 translator uses the same validated layout and changes the Hytera call marker
-to `0x00` for a private DMRD unit call. RYSEN therefore encodes outbound
-private calls with the existing paced media path and the `0x00` marker.
+to `0x00` for a private DMRD unit call. Outbound private calls use the same
+paced media path as group calls.
 
-Field validation on the native master confirmed that a TS2 private call to
-`9990` receives a clear private parrot echo from `9990` back to `2348831`.
-The successful capture is retained outside the repository because it contains
-live network metadata.
+Field validation on October 1, 2026 confirmed clear, normal-speed parrot audio
+for both a group call to TG `9990` and a private call to unit `9990`. The
+private return is sent from `9990` to the calling subscriber exactly once; the
+PARROT playback path is excluded from the generic unit relay so it cannot
+duplicate and stretch the audio. Successful captures are retained outside the
+repository because they contain live network metadata.
 
 ## Monitor and selfcare
 
@@ -213,17 +215,20 @@ out of scope: all implemented metadata comes from the native RDAC exchange.
 The DMRD-to-Hytera path uses the master-to-repeater forms observed in the
 IPSC2 capture:
 
-- TS1 packet types are `01` voice, `02` call start and `03` terminator.
-- TS2 sets bit `0x40`, producing `41`, `42` and `43`.
+- Packet types are `01` voice, `02` call start and `03` terminator on both
+  slots. The `0x40` bit belongs to repeater-to-master traffic, not TS2
+  downlink.
 - DMRD Voice LC Headers are currently sent as Hytera `1111` headers. This is
   the only tested form that has produced repeatable clear audio with the
-  correct talkgroup and subscriber identity.
+  correct talkgroup and subscriber identity; the field-proven RYSEN header
+  retains its zero prefix.
 - Headerless streams fall back to `EEEE` with the captured interleaved 24-bit
   destination/source identity payload.
-- Voice bursts use `BBBB`, `CCCC`, `7777`, `8888`, `9999`, `AAAA`.
-- The `BBBB` packet uses the captured `EEEE1111` prefix. Ordinary ongoing
-  master voice uses `00000000`; a synthesized `EEEE` call start uses
-  `5A5A5A5A`, matching the IPSC2 normal-call oracle.
+- DMR Voice A-F map in order to Hytera envelopes `7777`, `8888`, `9999`,
+  `AAAA`, `BBBB`, `CCCC`.
+- Voice E (`BBBB`) uses the captured `EEEE1111` prefix. Other voice bursts,
+  synthesized `EEEE` call starts and terminators use `5A5A5A5A`.
+- Terminators use the captured `2222` envelope and clear bytes 20-25.
 - Voice and terminator packets pass through a three-slot (180 ms) jitter
   buffer and are emitted at 60 ms intervals on the negotiated DMR service
   endpoint. Late-entry retains its separate one-slot release path.
@@ -269,19 +274,19 @@ the same behaviour on both RF slots:
 RYSEN's late-entry encoder therefore waits for the RD985's full 180 ms
 activation interval, then emits the next current voice burst with packet type
 `0x01` on both slots. It preserves the source, destination, sequence, current
-voice phase, `5A5A5A5A` prefix (or `EEEE1111` for Voice A), and the active
-timeslot. Normal TS2 call setup remains `0x41`; this exception applies only to
-an authenticated group-call late join.
+voice phase, `5A5A5A5A` prefix (or `EEEE1111` for Voice E), and the active
+timeslot. The RD985's TS2 activation headers remain repeater-to-master type
+`0x41`; RYSEN's resumed master-to-repeater voice is type `0x01`.
 
-### Late-entry field result: deferred
+### Earlier late-entry field result
 
-The September 28 test-server comparison has deferred this milestone. During a
-TS1/TG235 activation, the RD985 sent its three `1111` headers at 0, 58 and
-118 ms. RYSEN began the running stream 176–220 ms after the third header and
-continued with 60 ms cadence. The backend packets carried the expected type
-`0x01`, TS1 marker, current voice phase, source, destination, call type and
-prefixes. The Hytera proxy forwarded each packet byte-for-byte to the RD985 in
-about 0.3 ms.
+The September 28 test-server comparison initially deferred this milestone.
+During a TS1/TG235 activation, the RD985 sent its three `1111` headers at 0,
+58 and 118 ms. RYSEN began the running stream 176–220 ms after the third
+header and continued with 60 ms cadence. The backend packets carried the
+expected type `0x01`, TS1 marker, current voice phase, source, destination,
+call type and prefixes. The Hytera proxy forwarded each packet byte-for-byte
+to the RD985 in about 0.3 ms.
 
 Despite that observable parity with the IPSC2 captures, the RD985 did not
 decode the late-entry audio after de-key. The outstanding work is a controlled
@@ -289,8 +294,8 @@ IPSC2-oracle replay through the test-server/proxy path to distinguish an
 unobserved native packet semantic from repeater session-state behaviour. Do
 not make further framing, timing or sequence changes without that evidence.
 
-This remains deliberately deferred for the A8.09.00.001 RD985 until that unit
-is available. Its validation starts with the existing A9 cold-boot and normal
+Compatibility with an A8.09.00.001 RD985 remains unverified until that unit is
+available. Its validation starts with the existing A9 cold-boot and normal
 call matrix, followed by the same controlled IPSC2 late-entry replay. Firmware
 compatibility must be recorded from capture results, not inferred from the
 shared IP Multi-site Connect configuration.
@@ -326,8 +331,23 @@ transmission. Missing DMRD sequence positions remain missing in the Hytera
 wire sequence instead of being compressed. A terminator restores startup
 buffering for the next call. Late-entry authorization is Hytera-only, is bound
 to one stream, and is applied to both OpenBridge- and Homebrew-originated
-traffic. This candidate still requires the RF matrix on RYSEN before late
-entry can be marked complete.
+traffic. This candidate then proceeded to the RF matrix documented below.
+
+### Final late-entry field validation
+
+On October 1, 2026 the final capture-derived encoder was deployed to
+`hytera.freestar.network` and tested on the A9 RD985. While TG `67498` was
+already active, the repeater keyed to join it and network audio appeared on RF
+immediately after de-key. The display showed the correct talkgroup and
+subscriber identity from acquisition onward.
+
+The successful implementation preserves the IPSC2 downlink burst phase,
+master packet types, envelope prefixes and wire sequence. It releases the
+current running-stream burst after the repeater's three-header activation,
+does not synthesize another call start, and does not reapply the 180 ms startup
+buffer after a mid-call underflow. This closes the A9 mid-stream group-join
+milestone. The Hytera proxy was capture-checked byte-for-byte and did not
+mutate, omit or duplicate media.
 
 ### Normal call identity oracle
 
@@ -373,13 +393,11 @@ the voice burst. It does not synthesize a replacement LC, and this
 delayed-admission path does not use the `EEEE` fallback. The headerless
 `EEEE` path remains only for a stream that never presented a Voice LC Header.
 
-This is committed on `feature/HYTERA` as `3250e3c`. On September 28, 2026 the
-test server image `rysen:feature-hytera` was rebuilt from that source and the
-temporary `bridge_master.py` bind mount was removed. The running container
-loads the deferred-header code from the image. Still open:
-
-- Field-confirm TS1 static audio and identity after the previous call on that
-  slot releases.
+The retained-header change originated in `3250e3c`. Final field validation on
+October 1 confirmed clean normal-call audio and stable source/TG identity
+after slot release. The completed outbound phase, identity, late-entry and
+private-parrot fixes are in `feature/HYTERA` commit `c5fc322` and are deployed
+on `hytera.freestar.network`.
 
 ### Reliability regression coverage
 
@@ -390,24 +408,24 @@ the RDAC exchange from harmless `0x00` service polls while identity discovery
 is in progress. `RDAC_DISCOVERY` is parsed for direct Hytera masters; it was
 previously documented but omitted by the configuration loader.
 
-These checks prove packet construction and routing decisions only. They do not
-constitute an RF result. The next field run must verify clean audio and stable
-source/TG display after a contended static becomes the admitted call.
+These checks protect packet construction and routing decisions. The matching
+RF run confirmed clean audio and stable source/TG display after a contended
+static becomes the admitted call.
 
-### Next RD985 validation matrix
+### Completed A9 RD985 validation matrix
 
-With the repeater powered and registered, capture P2P, DMR and RDAC while
-performing the following in order:
-
-1. Cold boot: confirm the negotiated DMR endpoint and complete RDAC identity
-   exchange remain stable through keepalive polls.
-2. Normal TS1 and TS2 calls: confirm every call starts with `1111`, then
-   compare displayed source and TG for the entire call.
-3. Contended static release from both an OpenBridge and Homebrew source:
-   confirm the first admitted voice follows the retained `1111` header and
-   has neither an `EEEE` fallback nor an initial missing frame.
-4. Proxy power-cycle recovery: confirm only one session exists and outbound
-   media is not suppressed after the DMR redirect is renegotiated.
+1. **Complete:** cold boot, negotiated DMR endpoint, RDAC identity and
+   keepalive stability.
+2. **Complete:** normal TS1/TS2 calls with clear audio and stable source/TG
+   identity.
+3. **Complete:** delayed admission retains the original `1111` header; field
+   audio and identity are stable after slot release.
+4. **Complete:** proxy power-cycle recovery replaces the old session and
+   renegotiates DMR/RDAC service redirects.
+5. **Complete:** group and private/unit calls to `9990` return clear,
+   normal-speed parrot audio.
+6. **Complete:** mid-stream join on active TG `67498` produces immediate RF
+   audio and correct display identity.
 
 Keep binary captures outside Git and analyse copies with
 `tools/analyze_hytera_capture.py`.
@@ -417,10 +435,8 @@ Keep binary captures outside Git and analyse copies with
 1. **Complete:** validate the native master against an RD985 cold boot.
 2. **Complete:** convert captured inbound 72-byte group voice into DMRD.
 3. **Complete:** field-test inbound bridge audio and enable Hytera routing.
-4. **Deferred:** mid-stream group join. RYSEN and proxy field captures match
-   the observable IPSC2 framing and timing, but the RD985 does not decode
-   audio after de-key. A controlled IPSC2-oracle replay is required before
-   further implementation changes.
+4. **Complete:** mid-stream group join on the A9 RD985, with immediate audio
+   and stable source/TG display on active TG `67498`.
 5. **Complete:** field-test Dial-a-TG private-call ingress and group TG9
    announcement return.
 6. **Complete:** field-test the three-port, NAT-aware multi-repeater proxy.
@@ -428,10 +444,9 @@ Keep binary captures outside Git and analyse copies with
    metadata display and IPSC-parity repeater selfcare lifecycle.
 8. **Complete:** collect and publish RDAC firmware, hardware/model, serial,
    callsign, raw mode and TX/RX frequency metadata. SNMP remains out of scope.
-9. **In progress:** replay the original Voice LC Header when slot contention
-   delays a Hytera static. Code is on `feature/HYTERA` (`3250e3c`) and the test
-   server is running that image without the temporary bind mount. Field
-   confirmation remains. One RF slot still carries only one call at a time.
+9. **Complete:** replay the original Voice LC Header when slot contention
+   delays a Hytera static. Field testing confirmed clean audio and stable
+   identity after release. One RF slot still carries only one call at a time.
 
 Unknown packet variants, including reported 103-byte media packets, must be
 rejected or traced until capture-validated.

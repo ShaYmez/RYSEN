@@ -1,5 +1,32 @@
 # RYSEN DMRMaster+ Changelog
 
+## Unreleased — Native Hytera
+
+Capture-derived native Hytera IP Multi-site Connect support is field-validated
+on an RD985 running `A9.02.03.009`.
+
+- Three-port P2P/DMR/RDAC registration, service redirects, keepalives, identity
+  discovery and read-only repeater metadata.
+- Capture-validated 72-byte group/private voice translation in both directions,
+  with correct TS1/TS2 source and talkgroup display.
+- Outbound DMR Voice A-F phase aligned to the IPSC2 downlink
+  (`7777`–`CCCC`), including the `EEEE1111` Voice E envelope, captured packet
+  types and terminator fields.
+- Delayed static admission preserves the original Voice LC Header instead of
+  beginning with a headerless fallback.
+- Mid-stream group join (late entry) is field-validated on active TG `67498`:
+  immediate RF audio after de-key and stable source/TG identity.
+- TG `9990` group and private/unit parrot both return clear audio at normal
+  speed. PARROT playback no longer traverses the generic unit relay a second
+  time.
+- NAT-aware multi-repeater `hytera_proxy.py` with byte-transparent media
+  forwarding and clean session replacement after a repeater power cycle.
+- Regression suite covers capture fixtures, burst phase, identity, pacing,
+  late-entry sequence continuity, proxy lifecycle and parrot routing.
+
+See [doc/hytera.md](doc/hytera.md) for the protocol evidence, field results and
+remaining A8 firmware compatibility gate.
+
 ## Version 1.5.4 (2026-09-22)
 
 Idle reactor, STAT OpenBridge hairpin, and FreeSTAR hub device control.
