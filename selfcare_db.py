@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 ###############################################################################
-#   IPSC repeater selfcare — Clients table access (mode = 0)
+#   Native repeater selfcare — Clients table access (IPSC mode = 0, Hytera = -1)
 #   Pattern mirrors proxy/proxy_db.py; no schema migration required.
 #
 #   Copyright (C) 2026 Shane Daley, M0VUB <shane@freestar.network>
@@ -17,6 +17,7 @@ from twisted.internet.defer import inlineCallbacks
 from dmr_utils3.utils import int_id
 
 IPSC_CLIENT_MODE = 0
+HYTERA_CLIENT_MODE = -1
 
 
 def _peer_radio_id_str(radio_id_value):
@@ -71,7 +72,7 @@ def _peer_matches_radio(peer, peer_id, radio_id, exact_only=False):
 
 
 class SelfcareDB:
-    """MariaDB access for IPSC repeater rows in Clients (mode = 0)."""
+    """MariaDB access for native repeater rows in Clients."""
 
     def __init__(self, host, user, password, db_name, port):
         self.db_name = db_name
@@ -115,6 +116,73 @@ class SelfcareDB:
             raise RuntimeError(f'upsert_ipsc_client error: {err}') from err
 
     @inlineCallbacks
+    def upsert_hytera_client(self, int_id, dmr_id, callsign, host,
+                             seed_options=None):
+        """Register or refresh a Hytera repeater without replacing its owner data."""
+        flag_modified = 1 if seed_options else 0
+        try:
+            yield self.dbpool.runOperation(
+                '''INSERT INTO Clients (
+                    int_id, dmr_id, callsign, host, mode, logged_in, last_seen, options, modified
+                ) VALUES (%s, %s, %s, %s, %s, 1, UNIX_TIMESTAMP(), %s, %s)
+                ON DUPLICATE KEY UPDATE
+                    callsign = VALUES(callsign),
+                    host = VALUES(host),
+                    mode = %s,
+                    logged_in = 1,
+                    last_seen = UNIX_TIMESTAMP()''',
+                (int_id, dmr_id, callsign, host, HYTERA_CLIENT_MODE,
+                 seed_options, flag_modified, HYTERA_CLIENT_MODE),
+            )
+        except Exception as err:
+            raise RuntimeError(f'upsert_hytera_client error: {err}') from err
+
+    @inlineCallbacks
+    def upsert_hytera_metadata(self, int_id, metadata):
+        """Cache validated RDAC fields for the selfcare portal."""
+        try:
+            yield self.dbpool.runOperation(
+                '''CREATE TABLE IF NOT EXISTS HyteraMetadata (
+                    int_id INT PRIMARY KEY NOT NULL,
+                    firmware VARCHAR(64),
+                    hardware VARCHAR(128),
+                    serial_number VARCHAR(64),
+                    callsign VARCHAR(32),
+                    mode_raw TINYINT UNSIGNED,
+                    tx_frequency BIGINT UNSIGNED,
+                    rx_frequency BIGINT UNSIGNED,
+                    updated_at INT NOT NULL
+                ) DEFAULT CHARSET=utf8mb4'''
+            )
+            yield self.dbpool.runOperation(
+                '''INSERT INTO HyteraMetadata (
+                    int_id, firmware, hardware, serial_number, callsign,
+                    mode_raw, tx_frequency, rx_frequency, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, UNIX_TIMESTAMP())
+                ON DUPLICATE KEY UPDATE
+                    firmware = VALUES(firmware),
+                    hardware = VALUES(hardware),
+                    serial_number = VALUES(serial_number),
+                    callsign = VALUES(callsign),
+                    mode_raw = VALUES(mode_raw),
+                    tx_frequency = VALUES(tx_frequency),
+                    rx_frequency = VALUES(rx_frequency),
+                    updated_at = UNIX_TIMESTAMP()''',
+                (
+                    int_id,
+                    metadata.get('firmware'),
+                    metadata.get('hardware'),
+                    metadata.get('serial'),
+                    metadata.get('callsign'),
+                    metadata.get('mode_raw'),
+                    metadata.get('tx_frequency'),
+                    metadata.get('rx_frequency'),
+                ),
+            )
+        except Exception as err:
+            raise RuntimeError(f'upsert_hytera_metadata error: {err}') from err
+
+    @inlineCallbacks
     def mark_ipsc_options_pending(self, int_id):
         """Re-queue stored selfcare options for apply after reconnect (parity with hotspot login_opt)."""
         try:
@@ -127,6 +195,21 @@ class SelfcareDB:
             )
         except Exception as err:
             raise RuntimeError(f'mark_ipsc_options_pending error: {err}') from err
+
+    @inlineCallbacks
+    def mark_hytera_options_pending(self, int_id):
+        """Re-queue stored Hytera options after a fresh registration."""
+        try:
+            yield self.dbpool.runOperation(
+                'UPDATE Clients SET modified = 1 '
+                'WHERE int_id = %s AND mode = %s '
+                "AND options IS NOT NULL AND TRIM(options) != '' "
+                "AND options NOT LIKE '%%DISC=1%%'",
+                (int_id, HYTERA_CLIENT_MODE),
+            )
+        except Exception as err:
+            raise RuntimeError(
+                f'mark_hytera_options_pending error: {err}') from err
 
     @inlineCallbacks
     def save_client_options(self, int_id, options_str):
@@ -149,10 +232,28 @@ class SelfcareDB:
         except Exception as err:
             raise RuntimeError(f'logout_ipsc_client error: {err}') from err
 
+    @inlineCallbacks
+    def logout_hytera_client(self, int_id):
+        try:
+            yield self.dbpool.runOperation(
+                'UPDATE Clients SET logged_in = 0 WHERE int_id = %s AND mode = %s',
+                (int_id, HYTERA_CLIENT_MODE),
+            )
+        except Exception as err:
+            raise RuntimeError(f'logout_hytera_client error: {err}') from err
+
     def select_modified_ipsc(self):
         return self.dbpool.runQuery(
             'SELECT int_id, options FROM Clients WHERE modified = 1 AND mode = %s',
             (IPSC_CLIENT_MODE,),
+        )
+
+    def select_modified_repeaters(self):
+        """Return pending IPSC and Hytera repeater options with their protocol mode."""
+        return self.dbpool.runQuery(
+            'SELECT int_id, options, mode FROM Clients '
+            'WHERE modified = 1 AND mode IN (%s, %s)',
+            (IPSC_CLIENT_MODE, HYTERA_CLIENT_MODE),
         )
 
     @inlineCallbacks
@@ -186,8 +287,9 @@ class SelfcareDB:
     def clear_modified(self, int_id):
         try:
             yield self.dbpool.runOperation(
-                'UPDATE Clients SET modified = 0 WHERE int_id = %s AND mode = %s',
-                (int_id, IPSC_CLIENT_MODE),
+                'UPDATE Clients SET modified = 0 WHERE int_id = %s '
+                'AND mode IN (%s, %s)',
+                (int_id, IPSC_CLIENT_MODE, HYTERA_CLIENT_MODE),
             )
         except Exception as err:
             raise RuntimeError(f'clear_modified error: {err}') from err
@@ -291,6 +393,26 @@ def find_ipsc_peer_for_radio_id(
         raise AmbiguousPeerError(
             'Multiple connected ESSIDs match; use the exact connected radio ID')
     return fuzzy[0] if fuzzy else (None, None)
+
+
+def find_hytera_peer_for_radio_id(
+        config_systems, radio_id, require_unique=False):
+    """Return (HYTERA-N slot, peer_id) for a connected Hytera repeater."""
+    matches = []
+    for slot, syscfg in config_systems.items():
+        if syscfg.get('MODE') != 'HYTERA' or not syscfg.get('ENABLED'):
+            continue
+        for peer_id, peer in (syscfg.get('PEERS') or {}).items():
+            if peer.get('CONNECTION') != 'YES':
+                continue
+            if _peer_matches_radio(peer, peer_id, radio_id, exact_only=True):
+                return slot, peer_id
+            if _peer_matches_radio(peer, peer_id, radio_id):
+                matches.append((slot, peer_id))
+    if require_unique and len(matches) > 1:
+        raise AmbiguousPeerError(
+            'Multiple connected Hytera peers match this radio ID')
+    return matches[0] if matches else (None, None)
 
 
 def find_hotspot_master_peer(

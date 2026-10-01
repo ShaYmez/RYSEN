@@ -7,13 +7,59 @@ import time
 from collections import OrderedDict
 
 from dmr_utils3.utils import bytes_3, int_id
-from ipsc_const import is_routing_master
+from repeater_modes import is_routing_master
 
 DIAL_A_TG = 9
 DIAL_A_TG_BYTES = bytes_3(DIAL_A_TG)
 _DIAL_SERVICE_CODES = frozenset([DIAL_A_TG, 4000, 5000])
 PARROT_TG = 9990
 _SERVICE_TG_RANGE = range(9991, 10000)
+
+
+RSSI_REPORT_INTERVAL = 1.0
+
+
+def rssi_byte(rssi):
+    """Homebrew RSSI is one raw byte. Missing or empty stays zero."""
+    if isinstance(rssi, int):
+        return rssi & 0xff
+    if rssi:
+        return rssi[0]
+    return 0
+
+
+def group_voice_event(kind, trx, system, stream_id, peer_id, subscriber, slot,
+                      talkgroup, rssi):
+    """GROUP VOICE report with the raw RSSI byte as the final field."""
+    return 'GROUP VOICE,{},{},{},{},{},{},{},{},{}'.format(
+        kind, trx, system, stream_id, peer_id, subscriber, slot, talkgroup,
+        rssi_byte(rssi),
+    ).encode('utf-8', 'ignore')
+
+
+def seed_stream_rssi(state, rssi, now):
+    """Remember the value already published on GROUP VOICE,START."""
+    state['RSSI_VALUE'] = rssi_byte(rssi)
+    state['RSSI_SENT'] = now
+
+
+def changed_stream_rssi(state, rssi, now, interval=RSSI_REPORT_INTERVAL):
+    """Return a new RSSI value when it should be reported, else None.
+
+    The first sample is stored and not reported again. Later changes are
+    reported at most once per interval, including a drop back to zero.
+    """
+    value = rssi_byte(rssi)
+    if 'RSSI_VALUE' not in state:
+        seed_stream_rssi(state, value, now)
+        return None
+    if value == state['RSSI_VALUE']:
+        return None
+    if now - state.get('RSSI_SENT', 0) < interval:
+        return None
+    state['RSSI_VALUE'] = value
+    state['RSSI_SENT'] = now
+    return value
 
 
 def mark_options_dirty(config):

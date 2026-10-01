@@ -3,7 +3,7 @@
 ###############################################################################
 # Copyright (C) 2020 Simon Adlem, G7RZU <g7rzu@gb7fr.org.uk>  
 # Copyright (C) 2016-2019 Cortney T. Buffington, N0MJS <n0mjs@me.com>
-# Copyright (C) 2024-2026 Shane Daley, M0VUB <shane@freestar.network> (IPSC / SystemX)
+# Copyright (C) 2024-2026 Shane Daley, M0VUB <shane@freestar.network> (IPSC / Hytera / SystemX)
 #
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -61,11 +61,15 @@ import log
 from const import *
 from mk_voice import pkt_gen
 from ipsc_master import IpscMasterMixin
-from ipsc_const import is_routing_master
+from hytera_master import HyteraMasterMixin
+from repeater_modes import is_generated_master, is_routing_master
 from control_bans import ControlBanStore, radio_id_core as control_radio_id_core
 from selfcare_db import (
+    HYTERA_CLIENT_MODE,
+    IPSC_CLIENT_MODE,
     SelfcareDB,
     find_hotspot_master_peer,
+    find_hytera_peer_for_radio_id,
     find_ipsc_peer_for_radio_id,
     effective_master_options,
     ensure_master_default_options,
@@ -135,6 +139,9 @@ from bridge_helpers import (
     originated_obp_hairpin,
     own_server_obp_echo,
     mark_originated_obp_stub,
+    group_voice_event,
+    seed_stream_rssi,
+    changed_stream_rssi,
 )
 # NOTE: 'words' is loaded dynamically via readAMBE() at runtime (see line ~2689)
 #from voice_lib import words
@@ -248,6 +255,9 @@ _ROUTE_STATS_NEXT_LOG = [0.0]        # mutable list so inner functions can write
 # Reactor-lag diagnostics
 _REACTOR_LAG_INTERVAL = 5.0          # expected loop-call interval (seconds)
 _REACTOR_LAG_LAST = [None]           # timestamp of last check
+_REACTOR_LAG_WORST = [0.0]           # worst lag in the current routing window
+_REACTOR_WINDOW_START = [0.0]
+_REACTOR_STATUS_DIR = [None]         # log dir for the status-page snapshot
 
 # Coalesce hot-path full index rebuilds so a miss storm cannot rebuild once per packet.
 _BRIDGE_IDX_REBUILD_MIN_INTERVAL_S = 1.0
@@ -255,6 +265,15 @@ _BRIDGE_IDX_LAST_REBUILD = [0.0]
 _OPENBRIDGE_SYSTEMS = set()
 _HBP_STREAM_CLAIMS = {}
 _HBP_CLAIM_TIMEOUT_S = 1.0
+_LATE_JOIN_TARGETS = {}
+_LATE_JOIN_TIMEOUT_S = 3.0
+# The RD985 sends its three activation headers at 0, 60 and 120 ms. IPSC2
+# releases the running voice burst one 60 ms slot after the third header,
+# while that activation call is still on the air.
+_HYTERA_LATE_JOIN_ARM_S = 0.120
+# A slot can release only after group hangtime, then the next admitted burst
+# arrives on a 60 ms boundary. Keep the captured VHEAD through that boundary.
+_HYTERA_DEFERRED_VHEAD_GRACE_S = 0.120
 _LOOP_DIAG = {
     'claim_expired': 0,
     'short_resumes': 0,
@@ -265,6 +284,58 @@ _LOOP_DIAG = {
 _TERM_TOMBSTONES = {}
 _TERM_TOMBSTONE_TTL_S = 5.0
 CONTROL_BANS = ControlBanStore(logger=logger)
+
+
+def _arm_late_join_target(system, slot, tgid, now):
+    """Let a Hytera key-up join a talkgroup that is already in progress."""
+    if CONFIG['SYSTEMS'].get(system, {}).get('MODE') != 'HYTERA':
+        return False
+    key = (system, slot, tgid)
+    _LATE_JOIN_TARGETS[key] = {
+        'armed_at': now,
+        'stream_id': None,
+    }
+    if len(_LATE_JOIN_TARGETS) > 512:
+        for old_key, entry in list(_LATE_JOIN_TARGETS.items()):
+            if now - entry['armed_at'] >= _LATE_JOIN_TIMEOUT_S:
+                _LATE_JOIN_TARGETS.pop(old_key, None)
+    return True
+
+
+def _late_join_active(system, slot, tgid, now, stream_id=None):
+    key = (system, slot, tgid)
+    entry = _LATE_JOIN_TARGETS.get(key)
+    if entry is None:
+        return False
+    armed_at = entry['armed_at']
+    if stream_id is not None:
+        if entry['stream_id'] is None:
+            entry['stream_id'] = stream_id
+        elif entry['stream_id'] != stream_id:
+            return False
+    if now - armed_at < _HYTERA_LATE_JOIN_ARM_S:
+        return False
+    if now - armed_at >= _LATE_JOIN_TIMEOUT_S:
+        _LATE_JOIN_TARGETS.pop(key, None)
+        return False
+    return True
+
+
+def _late_join_wire_sequence(sequence, packet_count):
+    """Reconstruct the running Hytera sequence from DMRD's low byte."""
+    packet_index = max(0, int(packet_count) - 1)
+    candidate = (packet_index & ~0xff) | int(sequence)
+    if candidate < packet_index - 128:
+        candidate += 256
+    elif candidate > packet_index + 128 and candidate >= 256:
+        candidate -= 256
+    return candidate & 0xffffffff
+
+
+def _hytera_deferred_vhead_valid(header_time, packet_time, group_hangtime):
+    """Whether a contention-delayed RD985 header is still safe to replay."""
+    return (packet_time - header_time) <= (
+        float(group_hangtime) + _HYTERA_DEFERRED_VHEAD_GRACE_S + 0.000001)
 
 
 def _active_hbp_stream_claim(stream_id, rf_src, now):
@@ -381,9 +452,34 @@ def _maybe_rebuild_bridge_index_on_miss(system_name, slot, dst_id):
             system_name, system_name, slot, int_id(dst_id))
 
 
+def _publish_reactor_status(_now, _lag):
+    """Write a small snapshot for the host status page. Called from the 5s diagnostic only."""
+    _dir = _REACTOR_STATUS_DIR[0]
+    if not _dir:
+        return
+    if not _REACTOR_WINDOW_START[0]:
+        _REACTOR_WINDOW_START[0] = _now
+    from rysen_trace import persist_reactor_status
+    persist_reactor_status(_dir, {
+        'lag_s': round(_lag, 3),
+        'lag_worst_s': round(_REACTOR_LAG_WORST[0], 3),
+        'interval_s': _REACTOR_LAG_INTERVAL,
+        'keys': len(BRIDGE_IDX),
+        'bridges': len(BRIDGES),
+        'packets': _ROUTE_STATS['packets'],
+        'index_hits': _ROUTE_STATS['index_hits'],
+        'index_misses': _ROUTE_STATS['index_misses'],
+        'fallbacks': _ROUTE_STATS['fallbacks'],
+        'window_s': _ROUTE_STATS_INTERVAL,
+        'window_age_s': int(_now - _REACTOR_WINDOW_START[0]),
+        'updated_at': int(_now),
+    })
+
+
 def reactorLagCheck():
     """Looping diagnostic: warn when the Twisted reactor falls behind schedule."""
     _now = time()
+    _lag = 0.0
     if _REACTOR_LAG_LAST[0] is not None:
         _actual = _now - _REACTOR_LAG_LAST[0]
         _lag = _actual - _REACTOR_LAG_INTERVAL
@@ -394,7 +490,12 @@ def reactorLagCheck():
                 'Bridge index size: %d keys / %d bridges.',
                 _lag, _actual, _REACTOR_LAG_INTERVAL,
                 len(BRIDGE_IDX), len(BRIDGES))
+    if _lag < 0.0:
+        _lag = 0.0
+    if _lag > _REACTOR_LAG_WORST[0]:
+        _REACTOR_LAG_WORST[0] = _lag
     _REACTOR_LAG_LAST[0] = _now
+    _publish_reactor_status(_now, _lag)
 
 
 def _log_route_stats():
@@ -419,6 +520,8 @@ def _log_route_stats():
         _ROUTE_STATS['fallbacks'] = 0
         for _diag_key in _LOOP_DIAG:
             _LOOP_DIAG[_diag_key] = 0
+        _REACTOR_LAG_WORST[0] = 0.0
+        _REACTOR_WINDOW_START[0] = _now
         _ROUTE_STATS_NEXT_LOG[0] = _now + _ROUTE_STATS_INTERVAL
 
 
@@ -628,6 +731,8 @@ def activate_ua_bridge_source(bridge_name, system, slot, tmout=None, peer_id=Non
     for _entry in BRIDGES[bridge_name]:
         if (_entry['SYSTEM'] == system and _entry['TS'] == slot
                 and _entry['TO_TYPE'] != 'NONE'):
+            _arm_late_join_target(
+                system, slot, _entry['TGID'], time())
             if not _entry['ACTIVE']:
                 _entry['ACTIVE'] = True
                 _changed = True
@@ -837,9 +942,19 @@ def reset_static_tg(tg,ts,_tmout,system):
     if str(tg) not in BRIDGES:
         logger.debug('(OPTIONS) reset_static_tg skipped, missing bridge %s for %s TS%s', tg, system, ts)
         return
-    # Last static peer leaving must not mute radios that still have this TG as UA.
+    # Last static peer leaving must not mute radios that still have this TG as
+    # UA.  SUB_MAP is only subscriber-location history (retained for up to a
+    # day), not proof of a live Hytera dynamic.  Treating it as membership left
+    # removed RD985 statics active on their old slot, so later dynamics on the
+    # other slot were routed to both/wrong slots.  Hytera dynamics have explicit
+    # peer membership and must use that authoritative state.
+    _runtime_config = globals().get('CONFIG', {})
+    _system_mode = (
+        _runtime_config.get('SYSTEMS', {}).get(system, {}).get('MODE')
+        if isinstance(_runtime_config, dict) else None)
     keep_ua = (
-        other_peer_has_sub_map_tg(SUB_MAP, system, ts, tg)
+        (_system_mode != 'HYTERA'
+         and other_peer_has_sub_map_tg(SUB_MAP, system, ts, tg))
         or other_peer_has_dynamic_tg(system, ts, tg))
     bridgetemp = deque()
     for bridgesystem in BRIDGES[str(tg)]:
@@ -1716,12 +1831,12 @@ def _send_voice_from_worker(*args):
     return done.wait(1.0) and sent[0]
 
 
-def sendSpeech(self, speech):
+def sendSpeech(self, speech, source_id=None, destination_id=None, slot_number=2):
     logger.debug('(%s) Inside sendspeech thread', self._system)
     sleep(1)
-    _nine = bytes_3(9)
-    _source_id = bytes_3(5000)
-    _slot = systems[self._system].STATUS[2]
+    _destination_id = destination_id or bytes_3(9)
+    _source_id = source_id or bytes_3(5000)
+    _slot = systems[self._system].STATUS[slot_number]
     while True:
         try:
             pkt = next(speech)
@@ -1730,7 +1845,7 @@ def sendSpeech(self, speech):
         #Packet every 60ms
         sleep(0.058)
         if not _send_voice_from_worker(
-                self, pkt, _source_id, _nine, _slot):
+                self, pkt, _source_id, _destination_id, _slot):
             break
 
     logger.debug('(%s) Sendspeech thread ended',self._system)
@@ -1937,7 +2052,7 @@ def options_config():
             # mark_options_dirty: that re-ran the full scan every 26s on USA.
         try:
             _mode = CONFIG['SYSTEMS'][_system]['MODE']
-            if _mode not in ('MASTER', 'IPSC'):
+            if _mode not in ('MASTER', 'IPSC', 'HYTERA'):
                 continue
             if CONFIG['SYSTEMS'][_system]['ENABLED'] == True:
                 # Process per-peer OPTIONS first (MMDVM hotspots on MASTER only)
@@ -2326,28 +2441,32 @@ def _persist_sanitized_options_to_selfcare(system, options_str=None):
 
 @inlineCallbacks
 def ipsc_selfcare_poll():
-    """Apply selfcare TS1/TS2 options for connected IPSC repeaters (mode = 0)."""
+    """Apply selfcare TS1/TS2 options for connected IPSC and Hytera repeaters."""
     ss = CONFIG.get('SELF SERVICE', {})
     if not ss.get('ENABLED') or _selfcare_db is None:
         return
     try:
-        rows = yield _selfcare_db.select_modified_ipsc()
+        rows = yield _selfcare_db.select_modified_repeaters()
         if not rows:
             return
-        for int_id_val, options in rows:
+        for int_id_val, options, mode in rows:
+            protocol = 'HYTERA' if mode == HYTERA_CLIENT_MODE else 'IPSC'
             opt_str = (options.decode('utf-8', errors='ignore')
                        if isinstance(options, bytes) else str(options))
             if not opt_str or not opt_str.strip():
                 logger.warning(
-                    '(SELF SERVICE) IPSC int_id %s modified but options empty — clearing flag',
-                    int_id_val)
+                    '(SELF SERVICE) %s int_id %s modified but options empty — clearing flag',
+                    protocol, int_id_val)
                 yield _selfcare_db.clear_modified(int_id_val)
                 continue
-            slot, peer_id = find_ipsc_peer_for_radio_id(CONFIG['SYSTEMS'], int_id_val)
+            finder = (find_hytera_peer_for_radio_id
+                      if mode == HYTERA_CLIENT_MODE
+                      else find_ipsc_peer_for_radio_id)
+            slot, peer_id = finder(CONFIG['SYSTEMS'], int_id_val)
             if not slot:
                 logger.warning(
-                    '(SELF SERVICE) IPSC int_id %s modified but no connected IPSC slot',
-                    int_id_val)
+                    '(SELF SERVICE) %s int_id %s modified but no connected %s slot',
+                    protocol, int_id_val, protocol)
                 continue
             CONFIG['SYSTEMS'][slot]['OPTIONS'] = opt_str
             mark_options_dirty(CONFIG)
@@ -2361,12 +2480,13 @@ def ipsc_selfcare_poll():
                     options_config()
             except Exception:
                 logger.exception(
-                    '(SELF SERVICE) options_config failed for IPSC %s on %s',
-                    int_id_val, slot)
+                    '(SELF SERVICE) options_config failed for %s %s on %s',
+                    protocol, int_id_val, slot)
                 continue
             yield _selfcare_db.clear_modified(int_id_val)
-            logger.info('(SELF SERVICE) Applied options for IPSC %s on %s: %s',
-                        int_id_val, slot, remaining if had_disc else opt_str)
+            logger.info('(SELF SERVICE) Applied options for %s %s on %s: %s',
+                        protocol, int_id_val, slot,
+                        remaining if had_disc else opt_str)
     except Exception as err:
         logger.exception('(SELF SERVICE) poll error: %s', err)
 
@@ -2426,6 +2546,21 @@ class routerOBP(OPENBRIDGE):
             if (_target['SYSTEM'] != self._system) and (_target['ACTIVE']):
                 _target_status = systems[_target['SYSTEM']].STATUS
                 _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
+                _late_join = _late_join_active(
+                    _target['SYSTEM'], _target['TS'], _target['TGID'],
+                    pkt_time, _stream_id)
+                # A Hytera RF slot can reject a new stream while its previous
+                # call is winding down. Retain a real incoming VHEAD until the
+                # stream is admitted so a delayed start keeps valid LC and
+                # identity context rather than requiring a synthetic header.
+                _hytera_header_key = (
+                    _target['SYSTEM'], _target['TS'], _target['TGID'])
+                if (_target_system['MODE'] == 'HYTERA'
+                        and _frame_type == HBPF_DATA_SYNC
+                        and _dtype_vseq == HBPF_SLT_VHEAD):
+                    self.STATUS[_stream_id].setdefault(
+                        '_HYTERA_DEFERRED_VHEAD', {})[_hytera_header_key] = (
+                            _data, _bits, dmrpkt, pkt_time)
                 # A destination system/slot may appear through several bridge
                 # aliases. Send this packet only once: delivering the same
                 # stream ID under multiple TGIDs corrupts single-stream
@@ -2497,7 +2632,7 @@ class routerOBP(OPENBRIDGE):
                         }
                         logger.debug('(%s) Conference Bridge: %s, Call Bridged to OBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                         if CONFIG['REPORTS']['REPORT']:
-                            systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID'])).encode(encoding='utf-8', errors='ignore'))
+                            systems[_target['SYSTEM']]._report.send_bridgeEvent(group_voice_event('START', 'TX', _target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), _rssi))
                     _target_lc = _target_lc_map[_target['TGID']]
 
                     # Record the time of this packet so we can later identify a stale stream
@@ -2562,14 +2697,16 @@ class routerOBP(OPENBRIDGE):
                             self.STATUS[_stream_id]['CONTENTION'] = True
                             logger.info('(%s) Call not routed to TGID%s, target in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']))
                         continue
-                    if ((_target['TGID'] == _target_status[_target['TS']]['RX_TGID'])
+                    if (not _late_join
+                            and (_target['TGID'] == _target_status[_target['TS']]['RX_TGID'])
                             and _target_status[_target['TS']]['RX_TYPE'] != HBPF_SLT_VTERM
                             and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < STREAM_TO)):
                         if self.STATUS[_stream_id]['CONTENTION'] == False:
                             self.STATUS[_stream_id]['CONTENTION'] = True
                             logger.info('(%s) Call not routed to TGID%s, matching call already active on target: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
                         continue
-                    if ((_target['TGID'] == _target_status[_target['TS']]['TX_TGID'])
+                    if (not _late_join
+                            and (_target['TGID'] == _target_status[_target['TS']]['TX_TGID'])
                             and _target_status[_target['TS']]['TX_TYPE'] != HBPF_SLT_VTERM
                             and (_rf_src != _target_status[_target['TS']]['TX_RFS'])
                             and ((pkt_time - _target_status[_target['TS']]['TX_TIME']) < STREAM_TO)):
@@ -2598,7 +2735,7 @@ class routerOBP(OPENBRIDGE):
                         logger.debug('(%s) Generating TX FULL and EMB LCs for HomeBrew destination: System: %s, TS: %s, TGID: %s', self._system, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                         logger.debug('(%s) Conference Bridge: %s, Call Bridged to HBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                         if CONFIG['REPORTS']['REPORT']:
-                            systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID'])).encode(encoding='utf-8', errors='ignore'))
+                            systems[_target['SYSTEM']]._report.send_bridgeEvent(group_voice_event('START', 'TX', _target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), _rssi))
 
                     # Set other values for the contention handler to test next time there is a frame to forward
                     _target_status[_target['TS']]['TX_TIME'] = pkt_time
@@ -2638,7 +2775,67 @@ class routerOBP(OPENBRIDGE):
                     _tmp_data = b''.join([_tmp_data, _tx_dmrpkt])
 
                 # Transmit the packet to the destination system
-                systems[_target['SYSTEM']].send_system(_tmp_data,_hops,_ber,_rssi,_source_server, _source_rptr)
+                if _target_system['MODE'] == 'HYTERA':
+                    # If contention suppressed the real VHEAD but later
+                    # admitted a voice burst, send that original header first.
+                    # Otherwise the Hytera encoder starts with the headerless
+                    # EEEE fallback, which causes intermittent audio and stale
+                    # TG/source displays on an RD985.
+                    _deferred_headers = self.STATUS[_stream_id].get(
+                        '_HYTERA_DEFERRED_VHEAD', {})
+                    _deferred_vhead = _deferred_headers.pop(
+                        _hytera_header_key, None)
+                    _is_vhead = (
+                        _frame_type == HBPF_DATA_SYNC
+                        and _dtype_vseq == HBPF_SLT_VHEAD)
+                    _is_voice = _frame_type in (
+                        HBPF_VOICE, HBPF_VOICE_SYNC)
+                    if (_deferred_vhead is not None and not _is_vhead
+                            and _is_voice and not _late_join):
+                        (_header_data, _header_bits, _header_dmrd,
+                         _header_time) = _deferred_vhead
+                        # A target can suppress a new stream for its whole
+                        # group-hangtime window. Keep its genuine VHEAD long
+                        # enough to replay it when the first voice burst is
+                        # admitted, rather than falling back to headerless
+                        # native framing. Never replay it for a terminator.
+                        if _hytera_deferred_vhead_valid(
+                                _header_time, pkt_time,
+                                _target_system['GROUP_HANGTIME']):
+                            if _system['TS'] != _target['TS']:
+                                _header_bits ^= 1 << 7
+                            _header_lc_bits = bitarray(endian='big')
+                            _header_lc_bits.frombytes(_header_dmrd)
+                            _header_lc_bits = (
+                                _target_status[_target['TS']]['TX_H_LC'][0:98]
+                                + _header_lc_bits[98:166]
+                                + _target_status[_target['TS']]['TX_H_LC'][98:197])
+                            _header_packet = b''.join([
+                                _header_data[:8], _target['TGID'],
+                                _header_data[11:15],
+                                _header_bits.to_bytes(1, 'big'),
+                                _header_data[16:20],
+                                _header_lc_bits.tobytes()])
+                            systems[_target['SYSTEM']].send_system(
+                                _header_packet, _hops, _ber, _rssi,
+                                _source_server, _source_rptr)
+                            logger.info(
+                                '(%s) Replayed deferred Hytera VHEAD to %s '
+                                'TS%s TGID %s after %.2fs contention',
+                                self._system, _target['SYSTEM'],
+                                _target['TS'], int_id(_target['TGID']),
+                                pkt_time - _header_time)
+                    systems[_target['SYSTEM']].send_system(
+                        _tmp_data, _hops, _ber, _rssi, _source_server,
+                        _source_rptr, _late_join=_late_join,
+                        _late_join_sequence=(
+                            _late_join_wire_sequence(
+                                _seq, self.STATUS[_stream_id].get('packets', 1))
+                            if _late_join else None))
+                else:
+                    systems[_target['SYSTEM']].send_system(
+                        _tmp_data, _hops, _ber, _rssi, _source_server,
+                        _source_rptr)
                 _sysIgnore.append(_ignore_key)
                     #logger.debug('(%s) Packet routed by bridge: %s to system: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                 #Ignore this system and TS pair if it's called again on this packet
@@ -2979,7 +3176,8 @@ class routerOBP(OPENBRIDGE):
                 logger.info('(%s) *CALL START* STREAM ID: %s, SUB: %s (%s), RPTR: %s (%s), PEER: %s (%s) TGID %s (%s), TS %s, SRC: %s, HOPS %s', 
                         self._system, int_id(_stream_id),get_alias(_rf_src, subscriber_ids),int_id(_rf_src),self.get_rptr(_source_rptr), int_id(_source_rptr),  get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot,int_id(_source_server),_inthops)
                 if CONFIG['REPORTS']['REPORT']:
-                    self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                    self._report.send_bridgeEvent(group_voice_event('START', 'RX', self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), _rssi))
+                    seed_stream_rssi(self.STATUS[_stream_id], _rssi, pkt_time)
 
 
             else:
@@ -3091,7 +3289,14 @@ class routerOBP(OPENBRIDGE):
 
             
             self.STATUS[_stream_id]['LAST'] = pkt_time
-            
+            if _call_type == 'group' and CONFIG['REPORTS']['REPORT']:
+                _rssi_now = changed_stream_rssi(
+                    self.STATUS[_stream_id], _rssi, pkt_time)
+                if _rssi_now is not None:
+                    self._report.send_bridgeEvent(group_voice_event(
+                        'RSSI', 'RX', self._system, int_id(_stream_id),
+                        int_id(_peer_id), int_id(_rf_src), _slot,
+                        int_id(_dst_id), _rssi_now))
             
             #Create STAT bridge for unknown TG
             if CONFIG['GLOBAL']['GEN_STAT_BRIDGES']:
@@ -3293,6 +3498,18 @@ class routerHBP(HBSYSTEM):
                 #if _target['ACTIVE']:
                     _target_status = systems[_target['SYSTEM']].STATUS
                     _target_system = self._CONFIG['SYSTEMS'][_target['SYSTEM']]
+                    _late_join = _late_join_active(
+                        _target['SYSTEM'], _target['TS'], _target['TGID'],
+                        pkt_time, _stream_id)
+                    _hytera_header_key = (
+                        _target['SYSTEM'], _target['TS'], _target['TGID'])
+                    if (_target_system['MODE'] == 'HYTERA'
+                            and _frame_type == HBPF_DATA_SYNC
+                            and _dtype_vseq == HBPF_SLT_VHEAD):
+                        self.STATUS[_slot].setdefault(
+                            '_HYTERA_DEFERRED_VHEAD', {})[
+                                _hytera_header_key] = (
+                                    _data, _bits, dmrpkt, pkt_time)
 
                     # Deduplicate aliases by physical destination, not TGID.
                     # One packet sent twice with the same stream ID can make
@@ -3359,7 +3576,7 @@ class routerHBP(HBSYSTEM):
                             }
                             logger.debug('(%s) Conference Bridge: %s, Call Bridged to OBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                             if CONFIG['REPORTS']['REPORT']:
-                                systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID'])).encode(encoding='utf-8', errors='ignore'))
+                                systems[_target['SYSTEM']]._report.send_bridgeEvent(group_voice_event('START', 'TX', _target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), _rssi))
                         _target_lc = _target_lc_map[_target['TGID']]
                             
                         # Record the time of this packet so we can later identify a stale stream
@@ -3411,13 +3628,15 @@ class routerHBP(HBSYSTEM):
                             if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
                                 logger.info('(%s) Call not routed to TGID%s, target in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']))
                             continue
-                        if ((_target['TGID'] == _target_status[_target['TS']]['RX_TGID'])
+                        if (not _late_join
+                                and (_target['TGID'] == _target_status[_target['TS']]['RX_TGID'])
                                 and _target_status[_target['TS']]['RX_TYPE'] != HBPF_SLT_VTERM
                                 and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < STREAM_TO)):
                             if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
                                 logger.info('(%s) Call not routed to TGID%s, matching call already active on target: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
                             continue
-                        if ((_target['TGID'] == _target_status[_target['TS']]['TX_TGID'])
+                        if (not _late_join
+                                and (_target['TGID'] == _target_status[_target['TS']]['TX_TGID'])
                                 and _target_status[_target['TS']]['TX_TYPE'] != HBPF_SLT_VTERM
                                 and (_rf_src != _target_status[_target['TS']]['TX_RFS'])
                                 and ((pkt_time - _target_status[_target['TS']]['TX_TIME']) < STREAM_TO)):
@@ -3447,7 +3666,7 @@ class routerHBP(HBSYSTEM):
                                 logger.debug('(%s) Generating TX FULL and EMB LCs for HomeBrew destination: System: %s, TS: %s, TGID: %s', self._system, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                                 logger.debug('(%s) Conference Bridge: %s, Call Bridged to HBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                                 if CONFIG['REPORTS']['REPORT']:
-                                    systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,START,TX,{},{},{},{},{},{}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID'])).encode(encoding='utf-8', errors='ignore'))
+                                    systems[_target['SYSTEM']]._report.send_bridgeEvent(group_voice_event('START', 'TX', _target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), _rssi))
 
                         # Set other values for the contention handler to test next time there is a frame to forward
                         _target_status[_target['TS']]['TX_TIME'] = pkt_time
@@ -3489,8 +3708,68 @@ class routerHBP(HBSYSTEM):
                             
                         _tmp_data = b''.join([_tmp_data, _tx_dmrpkt, _data[53:55]])
 
+                    # Hytera requires the real Voice LC Header when a target
+                    # admitted voice after contention. Mirror the OpenBridge
+                    # path so an HBP-fed call cannot fall back to headerless
+                    # EEEE acquisition and stale RF display context.
+                    if _target_system['MODE'] == 'HYTERA':
+                        _deferred_headers = self.STATUS[_slot].get(
+                            '_HYTERA_DEFERRED_VHEAD', {})
+                        _deferred_vhead = _deferred_headers.pop(
+                            _hytera_header_key, None)
+                        _is_vhead = (
+                            _frame_type == HBPF_DATA_SYNC
+                            and _dtype_vseq == HBPF_SLT_VHEAD)
+                        _is_voice = _frame_type in (
+                            HBPF_VOICE, HBPF_VOICE_SYNC)
+                        if _is_vhead:
+                            # The header is being forwarded immediately, so it
+                            # must not be replayed again before the next burst.
+                            _deferred_headers.pop(_hytera_header_key, None)
+                        elif (_deferred_vhead is not None
+                                and _is_voice and not _late_join):
+                            (_header_data, _header_bits, _header_dmrd,
+                             _header_time) = _deferred_vhead
+                            if _hytera_deferred_vhead_valid(
+                                    _header_time, pkt_time,
+                                    _target_system['GROUP_HANGTIME']):
+                                if _system['TS'] != _target['TS']:
+                                    _header_bits ^= 1 << 7
+                                _header_lc_bits = bitarray(endian='big')
+                                _header_lc_bits.frombytes(_header_dmrd)
+                                _header_lc_bits = (
+                                    _target_status[_target['TS']]['TX_H_LC'][0:98]
+                                    + _header_lc_bits[98:166]
+                                    + _target_status[_target['TS']]['TX_H_LC'][98:197])
+                                _header_packet = b''.join([
+                                    _header_data[:8], _target['TGID'],
+                                    _header_data[11:15],
+                                    _header_bits.to_bytes(1, 'big'),
+                                    _header_data[16:20],
+                                    _header_lc_bits.tobytes(),
+                                    _header_data[53:55]])
+                                systems[_target['SYSTEM']].send_system(
+                                    _header_packet, b'', _ber, _rssi,
+                                    _source_server, _source_rptr)
+                                logger.info(
+                                    '(%s) Replayed deferred Hytera VHEAD to %s '
+                                    'TS%s TGID %s after %.2fs contention',
+                                    self._system, _target['SYSTEM'],
+                                    _target['TS'], int_id(_target['TGID']),
+                                    pkt_time - _header_time)
                     # Transmit the packet to the destination system
-                    systems[_target['SYSTEM']].send_system(_tmp_data,b'',_ber,_rssi,_source_server, _source_rptr)
+                    if _target_system['MODE'] == 'HYTERA':
+                        systems[_target['SYSTEM']].send_system(
+                            _tmp_data, b'', _ber, _rssi, _source_server,
+                            _source_rptr, _late_join=_late_join,
+                            _late_join_sequence=(
+                                _late_join_wire_sequence(
+                                    _seq, self.STATUS[_slot].get('packets', 1))
+                                if _late_join else None))
+                    else:
+                        systems[_target['SYSTEM']].send_system(
+                            _tmp_data, b'', _ber, _rssi, _source_server,
+                            _source_rptr)
                     _sysIgnore.append(_ignore_key)
        
         return _sysIgnore
@@ -3631,6 +3910,13 @@ class routerHBP(HBSYSTEM):
             speech = pkt_gen(reply_as, rf_src, peer_id, hbp_slot, _say, private_call=True)
             reactor.callInThread(
                 self.ipsc_reflector_speech, speech, slot, peer_id, _gen, int_dst_id)
+        elif CONFIG['SYSTEMS'][self._system]['MODE'] == 'HYTERA':
+            # The RD985 capture returns the announcement as group voice from
+            # the reflector that was private-called, to TG9 on the same slot.
+            source_id = bytes_3(int_dst_id if int_dst_id is not None else 5000)
+            speech = pkt_gen(source_id, bytes_3(9), bytes_4(9), slot - 1, _say)
+            reactor.callInThread(
+                sendSpeech, self, speech, source_id, bytes_3(9), slot)
         else:
             speech = pkt_gen(bytes_3(5000), bytes_3(9), bytes_4(9), 1, _say)
             reactor.callInThread(sendSpeech, self, speech)
@@ -3669,7 +3955,7 @@ class routerHBP(HBSYSTEM):
             if _d_system == self._system:
                 continue
             _mode = CONFIG['SYSTEMS'][_d_system].get('MODE')
-            if _mode not in ('MASTER', 'IPSC'):
+            if _mode not in ('MASTER', 'IPSC', 'HYTERA'):
                 continue
             _peers = CONFIG['SYSTEMS'][_d_system].get('PEERS') or {}
             for _to_peer in _peers:
@@ -4124,7 +4410,11 @@ class routerHBP(HBSYSTEM):
                     self._play_reflector_announcement(
                         _say, _rf_src, _peer_id, _slot, _stream_id, _int_dst_id)
 
-            if (not is_reflector_private_destination(_int_dst_id)
+            # PARROT playback was already relayed by the dedicated branch
+            # above. Sending it through the generic unit path as well queues
+            # every AMBE burst twice and stretches private echo to ~2x length.
+            if (self._system != 'PARROT'
+                    and not is_reflector_private_destination(_int_dst_id)
                     and _int_dst_id not in (8, 9)):
                 self._forward_unit_voice(
                     _dst_id, _slot, _bits, _data, dmrpkt, _stream_id, _peer_id)
@@ -4234,7 +4524,8 @@ class routerHBP(HBSYSTEM):
                         logger.info('(%s) *CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s', \
                             self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
                         if CONFIG['REPORTS']['REPORT']:
-                            self._report.send_bridgeEvent('GROUP VOICE,START,RX,{},{},{},{},{},{}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id)).encode(encoding='utf-8', errors='ignore'))
+                            self._report.send_bridgeEvent(group_voice_event('START', 'RX', self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), _rssi))
+                            seed_stream_rssi(self.STATUS[_slot], _rssi, pkt_time)
                 else:
                     logger.info('(%s) *VCSBK* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s _dtype_vseq: %s', 
                             self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, _dtype_vseq)
@@ -4398,6 +4689,15 @@ class routerHBP(HBSYSTEM):
         
             #Save this sequence number 
             self.STATUS[_slot]['lastSeq'] = _seq
+            if (_call_type == 'group' and CONFIG['REPORTS']['REPORT']
+                    and not _hbp_is_vterm):
+                _rssi_now = changed_stream_rssi(
+                    self.STATUS[_slot], _rssi, pkt_time)
+                if _rssi_now is not None:
+                    self._report.send_bridgeEvent(group_voice_event(
+                        'RSSI', 'RX', self._system, int_id(_stream_id),
+                        int_id(_peer_id), int_id(_rf_src), _slot,
+                        int_id(_dst_id), _rssi_now))
             #Save this packet
             self.STATUS[_slot]['lastData'] = _data
             if not _hbp_is_vterm:
@@ -4626,6 +4926,19 @@ class routerIPSC(IpscMasterMixin, routerHBP):
                 logger.info('(%s) IPSC peer gone — clearing OPTIONS', self._system)
                 _sys['_reset'] = True
             reset_slot_voice_ident(_sys)
+
+
+#
+# Hytera IP Multi-site Connect master (MODE: HYTERA)
+#
+class routerHYTERA(HyteraMasterMixin, routerHBP):
+
+    def __init__(self, _name, _config, _report):
+        if 'PEERS' not in _config['SYSTEMS'][_name]:
+            _config['SYSTEMS'][_name]['PEERS'] = {}
+        routerHBP.__init__(self, _name, _config, _report)
+        self._peers = _config['SYSTEMS'][_name]['PEERS']
+        self.init_hytera()
 
 
 #
@@ -4872,12 +5185,20 @@ if __name__ == '__main__':
     systemdelete = deque()
     for system in CONFIG['SYSTEMS']:
         if CONFIG['SYSTEMS'][system]['ENABLED']:
-            if (is_routing_master(CONFIG['SYSTEMS'][system]['MODE'])
+            if (is_generated_master(CONFIG['SYSTEMS'][system]['MODE'])
                     and (CONFIG['SYSTEMS'][system]['GENERATOR'] > 1)):
                 for count in range(CONFIG['SYSTEMS'][system]['GENERATOR']):
                     _systemname = ''.join([system,'-',str(count)])
                     generator[_systemname] = copy.deepcopy(CONFIG['SYSTEMS'][system])
-                    generator[_systemname]['PORT'] = generator[_systemname]['PORT'] + count
+                    if generator[_systemname]['MODE'] == 'HYTERA':
+                        generator[_systemname]['PORT'] += (
+                            count * generator[_systemname]['PORTS_PER_SLOT'])
+                        generator[_systemname]['DMR_PORT'] += (
+                            count * generator[_systemname]['PORTS_PER_SLOT'])
+                        generator[_systemname]['RDAC_PORT'] += (
+                            count * generator[_systemname]['PORTS_PER_SLOT'])
+                    else:
+                        generator[_systemname]['PORT'] += count
                     ensure_master_default_options(generator[_systemname])
                     logger.debug('(GLOBAL) Generator - generated system %s',_systemname)
                 systemdelete.append(system)
@@ -4970,6 +5291,8 @@ if __name__ == '__main__':
                 _OPENBRIDGE_SYSTEMS.add(system)
             elif CONFIG['SYSTEMS'][system]['MODE'] == 'IPSC':
                 systems[system] = routerIPSC(system, CONFIG, report_server)
+            elif CONFIG['SYSTEMS'][system]['MODE'] == 'HYTERA':
+                systems[system] = routerHYTERA(system, CONFIG, report_server)
             else:
                 if (is_routing_master(CONFIG['SYSTEMS'][system]['MODE'])
                         and CONFIG['SYSTEMS'][system]['ANNOUNCEMENT_LANGUAGE']
@@ -5013,7 +5336,7 @@ if __name__ == '__main__':
     options = options_task.start(26)
     options.addErrback(loopingErrHandle)
 
-    # IPSC selfcare — poll Clients (mode=0) and apply static TG options on master
+    # Native repeater selfcare — poll IPSC (0) and Hytera (-1) static options.
     if CONFIG.get('SELF SERVICE', {}).get('ENABLED'):
         ss = CONFIG['SELF SERVICE']
         _selfcare_db = SelfcareDB(
@@ -5023,7 +5346,8 @@ if __name__ == '__main__':
         ipsc_sc_task = task.LoopingCall(ipsc_selfcare_poll)
         ipsc_sc = ipsc_sc_task.start(ss.get('POLL_INTERVAL', 5))
         ipsc_sc.addErrback(loopingErrHandle)
-        logger.info('(SELF SERVICE) IPSC selfcare enabled (poll every %ss)', ss.get('POLL_INTERVAL', 5))
+        logger.info('(SELF SERVICE) Repeater selfcare enabled (poll every %ss)',
+                    ss.get('POLL_INTERVAL', 5))
         hs_disc_task = task.LoopingCall(hotspot_selfcare_disc_poll)
         hs_disc = hs_disc_task.start(ss.get('DISC_POLL_INTERVAL', 2))
         hs_disc.addErrback(loopingErrHandle)
@@ -5059,6 +5383,8 @@ if __name__ == '__main__':
 
     _log_file = CONFIG['LOGGER'].get('LOG_FILE', '/opt/rysen/log/rysen.log')
     _log_dir = os.path.dirname(_log_file) or '/opt/rysen/log'
+    _REACTOR_STATUS_DIR[0] = _log_dir
+    _REACTOR_WINDOW_START[0] = time()
     from rysen_trace import persist_runtime_version, schedule_version_ping
     persist_runtime_version(_log_dir)
     schedule_version_ping(reactor, _log_dir)

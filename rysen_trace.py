@@ -42,6 +42,25 @@ def persist_runtime_version(log_dir='/opt/rysen/log'):
         logger.debug('(RYSEN) could not persist runtime version: %s', exc)
 
 
+def reactor_status_path(log_dir='/opt/rysen/log'):
+    return os.path.join(log_dir, '.rysen_reactor.json')
+
+
+def persist_reactor_status(log_dir, payload):
+    """Atomically write the status-page reactor snapshot beside the version file."""
+    path = reactor_status_path(log_dir)
+    tmp = path + '.tmp'
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+        with open(tmp, 'w', encoding='utf-8') as fh:
+            json.dump(payload, fh, separators=(',', ':'))
+            fh.write('\n')
+        os.replace(tmp, path)
+        os.chmod(path, 0o644)
+    except OSError as exc:
+        logger.debug('(RYSEN) could not persist reactor status: %s', exc)
+
+
 def _hash_seed(seed):
     return hashlib.sha256(seed.encode('utf-8', errors='ignore')).hexdigest()
 

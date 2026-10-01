@@ -26,6 +26,8 @@ class TestActivateUaNotify(unittest.TestCase):
     def setUp(self):
         self._prev_bridges = getattr(bm, 'BRIDGES', None)
         self._prev_config = getattr(bm, 'CONFIG', None)
+        self._prev_late_join = dict(bm._LATE_JOIN_TARGETS)
+        bm._LATE_JOIN_TARGETS.clear()
         bm.CONFIG = {
             'SYSTEMS': {
                 'SYSTEM-1': {
@@ -35,6 +37,10 @@ class TestActivateUaNotify(unittest.TestCase):
                     'PEERS': {},
                 },
                 'IPSC-198': {'MODE': 'IPSC'},
+                'HYTERA': {
+                    'MODE': 'HYTERA',
+                    'DEFAULT_UA_TIMER': 10,
+                },
             },
             'REPORTS': {'REPORT': True},
         }
@@ -43,6 +49,7 @@ class TestActivateUaNotify(unittest.TestCase):
                 _leg('SYSTEM-1', 1, active=True, timer=100.0),
                 _leg('SYSTEM-1', 2, active=False, timer=0.0),
                 _leg('IPSC-198', 1, active=False, timer=0.0),
+                _leg('HYTERA', 1, active=False, timer=0.0),
             ],
         }
 
@@ -55,6 +62,8 @@ class TestActivateUaNotify(unittest.TestCase):
             delattr(bm, 'CONFIG')
         else:
             bm.CONFIG = self._prev_config
+        bm._LATE_JOIN_TARGETS.clear()
+        bm._LATE_JOIN_TARGETS.update(self._prev_late_join)
 
     def test_already_active_refreshes_timer_without_notify(self):
         before = bm.BRIDGES['326'][0]['TIMER']
@@ -82,6 +91,40 @@ class TestActivateUaNotify(unittest.TestCase):
         self.assertTrue(changed)
         self.assertTrue(bm.BRIDGES['326'][2]['ACTIVE'])
         notify.assert_called_once()
+
+    def test_hytera_key_up_joins_during_the_activation_headers(self):
+        now = bm.time()
+        with mock.patch.object(bm, 'notify_bridge_table_updated'):
+            changed = bm.activate_ua_bridge_source('326', 'HYTERA', 1)
+
+        self.assertTrue(changed)
+        self.assertTrue(bm.BRIDGES['326'][3]['ACTIVE'])
+        tgid = b'\x00\x01\x46'
+        self.assertFalse(bm._late_join_active('HYTERA', 1, tgid, now))
+        self.assertTrue(bm._late_join_active(
+            'HYTERA', 1, tgid, now + bm._HYTERA_LATE_JOIN_ARM_S + 0.001))
+        self.assertFalse(bm._arm_late_join_target('SYSTEM-1', 1, tgid, now))
+
+    def test_hytera_join_bypasses_only_the_active_slot_hold(self):
+        with open('bridge_master.py', encoding='utf-8') as fh:
+            source = fh.read()
+        self.assertNotIn('_target_rx_call_active', source)
+        self.assertEqual(source.count('if (not _late_join'), 4)
+        self.assertEqual(bm._HYTERA_LATE_JOIN_ARM_S, 0.120)
+
+    def test_deferred_header_survives_hangtime_release_boundary(self):
+        hangtime = 5.0
+        self.assertTrue(
+            bm._hytera_deferred_vhead_valid(100.0, 105.0, hangtime))
+        self.assertTrue(
+            bm._hytera_deferred_vhead_valid(
+                100.0, 105.0 + bm._HYTERA_DEFERRED_VHEAD_GRACE_S,
+                hangtime))
+        self.assertFalse(
+            bm._hytera_deferred_vhead_valid(
+                100.0,
+                105.0 + bm._HYTERA_DEFERRED_VHEAD_GRACE_S + 0.001,
+                hangtime))
 
     def test_source_guard_no_ua_refreshed_notify(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
@@ -133,6 +176,23 @@ class TestResetStaticKeepsUaMembers(unittest.TestCase):
     def test_drops_live_when_no_ua_members(self):
         bm.SUB_MAP = {}
         bm.reset_static_tg(91, 2, 10, 'SYSTEM-1')
+        leg = bm.BRIDGES['91'][0]
+        self.assertFalse(leg['ACTIVE'])
+        self.assertEqual(leg['TO_TYPE'], 'ON')
+
+    def test_hytera_drops_stale_subscriber_map_membership(self):
+        peer = b'\x00\x03\x97\x17'
+        bm.SUB_MAP = {
+            b'\x00#\xcb#': ('HYTERA-0', 1, b'\x00\x00[', 1, peer),
+        }
+        bm.BRIDGES = {
+            '91': [_leg('HYTERA-0', 1, active=True, to_type='OFF')],
+        }
+        with mock.patch.object(
+                bm, 'CONFIG',
+                {'SYSTEMS': {'HYTERA-0': {'MODE': 'HYTERA'}}},
+                create=True):
+            bm.reset_static_tg(91, 1, 10, 'HYTERA-0')
         leg = bm.BRIDGES['91'][0]
         self.assertFalse(leg['ACTIVE'])
         self.assertEqual(leg['TO_TYPE'], 'ON')

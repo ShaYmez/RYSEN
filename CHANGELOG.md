@@ -1,5 +1,39 @@
 # RYSEN DMRMaster+ Changelog
 
+## Unreleased — Native Hytera
+
+Capture-derived native Hytera IP Multi-site Connect support is field-validated
+on RD985 repeaters running `A9.02.03.009` and `A8.00.09.001`.
+
+- Three-port P2P/DMR/RDAC registration, service redirects, keepalives, identity
+  discovery and read-only repeater metadata.
+- Capture-validated 72-byte group/private voice translation in both directions,
+  with correct TS1/TS2 source and talkgroup display.
+- Outbound DMR Voice A-F phase aligned to the IPSC2 downlink
+  (`7777`–`CCCC`), including the `EEEE1111` Voice E envelope, captured packet
+  types and terminator fields.
+- Delayed static admission preserves the original Voice LC Header instead of
+  beginning with a headerless fallback.
+- Mid-stream group join (late entry) is field-validated on active TG `67498`:
+  immediate RF audio after de-key and stable source/TG identity.
+- TG `9990` group and private/unit parrot both return clear audio at normal
+  speed. PARROT playback no longer traverses the generic unit relay a second
+  time.
+- NAT-aware multi-repeater `hytera_proxy.py` with byte-transparent media
+  forwarding and clean session replacement after a repeater power cycle.
+- Regression suite covers capture fixtures, burst phase, identity, pacing,
+  late-entry sequence continuity, proxy lifecycle and parrot routing.
+- Live RSSI is appended to `GROUP VOICE,START` and updated at most once per
+  second while the raw Homebrew byte changes. Direct Homebrew and enhanced
+  OpenBridge v4/v5 already carry that byte. A Hytera repeater does not put
+  the level in the voice frame; RYSEN keeps the RDAC session open, waits for
+  the call-state event, then polls and copies the latest slot sample into
+  DMRD byte 54. Classic OpenBridge and Motorola IPSC are unchanged.
+- A8 firmware is field-validated. An RD985 running `A8.00.09.001` registered
+  beside an A9 repeater and passed voice.
+
+See [doc/hytera.md](doc/hytera.md) for operator setup and supported behaviour.
+
 ## Version 1.5.4 (2026-09-22)
 
 Idle reactor, STAT OpenBridge hairpin, and FreeSTAR hub device control.

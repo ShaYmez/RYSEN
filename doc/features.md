@@ -158,9 +158,31 @@ Field-hardened on the FreeSTAR fleet after USA Homebrew RPTPING stalls and STAT 
 
 ---
 
+## Unreleased — Native Hytera
+
+Field-validated on RD985 repeaters running firmware `A9.02.03.009` and
+`A8.00.09.001`.
+
+| Feature | Detail |
+|---------|--------|
+| Native master | Hytera P2P, DMR and RDAC registration, redirects and keepalives |
+| Group/private voice | Bidirectional 72-byte translation with correct source, TG and timeslot identity |
+| Outbound pacing | Capture-matched A-F burst phase and envelope prefixes at 60 ms cadence |
+| Late entry | Immediate audio and correct display when joining an active group call mid-stream |
+| Parrot 9990 | Clear normal-speed group and private/unit echo without duplicate unit relay |
+| Proxy | NAT-aware multi-repeater allocation, service redirect rewriting and byte-transparent media |
+| Monitor/selfcare | Hytera peer reporting, repeater ownership/statics and read-only RDAC metadata |
+| Live RSSI | Homebrew byte 54 on call start and a throttled in-call update; Hytera reads it from the RDAC call-state poll |
+| A8 firmware | RD985 `A8.00.09.001` registered beside an A9 repeater and passed voice |
+
+Operator setup: [hytera.md](hytera.md).
+
+---
+
 ## Related documentation
 
 - [architecture.md](architecture.md) — stack overview
+- [hytera.md](hytera.md) — native Hytera setup and supported behaviour
 - [options.md](options.md) — OPTIONS string syntax
 - [install.md](install.md) — Docker install
 - [selfcare.md](selfcare.md) — MariaDB selfcare

@@ -61,6 +61,7 @@ class TestParrotSourceGuards(unittest.TestCase):
         self.assertIn('Refusing parrot TG 9990 as dial-a-tg reflector', source)
         self.assertIn('is_parrot_bridge(_bridge)', source)
         self.assertIn('_forward_parrot_unit_voice', source)
+        self.assertIn("if (self._system != 'PARROT'", source)
         self.assertNotIn('deferToThread', source)
 
     def test_playback_group_echo_for_group_inbound(self):

@@ -5,7 +5,9 @@ from unittest.mock import MagicMock
 from twisted.internet.defer import succeed
 
 from selfcare_db import (
+    HYTERA_CLIENT_MODE,
     IPSC_CLIENT_MODE,
+    SelfcareDB,
     build_ipsc_seed_options,
     find_hotspot_master_peer,
     find_ipsc_slot_for_radio_id,
@@ -25,6 +27,18 @@ class TestSelfcareHelpers(unittest.TestCase):
 
     def test_ipsc_client_mode_is_zero(self):
         self.assertEqual(IPSC_CLIENT_MODE, 0)
+
+    def test_clear_modified_accepts_hytera_rows(self):
+        db = SelfcareDB.__new__(SelfcareDB)
+        db.dbpool = MagicMock()
+        db.dbpool.runOperation.return_value = succeed(None)
+
+        deferred = db.clear_modified(235287)
+
+        self.assertTrue(deferred.called)
+        sql, params = db.dbpool.runOperation.call_args.args
+        self.assertIn('mode IN', sql)
+        self.assertEqual(params, (235287, IPSC_CLIENT_MODE, HYTERA_CLIENT_MODE))
 
     def test_build_ipsc_seed_options(self):
         cfg = {'TS1_STATIC': '9,10', 'TS2_STATIC': '2350'}
@@ -235,12 +249,12 @@ class TestIpscSelfcareHooks(unittest.TestCase):
         self.assertIn('flag_modified = 1 if seed_options else 0', source)
 
 
-class TestOptionsConfigIpscMode(unittest.TestCase):
+class TestOptionsConfigRepeaterModes(unittest.TestCase):
 
-    def test_ipsc_mode_allowed_in_options_config(self):
+    def test_native_repeater_modes_allowed_in_options_config(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
             source = fh.read()
-        self.assertIn("if _mode not in ('MASTER', 'IPSC'):", source)
+        self.assertIn("if _mode not in ('MASTER', 'IPSC', 'HYTERA'):", source)
         self.assertIn("if _mode == 'MASTER' and 'PEERS' in CONFIG['SYSTEMS'][_system]:", source)
 
 

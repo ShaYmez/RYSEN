@@ -7,9 +7,10 @@ RYSEN selfcare lets operators change repeater and hotspot settings from [RYSEN-M
 | Client type | DB `mode` | RYSEN component | Apply path |
 |-------------|-----------|-----------------|------------|
 | IPSC repeater | `0` | `selfcare_db.py` | `ipsc_selfcare_poll()` (default 5 s) |
+| Hytera repeater | `-1` | `selfcare_db.py` + native RDAC | `ipsc_selfcare_poll()` (default 5 s) |
 | Hotspot | `> 0` | `proxy_db.py` + `hotspot_proxy_v2_sc.py` | Proxy `login_opt()` / `send_opts()` → RPTO; DISC via `hotspot_selfcare_disc_poll()` (default 2 s) |
 
-Hotspot proxy poll **excludes** IPSC rows (`mode = 0`).
+Hotspot proxy poll **excludes** repeater rows (`mode <= 0`).
 
 ## Full-stack Docker
 
@@ -29,7 +30,7 @@ Credentials must match across three places:
 
 | File | Read by | Keys |
 |------|---------|------|
-| `rysen.cfg` `[SELF SERVICE]` | rysen (IPSC) | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`, `ENABLED`, `POLL_INTERVAL`, `DISC_POLL_INTERVAL` |
+| `rysen.cfg` `[SELF SERVICE]` | rysen (IPSC and Hytera) | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`, `ENABLED`, `POLL_INTERVAL`, `DISC_POLL_INTERVAL` |
 | `proxy.cfg` `[SELF SERVICE]` | hotspot proxy | `server`, `port`, `username`, `password`, `db_name`, `use_selfservice` |
 | `docker-compose.yml` | mariadb + proxy containers | `MYSQL_*`, `DB_*` env vars |
 
@@ -51,7 +52,7 @@ Optional poll intervals in `rysen.cfg` `[SELF SERVICE]`:
 | `POLL_INTERVAL` | `5` | IPSC selfcare apply poll (seconds) |
 | `DISC_POLL_INTERVAL` | `2` | Hotspot `DISC=1` server-side poll (seconds) |
 
-## IPSC repeater selfcare
+## Repeater selfcare
 
 When a Motorola repeater registers (`MODE: IPSC`):
 
@@ -68,6 +69,27 @@ TS1=235,23426,116;TS2=2350,2351,2352;RelinkTime=15;
 `RelinkTime` maps to `DEFAULT_UA_TIMER` (minutes) — IPSC2 convention.
 
 On first register, seed options are built from `TS1_STATIC`/`TS2_STATIC` in `rysen.cfg` if set.
+
+### Hytera repeaters
+
+Hytera registration follows the same ownership and static-talkgroup lifecycle as
+IPSC, using `mode = -1`:
+
+1. A validated RDAC identity creates or refreshes the `Clients` row, preserving
+   the existing password and OPTIONS.
+2. A first-time owner can claim the account with the repeater callsign or DMR
+   ID, then manage static `TS1` and `TS2` talkgroups.
+3. Stored options are queued again after a fresh Hytera registration and
+   applied through the same repeater poll as IPSC.
+4. `DISC=1` remains a one-shot, server-side dynamic-link disconnect request.
+
+RDAC firmware, hardware, serial, callsign, raw channel mode, and TX/RX
+frequency are cached in `HyteraMetadata` solely for the PHP selfcare view. The
+native Hytera peer report remains the protocol source of truth; the cache is
+best-effort and does not control a repeater or write CPS settings.
+
+The dashboard labels these clients **Hytera** and shows the short model prefix
+(for example, `RD985`), rather than the full hardware suffix.
 
 ## Hotspot selfcare
 
@@ -87,7 +109,7 @@ Dashboard can request a disconnect by setting `DISC=1` in the OPTIONS string.
 |------|---------------------|
 | Hotspot RPTO | Immediately when master receives RPTO from proxy or firmware |
 | Hotspot MariaDB | `hotspot_selfcare_disc_poll()` (default every 2 s) |
-| IPSC repeater | `ipsc_selfcare_poll()` only — no RPTO path (default every 5 s) |
+| IPSC or Hytera repeater | `ipsc_selfcare_poll()` only — no RPTO path (default every 5 s) |
 
 After apply, `DISC=1` is stripped from in-memory OPTIONS **and** persisted back to MariaDB (one-shot). Reconnect will not re-fire disconnect.
 
@@ -97,7 +119,7 @@ Example: `TS2=2350;DISC=1;` → stored as `TS2=2350;` after apply.
 
 The dashboard (v1.5.0+) provides:
 
-- IPSC repeater display on Linked Systems
+- IPSC and Hytera repeater display on Linked Systems
 - Multi-static TG selfcare UI
 - Hotspot selfcare editing
 - Remote disconnect button
