@@ -56,6 +56,7 @@ from bridge_helpers import (
     hbp_claim_is_local,
     hbp_should_scan_obp,
     hbp_short_gap_continuation,
+    obp_should_open_new_stream,
     originated_obp_hairpin,
     translated_obp_stream_id,
 )
@@ -78,6 +79,7 @@ __email__      = 'n0mjs@me.com'
 # Module gobal variables
 _HBP_STREAM_CLAIMS = {}
 _HBP_CLAIM_TIMEOUT_S = 1.0
+_OBP_CLAIM_TIMEOUT_S = 1.0
 _OPENBRIDGE_SYSTEMS = set()
 _TERM_TOMBSTONES = {}
 _TERM_TOMBSTONE_TTL_S = 5.0
@@ -372,16 +374,49 @@ class routerOBP(OPENBRIDGE):
                 _obp_previous is not None
                 and pkt_time - _obp_previous.get(
                     'LAST', _obp_previous.get('START', 0)) >= STREAM_TO)
-            _obp_new_stream = (
-                _obp_previous is None
-                or (_frame_type == HBPF_DATA_SYNC
-                    and _dtype_vseq == HBPF_SLT_VHEAD
-                    and (_obp_previous.get('_fin') or _obp_idle))
-                or (_obp_idle and _dtype_vseq != HBPF_SLT_VTERM))
+            _obp_is_vhead = (
+                _frame_type == HBPF_DATA_SYNC
+                and _dtype_vseq == HBPF_SLT_VHEAD)
+            _obp_new_stream = obp_should_open_new_stream(
+                _obp_previous, _obp_idle, _obp_is_vhead,
+                _dtype_vseq == HBPF_SLT_VTERM)
             if _obp_new_stream:
+                _pre_owner = earliest_obp_owner(
+                    _OPENBRIDGE_SYSTEMS, systems, _stream_id,
+                    _dst_id, _rf_src, pkt_time, _OBP_CLAIM_TIMEOUT_S)
+                if _pre_owner and _pre_owner != self._system:
+                    if _obp_previous is None or not _obp_previous.get('LOOPLOG'):
+                        logger.warning(
+                            '(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, '
+                            'TG %s, IGNORE THIS SOURCE',
+                            self._system, _pre_owner, int_id(_stream_id),
+                            int_id(_dst_id))
+                    if _obp_previous is None:
+                        self.STATUS[_stream_id] = {
+                            'START':     pkt_time,
+                            'LAST':      pkt_time,
+                            'CONTENTION':False,
+                            'RFS':       _rf_src,
+                            'TGID':      _dst_id,
+                            '1ST':       pkt_time,
+                            'lastSeq': False,
+                            'lastData': False,
+                            'LOOPLOG': True,
+                            'LC': LC_OPT + _dst_id + _rf_src,
+                        }
+                    else:
+                        _obp_previous['LAST'] = pkt_time
+                        _obp_previous['LOOPLOG'] = True
+                    if (CONFIG['SYSTEMS'][self._system].get('ENHANCED_OBP', False)
+                            and '_bcsq' not in self.STATUS[_stream_id]):
+                        systems[self._system].send_bcsq(_dst_id,_stream_id)
+                        self.STATUS[_stream_id]['_bcsq'] = True
+                    return
+
                 # This is a new call stream
                 self.STATUS[_stream_id] = {
                     'START':     pkt_time,
+                    'LAST':      pkt_time,
                     'CONTENTION':False,
                     'RFS':       _rf_src,
                     'TGID':      _dst_id,
@@ -434,9 +469,10 @@ class routerOBP(OPENBRIDGE):
                     return
                 # Include this ingress in the election. Excluding it lets two
                 # mirrored OBP links each select the other and suppress both.
+                self.STATUS[_stream_id]['LAST'] = pkt_time
                 fi = earliest_obp_owner(
                     _OPENBRIDGE_SYSTEMS, systems, _stream_id,
-                    _dst_id, _rf_src, pkt_time, STREAM_TO)
+                    _dst_id, _rf_src, pkt_time, _OBP_CLAIM_TIMEOUT_S)
                 if fi and self._system != fi:
                     if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
                         logger.warning("(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, TG %s, IGNORE THIS SOURCE",self._system, fi, int_id(_stream_id), int_id(_dst_id))

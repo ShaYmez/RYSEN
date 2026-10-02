@@ -1,5 +1,11 @@
 # RYSEN DMRMaster+ Changelog
 
+## Unreleased — OBP stream ownership
+
+- Unfinished OpenBridge streams no longer open a new CALL START when `LAST` ages past 360ms. That restart was re-claiming 2350 across the mesh after jitter or reactor lag.
+- Owner election now uses a 1s claim window and refreshes `LAST` before the vote. Empty `fi` continues the existing over instead of treating every master as a new owner.
+- A looped first packet on a second OBP yields before CALL START.
+
 ## Unreleased — Native Hytera
 
 Capture-derived native Hytera IP Multi-site Connect support is field-validated

@@ -10,7 +10,7 @@ class TestObpActivateUaCallStartOnly(unittest.TestCase):
             source = fh.read()
         # New-stream flag on OBP group path
         self.assertIn('_obp_previous = self.STATUS.get(_stream_id)', source)
-        self.assertIn('_obp_new_stream = (', source)
+        self.assertIn('_obp_new_stream = obp_should_open_new_stream(', source)
         # Activate on first inbound claim (new stream or stub missing 1ST) — not every frame
         self.assertIn('_obp_ua_arm', source)
         self.assertIn('if _obp_ua_arm:', source)
@@ -117,17 +117,18 @@ class TestReportingErrback(unittest.TestCase):
 
 class TestObpEmptyFiOwner(unittest.TestCase):
 
-    def test_empty_fi_continues_as_owner_not_hard_drop(self):
+    def test_empty_fi_continues_existing_stream_not_hard_drop(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
             source = fh.read()
-        self.assertIn('fi is empty; treating this system as owner', source)
-        self.assertGreaterEqual(source.count('fi is empty; treating this system as owner'), 2)
-        # Hard-drop on empty fi must be gone (group + unit)
+        self.assertIn('fi is empty; continuing existing stream', source)
+        self.assertGreaterEqual(source.count('fi is empty; continuing existing stream'), 2)
+        self.assertNotIn('treating this system as owner', source)
+        # Hard-drop on empty fi must stay gone (group + unit)
         self.assertNotIn('fi is empty for some reason', source)
         self.assertIn('elif self._system != fi:', source)
         # Empty-fi log must not reference unbound _sysslot
-        self.assertNotIn('treating this system as owner. STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)', source)
-        self.assertIn('treating this system as owner. STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_slot)', source)
+        self.assertNotIn('continuing existing stream. STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_sysslot)', source)
+        self.assertIn('continuing existing stream. STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_slot)', source)
 
     def test_obp_stub_hardens_lc_1st_counters(self):
         with open('bridge_master.py', encoding='utf-8') as fh:

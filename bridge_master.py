@@ -136,6 +136,7 @@ from bridge_helpers import (
     hbp_claim_is_local,
     hbp_should_scan_obp,
     hbp_short_gap_continuation,
+    obp_should_open_new_stream,
     originated_obp_hairpin,
     own_server_obp_echo,
     mark_originated_obp_stub,
@@ -265,6 +266,7 @@ _BRIDGE_IDX_LAST_REBUILD = [0.0]
 _OPENBRIDGE_SYSTEMS = set()
 _HBP_STREAM_CLAIMS = {}
 _HBP_CLAIM_TIMEOUT_S = 1.0
+_OBP_CLAIM_TIMEOUT_S = 1.0
 _LATE_JOIN_TARGETS = {}
 _LATE_JOIN_TIMEOUT_S = 3.0
 # The RD985 sends its three activation headers at 0, 60 and 120 ms. IPSC2
@@ -2973,10 +2975,9 @@ class routerOBP(OPENBRIDGE):
             hr_times = None
             
             if not fi:
-                # No inbound peer yet / race after outbound STATUS without 1ST —
-                # proceed as owner instead of hard-dropping (choppy OBP audio).
+                # Stub race — keep the existing unit stream, do not re-claim.
                 if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
-                    logger.warning("(%s) OBP UNIT *LoopControl* fi is empty; treating this system as owner. STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_slot)
+                    logger.debug("(%s) OBP UNIT *LoopControl* fi is empty; continuing existing stream. STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_slot)
                     self.STATUS[_stream_id]['LOOPLOG'] = True
                 self.STATUS[_stream_id].setdefault('1ST', perf_counter())
                 self.STATUS[_stream_id].setdefault('LC', b''.join([LC_OPT,_dst_id,_rf_src]))
@@ -3127,22 +3128,57 @@ class routerOBP(OPENBRIDGE):
                 _obp_previous is not None
                 and pkt_time - _obp_previous.get(
                     'LAST', _obp_previous.get('START', 0)) >= STREAM_TO)
-            _obp_vhead_restart = (
-                _obp_previous is not None
-                and _frame_type == HBPF_DATA_SYNC
-                and _dtype_vseq == HBPF_SLT_VHEAD
-                and (_obp_previous.get('_fin') or _obp_idle))
-            _obp_new_stream = (
-                _obp_previous is None
-                or _obp_vhead_restart
-                or (_obp_idle and _dtype_vseq != HBPF_SLT_VTERM))
+            _obp_is_vhead = (
+                _frame_type == HBPF_DATA_SYNC
+                and _dtype_vseq == HBPF_SLT_VHEAD)
+            # Stream IDs are per-over. Do not CALL START again just because
+            # LAST aged past STREAM_TO — that re-fans 2350 across the mesh.
+            _obp_new_stream = obp_should_open_new_stream(
+                _obp_previous, _obp_idle, _obp_is_vhead,
+                _dtype_vseq == HBPF_SLT_VTERM)
             # UA activate once: brand-new STATUS, or first inbound claim on an outbound stub
             _obp_ua_arm = False
             if _obp_new_stream:
-                
+                _pre_owner = earliest_obp_owner(
+                    _OPENBRIDGE_SYSTEMS, systems, _stream_id,
+                    _dst_id, _rf_src, pkt_time, _OBP_CLAIM_TIMEOUT_S)
+                if _pre_owner and _pre_owner != self._system:
+                    if _obp_previous is None or not _obp_previous.get('LOOPLOG'):
+                        logger.debug(
+                            '(%s) OBP *LoopControl* FIRST OBP %s, STREAM ID: %s, '
+                            'TG %s, IGNORE THIS SOURCE',
+                            self._system, _pre_owner, int_id(_stream_id),
+                            int_id(_dst_id))
+                    if _obp_previous is None:
+                        self.STATUS[_stream_id] = {
+                            'START':     pkt_time,
+                            'LAST':      pkt_time,
+                            'CONTENTION':False,
+                            'RFS':       _rf_src,
+                            'TGID':      _dst_id,
+                            '1ST': perf_counter(),
+                            'lastSeq': False,
+                            'lastData': False,
+                            'RX_PEER': _peer_id,
+                            'packets': 0,
+                            'loss': 0,
+                            'crcs': set(),
+                            'LOOPLOG': True,
+                            'LC': b''.join([LC_OPT,_dst_id,_rf_src]),
+                        }
+                    else:
+                        _obp_previous['LAST'] = pkt_time
+                        _obp_previous['LOOPLOG'] = True
+                    if (CONFIG['SYSTEMS'][self._system]['ENHANCED_OBP']
+                            and '_bcsq' not in self.STATUS[_stream_id]):
+                        systems[self._system].send_bcsq(_dst_id,_stream_id)
+                        self.STATUS[_stream_id]['_bcsq'] = True
+                    return
+
                 # This is a new call stream
                 self.STATUS[_stream_id] = {
                     'START':     pkt_time,
+                    'LAST':      pkt_time,
                     'CONTENTION':False,
                     'RFS':       _rf_src,
                     'TGID':      _dst_id,
@@ -3193,6 +3229,7 @@ class routerOBP(OPENBRIDGE):
                 _obp_st.setdefault('lastSeq', False)
                 _obp_st.setdefault('lastData', False)
                 _obp_st['packets'] = _obp_st['packets'] + 1
+                _obp_st['LAST'] = pkt_time
                 #Finished stream handling#
                 if '_fin' in self.STATUS[_stream_id]:
                     if '_finlog' not in self.STATUS[_stream_id]:
@@ -3226,13 +3263,13 @@ class routerOBP(OPENBRIDGE):
                 # mirrored OBP links each select the other and suppress both.
                 fi = earliest_obp_owner(
                     _OPENBRIDGE_SYSTEMS, systems, _stream_id,
-                    _dst_id, _rf_src, pkt_time, STREAM_TO)
+                    _dst_id, _rf_src, pkt_time, _OBP_CLAIM_TIMEOUT_S)
                 
                 if not fi:
-                    # No inbound peer yet / race after outbound STATUS without 1ST —
-                    # proceed as owner instead of hard-dropping (choppy OBP audio).
+                    # Local LAST was just refreshed; empty fi is a stub race,
+                    # not a signal to re-announce ownership.
                     if 'LOOPLOG' not in self.STATUS[_stream_id] or not self.STATUS[_stream_id]['LOOPLOG']:
-                        logger.warning("(%s) OBP *LoopControl* fi is empty; treating this system as owner. STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_slot)
+                        logger.debug("(%s) OBP *LoopControl* fi is empty; continuing existing stream. STREAM ID: %s, TG: %s, TS: %s",self._system, int_id(_stream_id), int_id(_dst_id),_slot)
                         self.STATUS[_stream_id]['LOOPLOG'] = True
                     self.STATUS[_stream_id].setdefault('1ST', perf_counter())
                     self.STATUS[_stream_id].setdefault('LC', b''.join([LC_OPT,_dst_id,_rf_src]))

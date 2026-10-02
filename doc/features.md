@@ -138,7 +138,7 @@ Field-hardened on high-cardinality masters (UK / USA / Europe) under busy OBP lo
 | Feature | Detail |
 |---------|--------|
 | STAT / BRIDGE_IDX trim | Prune idle UA ON legs; slim monitor reports; stop index bloat (~50k+ → ~9–14k keys) |
-| OBP LoopControl | Keep routing when `fi is empty` (owner continue); harden stubs and packet counters |
+| OBP LoopControl | Keep routing when `fi is empty` (continue existing stream); do not restart unfinished overs after a 360ms LAST gap; harden stubs and packet counters |
 | Reactor / audio pacing | Endpoint ordering, UA activate without BRIDGE_SND thrash, soft-client stretch cuts |
 | Hotspot dekey echo | `send_peers()` skips originating peer / RF source so round-tripped audio cannot parrot after PTT |
 | HBP continuity | Preserve ownership across short jitter gaps; generation / fanout isolation |

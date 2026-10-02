@@ -201,6 +201,22 @@ def translated_obp_stream_id(orig_stream_id, dest_tgid, source_tgid, now=None):
     return new_id
 
 
+def obp_should_open_new_stream(previous, idle, is_voice_header, is_vterm):
+    """True when inbound OBP should open a new STATUS generation.
+
+    Stream IDs are per-over. An unfinished claim must not restart just
+    because LAST aged past STREAM_TO — that re-issues CALL START and
+    re-fans the mesh (2350 LoopControl storms).
+    """
+    if previous is None:
+        return True
+    if not previous.get('_fin'):
+        return False
+    if is_voice_header:
+        return True
+    return bool(idle) and not is_vterm
+
+
 def originated_obp_hairpin(status, now, stream_timeout):
     """True when inbound OBP is our own outbound stream still in the hang window.
 

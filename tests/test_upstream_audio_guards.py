@@ -10,6 +10,7 @@ from bridge_helpers import (
     hbp_claim_is_local,
     hbp_should_scan_obp,
     hbp_short_gap_continuation,
+    obp_should_open_new_stream,
 )
 
 
@@ -91,6 +92,29 @@ class TestObpOwnerElection(unittest.TestCase):
             tg, source, 100.1, 5.0)
 
         self.assertEqual(owner, 'ACTIVE')
+
+
+class TestObpStreamGeneration(unittest.TestCase):
+
+    def test_unfinished_idle_does_not_open_a_new_over(self):
+        live = {'RFS': b'\x01\x02\x03', 'TGID': b'\x00\x00W'}
+        self.assertFalse(obp_should_open_new_stream(
+            live, idle=True, is_voice_header=False, is_vterm=False))
+        self.assertFalse(obp_should_open_new_stream(
+            live, idle=True, is_voice_header=True, is_vterm=False))
+
+    def test_finished_stream_can_late_enter_or_take_a_new_header(self):
+        finished = {'_fin': True, 'RFS': b'\x01\x02\x03', 'TGID': b'\x00\x00W'}
+        self.assertTrue(obp_should_open_new_stream(
+            finished, idle=True, is_voice_header=False, is_vterm=False))
+        self.assertTrue(obp_should_open_new_stream(
+            finished, idle=False, is_voice_header=True, is_vterm=False))
+        self.assertFalse(obp_should_open_new_stream(
+            finished, idle=True, is_voice_header=False, is_vterm=True))
+
+    def test_missing_status_is_a_new_stream(self):
+        self.assertTrue(obp_should_open_new_stream(
+            None, idle=False, is_voice_header=True, is_vterm=False))
 
 
 class TestObpStubHardening(unittest.TestCase):
@@ -284,6 +308,11 @@ class TestPacketControlSourceGuards(unittest.TestCase):
             self.bridge_source.count(', _hbp_new_stream)'), 4)
         self.assertGreaterEqual(
             self.bridge_source.count(', _obp_new_stream)'), 2)
+        self.assertIn('obp_should_open_new_stream(', self.bridge_source)
+        self.assertIn('_pre_owner = earliest_obp_owner(', self.bridge_source)
+        self.assertIn('_OBP_CLAIM_TIMEOUT_S', self.bridge_source)
+        self.assertGreaterEqual(
+            self.bridge_source.count('_OBP_CLAIM_TIMEOUT_S'), 3)
         self.assertGreaterEqual(
             self.bridge_source.count("'TARGET_LC': {}"), 2)
         self.assertGreaterEqual(
@@ -356,13 +385,16 @@ class TestPacketControlSourceGuards(unittest.TestCase):
         self.assertIn(
             'fi = earliest_obp_owner(',
             self.legacy_bridge_source)
+        self.assertIn('obp_should_open_new_stream(', self.legacy_bridge_source)
+        self.assertIn('_pre_owner = earliest_obp_owner(', self.legacy_bridge_source)
+        self.assertIn('_OBP_CLAIM_TIMEOUT_S', self.legacy_bridge_source)
         self.assertNotIn(
             "CONFIG['SYSTEMS'][self._system]['ENHANCED_OBP']",
             self.legacy_bridge_source)
         self.assertEqual(
             self.legacy_bridge_source.count(
                 "CONFIG['SYSTEMS'][self._system].get("
-                "'ENHANCED_OBP', False)"), 2)
+                "'ENHANCED_OBP', False)"), 3)
         self.assertIn(
             'for _claim_key, _claim in list(_HBP_STREAM_CLAIMS.items()):',
             self.legacy_bridge_source)
