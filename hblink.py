@@ -1108,12 +1108,13 @@ class HBSYSTEM(DatagramProtocol):
                             logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY GLOBAL ACL', self._system, int_id(_stream_id), int_id(_rf_src))
                             self._laststrid[_slot] = _stream_id
                         return
-                    if _slot == 1 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG1_ACL']):
+                    # Unit destinations are subscriber IDs, not talkgroups.
+                    if _call_type != 'unit' and _slot == 1 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG1_ACL']):
                         if self._laststrid[_slot] != _stream_id:
                             logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY GLOBAL TS1 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
                             self._laststrid[_slot] = _stream_id
                         return
-                    if _slot == 2 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG2_ACL']):
+                    if _call_type != 'unit' and _slot == 2 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG2_ACL']):
                         if self._laststrid[_slot] != _stream_id:
                             logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY GLOBAL TS2 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
                             self._laststrid[_slot] = _stream_id
@@ -1124,12 +1125,12 @@ class HBSYSTEM(DatagramProtocol):
                             logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY SYSTEM ACL', self._system, int_id(_stream_id), int_id(_rf_src))
                             self._laststrid[_slot] = _stream_id
                         return
-                    if _slot == 1 and not acl_check(_dst_id, self._config['TG1_ACL']):
+                    if _call_type != 'unit' and _slot == 1 and not acl_check(_dst_id, self._config['TG1_ACL']):
                         if self._laststrid[_slot] != _stream_id:
                             logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY SYSTEM TS1 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
                             self._laststrid[_slot] = _stream_id
                         return
-                    if _slot == 2 and not acl_check(_dst_id, self._config['TG2_ACL']):
+                    if _call_type != 'unit' and _slot == 2 and not acl_check(_dst_id, self._config['TG2_ACL']):
                         if self._laststrid[_slot]!= _stream_id:
                             logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY SYSTEM TS2 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
                             self._laststrid[_slot] = _stream_id
@@ -1488,12 +1489,12 @@ class HBSYSTEM(DatagramProtocol):
                                 logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY GLOBAL ACL', self._system, int_id(_stream_id), int_id(_rf_src))
                                 self._laststrid[_slot] = _stream_id
                             return
-                        if _slot == 1 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG1_ACL']):
+                        if _call_type != 'unit' and _slot == 1 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG1_ACL']):
                             if self._laststrid[_slot] != _stream_id:
                                 logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY GLOBAL TS1 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
                                 self._laststrid[_slot] = _stream_id
                             return
-                        if _slot == 2 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG2_ACL']):
+                        if _call_type != 'unit' and _slot == 2 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG2_ACL']):
                             if self._laststrid[_slot] != _stream_id:
                                 logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY GLOBAL TS2 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
                                 self._laststrid[_slot] = _stream_id
@@ -1504,12 +1505,12 @@ class HBSYSTEM(DatagramProtocol):
                                 logger.info('(%s) CALL DROPPED WITH STREAM ID %s FROM SUBSCRIBER %s BY SYSTEM ACL', self._system, int_id(_stream_id), int_id(_rf_src))
                                 self._laststrid[_slot] = _stream_id
                             return
-                        if _slot == 1 and not acl_check(_dst_id, self._config['TG1_ACL']):
+                        if _call_type != 'unit' and _slot == 1 and not acl_check(_dst_id, self._config['TG1_ACL']):
                             if self._laststrid[_slot] != _stream_id:
                                 logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY SYSTEM TS1 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
                                 self._laststrid[_slot] = _stream_id
                             return
-                        if _slot == 2 and not acl_check(_dst_id, self._config['TG2_ACL']):
+                        if _call_type != 'unit' and _slot == 2 and not acl_check(_dst_id, self._config['TG2_ACL']):
                             if self._laststrid[_slot] != _stream_id:
                                 logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY SYSTEM TS2 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
                                 self._laststrid[_slot] = _stream_id

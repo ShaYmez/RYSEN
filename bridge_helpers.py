@@ -37,6 +37,16 @@ def group_voice_event(kind, trx, system, stream_id, peer_id, subscriber, slot,
     ).encode('utf-8', 'ignore')
 
 
+def unit_voice_event(kind, trx, system, stream_id, peer_id, subscriber, slot,
+                     dest, duration=None):
+    """UNIT VOICE report. END carries the call duration in seconds."""
+    body = 'UNIT VOICE,{},{},{},{},{},{},{},{}'.format(
+        kind, trx, system, stream_id, peer_id, subscriber, slot, dest)
+    if duration is not None:
+        body += ',{:.2f}'.format(duration)
+    return body.encode('utf-8', 'ignore')
+
+
 def seed_stream_rssi(state, rssi, now):
     """Remember the value already published on GROUP VOICE,START."""
     state['RSSI_VALUE'] = rssi_byte(rssi)
@@ -304,6 +314,61 @@ def is_parrot_talkgroup(tgid):
         return False
 
 
+# 7-digit radios and 9-digit hotspot ESSIDs. Talkgroups and 6-digit repeater
+# IDs stay below this and remain dial-a-tg destinations.
+SUBSCRIBER_UNIT_MIN = 1000000
+
+
+def is_subscriber_unit_destination(dst_id):
+    """Private-call target is another subscriber, not a talkgroup or service code."""
+    try:
+        return int(dst_id) >= SUBSCRIBER_UNIT_MIN
+    except (TypeError, ValueError):
+        return False
+
+
+def peer_matches_subscriber(peer_id, subscriber_id):
+    """True when a connected peer is that radio or a hotspot ESSID of it.
+
+    234587501 matches 2345875. A 6-digit repeater ID does not match a 7-digit radio.
+    """
+    try:
+        peer = int(peer_id)
+        dest = int(subscriber_id)
+    except (TypeError, ValueError):
+        return False
+    if peer == dest:
+        return True
+    peer_text = str(peer)
+    dest_text = str(dest)
+    return (
+        len(peer_text) >= 7
+        and len(dest_text) >= 7
+        and peer_text[:7] == dest_text[:7]
+    )
+
+
+def unit_delivery_slot(mode, heard_slot):
+    """Hotspots take private calls on TS2. Repeaters use the slot last heard."""
+    if mode == 'MASTER':
+        return 2
+    if heard_slot in (1, 2):
+        return heard_slot
+    return 2
+
+
+def unit_slot_is_idle(rx_type, tx_type, tx_time, now, hangtime, tx_stream_id,
+                      stream_id, vterm):
+    """A private call may use the slot when it is idle, or when this stream already owns it."""
+    if tx_stream_id == stream_id and tx_type != vterm:
+        return True
+    try:
+        idle_for = now - tx_time
+    except TypeError:
+        return False
+    return rx_type == vterm and tx_type == vterm and idle_for > hangtime
+
+
 def is_parrot_bridge(bridge_name):
     """Conference or dial reflector bridge for parrot (never routes via OpenBridge)."""
     if not bridge_name:
@@ -371,6 +436,8 @@ def to_target_forward_systems(bridge_entries, source_system):
 
 def private_call_may_create_reflector(int_dst_id, bridges):
     """True when a private call would invoke make_single_reflector (routerHBP private path)."""
+    if is_subscriber_unit_destination(int_dst_id):
+        return False
     if is_parrot_talkgroup(int_dst_id):
         return False
     if int_dst_id < 5 or int_dst_id in (8, 9) or int_dst_id > 999999:

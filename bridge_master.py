@@ -87,6 +87,7 @@ from bridge_helpers import (
     is_dial_service_code,
     is_invalid_dial_reflector,
     is_parrot_talkgroup,
+    is_subscriber_unit_destination,
     is_parrot_bridge,
     reflector_bridge_matches_group_call,
     bridge_transmission_matches_rule,
@@ -141,6 +142,10 @@ from bridge_helpers import (
     own_server_obp_echo,
     mark_originated_obp_stub,
     group_voice_event,
+    unit_voice_event,
+    peer_matches_subscriber,
+    unit_delivery_slot,
+    unit_slot_is_idle,
     seed_stream_rssi,
     changed_stream_rssi,
 )
@@ -850,9 +855,9 @@ _DIAL_A_TG_BYTES = DIAL_A_TG_BYTES
 def is_reflector_private_destination(int_dst_id):
     """Private-call dial-a-tg targets handled locally (never unit-voice bridged outward).
 
-    Today this is intentionally broad (any ID >= 5 except 8/9) so dial-a-tg private
-    calls never leak to _forward_unit_voice(). That blocks unit-to-unit routing for
-    normal subscriber IDs — see roadmap Phase 4.
+    Subscriber IDs (7 digits and hotspot ESSIDs, >= 1000000) are not reflectors.
+    They are delivered by _forward_unit_voice(). This stays broad for talkgroup-sized
+    IDs so dial-a-tg private calls do not leak onto that path.
 
     DMR numbering on SystemX (convention, not strict CPS):
       ≤5 digits — talkgroups (dial-a-tg link targets, max 99999)
@@ -4016,9 +4021,181 @@ class routerHBP(HBSYSTEM):
                         if _send(_d_system, _slot):
                             return
 
-    def _forward_unit_voice(self, _dst_id, _slot, _bits, _data, dmrpkt, _stream_id, _peer_id):
-        """Bridge unit (private) voice DMRD to SUB_MAP destination, hotspot peer, or IPSC."""
-        self._relay_unit_voice_packet(_dst_id, _slot, _bits, _data, dmrpkt, _peer_id)
+    def _unit_route_cache(self):
+        cache = getattr(self, '_unit_voice_routes', None)
+        if cache is None:
+            cache = {}
+            self._unit_voice_routes = cache
+        return cache
+
+    def _id_alias(self, raw, table_name):
+        table = globals().get(table_name) or {}
+        try:
+            return get_alias(raw, table)
+        except Exception:
+            return ''
+
+    def _unit_peer_connected(self, system, peer_id):
+        peers = CONFIG['SYSTEMS'].get(system, {}).get('PEERS') or {}
+        record = peers.get(peer_id)
+        if record is None:
+            return False
+        return record.get('CONNECTION', 'YES') == 'YES'
+
+    def _resolve_unit_target(self, _dst_id, _int_dst_id):
+        """Return (system, slot, via) for a subscriber on another slot, or None."""
+        mapped = SUB_MAP.get(_dst_id) if 'SUB_MAP' in globals() else None
+        if mapped:
+            try:
+                system = mapped[0]
+                heard_slot = mapped[1]
+                peer_id = mapped[4] if len(mapped) >= 5 else None
+            except (TypeError, IndexError, KeyError):
+                system = None
+                heard_slot = None
+                peer_id = None
+            cfg = CONFIG['SYSTEMS'].get(system, {}) if system else {}
+            mode = cfg.get('MODE')
+            if (system and system != self._system and system in systems
+                    and mode in ('MASTER', 'IPSC', 'HYTERA')
+                    and cfg.get('ENABLED', True)
+                    and (peer_id is None or self._unit_peer_connected(system, peer_id))):
+                return system, unit_delivery_slot(mode, heard_slot), 'sub_map'
+
+        for system in systems:
+            if system == self._system:
+                continue
+            cfg = CONFIG['SYSTEMS'].get(system) or {}
+            mode = cfg.get('MODE')
+            if mode not in ('MASTER', 'IPSC', 'HYTERA') or not cfg.get('ENABLED', True):
+                continue
+            for peer_id, record in (cfg.get('PEERS') or {}).items():
+                if record.get('CONNECTION', 'YES') != 'YES':
+                    continue
+                if peer_matches_subscriber(int_id(peer_id), _int_dst_id):
+                    return system, unit_delivery_slot(mode, None), 'peer'
+        return None
+
+    def _unit_target_idle(self, system, slot, stream_id, now):
+        target = systems.get(system)
+        state = getattr(target, 'STATUS', {}).get(slot) if target is not None else None
+        if not state:
+            return False
+        hang = CONFIG['SYSTEMS'].get(system, {}).get('GROUP_HANGTIME', 0)
+        return unit_slot_is_idle(
+            state.get('RX_TYPE'), state.get('TX_TYPE'), state.get('TX_TIME', 0),
+            now, hang, state.get('TX_STREAM_ID'), stream_id, HBPF_SLT_VTERM)
+
+    def _note_unit_tx(self, system, slot, stream_id, dst_id, rf_src, dtype, now, terminal):
+        target = systems.get(system)
+        state = getattr(target, 'STATUS', {}).get(slot) if target is not None else None
+        if not state:
+            return
+        state['TX_TIME'] = now
+        state['TX_STREAM_ID'] = stream_id
+        state['TX_TGID'] = dst_id
+        state['TX_RFS'] = rf_src
+        state['TX_TYPE'] = HBPF_SLT_VTERM if terminal else dtype
+
+    def _report_unit_voice(self, kind, stream_id, peer_id, rf_src, slot, dst_id, duration=None):
+        if not CONFIG.get('REPORTS', {}).get('REPORT'):
+            return
+        report = getattr(self, '_report', None)
+        if report is None:
+            return
+        report.send_bridgeEvent(unit_voice_event(
+            kind, 'RX', self._system, int_id(stream_id), int_id(peer_id),
+            int_id(rf_src), slot, int_id(dst_id), duration))
+
+    def _open_unit_route(self, _dst_id, _slot, _stream_id, _peer_id, _rf_src, pkt_time):
+        _int_dst_id = int_id(_dst_id)
+        found = self._resolve_unit_target(_dst_id, _int_dst_id)
+        route = {
+            'send': False,
+            'system': None,
+            'slot': None,
+            'start': pkt_time,
+            'packets': 0,
+            'src': _rf_src,
+            'peer': _peer_id,
+            'rx_slot': _slot,
+        }
+        if found is None:
+            logger.info('(%s) UNIT call not routed, subscriber %s is not on another slot',
+                        self._system, _int_dst_id)
+            return route
+        system, slot, via = found
+        if not self._unit_target_idle(system, slot, _stream_id, pkt_time):
+            logger.info('(%s) UNIT call not routed, target busy: %s TS%s DST %s',
+                        self._system, system, slot, _int_dst_id)
+            return route
+        route['send'] = True
+        route['system'] = system
+        route['slot'] = slot
+        logger.info(
+            '(%s) *UNIT CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) '
+            'DST %s (%s), TS %s -> %s TS%s via %s',
+            self._system, int_id(_stream_id),
+            self._id_alias(_rf_src, 'subscriber_ids'), int_id(_rf_src),
+            self._id_alias(_peer_id, 'peer_ids'), int_id(_peer_id),
+            self._id_alias(_dst_id, 'subscriber_ids'), _int_dst_id,
+            _slot, system, slot, via)
+        self._report_unit_voice('START', _stream_id, _peer_id, _rf_src, _slot, _dst_id)
+        return route
+
+    def _send_resolved_unit_voice(self, route, _slot, _bits, _data, dmrpkt, _stream_id,
+                                  _dst_id, _rf_src, _dtype_vseq, pkt_time, terminal):
+        target_slot = route['slot']
+        send_bits = _bits ^ (1 << 7) if _slot != target_slot else _bits
+        packet = b''.join([
+            _data[:15], send_bits.to_bytes(1, 'big'), _data[16:20], dmrpkt,
+        ])
+        systems[route['system']].send_system(packet)
+        route['packets'] += 1
+        self._note_unit_tx(
+            route['system'], target_slot, _stream_id, _dst_id, _rf_src,
+            _dtype_vseq, pkt_time, terminal)
+        logger.debug('(%s) UNIT voice bridged to %s slot %s DST %s',
+                     self._system, route['system'], target_slot, int_id(_dst_id))
+
+    def _forward_unit_voice(self, _dst_id, _slot, _bits, _data, dmrpkt, _stream_id,
+                            _peer_id, _rf_src, _frame_type, _dtype_vseq, pkt_time):
+        """Deliver one subscriber private-call frame to the callee's slot.
+
+        The target is resolved once per stream. Later frames reuse it. AMBE is
+        forwarded unchanged; only the timeslot bit is rewritten.
+        """
+        cache = self._unit_route_cache()
+        terminal = (
+            _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM)
+        route = cache.get(_stream_id)
+        if route is None:
+            route = self._open_unit_route(
+                _dst_id, _slot, _stream_id, _peer_id, _rf_src, pkt_time)
+            cache[_stream_id] = route
+            if len(cache) > 128:
+                for stale in list(cache):
+                    if stale != _stream_id and len(cache) > 128:
+                        cache.pop(stale, None)
+        if route.get('send'):
+            self._send_resolved_unit_voice(
+                route, _slot, _bits, _data, dmrpkt, _stream_id, _dst_id,
+                _rf_src, _dtype_vseq, pkt_time, terminal)
+        if terminal and route.get('send'):
+            duration = pkt_time - route['start']
+            logger.info(
+                '(%s) *UNIT CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) '
+                'DST %s (%s), TS %s -> %s TS%s, Duration: %.2f',
+                self._system, int_id(_stream_id),
+                self._id_alias(route['src'], 'subscriber_ids'), int_id(route['src']),
+                self._id_alias(route['peer'], 'peer_ids'), int_id(route['peer']),
+                self._id_alias(_dst_id, 'subscriber_ids'), int_id(_dst_id),
+                route['rx_slot'], route['system'], route['slot'], duration)
+            self._report_unit_voice(
+                'END', _stream_id, route['peer'], route['src'], route['rx_slot'],
+                _dst_id, duration)
+        if terminal:
+            cache.pop(_stream_id, None)
 
     def _forward_parrot_unit_voice(self, _dst_id, _slot, _bits, _data, dmrpkt):
         """Send unit-voice to the PARROT playback peer (private call to TG 9990)."""
@@ -4338,6 +4515,15 @@ class routerHBP(HBSYSTEM):
                 self.STATUS[_slot]['VOICE_STREAM'] = _voice_call
                 self.STATUS[_slot]['packets'] = self.STATUS[_slot]['packets'] + 1
 
+            elif is_subscriber_unit_destination(_int_dst_id):
+                # Another radio. Do not create, tear down, or announce a reflector.
+                if _stream_id != self.STATUS[_slot]['RX_STREAM_ID']:
+                    self.STATUS[_slot]['packets'] = 0
+                    self.STATUS[_slot]['crcs'] = set()
+                self._forward_unit_voice(
+                    _dst_id, _slot, _bits, _data, dmrpkt, _stream_id, _peer_id,
+                    _rf_src, _frame_type, _dtype_vseq, pkt_time)
+
             elif not self.STATUS[_slot]['_allStarMode']:
                 if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
                 
@@ -4433,7 +4619,9 @@ class routerHBP(HBSYSTEM):
                         _int_dst_id, _rf_src, _peer_id, _slot, _stream_id, _lang)
             
             
-            if (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM):
+            if (not is_subscriber_unit_destination(_int_dst_id)
+                    and (_frame_type == HBPF_DATA_SYNC) and (_dtype_vseq == HBPF_SLT_VTERM)
+                    and (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM)):
                 _reset = reset_dial_reflector_timers_on_user_activity(
                     BRIDGES, self._system, _rf_src, _peer_id, _slot, pkt_time,
                     _int_dst_id, group_call=False)
@@ -4451,10 +4639,11 @@ class routerHBP(HBSYSTEM):
             # above. Sending it through the generic unit path as well queues
             # every AMBE burst twice and stretches private echo to ~2x length.
             if (self._system != 'PARROT'
+                    and not is_subscriber_unit_destination(_int_dst_id)
                     and not is_reflector_private_destination(_int_dst_id)
                     and _int_dst_id not in (8, 9)):
-                self._forward_unit_voice(
-                    _dst_id, _slot, _bits, _data, dmrpkt, _stream_id, _peer_id)
+                self._relay_unit_voice_packet(
+                    _dst_id, _slot, _bits, _data, dmrpkt, _peer_id)
 
             # Mark status variables for use later
             self.STATUS[_slot]['RX_PEER']      = _peer_id

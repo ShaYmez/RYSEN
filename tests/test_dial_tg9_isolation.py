@@ -12,9 +12,12 @@ from bridge_helpers import (
     collect_group_route_bridges,
     is_dial_service_code,
     is_invalid_dial_reflector,
+    is_subscriber_unit_destination,
+    peer_matches_subscriber,
     private_call_may_create_reflector,
     sanitize_dial_reflectors_for_system,
     to_target_forward_systems,
+    unit_delivery_slot,
 )
 
 
@@ -83,6 +86,23 @@ class TestPrivateCallReflectorNine(unittest.TestCase):
     def test_private_to_parrot_never_creates_reflector(self):
         self.assertFalse(private_call_may_create_reflector(9990, {}))
         self.assertFalse(private_call_may_create_reflector(9990, {'#9990': []}))
+
+    def test_subscriber_private_call_is_not_a_reflector(self):
+        self.assertTrue(is_subscriber_unit_destination(2345875))
+        self.assertTrue(is_subscriber_unit_destination(234587501))
+        self.assertFalse(is_subscriber_unit_destination(2350))
+        self.assertFalse(is_subscriber_unit_destination(235287))
+        self.assertFalse(is_subscriber_unit_destination(4000))
+        self.assertFalse(is_subscriber_unit_destination(5000))
+        self.assertFalse(is_subscriber_unit_destination(9990))
+        self.assertFalse(private_call_may_create_reflector(2345875, {}))
+        self.assertTrue(private_call_may_create_reflector(2350, {}))
+        self.assertFalse(private_call_may_create_reflector(4000, {}))
+        self.assertTrue(peer_matches_subscriber(234587501, 2345875))
+        self.assertFalse(peer_matches_subscriber(235287, 2345875))
+        self.assertEqual(unit_delivery_slot('MASTER', 1), 2)
+        self.assertEqual(unit_delivery_slot('IPSC', 1), 1)
+        self.assertEqual(unit_delivery_slot('HYTERA', None), 2)
 
 
 class TestSanitizeReflectorNine(unittest.TestCase):
