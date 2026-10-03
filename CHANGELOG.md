@@ -5,6 +5,9 @@
 - Unfinished OpenBridge streams no longer open a new CALL START when `LAST` ages past 360ms. That restart was re-claiming 2350 across the mesh after jitter or reactor lag.
 - Owner election now uses a 1s claim window and refreshes `LAST` before the vote. Empty `fi` continues the existing over instead of treating every master as a new owner.
 - A looped first packet on a second OBP yields before CALL START.
+- IPSC and Hytera default `SINGLE_MODE` to False. Dual statics stay
+  subscribed; hangtime still serialises the RF slot. Homebrew MASTER
+  hotspots stay last-TG-wins.
 
 ## Unreleased — Native Hytera
 

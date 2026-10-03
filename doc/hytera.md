@@ -34,6 +34,8 @@ Sample config: [HYTERA-SAMPLE.cfg](../HYTERA-SAMPLE.cfg). Selfcare:
 
 One RF timeslot carries one call. Other subscribed statics stay linked but
 are blocked for that call and its hangtime. They are not queued.
+`SINGLE_MODE` defaults to False on Hytera so a second static is not
+unsubscribed when the first is keyed.
 
 Unknown media lengths, including reported 103-byte packets, are rejected
 until they are capture-validated. SNMP is out of scope.

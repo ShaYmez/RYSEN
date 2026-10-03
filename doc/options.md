@@ -28,7 +28,7 @@ These are the internal names RYSEN stores on the system stanza.
 | `OVERRIDE_IDENT_TG` | `IDENTTG`, `VOICETG` | Talkgroup used for voice ID announcements | TG number |
 | `VOICE_IDENT` | `IDENT` | Enable voice ident announcements | `0` / `1` |
 | `ANNOUNCEMENT_LANGUAGE` | `LANG` | Voice prompt language | e.g. `en_GB` (must match installed `Audio/` set) |
-| `SINGLE_MODE` | `SINGLE` | Single-mode bridge behaviour | `0` / `1` |
+| `SINGLE_MODE` | `SINGLE` | Last-TG-wins unsubscribe on that slot. Default **off** on IPSC/Hytera (statics stay linked; hangtime serialises RF). Default **on** for Homebrew MASTER hotspots. | `0` / `1` |
 | `LINK_IPSC` | `IPSC` | Link UA bridges to an IPSC slot | e.g. `IPSC-198` |
 
 ### DMR+ / Pi-Star multi-TG aliases

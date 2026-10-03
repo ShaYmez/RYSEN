@@ -28,6 +28,11 @@ class TestHyteraConfig(unittest.TestCase):
 
         self.assertIn('HYTERA', parsed['SYSTEMS'])
         self.assertFalse(parsed['SYSTEMS']['HYTERA']['RDAC_DISCOVERY'])
+        # Repeaters default off so dual statics stay subscribed; hangtime
+        # serialises the RF slot. Homebrew MASTER hotspots stay last-TG-wins.
+        self.assertFalse(parsed['SYSTEMS']['HYTERA']['SINGLE_MODE'])
+        self.assertFalse(parsed['SYSTEMS']['IPSC']['SINGLE_MODE'])
+        self.assertTrue(parsed['SYSTEMS']['SYSTEM']['SINGLE_MODE'])
 
 
 if __name__ == '__main__':

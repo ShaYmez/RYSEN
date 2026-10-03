@@ -49,6 +49,7 @@ Future work: [ipsc-roadmap.md](ipsc-roadmap.md). OPTIONS syntax (`LINK_IPSC`, `R
 - `[SELF SERVICE]` + `selfcare_db.py` — MariaDB `Clients` (`mode = 0`)
 - Register upsert / de-register logout; poll `modified = 1` → `options_config()` static TS1/TS2
 - Multi-static TG strings (`TS1=235,23426,116;TS2=2350,2351,2352;`) via RYSEN-MONITOR selfcare UI
+- `SINGLE_MODE` defaults to False on IPSC so those statics stay linked; hangtime serialises the RF slot
 - Reconnect re-applies options when stored in DB
 - Full-stack Docker: DB credentials — see [selfcare.md](selfcare.md) and [install.md](install.md#selfcare-database-credentials-full-stack)
 
