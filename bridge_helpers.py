@@ -330,7 +330,8 @@ def is_subscriber_unit_destination(dst_id):
 def peer_matches_subscriber(peer_id, subscriber_id):
     """True when a connected peer is that radio or a hotspot ESSID of it.
 
-    234587501 matches 2345875. A 6-digit repeater ID does not match a 7-digit radio.
+    A hotspot ESSID is the 7-digit radio ID plus a 1- or 2-digit suffix
+    (23458751 or 234587501). Longer IDs and 6-digit repeater IDs do not match.
     """
     try:
         peer = int(peer_id)
@@ -342,9 +343,9 @@ def peer_matches_subscriber(peer_id, subscriber_id):
     peer_text = str(peer)
     dest_text = str(dest)
     return (
-        len(peer_text) >= 7
-        and len(dest_text) >= 7
-        and peer_text[:7] == dest_text[:7]
+        len(dest_text) == 7
+        and len(peer_text) in (8, 9)
+        and peer_text[:7] == dest_text
     )
 
 
@@ -357,16 +358,40 @@ def unit_delivery_slot(mode, heard_slot):
     return 2
 
 
-def unit_slot_is_idle(rx_type, tx_type, tx_time, now, hangtime, tx_stream_id,
-                      stream_id, vterm):
-    """A private call may use the slot when it is idle, or when this stream already owns it."""
+def _unit_numeric_id(value):
+    try:
+        if isinstance(value, (bytes, bytearray)):
+            return int_id(value)
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def unit_slot_is_idle(rx_type, tx_type, rx_time, tx_time, now, hangtime,
+                      tx_stream_id, stream_id, vterm, quiet_floor=0,
+                      rx_tgid=0, tx_tgid=0, subscriber_min=SUBSCRIBER_UNIT_MIN):
+    """A private call may use the slot when it is idle, or when this stream already owns it.
+
+    An active voice stream blocks the slot even when hang time is zero. A
+    finished talkgroup still holds it for hang time. A finished unit call does
+    not, so the station just called can answer without waiting that out.
+    """
     if tx_stream_id == stream_id and tx_type != vterm:
         return True
     try:
-        idle_for = now - tx_time
+        quiet_tx = now - tx_time
+        quiet_rx = now - rx_time
     except TypeError:
         return False
-    return rx_type == vterm and tx_type == vterm and idle_for > hangtime
+    if rx_type != vterm or tx_type != vterm:
+        return False
+    if quiet_tx <= quiet_floor or quiet_rx <= quiet_floor:
+        return False
+    if (_unit_numeric_id(rx_tgid) < subscriber_min and quiet_rx <= hangtime):
+        return False
+    if (_unit_numeric_id(tx_tgid) < subscriber_min and quiet_tx <= hangtime):
+        return False
+    return True
 
 
 def is_parrot_bridge(bridge_name):

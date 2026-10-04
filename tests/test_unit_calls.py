@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import MagicMock
 
 import bridge_master as bm
-from const import HBPF_DATA_SYNC, HBPF_SLT_VHEAD, HBPF_SLT_VTERM
+from const import HBPF_DATA_SYNC, HBPF_SLT_VHEAD, HBPF_SLT_VTERM, HBPF_VOICE
 from dmr_utils3.utils import bytes_3
 from hblink import HBSYSTEM
 
@@ -57,10 +57,12 @@ def _voice_packet(src, dst, stream, slot, seq, dtype, payload=None):
 class _Target:
     def __init__(self):
         self.sent = []
+        self.extra = []
         self.STATUS = {1: _idle_slot(), 2: _idle_slot()}
 
     def send_system(self, packet, *args, **kwargs):
         self.sent.append(packet)
+        self.extra.append(args)
 
 
 class UnitCallFixture(unittest.TestCase):
@@ -221,6 +223,65 @@ class TestUnitVoiceDelivery(UnitCallFixture):
             bytes_3(CALLEE), 2, packet[15], packet, packet[20:53], later,
             PEER, bytes_3(CALLER), HBPF_DATA_SYNC, HBPF_SLT_VHEAD, 106.0)
         self.assertEqual(len(target.sent), 1)
+
+    def test_voice_burst_c_stays_busy_and_the_answer_does_not_wait_out_hangtime(self):
+        self._system('SYSTEM-A', 'MASTER', hang=5)
+        self._system('SYSTEM-B', 'MASTER', peers=self._peer(ESSID), hang=5)
+        target = _Target()
+        bm.systems['SYSTEM-B'] = target
+        router = self._router('SYSTEM-A')
+        burst = _voice_packet(CALLER, CALLEE, STREAM, 1, 2, 2)
+        router._forward_unit_voice(
+            bytes_3(CALLEE), 1, burst[15], burst, burst[20:53], STREAM, PEER,
+            bytes_3(CALLER), HBPF_VOICE, 2, 100.0)
+        self.assertEqual(target.STATUS[2]['TX_TYPE'], HBPF_SLT_VHEAD)
+        other = b'\x00\x00\x00\x33'
+        router._forward_unit_voice(
+            bytes_3(CALLEE), 1, burst[15], burst, burst[20:53], other, PEER,
+            bytes_3(CALLER), HBPF_VOICE, 2, 100.1)
+        self.assertEqual(len(target.sent), 1)
+
+        router._unit_voice_routes.clear()
+        target.STATUS[2]['TX_TYPE'] = HBPF_SLT_VTERM
+        target.STATUS[2]['TX_TGID'] = bytes_3(CALLEE)
+        target.STATUS[2]['TX_TIME'] = 100.0
+        target.STATUS[2]['RX_TYPE'] = HBPF_SLT_VTERM
+        target.STATUS[2]['RX_TGID'] = bytes_3(CALLEE)
+        target.STATUS[2]['RX_TIME'] = 104.5
+        answer = b'\x00\x00\x00\x44'
+        router._forward_unit_voice(
+            bytes_3(CALLEE), 1, burst[15], burst, burst[20:53], answer, PEER,
+            bytes_3(CALLER), HBPF_DATA_SYNC, HBPF_SLT_VHEAD, 105.0)
+        self.assertEqual(len(target.sent), 2)
+
+        router._unit_voice_routes.clear()
+        target.sent.clear()
+        target.STATUS[2]['RX_TGID'] = bytes_3(2350)
+        target.STATUS[2]['RX_TIME'] = 104.5
+        target.STATUS[2]['TX_TGID'] = bytes_3(2350)
+        target.STATUS[2]['TX_TIME'] = 104.5
+        target.STATUS[2]['TX_TYPE'] = HBPF_SLT_VTERM
+        blocked = b'\x00\x00\x00\x55'
+        router._forward_unit_voice(
+            bytes_3(CALLEE), 1, burst[15], burst, burst[20:53], blocked, PEER,
+            bytes_3(CALLER), HBPF_DATA_SYNC, HBPF_SLT_VHEAD, 105.0)
+        self.assertEqual(target.sent, [])
+
+    def test_ber_and_rssi_are_kept(self):
+        self._system('SYSTEM-A', 'MASTER')
+        self._system('SYSTEM-B', 'MASTER', peers=self._peer(ESSID))
+        target = _Target()
+        bm.systems['SYSTEM-B'] = target
+        router = self._router('SYSTEM-A')
+        packet = bytearray(_voice_packet(CALLER, CALLEE, STREAM, 1, 0, HBPF_SLT_VHEAD))
+        packet[53] = 0x3C
+        packet[54] = 0x80
+        packet = bytes(packet)
+        router._forward_unit_voice(
+            bytes_3(CALLEE), 1, packet[15], packet, packet[20:53], STREAM, PEER,
+            bytes_3(CALLER), HBPF_DATA_SYNC, HBPF_SLT_VHEAD, 100.0)
+        self.assertEqual(target.sent[0][53:55], b'\x3c\x80')
+        self.assertEqual(target.extra[0][1:3], (b'\x3c', b'\x80'))
 
     def test_end_reports_once_and_releases_the_slot_after_hangtime(self):
         self._system('SYSTEM-A', 'MASTER', hang=5)

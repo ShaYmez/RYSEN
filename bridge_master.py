@@ -2694,6 +2694,20 @@ class routerOBP(OPENBRIDGE):
                     #   From the same group as the last TX to this HBSystem, but from a different subscriber, and it has been less than stream timeout
                     # The "continue" at the end of each means the next iteration of the for loop that tests for matching rules
                     #
+                    # Hang time of zero does not reserve the slot, but a stream
+                    # that is still transmitting does. Private calls are not
+                    # this talkgroup, so the hang-time test below would miss them.
+                    if (_target_system['GROUP_HANGTIME'] <= 0 and (
+                            (_target_status[_target['TS']]['RX_TYPE'] != HBPF_SLT_VTERM
+                             and _target['TGID'] != _target_status[_target['TS']]['RX_TGID']
+                             and (pkt_time - _target_status[_target['TS']]['RX_TIME']) < STREAM_TO)
+                            or (_target_status[_target['TS']]['TX_TYPE'] != HBPF_SLT_VTERM
+                                and _target['TGID'] != _target_status[_target['TS']]['TX_TGID']
+                                and (pkt_time - _target_status[_target['TS']]['TX_TIME']) < STREAM_TO))):
+                        if self.STATUS[_stream_id]['CONTENTION'] == False:
+                            self.STATUS[_stream_id]['CONTENTION'] = True
+                            logger.info('(%s) Call not routed to TGID %s, target slot is in a call: HBSystem: %s, TS: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'])
+                        continue
                     if ((_target['TGID'] != _target_status[_target['TS']]['RX_TGID']) and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < _target_system['GROUP_HANGTIME'])):
                         if self.STATUS[_stream_id]['CONTENTION'] == False:
                             self.STATUS[_stream_id]['CONTENTION'] = True
@@ -3662,6 +3676,16 @@ class routerHBP(HBSYSTEM):
                         #   From the same group as the last TX to this HBSystem, but from a different subscriber, and it has been less than stream timeout
                         # The "continue" at the end of each means the next iteration of the for loop that tests for matching rules
                         #
+                        if (_target_system['GROUP_HANGTIME'] <= 0 and (
+                                (_target_status[_target['TS']]['RX_TYPE'] != HBPF_SLT_VTERM
+                                 and _target['TGID'] != _target_status[_target['TS']]['RX_TGID']
+                                 and (pkt_time - _target_status[_target['TS']]['RX_TIME']) < STREAM_TO)
+                                or (_target_status[_target['TS']]['TX_TYPE'] != HBPF_SLT_VTERM
+                                    and _target['TGID'] != _target_status[_target['TS']]['TX_TGID']
+                                    and (pkt_time - _target_status[_target['TS']]['TX_TIME']) < STREAM_TO))):
+                            if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
+                                logger.info('(%s) Call not routed to TGID %s, target slot is in a call: HBSystem: %s, TS: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'])
+                            continue
                         if ((_target['TGID'] != _target_status[_target['TS']]['RX_TGID']) and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < _target_system['GROUP_HANGTIME'])):
                             if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
                                 logger.info('(%s) Call not routed to TGID %s, target active or in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
@@ -4083,19 +4107,30 @@ class routerHBP(HBSYSTEM):
             return False
         hang = CONFIG['SYSTEMS'].get(system, {}).get('GROUP_HANGTIME', 0)
         return unit_slot_is_idle(
-            state.get('RX_TYPE'), state.get('TX_TYPE'), state.get('TX_TIME', 0),
-            now, hang, state.get('TX_STREAM_ID'), stream_id, HBPF_SLT_VTERM)
+            state.get('RX_TYPE'), state.get('TX_TYPE'),
+            state.get('RX_TIME', 0), state.get('TX_TIME', 0),
+            now, hang, state.get('TX_STREAM_ID'), stream_id, HBPF_SLT_VTERM,
+            quiet_floor=STREAM_TO,
+            rx_tgid=state.get('RX_TGID', 0), tx_tgid=state.get('TX_TGID', 0))
 
-    def _note_unit_tx(self, system, slot, stream_id, dst_id, rf_src, dtype, now, terminal):
+    def _note_unit_tx(self, system, slot, stream_id, dst_id, rf_src, peer_id,
+                      now, terminal):
         target = systems.get(system)
         state = getattr(target, 'STATUS', {}).get(slot) if target is not None else None
         if not state:
             return
+        if (state.get('TX_STREAM_ID') != stream_id
+                or state.get('TX_TGID') != dst_id
+                or state.get('TX_RFS') != rf_src):
+            state['TX_START'] = now
         state['TX_TIME'] = now
         state['TX_STREAM_ID'] = stream_id
         state['TX_TGID'] = dst_id
         state['TX_RFS'] = rf_src
-        state['TX_TYPE'] = HBPF_SLT_VTERM if terminal else dtype
+        state['TX_PEER'] = peer_id
+        # Burst C shares its nibble with HBPF_SLT_VTERM. Keep a real header
+        # marker until the terminator so the slot does not look finished.
+        state['TX_TYPE'] = HBPF_SLT_VTERM if terminal else HBPF_SLT_VHEAD
 
     def _report_unit_voice(self, kind, stream_id, peer_id, rf_src, slot, dst_id, duration=None):
         if not CONFIG.get('REPORTS', {}).get('REPORT'):
@@ -4119,6 +4154,7 @@ class routerHBP(HBSYSTEM):
             'src': _rf_src,
             'peer': _peer_id,
             'rx_slot': _slot,
+            'dst': _dst_id,
         }
         if found is None:
             logger.info('(%s) UNIT call not routed, subscriber %s is not on another slot',
@@ -4147,14 +4183,16 @@ class routerHBP(HBSYSTEM):
                                   _dst_id, _rf_src, _dtype_vseq, pkt_time, terminal):
         target_slot = route['slot']
         send_bits = _bits ^ (1 << 7) if _slot != target_slot else _bits
+        ber = _data[53:54] if len(_data) >= 54 else b'\x00'
+        rssi = _data[54:55] if len(_data) >= 55 else b'\x00'
         packet = b''.join([
-            _data[:15], send_bits.to_bytes(1, 'big'), _data[16:20], dmrpkt,
+            _data[:15], send_bits.to_bytes(1, 'big'), _data[16:20], dmrpkt, ber, rssi,
         ])
-        systems[route['system']].send_system(packet)
+        systems[route['system']].send_system(packet, b'', ber, rssi)
         route['packets'] += 1
         self._note_unit_tx(
             route['system'], target_slot, _stream_id, _dst_id, _rf_src,
-            _dtype_vseq, pkt_time, terminal)
+            route.get('peer'), pkt_time, terminal)
         logger.debug('(%s) UNIT voice bridged to %s slot %s DST %s',
                      self._system, route['system'], target_slot, int_id(_dst_id))
 
@@ -4169,6 +4207,8 @@ class routerHBP(HBSYSTEM):
         terminal = (
             _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM)
         route = cache.get(_stream_id)
+        if route is not None and route.get('dst') != _dst_id:
+            route = None
         if route is None:
             route = self._open_unit_route(
                 _dst_id, _slot, _stream_id, _peer_id, _rf_src, pkt_time)
