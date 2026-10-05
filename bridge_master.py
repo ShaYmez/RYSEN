@@ -2938,7 +2938,10 @@ class routerOBP(OPENBRIDGE):
 
         # Match UNIT data, SMS/GPS, and send it to the dst_id if it is in SUB_MAP
         _obp_unit_data = False
-        if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or _dtype_vseq == 8 or ((_stream_id not in self.STATUS) and _dtype_vseq == 3)):
+        if (_call_type == 'unit'
+                and _frame_type == HBPF_DATA_SYNC
+                and (_dtype_vseq in (6, 7, 8)
+                     or ((_stream_id not in self.STATUS) and _dtype_vseq == 3))):
             _obp_unit_data = True
         
             _int_dst_id = int_id(_dst_id)
@@ -3126,6 +3129,14 @@ class routerOBP(OPENBRIDGE):
                 if _obp_previous is not None:
                     _obp_previous['LAST'] = pkt_time
                 return
+            # The caller has just transmitted on the originating master. This
+            # is stronger and newer evidence than a cached login on this one,
+            # and makes the answer route back without another hub request.
+            _source_net = int_id(_source_server)
+            _our_net = int_id(CONFIG['GLOBAL'].get('SERVER_ID') or 0)
+            if _source_net and _source_net != _our_net:
+                self._remember_unit_home(
+                    int_id(_rf_src), pkt_time, net_id=_source_net)
             self._forward_unit_voice(
                 _dst_id, _slot, _bits, _data, dmrpkt, _stream_id,
                 _peer_id, _rf_src, _frame_type, _dtype_vseq, pkt_time,
@@ -4828,7 +4839,11 @@ class routerHBP(HBSYSTEM):
             #_call_type == 'group'
        
        
-        if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or _dtype_vseq == 8 or (_stream_id != self.STATUS[_slot]['RX_STREAM_ID'] and _dtype_vseq == 3)):
+        if (_call_type == 'unit'
+                and _frame_type == HBPF_DATA_SYNC
+                and (_dtype_vseq in (6, 7, 8)
+                     or (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']
+                         and _dtype_vseq == 3))):
             _data_call = True
             
             self.STATUS[_slot]['packets'] = 0
@@ -5622,6 +5637,7 @@ for _unit_voice_name in (
         '_unit_target_idle',
         '_note_unit_tx',
         '_report_unit_voice',
+        '_remember_unit_home',
         '_open_unit_route',
         '_send_resolved_unit_voice',
         '_forward_unit_voice',

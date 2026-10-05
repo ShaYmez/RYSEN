@@ -38,8 +38,9 @@ def _idle_slot():
     }
 
 
-def _voice_packet(src, dst, stream, slot, seq, dtype, payload=None):
-    bits = 0x40 | (HBPF_DATA_SYNC << 4) | (dtype & 0x0F)
+def _voice_packet(src, dst, stream, slot, seq, dtype, payload=None,
+                  frame_type=HBPF_DATA_SYNC):
+    bits = 0x40 | (frame_type << 4) | (dtype & 0x0F)
     if slot == 2:
         bits |= 0x80
     packet = bytearray(55)
@@ -748,6 +749,31 @@ class TestInboundOpenBridgeUnitVoice(UnitCallFixture):
         self.assertTrue(target.sent[0][15] & 0x40)
         self.assertTrue(target.sent[0][15] & 0x80)
         self.assertEqual(bm.BRIDGES, {})
+
+    def test_first_voice_burst_c_is_voice_and_learns_the_callers_master(self):
+        self._system('SYSTEM-B', 'MASTER', peers=self._peer(ESSID))
+        target = _Target()
+        bm.systems['SYSTEM-B'] = target
+        bm.CONFIG['GLOBAL'] = {
+            'SERVER_ID': (2040).to_bytes(4, 'big'),
+            'GEN_STAT_BRIDGES': True,
+        }
+        router = bm.routerOBP.__new__(bm.routerOBP)
+        router._system = 'OBP-USA'
+        router.STATUS = {}
+        router._unit_voice_routes = {}
+        packet = _voice_packet(
+            CALLER, CALLEE, STREAM, 1, 0, 3, frame_type=HBPF_VOICE)
+
+        router.dmrd_received(
+            PEER, bytes_3(CALLER), bytes_3(CALLEE), 0, 1, 'unit',
+            HBPF_VOICE, 3, STREAM, packet, b'',
+            b'\x01', (3180).to_bytes(4, 'big'))
+
+        self.assertIn(STREAM, router._unit_voice_routes)
+        self.assertEqual(len(target.sent), 1)
+        self.assertEqual(bm._UNIT_HOMES[CALLER]['net_id'], 3180)
+        self.assertFalse(bm._UNIT_HOMES[CALLER]['local'])
 
     def test_own_server_echo_is_not_delivered(self):
         self._system('SYSTEM-B', 'MASTER', peers=self._peer(ESSID))
