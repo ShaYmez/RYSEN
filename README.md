@@ -1,6 +1,6 @@
 # RYSEN DMRMaster+
 
-Open-source DMR master server software (SystemX). A public fork of HBlink3 / FreeDMR, developed in Python (Twisted). **Version 1.5.4** on `master`.
+Open-source DMR master server software (SystemX). A public fork of HBlink3 / FreeDMR, developed in Python (Twisted). **Version 1.6.0** on `master`.
 
 ## Quick start
 

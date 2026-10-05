@@ -77,10 +77,18 @@ class UnitCallFixture(unittest.TestCase):
         bm.SUB_MAP = {}
         bm.BRIDGES = {}
         bm._UNIT_HOMES.clear()
+        bm._UNIT_TRANSIT_STREAMS.clear()
         bm.CONFIG = {
             'REPORTS': {'REPORT': False},
             'ALLSTAR': {'ENABLED': False},
             'SYSTEMS': {},
+            '_SERVER_IDS': {
+                '2020': 'Greece',
+                '2040': 'Europe',
+                '2342': 'UK',
+                '2381': 'UK',
+                '3180': 'USA',
+            },
         }
 
     def tearDown(self):
@@ -92,6 +100,7 @@ class UnitCallFixture(unittest.TestCase):
         else:
             bm.CONFIG = self._config
         bm._UNIT_HOMES.clear()
+        bm._UNIT_TRANSIT_STREAMS.clear()
         if self._sub_map is None:
             delattr(bm, 'SUB_MAP')
         else:
@@ -198,11 +207,16 @@ class TestUnitVoiceDelivery(UnitCallFixture):
     def test_missing_subscriber_is_a_clean_drop(self):
         self._system('SYSTEM-A', 'MASTER')
         router = self._router('SYSTEM-A')
+        bm.CONFIG['REPORTS']['REPORT'] = True
+        order = []
+        router._report.send_bridgeEvent.side_effect = lambda _event: order.append('hear')
+        router._resolve_unit_target = lambda *_args: order.append('resolve') or None
         packet = _voice_packet(CALLER, CALLEE, STREAM, 2, 0, HBPF_SLT_VHEAD)
         router._forward_unit_voice(
             bytes_3(CALLEE), 2, packet[15], packet, packet[20:53], STREAM,
             PEER, bytes_3(CALLER), HBPF_DATA_SYNC, HBPF_SLT_VHEAD, 100.0)
         self.assertFalse(router._unit_voice_routes[STREAM]['send'])
+        self.assertEqual(order[:2], ['hear', 'resolve'])
 
     def test_busy_slot_drops_and_a_later_stream_can_proceed(self):
         self._system('SYSTEM-A', 'MASTER', hang=5)
@@ -444,6 +458,7 @@ class TestGlobalUnitVoice(UnitCallFixture):
             'VER': 5,
             'NETWORK_ID': int(net_id).to_bytes(4, 'big'),
             'TARGET_IP': host,
+            '_bcka': 100.0,
         })
 
     def _origin(self):
@@ -466,6 +481,12 @@ class TestGlobalUnitVoice(UnitCallFixture):
     def _home_here(self):
         bm.CONFIG['GLOBAL'] = {'SERVER_ID': (2342).to_bytes(4, 'big')}
         bm.CONFIG['ALIASES'] = {'UNIT_SUB_MAP_URL': 'https://hub.example/sub-map'}
+
+    def test_legacy_hub_net_id_parser_remains_available(self):
+        router = self._origin()
+        self.assertEqual(router._hub_net_id({'opb_net_id': '2040'}), 2040)
+        self.assertIsNone(router._hub_net_id({'miss': True}))
+        self.assertIsNone(router._hub_net_id({'opb_net_id': 'bad'}))
 
     def test_local_hit_without_a_hub_does_not_look_up(self):
         self._system('SYSTEM-B', 'MASTER', peers=self._peer(ESSID))
@@ -607,7 +628,10 @@ class TestGlobalUnitVoice(UnitCallFixture):
         remote = _Target()
         bm.systems['SYSTEM-B'] = local
         bm.systems['OBP-EU'] = remote
-        bm.CONFIG['GLOBAL'] = {'UNIT_OBP_FLOOD': True}
+        bm.CONFIG['GLOBAL'] = {
+            'SERVER_ID': (2342).to_bytes(4, 'big'),
+            'UNIT_OBP_FLOOD': True,
+        }
         router = self._origin()
 
         def _boom(_radio):
@@ -662,7 +686,10 @@ class TestGlobalUnitVoice(UnitCallFixture):
             'UNIT_SUB_MAP_URL': 'https://hub.example/sub-map',
             'UNIT_SUB_MAP_TOKEN_FILE': 'token',
         }
-        bm.CONFIG['GLOBAL'] = {'UNIT_OBP_FLOOD': True}
+        bm.CONFIG['GLOBAL'] = {
+            'SERVER_ID': (2342).to_bytes(4, 'big'),
+            'UNIT_OBP_FLOOD': True,
+        }
         router = self._origin()
         seen = []
 
@@ -688,6 +715,29 @@ class TestGlobalUnitVoice(UnitCallFixture):
         self.assertFalse(europe.sent[0][15] & 0x80)
         self.assertEqual(europe.sent[0][20:53], later[20:53])
 
+    def test_unhealthy_next_hop_retries_with_bounded_buffer(self):
+        self._obp('OBP-EU', 2040, 'europe.freestar.network')
+        self._obp('OBP-GR', 2020, 'gr.freestar.network')
+        bm.CONFIG['SYSTEMS']['OBP-EU']['_bcka'] = 0.0
+        europe = _Target()
+        greece = _Target()
+        bm.systems['OBP-EU'] = europe
+        bm.systems['OBP-GR'] = greece
+        self._home_here()
+        router = self._origin()
+        answers = iter((
+            {'home': 3180, 'current_master': 2342, 'next_hop': 2040,
+             'path': [2342, 2040, 3180]},
+            {'home': 3180, 'current_master': 2342, 'next_hop': 2020,
+             'path': [2342, 2020, 3180]},
+        ))
+        router._unit_hub_lookup = lambda _radio: next(answers)
+        self._send(router)
+        self.assertEqual(europe.sent, [])
+        self.assertEqual(len(greece.sent), 1)
+        self.assertLessEqual(
+            len(router._unit_voice_routes[STREAM].get('buffer', [])), 48)
+
     def test_flood_off_sends_nothing_and_a_404_does_not_flood(self):
         self._obp('OBP-EU', 2040, 'europe.freestar.network')
         europe = _Target()
@@ -705,7 +755,7 @@ class TestGlobalUnitVoice(UnitCallFixture):
         self._send(router)
         self.assertEqual(europe.sent, [])
 
-    def test_flood_on_skips_xpeer(self):
+    def test_legacy_flood_flag_does_not_relay(self):
         self._obp('OBP-EU', 2040, 'europe.freestar.network')
         self._obp('OBP-XPEER', 9999, 'xpeer.freestar.network')
         europe = _Target()
@@ -715,9 +765,8 @@ class TestGlobalUnitVoice(UnitCallFixture):
         bm.CONFIG['GLOBAL'] = {'UNIT_OBP_FLOOD': True}
         router = self._origin()
         self._send(router)
-        self.assertEqual(len(europe.sent), 1)
+        self.assertEqual(europe.sent, [])
         self.assertEqual(bridge.sent, [])
-        self.assertTrue(europe.sent[0][15] & 0x40)
 
     def test_missing_token_fails_closed(self):
         bm.CONFIG['ALIASES'] = {
@@ -728,6 +777,26 @@ class TestGlobalUnitVoice(UnitCallFixture):
 
 
 class TestInboundOpenBridgeUnitVoice(UnitCallFixture):
+    def _transit_router(self):
+        self._obp_config('OBP-INGRESS', 3180, 100.0)
+        router = bm.routerOBP.__new__(bm.routerOBP)
+        router._system = 'OBP-INGRESS'
+        router._CONFIG = bm.CONFIG
+        router.STATUS = {}
+        router._unit_voice_routes = {}
+        router._unit_hub_inline = True
+        router._report = MagicMock()
+        return router
+
+    def _obp_config(self, name, net_id, bcka):
+        self._system(name, 'OPENBRIDGE')
+        bm.CONFIG['SYSTEMS'][name].update({
+            'ENHANCED_OBP': True,
+            'VER': 5,
+            'NETWORK_ID': int(net_id).to_bytes(4, 'big'),
+            '_bcka': bcka,
+        })
+
     def test_unit_voice_is_delivered_and_does_not_open_a_stat_bridge(self):
         self._system('SYSTEM-B', 'MASTER', peers=self._peer(ESSID))
         target = _Target()
@@ -796,6 +865,84 @@ class TestInboundOpenBridgeUnitVoice(UnitCallFixture):
             HBPF_DATA_SYNC, HBPF_SLT_VHEAD, STREAM, packet, b'',
             b'\x01', server)
         self.assertEqual(target.sent, [])
+
+    def test_transit_uses_one_next_hop_and_preserves_v5_origin(self):
+        self._obp_config('OBP-EU', 2040, 9999999999.0)
+        target = _Target()
+        bm.systems['OBP-EU'] = target
+        bm.CONFIG['GLOBAL'] = {'SERVER_ID': (2381).to_bytes(4, 'big')}
+        bm.CONFIG['ALIASES'] = {'UNIT_SUB_MAP_URL': 'https://hub.example/sub-map'}
+        bm.CONFIG['REPORTS']['REPORT'] = True
+        router = self._transit_router()
+        router._unit_hub_lookup = lambda _radio: {
+            'current_master': 2381,
+            'home_net_id': 2020,
+            'next_hop_net_id': 2040,
+            'path': [2381, 2040, 2020],
+        }
+        packet = _voice_packet(CALLER, CALLEE, STREAM, 1, 0, HBPF_SLT_VHEAD)
+        origin = (3180).to_bytes(4, 'big')
+        rptr = (234111101).to_bytes(4, 'big')
+        router.dmrd_received(
+            PEER, bytes_3(CALLER), bytes_3(CALLEE), 0, 1, 'unit',
+            HBPF_DATA_SYNC, HBPF_SLT_VHEAD, STREAM, packet, b'',
+            b'\x02', origin, b'\x05', b'\x90', rptr)
+        terminal = _voice_packet(
+            CALLER, CALLEE, STREAM, 1, 1, HBPF_SLT_VTERM)
+        router.dmrd_received(
+            PEER, bytes_3(CALLER), bytes_3(CALLEE), 1, 1, 'unit',
+            HBPF_DATA_SYNC, HBPF_SLT_VTERM, STREAM, terminal, b'',
+            b'\x02', origin, b'\x05', b'\x90', rptr)
+        self.assertEqual(len(target.sent), 2)
+        self.assertEqual(
+            target.extra[0],
+            (b'\x02', b'\x05', b'\x90', origin, rptr))
+        router._report.send_bridgeEvent.assert_not_called()
+
+    def test_transit_never_returns_to_ingress(self):
+        target = _Target()
+        bm.systems['OBP-INGRESS'] = target
+        bm.CONFIG['GLOBAL'] = {'SERVER_ID': (2381).to_bytes(4, 'big')}
+        bm.CONFIG['ALIASES'] = {'UNIT_SUB_MAP_URL': 'https://hub.example/sub-map'}
+        router = self._transit_router()
+        bm.systems['OBP-INGRESS'] = target
+        router._unit_hub_lookup = lambda _radio: {
+            'current_master': 2381,
+            'home_net_id': 2020,
+            'next_hop_net_id': 3180,
+            'path': [2381, 3180, 2020],
+        }
+        packet = _voice_packet(CALLER, CALLEE, STREAM, 1, 0, HBPF_SLT_VHEAD)
+        router.dmrd_received(
+            PEER, bytes_3(CALLER), bytes_3(CALLEE), 0, 1, 'unit',
+            HBPF_DATA_SYNC, HBPF_SLT_VHEAD, STREAM, packet, b'',
+            b'\x02', (3180).to_bytes(4, 'big'))
+        self.assertEqual(target.sent, [])
+
+    def test_returning_transit_stream_on_another_ingress_is_dropped(self):
+        bm.CONFIG['GLOBAL'] = {'SERVER_ID': (2381).to_bytes(4, 'big')}
+        bm.CONFIG['ALIASES'] = {
+            'UNIT_SUB_MAP_URL': 'https://hub.example/sub-map',
+        }
+        packet = _voice_packet(
+            CALLER, CALLEE, STREAM, 1, 0, HBPF_SLT_VHEAD)
+        first = self._transit_router()
+        first._unit_hub_lookup = lambda _radio: {'miss': True}
+        first._forward_unit_voice(
+            bytes_3(CALLEE), 1, packet[15], packet, packet[20:53],
+            STREAM, PEER, bytes_3(CALLER), HBPF_DATA_SYNC,
+            HBPF_SLT_VHEAD, 100.0, origin_local=False,
+            ingress_system='OBP-INGRESS')
+        second = self._transit_router()
+        second._system = 'OBP-RETURN'
+        second._unit_hub_lookup = MagicMock(
+            side_effect=AssertionError('loop consulted the hub'))
+        second._forward_unit_voice(
+            bytes_3(CALLEE), 1, packet[15], packet, packet[20:53],
+            STREAM, PEER, bytes_3(CALLER), HBPF_DATA_SYNC,
+            HBPF_SLT_VHEAD, 100.1, origin_local=False,
+            ingress_system='OBP-RETURN')
+        second._unit_hub_lookup.assert_not_called()
 
 
 class TestOpenBridgeUnitAcl(unittest.TestCase):

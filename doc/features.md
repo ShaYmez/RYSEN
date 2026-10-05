@@ -1,11 +1,12 @@
 # RYSEN Features
 
-Version history and feature reference for RYSEN DMRMaster+ (SystemX). Current release: **1.5.4** on `master`.
+Version history and feature reference for RYSEN DMRMaster+ (SystemX). Current release: **1.6.0** on `master`.
 
 Maintained by **Shane Daley M0VUB** (aka **ShaYmez**) — primary RYSEN / SystemX development since v1.3.9. Lineage: HBlink3 (N0MJS) → FreeDMR (G7RZU) → RYSEN.
 
 | Version | Date | Summary |
 |---------|------|---------|
+| 1.6.0 | 2026-10-06 | Fleet-only topology discovery and shortest-path private-call relay |
 | 1.5.4 | 2026-09-22 | Reactor stall/idle hygiene, STAT OBP hairpin, hub device control, parrot UA KeyError |
 | 1.5.3 | 2026-08-07 | Built-in version traceability, status page live version, monitor footer |
 | 1.5.2 | 2026-08-05 | BRIDGE_IDX bloat trim, reactor/audio stability, hotspot echo fix |
@@ -183,7 +184,7 @@ Operator setup: [hytera.md](hytera.md).
 
 Local subscriber private calls are on `master` (`da29797`, `579d9ed`): hotspot, IPSC, and Hytera on the same server, placed from `SUB_MAP` or a connected hotspot ESSID.
 
-The optional global hop stays off unless `[ALIASES] UNIT_SUB_MAP_URL` is set. With that URL, the first private call to a radio asks the hub once and the answer is reused for 10 minutes. A transmission heard on this master replaces that home at once and is itself reused, so two radios already here are not looked up. A miss is remembered for a minute. A hub error is not remembered. A busy slot drops the call when the radio is staying here. `[GLOBAL] UNIT_OBP_FLOOD` defaults to false. `xpeer.freestar.network` is not a private-call target. SMS and GPS are unchanged. See [ipsc-roadmap.md](ipsc-roadmap.md).
+The optional global topology stays off unless `[ALIASES] UNIT_SUB_MAP_URL` is set; the existing bearer-token file remains the credential. Participating masters publish secret-free enhanced-OBP health immediately at startup and then at jittered intervals, with fleet membership taken from the downloaded server registry. Route replies carry the home, one next hop, a validated loop-free path, topology version and expiry. Voice is sent to exactly that healthy next hop—never flooded, returned to ingress, or relayed through a configured third-party OBP. A short bounded buffer permits a fresh lookup when the chosen hop fails. DMRE v5 origin server/repeater identity and hop count survive transit. A local callee always wins, and inbound/transit calls do not create local caller hears. Unit data, SMS and GPS are unchanged. See [ipsc-roadmap.md](ipsc-roadmap.md).
 
 ---
 

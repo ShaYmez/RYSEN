@@ -1,5 +1,25 @@
 # RYSEN DMRMaster+ Changelog
 
+## Version 1.6.0 (2026-10-06) — Topology-aware unit routing
+
+- Global unit voice remains opt-in through the existing
+  `UNIT_SUB_MAP_URL` / token-file configuration. Local-only installations do
+  no topology HTTP and never relay private voice over OpenBridge.
+- Participating masters publish immediate, then bounded-jitter health
+  snapshots for configured proto-v5 enhanced-OBP fleet links. Fleet membership
+  comes from the downloaded server registry; credentials and passphrases are
+  never included.
+- Hub routes are validated for home, immediate next hop, simple path, topology
+  version and expiry. Transit uses one healthy next hop, never ingress, with no
+  flood or third-party fallback and a bounded retry buffer.
+- DMRE v5 origin server/repeater and hop metadata survive transit. Local
+  placement is attempted first, while inbound/transit calls do not emit local
+  caller hears. Unit data, SMS and GPS are unchanged.
+- A master whose local server ID disagrees with the fleet registry cannot
+  publish topology. Scotland therefore remains local-only until its current
+  `2355` identity is reconciled with registry ID `2354` and it has a reciprocal
+  link to a participating fleet master; its CQ-UK link is never transit.
+
 ## Unreleased — OBP stream ownership
 
 - Unfinished OpenBridge streams no longer open a new CALL START when `LAST` ages past 360ms. That restart was re-claiming 2350 across the mesh after jitter or reactor lag.

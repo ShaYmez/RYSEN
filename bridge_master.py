@@ -80,7 +80,13 @@ from selfcare_db import (
     union_peer_static_lists,
 )
 from bridge_helpers import iter_routing_master_systems as _iter_routing_master_systems
-from unit_hub import schedule_off_reactor
+from unit_hub import (
+    schedule_off_reactor,
+    server_registry_net_ids,
+    start_health_reporter,
+    unit_lookup_url,
+    validate_topology_route,
+)
 from bridge_helpers import (
     DIAL_A_TG,
     DIAL_A_TG_BYTES,
@@ -2875,7 +2881,7 @@ class routerOBP(OPENBRIDGE):
         if CONFIG['REPORTS']['REPORT']:
             systems[_d_system]._report.send_bridgeEvent('UNIT DATA,DATA,TX,{},{},{},{},{},{}'.format(_d_system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
         
-    def sendDataToOBP(self,_target,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,_hops = b'',_source_server = b'\x00\x00\x00\x00', _ber = b'\x00', _rssi = b'\x00', _source_rptr = b'\x00\x00\x00\x00'):
+    def sendDataToOBP(self,_target,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,_hops = b'',_source_server = b'\x00\x00\x00\x00', _ber = b'\x00', _rssi = b'\x00', _source_rptr = b'\x00\x00\x00\x00', _voice=False):
 
         _int_dst_id = int_id(_dst_id)
         _target_status = systems[_target].STATUS
@@ -2916,6 +2922,10 @@ class routerOBP(OPENBRIDGE):
         _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
         _tmp_data = b''.join([_tmp_data, dmrpkt])
         systems[_target].send_system(_tmp_data,_hops,_ber,_rssi, _source_server, _source_rptr)
+        if _voice:
+            logger.debug('(%s) UNIT voice transited to OBP System: %s DST_ID: %s',
+                         self._system, _target, _int_dst_id)
+            return
         logger.debug('(%s) UNIT Data Bridged to OBP System: %s DST_ID: %s', self._system, _target,_int_dst_id)
         if CONFIG['REPORTS']['REPORT']:
             systems[_target]._report.send_bridgeEvent('UNIT DATA,DATA,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
@@ -3140,7 +3150,10 @@ class routerOBP(OPENBRIDGE):
             self._forward_unit_voice(
                 _dst_id, _slot, _bits, _data, dmrpkt, _stream_id,
                 _peer_id, _rf_src, _frame_type, _dtype_vseq, pkt_time,
-                allow_global=False)
+                allow_global=True, origin_local=False,
+                ingress_system=self._system, hops=_hops,
+                source_server=_source_server, source_rptr=_source_rptr,
+                ber=_ber, rssi=_rssi)
             return
             
         if _call_type == 'group' or _call_type == 'vcsbk':
@@ -3457,13 +3470,16 @@ class routerOBP(OPENBRIDGE):
                    
                 self.STATUS[_stream_id]['lastSeq'] = False
 
-def fetch_unit_sub_map(radio_id):
+def fetch_unit_sub_map(radio_id, current_master=None):
     """GET one home for a 7-digit radio. Timeout, a missing token, and HTTP errors fail closed."""
     import json
     from urllib import error, request
     aliases = CONFIG.get('ALIASES') or {}
-    url = str(aliases.get('UNIT_SUB_MAP_URL') or '').strip().rstrip('/')
     token_path = str(aliases.get('UNIT_SUB_MAP_TOKEN_FILE') or '').strip()
+    url = unit_lookup_url(
+        CONFIG, radio_id,
+        current_master if current_master is not None
+        else (CONFIG.get('GLOBAL') or {}).get('SERVER_ID'))
     if not url or not token_path:
         return {'error': True}
     try:
@@ -3474,7 +3490,7 @@ def fetch_unit_sub_map(radio_id):
     if not token:
         return {'error': True}
     req = request.Request(
-        '%s/%s' % (url, int(radio_id)),
+        url,
         headers={
             'Authorization': 'Bearer ' + token,
             'Accept': 'application/json',
@@ -3499,6 +3515,8 @@ def fetch_unit_sub_map(radio_id):
 UNIT_HOME_HOLD = 600
 UNIT_HOME_MISS_HOLD = 60
 _UNIT_HOMES = {}
+UNIT_TRANSIT_STREAM_HOLD = 30
+_UNIT_TRANSIT_STREAMS = {}
 
 
 class routerHBP(HBSYSTEM):
@@ -4222,12 +4240,18 @@ class routerHBP(HBSYSTEM):
             kind, 'RX', self._system, int_id(stream_id), int_id(peer_id),
             int_id(rf_src), slot, int_id(dst_id), duration))
 
-    def _remember_unit_home(self, radio_id, when, *, local=False, net_id=None, absent=False):
+    def _remember_unit_home(self, radio_id, when, *, local=False, net_id=None,
+                            absent=False, next_hop=None, path=None,
+                            topology_version=None, expires_at=None):
         _UNIT_HOMES[int(radio_id)] = {
             'local': bool(local),
             'net_id': None if net_id is None else int(net_id),
             'absent': bool(absent),
             'at': float(when),
+            'next_hop': None if next_hop is None else int(next_hop),
+            'path': tuple(path or ()),
+            'topology_version': topology_version,
+            'expires_at': expires_at,
         }
         if len(_UNIT_HOMES) <= 4096:
             return
@@ -4237,6 +4261,10 @@ class routerHBP(HBSYSTEM):
     def _fresh_unit_home(self, radio_id, now):
         row = _UNIT_HOMES.get(int(radio_id))
         if not row:
+            return None
+        expires_at = row.get('expires_at')
+        if expires_at is not None and float(now) >= float(expires_at):
+            _UNIT_HOMES.pop(int(radio_id), None)
             return None
         limit = UNIT_HOME_MISS_HOLD if row.get('absent') else UNIT_HOME_HOLD
         if float(now) - float(row['at']) >= limit:
@@ -4308,7 +4336,6 @@ class routerHBP(HBSYSTEM):
             self._id_alias(_peer_id, 'peer_ids'), int_id(_peer_id),
             self._id_alias(_dst_id, 'subscriber_ids'), _int_dst_id,
             _slot, system, slot, via)
-        self._report_unit_voice('START', _stream_id, _peer_id, _rf_src, _slot, _dst_id)
         return route
 
     def _send_resolved_unit_voice(self, route, _slot, _bits, _data, dmrpkt, _stream_id,
@@ -4331,11 +4358,12 @@ class routerHBP(HBSYSTEM):
     def _unit_global_enabled(self):
         aliases = CONFIG.get('ALIASES') or {}
         url = str(aliases.get('UNIT_SUB_MAP_URL') or '').strip()
-        flood = bool((CONFIG.get('GLOBAL') or {}).get('UNIT_OBP_FLOOD', False))
-        return bool(url) or flood
+        return bool(url)
 
     def _unit_frame(self, _dst_id, _slot, _bits, _data, dmrpkt, _stream_id,
-                    _peer_id, _rf_src, _dtype_vseq, pkt_time, terminal):
+                    _peer_id, _rf_src, _dtype_vseq, pkt_time, terminal,
+                    hops=b'', source_server=b'\x00\x00\x00\x00',
+                    source_rptr=b'\x00\x00\x00\x00', ber=None, rssi=None):
         return {
             'dst': _dst_id,
             'slot': _slot,
@@ -4347,8 +4375,15 @@ class routerHBP(HBSYSTEM):
             'rf': _rf_src,
             'time': pkt_time,
             'terminal': terminal,
-            'ber': _data[53:54] if len(_data) >= 54 else b'\x00',
-            'rssi': _data[54:55] if len(_data) >= 55 else b'\x00',
+            'ber': (
+                ber if ber is not None
+                else (_data[53:54] if len(_data) >= 54 else b'\x00')),
+            'rssi': (
+                rssi if rssi is not None
+                else (_data[54:55] if len(_data) >= 55 else b'\x00')),
+            'hops': hops,
+            'source_server': source_server,
+            'source_rptr': source_rptr,
         }
 
     def _remember_global_frame(self, route, frame):
@@ -4362,7 +4397,7 @@ class routerHBP(HBSYSTEM):
         fn = getattr(self, '_unit_hub_lookup', None)
         if fn is not None:
             return fn(radio_id)
-        return fetch_unit_sub_map(radio_id)
+        return fetch_unit_sub_map(radio_id, self._our_server_net_id())
 
     def _schedule_unit_hub_lookup(self, radio_id, stream_id):
         if getattr(self, '_unit_hub_inline', False):
@@ -4388,14 +4423,51 @@ class routerHBP(HBSYSTEM):
             logger.info('(%s) UNIT call not routed, %s', self._system, reason)
 
     def _send_unit_obp_frame(self, route, frame):
-        for target in route.get('obp_targets') or []:
-            if target not in systems:
+        target = route.get('obp_target')
+        if target not in systems:
+            return False
+        if not self._unit_obp_healthy(target, frame['time']):
+            return False
+        self.sendDataToOBP(
+            target, frame['data'], frame['dmrpkt'], frame['time'],
+            frame['stream'], frame['dst'], frame['peer'], frame['rf'],
+            frame['bits'], frame['slot'], _hops=frame.get('hops', b''),
+            _ber=frame['ber'], _rssi=frame['rssi'],
+            _source_server=frame.get('source_server', b'\x00\x00\x00\x00'),
+            _source_rptr=frame.get('source_rptr', b'\x00\x00\x00\x00'),
+            _voice=True)
+        return True
+
+    def _unit_obp_healthy(self, system, now):
+        item = (CONFIG.get('SYSTEMS') or {}).get(system) or {}
+        if (system not in systems or not item.get('ENABLED', True)
+                or item.get('MODE') != 'OPENBRIDGE'
+                or not item.get('ENHANCED_OBP')
+                or int(item.get('VER', 0) or 0) < 5):
+            return False
+        last = item.get('_bcka')
+        if last is None:
+            return False
+        try:
+            return float(last) >= float(now) - 60.0
+        except (TypeError, ValueError):
+            return False
+
+    def _configured_unit_fleet(self):
+        fleet = server_registry_net_ids(CONFIG)
+        found = {}
+        for name, item in (CONFIG.get('SYSTEMS') or {}).items():
+            if (item.get('MODE') != 'OPENBRIDGE'
+                    or not item.get('ENHANCED_OBP')
+                    or int(item.get('VER', 0) or 0) < 5):
                 continue
-            self.sendDataToOBP(
-                target, frame['data'], frame['dmrpkt'], frame['time'],
-                frame['stream'], frame['dst'], frame['peer'], frame['rf'],
-                frame['bits'], frame['slot'], b'', frame['ber'], frame['rssi'],
-                _voice=True)
+            try:
+                net_id = int_id(item.get('NETWORK_ID'))
+            except (TypeError, ValueError):
+                continue
+            if net_id in fleet:
+                found[net_id] = name
+        return found
 
     def _finish_unit_obp(self, route):
         duration = route.get('time', route['start']) - route['start']
@@ -4408,20 +4480,26 @@ class routerHBP(HBSYSTEM):
             self._id_alias(route['src'], 'subscriber_ids'), int_id(route['src']),
             self._id_alias(route['peer'], 'peer_ids'), int_id(route['peer']),
             self._id_alias(route['dst'], 'subscriber_ids'), int_id(route['dst']),
-            route['rx_slot'], ','.join(route.get('obp_targets') or []), duration)
-        self._report_unit_voice(
-            'END', route['stream'], route['peer'], route['src'],
-            route['rx_slot'], route['dst'], duration)
+            route['rx_slot'], route.get('obp_target') or '', duration)
+        if route.get('origin_local'):
+            self._report_unit_voice(
+                'END', route['stream'], route['peer'], route['src'],
+                route['rx_slot'], route['dst'], duration)
         route['closed'] = True
 
-    def _commit_global_unit_route(self, route, targets, via):
-        names = [name for name in targets if name in systems]
+    def _commit_global_unit_route(self, route, target, via):
         route['pending'] = False
         route['buffer'] = route.get('buffer') or []
-        if not names:
+        if not target or target not in systems:
             self._drop_global_unit(route, 'no enhanced OpenBridge peer for subscriber %s' % int_id(route['dst']))
             return
-        route['obp_targets'] = names
+        check_time = (
+            route['buffer'][-1]['time']
+            if route.get('buffer') else route.get('time', time()))
+        if not self._unit_obp_healthy(target, check_time):
+            self._retry_global_unit_route(route, 'next hop is unhealthy')
+            return
+        route['obp_target'] = target
         route['send'] = True
         route['via'] = via
         logger.info(
@@ -4431,20 +4509,43 @@ class routerHBP(HBSYSTEM):
             self._id_alias(route['src'], 'subscriber_ids'), int_id(route['src']),
             self._id_alias(route['peer'], 'peer_ids'), int_id(route['peer']),
             self._id_alias(route['dst'], 'subscriber_ids'), int_id(route['dst']),
-            route['rx_slot'], ','.join(names), via)
-        self._report_unit_voice(
-            'START', route['stream'], route['peer'], route['src'],
-            route['rx_slot'], route['dst'])
+            route['rx_slot'], target, via)
+        if route.get('origin_local') and not route.get('start_reported'):
+            self._report_unit_voice(
+                'START', route['stream'], route['peer'], route['src'],
+                route['rx_slot'], route['dst'])
+            route['start_reported'] = True
         frames = route['buffer']
         route['buffer'] = []
         saw_terminal = False
         for frame in frames:
-            self._send_unit_obp_frame(route, frame)
+            if not self._send_unit_obp_frame(route, frame):
+                self._remember_global_frame(route, frame)
             if frame['terminal']:
                 saw_terminal = True
                 route['end_time'] = frame['time']
         if saw_terminal:
             self._finish_unit_obp(route)
+
+    def _retry_global_unit_route(self, route, reason):
+        route.pop('obp_target', None)
+        route['send'] = False
+        retries = int(route.get('retries', 0))
+        if retries >= 2 or route.get('closed'):
+            self._drop_global_unit(route, reason)
+            return
+        route['retries'] = retries + 1
+        route['pending'] = True
+        radio_id = int_id(route['dst'])
+
+        def retry():
+            if route.get('pending'):
+                self._schedule_unit_hub_lookup(radio_id, route['stream'])
+
+        if getattr(self, '_unit_hub_inline', False):
+            retry()
+        else:
+            reactor.callLater(min(1.0, 0.25 * (retries + 1)), retry)
 
     def _commit_local_unit_route(self, route):
         """Play a buffered private call on the local slot once the hub agrees."""
@@ -4478,8 +4579,11 @@ class routerHBP(HBSYSTEM):
             self._id_alias(route['peer'], 'peer_ids'), int_id(route['peer']),
             self._id_alias(route['dst'], 'subscriber_ids'), int_id(route['dst']),
             route['rx_slot'], system, slot, route.get('local_via') or 'sub_map')
-        self._report_unit_voice(
-            'START', stream_id, route['peer'], route['src'], route['rx_slot'], route['dst'])
+        if route.get('origin_local') and not route.get('start_reported'):
+            self._report_unit_voice(
+                'START', stream_id, route['peer'], route['src'],
+                route['rx_slot'], route['dst'])
+            route['start_reported'] = True
         route['buffer'] = []
         saw_terminal = False
         for frame in frames:
@@ -4501,9 +4605,10 @@ class routerHBP(HBSYSTEM):
             self._id_alias(route['peer'], 'peer_ids'), int_id(route['peer']),
             self._id_alias(route['dst'], 'subscriber_ids'), int_id(route['dst']),
             route['rx_slot'], system, slot, duration)
-        self._report_unit_voice(
-            'END', stream_id, route['peer'], route['src'], route['rx_slot'],
-            route['dst'], duration)
+        if route.get('origin_local'):
+            self._report_unit_voice(
+                'END', stream_id, route['peer'], route['src'],
+                route['rx_slot'], route['dst'], duration)
         route['closed'] = True
 
     def _hub_net_id(self, result):
@@ -4516,33 +4621,51 @@ class routerHBP(HBSYSTEM):
         except (TypeError, ValueError):
             return None
 
+    def _hub_route(self, result, ingress_system=None, now=None):
+        configured = self._configured_unit_fleet()
+        ingress = None
+        if ingress_system:
+            ingress_cfg = (CONFIG.get('SYSTEMS') or {}).get(ingress_system) or {}
+            try:
+                ingress = int_id(ingress_cfg.get('NETWORK_ID'))
+            except (TypeError, ValueError):
+                ingress = None
+        return validate_topology_route(
+            result, self._our_server_net_id(), server_registry_net_ids(CONFIG),
+            configured_next_hops=configured, ingress_master=ingress, now=now)
+
     def _apply_unit_hub_result(self, stream_id, result):
         route = self._unit_route_cache().get(stream_id)
         if not route or not route.get('pending'):
             return
         result = result or {'error': True}
-        home = self._hub_net_id(result)
+        topology = self._hub_route(
+            result, route.get('ingress_system'), route.get('time', route['start']))
+        home = topology['home'] if topology else self._hub_net_id(result)
         ours = self._our_server_net_id()
         # This master is the home. Place the radio locally, including a busy slot.
         if home is not None and ours is not None and home == ours:
-            self._remember_unit_home(int_id(route['dst']), route['start'], local=True, net_id=home)
+            self._remember_unit_home(
+                int_id(route['dst']), route['start'], local=True, net_id=home,
+                path=topology.get('path') if topology else None,
+                topology_version=(
+                    topology.get('topology_version') if topology else None),
+                expires_at=topology.get('expires_at') if topology else None)
             self._commit_local_unit_route(route)
             if route.get('closed'):
                 self._unit_route_cache().pop(stream_id, None)
             return
-        if home is not None and (ours is None or home != ours):
-            name = obp_stanza_for_net_id(CONFIG.get('SYSTEMS'), home)
+        if topology is not None and home != ours:
+            next_hop = topology.get('next_hop')
+            name = self._configured_unit_fleet().get(next_hop)
             if name:
                 route['local'] = False
-                self._remember_unit_home(int_id(route['dst']), route['start'], net_id=home)
-                self._commit_global_unit_route(route, [name], 'hub')
-                if route.get('closed'):
-                    self._unit_route_cache().pop(stream_id, None)
-                return
-            if (CONFIG.get('GLOBAL') or {}).get('UNIT_OBP_FLOOD'):
-                names = [item[0] for item in iter_enhanced_obp_stanzas(CONFIG.get('SYSTEMS'))]
-                route['local'] = False
-                self._commit_global_unit_route(route, names, 'flood')
+                self._remember_unit_home(
+                    int_id(route['dst']), route['start'], net_id=home,
+                    next_hop=next_hop, path=topology.get('path'),
+                    topology_version=topology.get('topology_version'),
+                    expires_at=topology.get('expires_at'))
+                self._commit_global_unit_route(route, name, 'hub')
                 if route.get('closed'):
                     self._unit_route_cache().pop(stream_id, None)
                 return
@@ -4563,26 +4686,31 @@ class routerHBP(HBSYSTEM):
                 route, 'subscriber %s is not on another master' % int_id(route['dst']))
             return
         self._drop_global_unit(
-            route, 'no OpenBridge peer for subscriber %s' % int_id(route['dst']))
+            route, 'invalid or unusable topology route for subscriber %s'
+            % int_id(route['dst']))
 
     def _begin_global_unit_route(self, route, _dst_id, _slot, _bits, _data, dmrpkt,
-                                 _stream_id, _peer_id, _rf_src, _dtype_vseq, pkt_time, terminal):
+                                 _stream_id, _peer_id, _rf_src, _dtype_vseq,
+                                 pkt_time, terminal, hops=b'',
+                                 source_server=b'\x00\x00\x00\x00',
+                                 source_rptr=b'\x00\x00\x00\x00',
+                                 ber=None, rssi=None):
         route['pending'] = True
         route['stream'] = _stream_id
         route['buffer'] = []
         self._remember_global_frame(route, self._unit_frame(
             _dst_id, _slot, _bits, _data, dmrpkt, _stream_id, _peer_id,
-            _rf_src, _dtype_vseq, pkt_time, terminal))
-        url = str((CONFIG.get('ALIASES') or {}).get('UNIT_SUB_MAP_URL') or '').strip()
-        if not url:
-            names = [item[0] for item in iter_enhanced_obp_stanzas(CONFIG.get('SYSTEMS'))]
-            self._commit_global_unit_route(route, names, 'flood')
-            return
+            _rf_src, _dtype_vseq, pkt_time, terminal, hops,
+            source_server, source_rptr, ber, rssi))
         self._schedule_unit_hub_lookup(int_id(_dst_id), _stream_id)
 
     def _forward_unit_voice(self, _dst_id, _slot, _bits, _data, dmrpkt, _stream_id,
                             _peer_id, _rf_src, _frame_type, _dtype_vseq, pkt_time,
-                            allow_global=True):
+                            allow_global=True, origin_local=True,
+                            ingress_system=None, hops=b'',
+                            source_server=b'\x00\x00\x00\x00',
+                            source_rptr=b'\x00\x00\x00\x00',
+                            ber=None, rssi=None):
         """Deliver one subscriber private-call frame to the callee's slot.
 
         The target is resolved once per stream. Later frames reuse it. AMBE is
@@ -4593,11 +4721,46 @@ class routerHBP(HBSYSTEM):
         cache = self._unit_route_cache()
         terminal = (
             _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM)
+        if not origin_local:
+            transit_key = (_stream_id, _rf_src, _dst_id)
+            previous = _UNIT_TRANSIT_STREAMS.get(transit_key)
+            if (previous
+                    and pkt_time - previous['at'] < UNIT_TRANSIT_STREAM_HOLD
+                    and previous['ingress'] != ingress_system):
+                logger.warning(
+                    '(%s) UNIT transit loop dropped STREAM ID: %s ingress %s '
+                    'first seen on %s', self._system, int_id(_stream_id),
+                    ingress_system, previous['ingress'])
+                return
+            _UNIT_TRANSIT_STREAMS[transit_key] = {
+                'ingress': ingress_system,
+                'at': pkt_time,
+            }
+            if len(_UNIT_TRANSIT_STREAMS) > 2048:
+                cutoff = pkt_time - UNIT_TRANSIT_STREAM_HOLD
+                for key, value in list(_UNIT_TRANSIT_STREAMS.items()):
+                    if value['at'] < cutoff:
+                        _UNIT_TRANSIT_STREAMS.pop(key, None)
         route = cache.get(_stream_id)
         if route is not None and route.get('dst') != _dst_id:
             route = None
+        if (route is not None and not origin_local
+                and route.get('ingress_system')
+                and route.get('ingress_system') != ingress_system):
+            logger.warning(
+                '(%s) UNIT transit loop dropped STREAM ID: %s ingress %s '
+                'expected %s', self._system, int_id(_stream_id),
+                ingress_system, route.get('ingress_system'))
+            return
         if route is None:
             try_global = allow_global and self._unit_global_enabled()
+            start_reported = False
+            if origin_local:
+                # Publish the caller's hear before any local or hub destination
+                # resolution. Inbound/transit traffic must not create a local hear.
+                self._report_unit_voice(
+                    'START', _stream_id, _peer_id, _rf_src, _slot, _dst_id)
+                start_reported = True
             # Inbound OpenBridge voice must terminate on this master. It may
             # teach us where the caller came from, but it must never consult or
             # follow the destination home cache back onto the OBP mesh.
@@ -4606,8 +4769,12 @@ class routerHBP(HBSYSTEM):
                 and bool(str((CONFIG.get('ALIASES') or {}).get(
                     'UNIT_SUB_MAP_URL') or '').strip()))
             radio = int_id(_dst_id)
-            learned = self._fresh_unit_home(radio, pkt_time) if url_set else None
-            heard = self._local_hear_time(_dst_id) if url_set else None
+            learned = (
+                self._fresh_unit_home(radio, pkt_time)
+                if url_set and origin_local else None)
+            heard = (
+                self._local_hear_time(_dst_id)
+                if url_set and origin_local else None)
             heard_here = (
                 heard is not None
                 and pkt_time - heard < UNIT_HOME_HOLD
@@ -4625,14 +4792,19 @@ class routerHBP(HBSYSTEM):
             elif learned and learned.get('absent'):
                 hold = False
             else:
-                hold = try_global and url_set
+                hold = try_global and url_set and origin_local
             route = self._open_unit_route(
                 _dst_id, _slot, _stream_id, _peer_id, _rf_src, pkt_time,
                 log_miss=not try_global and not (learned and learned.get('absent')),
                 hold=hold)
+            route['origin_local'] = origin_local
+            route['start_reported'] = start_reported
+            route['ingress_system'] = ingress_system
+            route['time'] = pkt_time
             cache[_stream_id] = route
             if cached_net is not None:
-                name = obp_stanza_for_net_id(CONFIG.get('SYSTEMS'), cached_net)
+                cached_hop = learned.get('next_hop') or cached_net
+                name = self._configured_unit_fleet().get(cached_hop)
                 if name:
                     route['pending'] = True
                     route['stream'] = _stream_id
@@ -4640,8 +4812,9 @@ class routerHBP(HBSYSTEM):
                     route['local'] = False
                     self._remember_global_frame(route, self._unit_frame(
                         _dst_id, _slot, _bits, _data, dmrpkt, _stream_id, _peer_id,
-                        _rf_src, _dtype_vseq, pkt_time, terminal))
-                    self._commit_global_unit_route(route, [name], 'home')
+                        _rf_src, _dtype_vseq, pkt_time, terminal, hops,
+                        source_server, source_rptr, ber, rssi))
+                    self._commit_global_unit_route(route, name, 'home')
                 else:
                     cached_net = None
             elif learned and learned.get('absent') and not route.get('local'):
@@ -4650,15 +4823,16 @@ class routerHBP(HBSYSTEM):
             asked = (
                 cached_net is not None
                 or route.get('pending')
-                or route.get('obp_targets')
+                or route.get('obp_target')
                 or (learned and learned.get('absent') and not route.get('local'))
                 or hold
                 or (not route['send'] and not route.get('local') and try_global))
-            if asked and not route.get('obp_targets') and not route.get('closed') and cached_net is None:
+            if asked and not route.get('obp_target') and not route.get('closed') and cached_net is None:
                 if not (learned and learned.get('absent') and not route.get('local')):
                     self._begin_global_unit_route(
                         route, _dst_id, _slot, _bits, _data, dmrpkt, _stream_id,
-                        _peer_id, _rf_src, _dtype_vseq, pkt_time, terminal)
+                        _peer_id, _rf_src, _dtype_vseq, pkt_time, terminal,
+                        hops, source_server, source_rptr, ber, rssi)
             if route.get('closed'):
                 cache.pop(_stream_id, None)
             if len(cache) > 128:
@@ -4666,18 +4840,23 @@ class routerHBP(HBSYSTEM):
                     if stale != _stream_id and len(cache) > 128:
                         cache.pop(stale, None)
             # The opening frame is already in the hub buffer. Do not send it twice.
-            if asked or route.get('pending') or route.get('obp_targets') or route.get('closed'):
+            if asked or route.get('pending') or route.get('obp_target') or route.get('closed'):
                 return
         if route.get('pending'):
             self._remember_global_frame(route, self._unit_frame(
                 _dst_id, _slot, _bits, _data, dmrpkt, _stream_id, _peer_id,
-                _rf_src, _dtype_vseq, pkt_time, terminal))
+                _rf_src, _dtype_vseq, pkt_time, terminal, hops,
+                source_server, source_rptr, ber, rssi))
             return
-        if route.get('obp_targets'):
+        if route.get('obp_target'):
             frame = self._unit_frame(
                 _dst_id, _slot, _bits, _data, dmrpkt, _stream_id, _peer_id,
-                _rf_src, _dtype_vseq, pkt_time, terminal)
-            self._send_unit_obp_frame(route, frame)
+                _rf_src, _dtype_vseq, pkt_time, terminal, hops,
+                source_server, source_rptr, ber, rssi)
+            if not self._send_unit_obp_frame(route, frame):
+                self._remember_global_frame(route, frame)
+                self._retry_global_unit_route(route, 'next hop became unhealthy')
+                return
             if terminal:
                 route['end_time'] = pkt_time
                 self._finish_unit_obp(route)
@@ -4697,9 +4876,10 @@ class routerHBP(HBSYSTEM):
                 self._id_alias(route['peer'], 'peer_ids'), int_id(route['peer']),
                 self._id_alias(_dst_id, 'subscriber_ids'), int_id(_dst_id),
                 route['rx_slot'], route['system'], route['slot'], duration)
-            self._report_unit_voice(
-                'END', _stream_id, route['peer'], route['src'], route['rx_slot'],
-                _dst_id, duration)
+            if route.get('origin_local'):
+                self._report_unit_voice(
+                    'END', _stream_id, route['peer'], route['src'],
+                    route['rx_slot'], _dst_id, duration)
         if terminal:
             cache.pop(_stream_id, None)
 
@@ -5644,8 +5824,28 @@ for _unit_voice_name in (
         '_note_unit_tx',
         '_report_unit_voice',
         '_remember_unit_home',
+        '_fresh_unit_home',
+        '_local_hear_time',
+        '_our_server_net_id',
         '_open_unit_route',
         '_send_resolved_unit_voice',
+        '_unit_global_enabled',
+        '_unit_frame',
+        '_remember_global_frame',
+        '_lookup_unit_hub',
+        '_schedule_unit_hub_lookup',
+        '_drop_global_unit',
+        '_send_unit_obp_frame',
+        '_unit_obp_healthy',
+        '_configured_unit_fleet',
+        '_finish_unit_obp',
+        '_commit_global_unit_route',
+        '_retry_global_unit_route',
+        '_commit_local_unit_route',
+        '_hub_net_id',
+        '_hub_route',
+        '_apply_unit_hub_result',
+        '_begin_global_unit_route',
         '_forward_unit_voice',
 ):
     setattr(routerOBP, _unit_voice_name, getattr(routerHBP, _unit_voice_name))
@@ -6132,6 +6332,10 @@ if __name__ == '__main__':
     reactor_lag_task = task.LoopingCall(reactorLagCheck)
     reactor_lag = reactor_lag_task.start(_REACTOR_LAG_INTERVAL)
     reactor_lag.addErrback(loopingErrHandle)
+
+    # Topology participation is opt-in. The first health snapshot is queued
+    # immediately; all HTTP work runs in Twisted's thread pool.
+    unit_health_reporter = start_health_reporter(CONFIG, logger, reactor=reactor)
 
     #more threads
     reactor.suggestThreadPoolSize(100)
