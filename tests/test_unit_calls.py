@@ -474,6 +474,28 @@ class TestGlobalUnitVoice(UnitCallFixture):
         self.assertEqual(len(local.sent), 1)
         self.assertEqual(remote.sent, [])
 
+    def test_busy_local_callee_is_not_sent_to_the_hub(self):
+        self._system('SYSTEM-B', 'MASTER', peers=self._peer(ESSID), hang=5)
+        self._obp('OBP-EU', 2040, 'europe.freestar.network')
+        local = _Target()
+        local.STATUS[2]['TX_TYPE'] = HBPF_SLT_VHEAD
+        local.STATUS[2]['TX_TIME'] = 100.0
+        remote = _Target()
+        bm.systems['SYSTEM-B'] = local
+        bm.systems['OBP-EU'] = remote
+        bm.CONFIG['ALIASES'] = {'UNIT_SUB_MAP_URL': 'https://hub.example/sub-map'}
+        bm.CONFIG['GLOBAL'] = {'UNIT_OBP_FLOOD': True}
+        router = self._origin()
+
+        def _boom(_radio):
+            raise AssertionError('hub lookup on a busy local callee')
+
+        router._unit_hub_lookup = _boom
+        self._send(router)
+        self.assertEqual(local.sent, [])
+        self.assertEqual(remote.sent, [])
+        self.assertTrue(router._unit_voice_routes[STREAM].get('local'))
+
     def test_mocked_hub_selects_destination_master_and_not_xpeer(self):
         self._obp('OBP-EU', 2040, 'europe.freestar.network')
         self._obp('OBP-XPEER', 9999, 'xpeer.freestar.network')

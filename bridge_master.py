@@ -4223,6 +4223,7 @@ class routerHBP(HBSYSTEM):
                             self._system, _int_dst_id)
             return route
         system, slot, via = found
+        route['local'] = True
         if not self._unit_target_idle(system, slot, _stream_id, pkt_time):
             logger.info('(%s) UNIT call not routed, target busy: %s TS%s DST %s',
                         self._system, system, slot, _int_dst_id)
@@ -4440,7 +4441,7 @@ class routerHBP(HBSYSTEM):
                 _dst_id, _slot, _stream_id, _peer_id, _rf_src, pkt_time,
                 log_miss=not try_global)
             cache[_stream_id] = route
-            if not route['send'] and try_global:
+            if not route['send'] and not route.get('local') and try_global:
                 self._begin_global_unit_route(
                     route, _dst_id, _slot, _bits, _data, dmrpkt, _stream_id,
                     _peer_id, _rf_src, _dtype_vseq, pkt_time, terminal)
