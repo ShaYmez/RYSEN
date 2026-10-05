@@ -13,6 +13,7 @@ CALLER = 2341111
 CALLEE = 2345875
 ESSID = 234587501
 STREAM = b'\x00\x00\x00\x11'
+STREAM2 = b'\x00\x00\x00\x22'
 PEER = (234111101).to_bytes(4, 'big')
 
 
@@ -74,6 +75,7 @@ class UnitCallFixture(unittest.TestCase):
         self._bridges = getattr(bm, 'BRIDGES', None)
         bm.SUB_MAP = {}
         bm.BRIDGES = {}
+        bm._UNIT_HOMES.clear()
         bm.CONFIG = {
             'REPORTS': {'REPORT': False},
             'ALLSTAR': {'ENABLED': False},
@@ -88,6 +90,7 @@ class UnitCallFixture(unittest.TestCase):
                 delattr(bm, 'CONFIG')
         else:
             bm.CONFIG = self._config
+        bm._UNIT_HOMES.clear()
         if self._sub_map is None:
             delattr(bm, 'SUB_MAP')
         else:
@@ -450,10 +453,13 @@ class TestGlobalUnitVoice(UnitCallFixture):
         return router
 
     def _send(self, router, slot=2):
-        packet = _voice_packet(CALLER, CALLEE, STREAM, slot, 0, HBPF_SLT_VHEAD)
+        return self._send_at(router, STREAM, 100.0, slot)
+
+    def _send_at(self, router, stream, when, slot=2):
+        packet = _voice_packet(CALLER, CALLEE, stream, slot, 0, HBPF_SLT_VHEAD)
         router._forward_unit_voice(
-            bytes_3(CALLEE), slot, packet[15], packet, packet[20:53], STREAM,
-            PEER, bytes_3(CALLER), HBPF_DATA_SYNC, HBPF_SLT_VHEAD, 100.0)
+            bytes_3(CALLEE), slot, packet[15], packet, packet[20:53], stream,
+            PEER, bytes_3(CALLER), HBPF_DATA_SYNC, HBPF_SLT_VHEAD, when)
         return packet
 
     def _home_here(self):
@@ -489,10 +495,75 @@ class TestGlobalUnitVoice(UnitCallFixture):
             return {'opb_net_id': 2342, 'peer_id': ESSID}
 
         router._unit_hub_lookup = _lookup
-        self._send(router)
+        self._send_at(router, STREAM, 100.0)
+        end = _voice_packet(CALLER, CALLEE, STREAM, 2, 1, HBPF_SLT_VTERM)
+        router._forward_unit_voice(
+            bytes_3(CALLEE), 2, end[15], end, end[20:53], STREAM,
+            PEER, bytes_3(CALLER), HBPF_DATA_SYNC, HBPF_SLT_VTERM, 101.0)
+        self._send_at(router, STREAM2, 140.0)
         self.assertEqual(seen, [CALLEE])
+        self.assertEqual(len(local.sent), 3)
+        self.assertEqual(remote.sent, [])
+
+    def test_later_over_reuses_the_home_without_another_lookup(self):
+        self._system('SYSTEM-B', 'MASTER', peers=self._peer(ESSID))
+        self._obp('OBP-EU', 2040, 'europe.freestar.network')
+        local = _Target()
+        remote = _Target()
+        bm.systems['SYSTEM-B'] = local
+        bm.systems['OBP-EU'] = remote
+        self._home_here()
+        router = self._origin()
+        seen = []
+        router._unit_hub_lookup = lambda _radio: seen.append(_radio) or {
+            'opb_net_id': 2040,
+        }
+        self._send_at(router, STREAM, 100.0)
+        self._send_at(router, STREAM2, 130.0)
+        self.assertEqual(seen, [CALLEE])
+        self.assertEqual(local.sent, [])
+        self.assertEqual(len(remote.sent), 2)
+
+    def test_recent_local_transmission_does_not_ask_the_hub(self):
+        self._system('SYSTEM-B', 'MASTER', peers=self._peer(ESSID))
+        self._obp('OBP-EU', 2040, 'europe.freestar.network')
+        local = _Target()
+        remote = _Target()
+        bm.systems['SYSTEM-B'] = local
+        bm.systems['OBP-EU'] = remote
+        bm.SUB_MAP[bytes_3(CALLEE)] = (
+            'SYSTEM-B', 2, None, 90.0, (ESSID).to_bytes(4, 'big'))
+        self._home_here()
+        router = self._origin()
+
+        def _boom(_radio):
+            raise AssertionError('hub lookup after a local transmission')
+
+        router._unit_hub_lookup = _boom
+        self._send(router)
         self.assertEqual(len(local.sent), 1)
         self.assertEqual(remote.sent, [])
+
+    def test_newer_local_transmission_overrides_a_remote_home(self):
+        self._system('SYSTEM-B', 'MASTER', peers=self._peer(ESSID))
+        self._obp('OBP-EU', 2040, 'europe.freestar.network')
+        local = _Target()
+        remote = _Target()
+        bm.systems['SYSTEM-B'] = local
+        bm.systems['OBP-EU'] = remote
+        self._home_here()
+        router = self._origin()
+        seen = []
+        router._unit_hub_lookup = lambda _radio: seen.append(_radio) or {
+            'opb_net_id': 2040,
+        }
+        self._send_at(router, STREAM, 100.0)
+        bm.SUB_MAP[bytes_3(CALLEE)] = (
+            'SYSTEM-B', 2, None, 150.0, (ESSID).to_bytes(4, 'big'))
+        self._send_at(router, STREAM2, 160.0)
+        self.assertEqual(seen, [CALLEE])
+        self.assertEqual(len(remote.sent), 1)
+        self.assertEqual(len(local.sent), 1)
 
     def test_last_heard_master_beats_a_local_login(self):
         self._system('SYSTEM-B', 'MASTER', peers=self._peer(ESSID))

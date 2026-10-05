@@ -3482,6 +3482,14 @@ def fetch_unit_sub_map(radio_id):
     return payload
 
 
+# One hub lookup per radio, then route from that home. A later transmission
+# heard on this master replaces it at once. Otherwise ask again after the hold
+# so a move to another master is noticed without a query on every over.
+UNIT_HOME_HOLD = 600
+UNIT_HOME_MISS_HOLD = 60
+_UNIT_HOMES = {}
+
+
 class routerHBP(HBSYSTEM):
 
     def __init__(self, _name, _config, _report):
@@ -4203,6 +4211,41 @@ class routerHBP(HBSYSTEM):
             kind, 'RX', self._system, int_id(stream_id), int_id(peer_id),
             int_id(rf_src), slot, int_id(dst_id), duration))
 
+    def _remember_unit_home(self, radio_id, when, *, local=False, net_id=None, absent=False):
+        _UNIT_HOMES[int(radio_id)] = {
+            'local': bool(local),
+            'net_id': None if net_id is None else int(net_id),
+            'absent': bool(absent),
+            'at': float(when),
+        }
+        if len(_UNIT_HOMES) <= 4096:
+            return
+        oldest = min(_UNIT_HOMES, key=lambda key: _UNIT_HOMES[key]['at'])
+        _UNIT_HOMES.pop(oldest, None)
+
+    def _fresh_unit_home(self, radio_id, now):
+        row = _UNIT_HOMES.get(int(radio_id))
+        if not row:
+            return None
+        limit = UNIT_HOME_MISS_HOLD if row.get('absent') else UNIT_HOME_HOLD
+        if float(now) - float(row['at']) >= limit:
+            return None
+        return row
+
+    def _local_hear_time(self, dst_id):
+        """When this subscriber last transmitted on another slot here, or None."""
+        mapped = SUB_MAP.get(dst_id) if 'SUB_MAP' in globals() else None
+        if not mapped or len(mapped) < 4:
+            return None
+        try:
+            system = mapped[0]
+            heard = float(mapped[3])
+        except (TypeError, ValueError, IndexError):
+            return None
+        if not system or system == self._system or system not in systems:
+            return None
+        return heard
+
     def _our_server_net_id(self):
         raw = (CONFIG.get('GLOBAL') or {}).get('SERVER_ID')
         if raw is None:
@@ -4471,6 +4514,7 @@ class routerHBP(HBSYSTEM):
         ours = self._our_server_net_id()
         # This master is the home. Place the radio locally, including a busy slot.
         if home is not None and ours is not None and home == ours:
+            self._remember_unit_home(int_id(route['dst']), route['start'], local=True, net_id=home)
             self._commit_local_unit_route(route)
             if route.get('closed'):
                 self._unit_route_cache().pop(stream_id, None)
@@ -4479,6 +4523,7 @@ class routerHBP(HBSYSTEM):
             name = obp_stanza_for_net_id(CONFIG.get('SYSTEMS'), home)
             if name:
                 route['local'] = False
+                self._remember_unit_home(int_id(route['dst']), route['start'], net_id=home)
                 self._commit_global_unit_route(route, [name], 'hub')
                 if route.get('closed'):
                     self._unit_route_cache().pop(stream_id, None)
@@ -4492,6 +4537,7 @@ class routerHBP(HBSYSTEM):
                 return
         # No other home. A login on this master still gets the call.
         if route.get('local_system'):
+            self._remember_unit_home(int_id(route['dst']), route['start'], local=True)
             self._commit_local_unit_route(route)
             if route.get('closed'):
                 self._unit_route_cache().pop(stream_id, None)
@@ -4501,6 +4547,7 @@ class routerHBP(HBSYSTEM):
             return
         if result.get('miss') or home is None:
             # 404 and a body with no home stay here. Do not flood those.
+            self._remember_unit_home(int_id(route['dst']), route['start'], absent=True)
             self._drop_global_unit(
                 route, 'subscriber %s is not on another master' % int_id(route['dst']))
             return
@@ -4529,7 +4576,8 @@ class routerHBP(HBSYSTEM):
 
         The target is resolved once per stream. Later frames reuse it. AMBE is
         forwarded unchanged; only the timeslot bit is rewritten. With a hub URL,
-        the last transmission wins over a hotspot that is only still logged in.
+        the last transmission is learned once and reused until it is stale or
+        the radio is heard on this master.
         """
         cache = self._unit_route_cache()
         terminal = (
@@ -4540,16 +4588,60 @@ class routerHBP(HBSYSTEM):
         if route is None:
             try_global = allow_global and self._unit_global_enabled()
             url_set = bool(str((CONFIG.get('ALIASES') or {}).get('UNIT_SUB_MAP_URL') or '').strip())
-            hold = try_global and url_set
+            radio = int_id(_dst_id)
+            learned = self._fresh_unit_home(radio, pkt_time) if url_set else None
+            heard = self._local_hear_time(_dst_id) if url_set else None
+            heard_here = (
+                heard is not None
+                and pkt_time - heard < UNIT_HOME_HOLD
+                and (learned is None or heard >= learned['at']))
+            cached_net = None
+            if url_set and heard_here:
+                self._remember_unit_home(radio, heard, local=True)
+                hold = False
+            elif learned and not learned.get('absent') and (
+                    learned.get('local') or learned.get('net_id') in (None, self._our_server_net_id())):
+                hold = False
+            elif learned and learned.get('net_id') not in (None, self._our_server_net_id()):
+                cached_net = learned['net_id']
+                hold = True
+            elif learned and learned.get('absent'):
+                hold = False
+            else:
+                hold = try_global and url_set
             route = self._open_unit_route(
                 _dst_id, _slot, _stream_id, _peer_id, _rf_src, pkt_time,
-                log_miss=not try_global, hold=hold)
+                log_miss=not try_global and not (learned and learned.get('absent')),
+                hold=hold)
             cache[_stream_id] = route
-            asked = hold or (not route['send'] and not route.get('local') and try_global)
-            if asked:
-                self._begin_global_unit_route(
-                    route, _dst_id, _slot, _bits, _data, dmrpkt, _stream_id,
-                    _peer_id, _rf_src, _dtype_vseq, pkt_time, terminal)
+            if cached_net is not None:
+                name = obp_stanza_for_net_id(CONFIG.get('SYSTEMS'), cached_net)
+                if name:
+                    route['pending'] = True
+                    route['stream'] = _stream_id
+                    route['buffer'] = []
+                    route['local'] = False
+                    self._remember_global_frame(route, self._unit_frame(
+                        _dst_id, _slot, _bits, _data, dmrpkt, _stream_id, _peer_id,
+                        _rf_src, _dtype_vseq, pkt_time, terminal))
+                    self._commit_global_unit_route(route, [name], 'home')
+                else:
+                    cached_net = None
+            elif learned and learned.get('absent') and not route.get('local'):
+                self._drop_global_unit(
+                    route, 'subscriber %s is not on another master' % radio)
+            asked = (
+                cached_net is not None
+                or route.get('pending')
+                or route.get('obp_targets')
+                or (learned and learned.get('absent') and not route.get('local'))
+                or hold
+                or (not route['send'] and not route.get('local') and try_global))
+            if asked and not route.get('obp_targets') and not route.get('closed') and cached_net is None:
+                if not (learned and learned.get('absent') and not route.get('local')):
+                    self._begin_global_unit_route(
+                        route, _dst_id, _slot, _bits, _data, dmrpkt, _stream_id,
+                        _peer_id, _rf_src, _dtype_vseq, pkt_time, terminal)
             if route.get('closed'):
                 cache.pop(_stream_id, None)
             if len(cache) > 128:

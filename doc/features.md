@@ -183,7 +183,7 @@ Operator setup: [hytera.md](hytera.md).
 
 Local subscriber private calls are on `master` (`da29797`, `579d9ed`): hotspot, IPSC, and Hytera on the same server, placed from `SUB_MAP` or a connected hotspot ESSID.
 
-The optional global hop stays off unless `[ALIASES] UNIT_SUB_MAP_URL` is set. With that URL, each private call asks the hub once. The master where the radio last transmitted wins over a hotspot that is only still logged in here. A miss or a hub error still delivers to a local login. A busy slot drops the call when the hub says the radio is on this master. `[GLOBAL] UNIT_OBP_FLOOD` defaults to false. `xpeer.freestar.network` is not a private-call target. SMS and GPS are unchanged. See [ipsc-roadmap.md](ipsc-roadmap.md).
+The optional global hop stays off unless `[ALIASES] UNIT_SUB_MAP_URL` is set. With that URL, the first private call to a radio asks the hub once and the answer is reused for 10 minutes. A transmission heard on this master replaces that home at once and is itself reused, so two radios already here are not looked up. A miss is remembered for a minute. A hub error is not remembered. A busy slot drops the call when the radio is staying here. `[GLOBAL] UNIT_OBP_FLOOD` defaults to false. `xpeer.freestar.network` is not a private-call target. SMS and GPS are unchanged. See [ipsc-roadmap.md](ipsc-roadmap.md).
 
 ---
 
