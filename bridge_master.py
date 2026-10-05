@@ -4598,7 +4598,13 @@ class routerHBP(HBSYSTEM):
             route = None
         if route is None:
             try_global = allow_global and self._unit_global_enabled()
-            url_set = bool(str((CONFIG.get('ALIASES') or {}).get('UNIT_SUB_MAP_URL') or '').strip())
+            # Inbound OpenBridge voice must terminate on this master. It may
+            # teach us where the caller came from, but it must never consult or
+            # follow the destination home cache back onto the OBP mesh.
+            url_set = (
+                allow_global
+                and bool(str((CONFIG.get('ALIASES') or {}).get(
+                    'UNIT_SUB_MAP_URL') or '').strip()))
             radio = int_id(_dst_id)
             learned = self._fresh_unit_home(radio, pkt_time) if url_set else None
             heard = self._local_hear_time(_dst_id) if url_set else None

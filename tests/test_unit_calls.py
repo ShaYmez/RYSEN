@@ -736,10 +736,16 @@ class TestInboundOpenBridgeUnitVoice(UnitCallFixture):
             'SERVER_ID': (2040).to_bytes(4, 'big'),
             'GEN_STAT_BRIDGES': True,
         }
+        bm.CONFIG['ALIASES'] = {
+            'UNIT_SUB_MAP_URL': 'https://hub.example/sub-map',
+        }
         router = bm.routerOBP.__new__(bm.routerOBP)
         router._system = 'OBP-UK'
         router.STATUS = {}
         router._unit_voice_routes = {}
+        router._fresh_unit_home = MagicMock(
+            side_effect=AssertionError(
+                'inbound OpenBridge voice consulted the global home cache'))
         packet = _voice_packet(CALLER, CALLEE, STREAM, 1, 0, HBPF_SLT_VHEAD)
         router.dmrd_received(
             PEER, bytes_3(CALLER), bytes_3(CALLEE), 0, 1, 'unit',
