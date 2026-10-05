@@ -181,6 +181,7 @@ def build_config(_config_file):
                     'TG1_ACL': config.get(section, 'TGID_TS1_ACL'),
                     'TG2_ACL': config.get(section, 'TGID_TS2_ACL'),
                     'GEN_STAT_BRIDGES': config.getboolean(section, 'GEN_STAT_BRIDGES'),
+                    'UNIT_OBP_FLOOD': config.getboolean(section, 'UNIT_OBP_FLOOD', fallback=False),
                     'ALLOW_NULL_PASSPHRASE': config.getboolean(section, 'ALLOW_NULL_PASSPHRASE'),
                     'ANNOUNCEMENT_LANGUAGES': config.get(section, 'ANNOUNCEMENT_LANGUAGES'),
                     'SERVER_ID': config.getint(section, 'SERVER_ID').to_bytes(4, 'big'),
@@ -223,8 +224,9 @@ def build_config(_config_file):
                     'SUB_MAP_FILE': config.get(section, 'SUB_MAP_FILE'),
                     'LOCAL_SUBSCRIBER_FILE': config.get(section, 'LOCAL_SUBSCRIBER_FILE'),
                     'SERVER_ID_URL': config.get(section, 'SERVER_ID_URL'),
-                    'SERVER_ID_FILE': config.get(section, 'SERVER_ID_FILE')
-                    
+                    'SERVER_ID_FILE': config.get(section, 'SERVER_ID_FILE'),
+                    'UNIT_SUB_MAP_URL': config.get(section, 'UNIT_SUB_MAP_URL', fallback=''),
+                    'UNIT_SUB_MAP_TOKEN_FILE': config.get(section, 'UNIT_SUB_MAP_TOKEN_FILE', fallback=''),
                 })
                 
                 

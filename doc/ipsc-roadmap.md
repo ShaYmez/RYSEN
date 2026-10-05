@@ -8,14 +8,14 @@ Protocol research: [node-dmr-lib](https://github.com/rick51231/node-dmr-lib). OP
 
 | Phase | Goal | Status |
 |-------|------|--------|
-| **4** | Unit-to-unit private voice routing | **Planned** (current) |
+| **4** | Unit-to-unit private voice routing | **Local on master** (`da29797`, `579d9ed`). Optional global hop is off unless configured |
 | **5** | SMS / GPS / UDT data | Deferred |
 | **6** | TMS / LRRP / ARS / wireline | Post-merge |
 | **7** | Ops polish | Ongoing |
 
 ```
 master @ 1.5.4 (released)
-  ├── Phase 4 unit-to-unit private routing  ← current
+  ├── Phase 4 local unit voice (shipped) + optional global hop
   └── Phase 5 SMS / GPS (when needed)
 ```
 
@@ -55,20 +55,11 @@ ipsc_master — auth, lifecycle, selfcare_db
 ipsc_proxy (56002) · repeaters · hotspots
 ```
 
-## Phase 4 — Unit-to-unit private voice (planned)
+## Phase 4 — Unit-to-unit private voice
 
-**Goal:** Private call from user A to user B (7-digit DMR ID) across hotspot ↔ IPSC ↔ hotspot.
+**Local delivery is on `master`** (`da29797`, `579d9ed`). A private call to a 7-digit radio is delivered on this master from `SUB_MAP`, then from a connected hotspot ESSID. Hotspot delivery uses TS2. A repeater callee uses the slot they were last heard on. Dial-a-tg (`4000`, `5000`, link TGs) and parrot `9990` stay on their own paths. A busy target slot drops the private call.
 
-**Problem:** `is_reflector_private_destination()` treats many IDs as dial-a-tg; `_forward_unit_voice()` does not run for subscriber destinations. Phase 3 wire layer works; routing policy does not.
-
-**Proposed approach:**
-
-1. Narrow dial-a-tg detection to service codes (4000, 5000, 9991–9999), `#` reflectors, and ≤5-digit link TGs
-2. Classify destination by length before reflector vs forward
-3. `_forward_unit_voice()` — SUB_MAP, then hotspot peer, then IPSC peer
-4. Field matrix: repeater↔hotspot, same/cross-system, TS1 + TS2
-
-Tasks: classifier rewrite, forward path + tests, field test, document IPSC2 vs BM TG 9 model.
+**Optional global hop.** With an empty `[ALIASES] UNIT_SUB_MAP_URL` the master behaves as it does for a local-only install. When that URL is set, a local miss looks up the callee once per stream, off the reactor, and sends the unit voice (bit `0x40`, proto 5) to the one enhanced OpenBridge peer for the returned `opb_net_id`. The opening frames, including the voice header, are buffered until that answer arrives. Timeout, a missing token, and `404` drop the over. `[GLOBAL] UNIT_OBP_FLOOD` defaults to false; when true it sends to every other enhanced OpenBridge peer. `xpeer.freestar.network` is never selected. The destination master still places the callee from its own `SUB_MAP`. Unit data, SMS, and GPS keep their existing path.
 
 ## Phase 5 — Group & private data (deferred)
 

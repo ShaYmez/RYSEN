@@ -52,7 +52,7 @@ from ipsc_peer_meta import (
 from bridge_helpers import (
     mark_options_dirty, dmr_seq_delta, reset_slot_voice_ident,
     dest_peer_rx_blocked, release_dropped_stream, forget_peer_rx_state,
-    stream_is_dropped,
+    stream_is_dropped, obp_talkgroup_acl_applies,
 )
 
 # Imports for the reporting server
@@ -426,7 +426,7 @@ class OPENBRIDGE(DatagramProtocol):
                                 self.send_bcsq(_dst_id,_stream_id)
                                 self._laststrid.append(_stream_id)
                             return
-                        if _slot == 1 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG1_ACL']):
+                        if obp_talkgroup_acl_applies(_call_type) and _slot == 1 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG1_ACL']):
                             if _stream_id not in self._laststrid:
                                 logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY GLOBAL TS1 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
                                 self.send_bcsq(_dst_id,_stream_id)
@@ -439,7 +439,7 @@ class OPENBRIDGE(DatagramProtocol):
                                 self.send_bcsq(_dst_id,_stream_id)
                                 self._laststrid.append(_stream_id)
                             return
-                        if not acl_check(_dst_id, self._config['TG1_ACL']):
+                        if obp_talkgroup_acl_applies(_call_type) and not acl_check(_dst_id, self._config['TG1_ACL']):
                             if _stream_id not in self._laststrid:
                                 logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY SYSTEM ACL', self._system, int_id(_stream_id), int_id(_dst_id))
                                 self.send_bcsq(_dst_id,_stream_id)
@@ -599,7 +599,7 @@ class OPENBRIDGE(DatagramProtocol):
                                 self.send_bcsq(_dst_id,_stream_id)
                                 self._laststrid.append(_stream_id)
                             return
-                        if _slot == 1 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG1_ACL']):
+                        if obp_talkgroup_acl_applies(_call_type) and _slot == 1 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG1_ACL']):
                             if _stream_id not in self._laststrid:
                                 logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY GLOBAL TS1 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
                                 self.send_bcsq(_dst_id,_stream_id)
@@ -612,7 +612,7 @@ class OPENBRIDGE(DatagramProtocol):
                                 self.send_bcsq(_dst_id,_stream_id)
                                 self._laststrid.append(_stream_id)
                             return
-                        if not acl_check(_dst_id, self._config['TG1_ACL']):
+                        if obp_talkgroup_acl_applies(_call_type) and not acl_check(_dst_id, self._config['TG1_ACL']):
                             if _stream_id not in self._laststrid:
                                 logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY SYSTEM ACL', self._system, int_id(_stream_id), int_id(_dst_id))
                                 self.send_bcsq(_dst_id,_stream_id)
@@ -714,7 +714,7 @@ class OPENBRIDGE(DatagramProtocol):
                                 self.send_bcsq(_dst_id,_stream_id)
                                 self._laststrid.append(_stream_id)
                             return
-                        if _slot == 1 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG1_ACL']):
+                        if obp_talkgroup_acl_applies(_call_type) and _slot == 1 and not acl_check(_dst_id, self._CONFIG['GLOBAL']['TG1_ACL']):
                             if _stream_id not in self._laststrid:
                                 logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY GLOBAL TS1 ACL', self._system, int_id(_stream_id), int_id(_dst_id))
                                 self.send_bcsq(_dst_id,_stream_id)
@@ -727,7 +727,7 @@ class OPENBRIDGE(DatagramProtocol):
                                 self.send_bcsq(_dst_id,_stream_id)
                                 self._laststrid.append(_stream_id)
                             return
-                        if not acl_check(_dst_id, self._config['TG1_ACL']):
+                        if obp_talkgroup_acl_applies(_call_type) and not acl_check(_dst_id, self._config['TG1_ACL']):
                             if _stream_id not in self._laststrid:
                                 logger.info('(%s) CALL DROPPED WITH STREAM ID %s ON TGID %s BY SYSTEM ACL', self._system, int_id(_stream_id), int_id(_dst_id))
                                 self.send_bcsq(_dst_id,_stream_id)

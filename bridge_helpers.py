@@ -327,6 +327,63 @@ def is_subscriber_unit_destination(dst_id):
         return False
 
 
+def obp_talkgroup_acl_applies(call_type):
+    """OpenBridge talkgroup ACL does not apply to a unit call. Subscriber ACL still does."""
+    return call_type != 'unit'
+
+
+XPEER_OBP_HOST = 'xpeer.freestar.network'
+
+
+def is_xpeer_obp_stanza(cfg):
+    """True for the TGIF / outbound MMDVM / XLX bridge. It is not a subscriber home."""
+    if not cfg:
+        return False
+    host = str(cfg.get('TARGET_IP') or '').strip().lower()
+    if host.startswith('['):
+        host = host[1:].split(']', 1)[0]
+    host = host.split(':', 1)[0].rstrip('.')
+    return host == XPEER_OBP_HOST or host.endswith('.' + XPEER_OBP_HOST)
+
+
+def _obp_net_id(cfg):
+    raw = cfg.get('NETWORK_ID')
+    if isinstance(raw, (bytes, bytearray)):
+        return int.from_bytes(raw, 'big')
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def iter_enhanced_obp_stanzas(systems_cfg):
+    """Enabled enhanced OpenBridge peers (proto > 1), never xpeer."""
+    for name, cfg in (systems_cfg or {}).items():
+        if not cfg or cfg.get('MODE') != 'OPENBRIDGE':
+            continue
+        if not cfg.get('ENABLED', True) or not cfg.get('ENHANCED_OBP'):
+            continue
+        try:
+            version = int(cfg.get('VER') or 0)
+        except (TypeError, ValueError):
+            continue
+        if version <= 1 or is_xpeer_obp_stanza(cfg):
+            continue
+        yield name, cfg
+
+
+def obp_stanza_for_net_id(systems_cfg, opb_net_id):
+    """The one enhanced stanza that peers with this destination master."""
+    try:
+        want = int(opb_net_id)
+    except (TypeError, ValueError):
+        return None
+    for name, cfg in iter_enhanced_obp_stanzas(systems_cfg):
+        if _obp_net_id(cfg) == want:
+            return name
+    return None
+
+
 def peer_matches_subscriber(peer_id, subscriber_id):
     """True when a connected peer is that radio or a hotspot ESSID of it.
 

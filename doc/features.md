@@ -116,7 +116,7 @@ Full reference: [ipsc.md](ipsc.md). Roadmap for future phases: [ipsc-roadmap.md]
 | Private voice (0x81) | Wire layer on TS1 + TS2; dial-a-tg reflector on IPSC (field-tested) |
 | Monitor | HBP-shaped `PEERS` records for RYSEN-MONITOR v1.5.0 |
 
-**Not in 1.5.0:** unit-to-unit private routing (Phase 4), SMS/GPS (Phase 5).
+**Not in 1.5.0:** unit-to-unit private routing (Phase 4, now local on current `master`), SMS/GPS (Phase 5).
 
 ---
 
@@ -176,6 +176,14 @@ Field-validated on RD985 repeaters running firmware `A9.02.03.009` and
 | A8 firmware | RD985 `A8.00.09.001` registered beside an A9 repeater and passed voice |
 
 Operator setup: [hytera.md](hytera.md).
+
+---
+
+## Unreleased — Unit-to-unit voice
+
+Local subscriber private calls are on `master` (`da29797`, `579d9ed`): hotspot, IPSC, and Hytera on the same server, placed from `SUB_MAP` or a connected hotspot ESSID.
+
+The optional global hop stays off unless `[ALIASES] UNIT_SUB_MAP_URL` is set. A local miss then asks that hub once per stream and sends the unit voice to the one enhanced OpenBridge peer for the callee's master. `[GLOBAL] UNIT_OBP_FLOOD` defaults to false. `xpeer.freestar.network` is not a private-call target. SMS and GPS are unchanged. See [ipsc-roadmap.md](ipsc-roadmap.md).
 
 ---
 

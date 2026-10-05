@@ -430,3 +430,224 @@ class TestHomebrewUnitAcl(unittest.TestCase):
         master.master_datagramReceived(self._packet(peer, False), sockaddr)
         self.assertEqual(len(master.received), 1)
         self.assertEqual(master.received[0][5], 'unit')
+
+
+class TestGlobalUnitVoice(UnitCallFixture):
+    def _obp(self, name, net_id, host):
+        self._system(name, 'OPENBRIDGE')
+        bm.CONFIG['SYSTEMS'][name].update({
+            'ENHANCED_OBP': True,
+            'VER': 5,
+            'NETWORK_ID': int(net_id).to_bytes(4, 'big'),
+            'TARGET_IP': host,
+        })
+
+    def _origin(self):
+        self._system('SYSTEM-A', 'MASTER')
+        router = self._router('SYSTEM-A')
+        router._CONFIG['SYSTEMS'] = bm.CONFIG['SYSTEMS']
+        router._unit_hub_inline = True
+        return router
+
+    def _send(self, router, slot=2):
+        packet = _voice_packet(CALLER, CALLEE, STREAM, slot, 0, HBPF_SLT_VHEAD)
+        router._forward_unit_voice(
+            bytes_3(CALLEE), slot, packet[15], packet, packet[20:53], STREAM,
+            PEER, bytes_3(CALLER), HBPF_DATA_SYNC, HBPF_SLT_VHEAD, 100.0)
+        return packet
+
+    def test_local_hit_never_calls_the_hub(self):
+        self._system('SYSTEM-B', 'MASTER', peers=self._peer(ESSID))
+        self._obp('OBP-EU', 2040, 'europe.freestar.network')
+        local = _Target()
+        remote = _Target()
+        bm.systems['SYSTEM-B'] = local
+        bm.systems['OBP-EU'] = remote
+        bm.CONFIG['ALIASES'] = {'UNIT_SUB_MAP_URL': 'https://hub.example/sub-map'}
+        router = self._origin()
+
+        def _boom(_radio):
+            raise AssertionError('hub lookup on a local hit')
+
+        router._unit_hub_lookup = _boom
+        self._send(router)
+        self.assertEqual(len(local.sent), 1)
+        self.assertEqual(remote.sent, [])
+
+    def test_mocked_hub_selects_destination_master_and_not_xpeer(self):
+        self._obp('OBP-EU', 2040, 'europe.freestar.network')
+        self._obp('OBP-XPEER', 9999, 'xpeer.freestar.network')
+        europe = _Target()
+        bridge = _Target()
+        bm.systems['OBP-EU'] = europe
+        bm.systems['OBP-XPEER'] = bridge
+        bm.CONFIG['ALIASES'] = {
+            'UNIT_SUB_MAP_URL': 'https://hub.example/sub-map',
+            'UNIT_SUB_MAP_TOKEN_FILE': 'token',
+        }
+        bm.CONFIG['GLOBAL'] = {'UNIT_OBP_FLOOD': True}
+        router = self._origin()
+        seen = []
+
+        def _lookup(radio):
+            seen.append(radio)
+            return {
+                'source_host': 'europe.freestar.network',
+                'opb_net_id': 2040,
+                'peer_id': ESSID,
+                'slot': 2,
+            }
+
+        router._unit_hub_lookup = _lookup
+        self._send(router)
+        later = _voice_packet(CALLER, CALLEE, STREAM, 2, 1, HBPF_VOICE)
+        router._forward_unit_voice(
+            bytes_3(CALLEE), 2, later[15], later, later[20:53], STREAM,
+            PEER, bytes_3(CALLER), HBPF_VOICE, 0, 100.1)
+        self.assertEqual(seen, [CALLEE])
+        self.assertEqual(len(europe.sent), 2)
+        self.assertEqual(bridge.sent, [])
+        self.assertTrue(europe.sent[0][15] & 0x40)
+        self.assertFalse(europe.sent[0][15] & 0x80)
+        self.assertEqual(europe.sent[0][20:53], later[20:53])
+
+    def test_flood_off_sends_nothing_and_a_404_does_not_flood(self):
+        self._obp('OBP-EU', 2040, 'europe.freestar.network')
+        europe = _Target()
+        bm.systems['OBP-EU'] = europe
+        bm.CONFIG['GLOBAL'] = {'UNIT_OBP_FLOOD': False}
+        router = self._origin()
+        self._send(router)
+        self.assertEqual(europe.sent, [])
+
+        bm.CONFIG['ALIASES'] = {'UNIT_SUB_MAP_URL': 'https://hub.example/sub-map'}
+        bm.CONFIG['GLOBAL'] = {'UNIT_OBP_FLOOD': True}
+        router = self._origin()
+        router._unit_voice_routes = {}
+        router._unit_hub_lookup = lambda _radio: {'miss': True}
+        self._send(router)
+        self.assertEqual(europe.sent, [])
+
+    def test_flood_on_skips_xpeer(self):
+        self._obp('OBP-EU', 2040, 'europe.freestar.network')
+        self._obp('OBP-XPEER', 9999, 'xpeer.freestar.network')
+        europe = _Target()
+        bridge = _Target()
+        bm.systems['OBP-EU'] = europe
+        bm.systems['OBP-XPEER'] = bridge
+        bm.CONFIG['GLOBAL'] = {'UNIT_OBP_FLOOD': True}
+        router = self._origin()
+        self._send(router)
+        self.assertEqual(len(europe.sent), 1)
+        self.assertEqual(bridge.sent, [])
+        self.assertTrue(europe.sent[0][15] & 0x40)
+
+    def test_missing_token_fails_closed(self):
+        bm.CONFIG['ALIASES'] = {
+            'UNIT_SUB_MAP_URL': 'https://hub.example/sub-map',
+            'UNIT_SUB_MAP_TOKEN_FILE': '',
+        }
+        self.assertEqual(bm.fetch_unit_sub_map(CALLEE), {'error': True})
+
+
+class TestInboundOpenBridgeUnitVoice(UnitCallFixture):
+    def test_unit_voice_is_delivered_and_does_not_open_a_stat_bridge(self):
+        self._system('SYSTEM-B', 'MASTER', peers=self._peer(ESSID))
+        target = _Target()
+        bm.systems['SYSTEM-B'] = target
+        bm.CONFIG['GLOBAL'] = {
+            'SERVER_ID': (2040).to_bytes(4, 'big'),
+            'GEN_STAT_BRIDGES': True,
+        }
+        router = bm.routerOBP.__new__(bm.routerOBP)
+        router._system = 'OBP-UK'
+        router.STATUS = {}
+        router._unit_voice_routes = {}
+        packet = _voice_packet(CALLER, CALLEE, STREAM, 1, 0, HBPF_SLT_VHEAD)
+        router.dmrd_received(
+            PEER, bytes_3(CALLER), bytes_3(CALLEE), 0, 1, 'unit',
+            HBPF_DATA_SYNC, HBPF_SLT_VHEAD, STREAM, packet, b'',
+            b'\x01', (3180).to_bytes(4, 'big'))
+        self.assertEqual(len(target.sent), 1)
+        self.assertTrue(target.sent[0][15] & 0x40)
+        self.assertTrue(target.sent[0][15] & 0x80)
+        self.assertEqual(bm.BRIDGES, {})
+
+    def test_own_server_echo_is_not_delivered(self):
+        self._system('SYSTEM-B', 'MASTER', peers=self._peer(ESSID))
+        target = _Target()
+        bm.systems['SYSTEM-B'] = target
+        server = (2040).to_bytes(4, 'big')
+        bm.CONFIG['GLOBAL'] = {'SERVER_ID': server, 'GEN_STAT_BRIDGES': True}
+        router = bm.routerOBP.__new__(bm.routerOBP)
+        router._system = 'OBP-UK'
+        router.STATUS = {}
+        packet = _voice_packet(CALLER, CALLEE, STREAM, 1, 0, HBPF_SLT_VHEAD)
+        router.dmrd_received(
+            PEER, bytes_3(CALLER), bytes_3(CALLEE), 0, 1, 'unit',
+            HBPF_DATA_SYNC, HBPF_SLT_VHEAD, STREAM, packet, b'',
+            b'\x01', server)
+        self.assertEqual(target.sent, [])
+
+
+class TestOpenBridgeUnitAcl(unittest.TestCase):
+    def test_talkgroup_acl_does_not_drop_an_obp_unit_call(self):
+        from hashlib import blake2b
+        from time import time_ns
+        from hblink import OPENBRIDGE
+
+        bridge = OPENBRIDGE.__new__(OPENBRIDGE)
+        bridge._system = 'OBP-UK'
+        bridge._laststrid = []
+        allow = (False, [])
+        deny = (True, [])
+        bridge._CONFIG = {'GLOBAL': {
+            'USE_ACL': True,
+            'SUB_ACL': allow,
+            'TG1_ACL': deny,
+            'VALIDATE_SERVER_IDS': False,
+            'SERVER_ID': (2040).to_bytes(4, 'big'),
+        }}
+        bridge._config = {
+            'USE_ACL': True,
+            'SUB_ACL': allow,
+            'TG1_ACL': deny,
+            'NETWORK_ID': (2040).to_bytes(4, 'big'),
+            'VER': 5,
+            'RELAX_CHECKS': True,
+            'TARGET_SOCK': ('10.1.1.1', 62031),
+            'TARGET_IP': '',
+            'PASSPHRASE': b'secret',
+            'MAX_PACKET_AGE': 15,
+            'ENHANCED_OBP': True,
+        }
+        bridge.received = []
+        bridge.dmrd_received = lambda *args, **kwargs: bridge.received.append(args)
+
+        def _packet(unit):
+            data = bytearray(53)
+            data[0:4] = b'DMRE'
+            data[4] = 1
+            data[5:8] = bytes_3(CALLER)
+            data[8:11] = bytes_3(CALLEE if unit else 2350)
+            data[11:15] = (2040).to_bytes(4, 'big')
+            bits = (HBPF_DATA_SYNC << 4) | HBPF_SLT_VHEAD
+            if unit:
+                bits |= 0x40
+            data[15] = bits
+            data[16:20] = STREAM
+            packet = bytearray(89)
+            packet[:53] = data
+            packet[55] = 5
+            packet[56:64] = time_ns().to_bytes(8, 'big')
+            packet[64:68] = (3180).to_bytes(4, 'big')
+            packet[72] = 1
+            digest = blake2b(key=b'secret', digest_size=16)
+            digest.update(bytes(packet[:73]))
+            packet[73:89] = digest.digest()
+            return bytes(packet)
+
+        bridge.datagramReceived(_packet(True), ('10.1.1.1', 62031))
+        bridge.datagramReceived(_packet(False), ('10.1.1.1', 62031))
+        self.assertEqual(len(bridge.received), 1)
+        self.assertEqual(bridge.received[0][5], 'unit')

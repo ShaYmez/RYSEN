@@ -80,6 +80,7 @@ from selfcare_db import (
     union_peer_static_lists,
 )
 from bridge_helpers import iter_routing_master_systems as _iter_routing_master_systems
+from unit_hub import schedule_off_reactor
 from bridge_helpers import (
     DIAL_A_TG,
     DIAL_A_TG_BYTES,
@@ -146,6 +147,8 @@ from bridge_helpers import (
     peer_matches_subscriber,
     unit_delivery_slot,
     unit_slot_is_idle,
+    iter_enhanced_obp_stanzas,
+    obp_stanza_for_net_id,
     seed_stream_rssi,
     changed_stream_rssi,
 )
@@ -2934,7 +2937,9 @@ class routerOBP(OPENBRIDGE):
             return
 
         # Match UNIT data, SMS/GPS, and send it to the dst_id if it is in SUB_MAP
+        _obp_unit_data = False
         if _call_type == 'unit' and (_dtype_vseq == 6 or _dtype_vseq == 7 or _dtype_vseq == 8 or ((_stream_id not in self.STATUS) and _dtype_vseq == 3)):
+            _obp_unit_data = True
         
             _int_dst_id = int_id(_dst_id)
 ##        if ahex(dmrpkt)[27:-27] == b'd5d7f77fd757':
@@ -3106,6 +3111,26 @@ class routerOBP(OPENBRIDGE):
                                     
                                 else:
                                     logger.debug('(%s) UNIT Data not bridged to HBP on slot %s - target busy: %s DST_ID: %s',self._system,_d_slot,_d_system,_int_dst_id)
+
+        # Subscriber unit voice stays out of the group block, so it cannot
+        # open a STAT bridge or a dial reflector. Parrot and 4000/5000 never
+        # match a subscriber destination.
+        if (_call_type == 'unit' and not _obp_unit_data
+                and is_subscriber_unit_destination(_int_dst_id)):
+            _obp_previous = self.STATUS.get(_stream_id)
+            if originated_obp_hairpin(_obp_previous, pkt_time, STREAM_TO):
+                _obp_previous['LAST'] = pkt_time
+                return
+            if own_server_obp_echo(
+                    _source_server, CONFIG['GLOBAL']['SERVER_ID']):
+                if _obp_previous is not None:
+                    _obp_previous['LAST'] = pkt_time
+                return
+            self._forward_unit_voice(
+                _dst_id, _slot, _bits, _data, dmrpkt, _stream_id,
+                _peer_id, _rf_src, _frame_type, _dtype_vseq, pkt_time,
+                allow_global=False)
+            return
             
         if _call_type == 'group' or _call_type == 'vcsbk':
             _obp_is_vterm = (
@@ -3420,6 +3445,42 @@ class routerOBP(OPENBRIDGE):
                 _remember_term(_term_key, _data, pkt_time)
                    
                 self.STATUS[_stream_id]['lastSeq'] = False
+
+def fetch_unit_sub_map(radio_id):
+    """GET one home for a 7-digit radio. Timeout, a missing token, and HTTP errors fail closed."""
+    import json
+    from urllib import error, request
+    aliases = CONFIG.get('ALIASES') or {}
+    url = str(aliases.get('UNIT_SUB_MAP_URL') or '').strip().rstrip('/')
+    token_path = str(aliases.get('UNIT_SUB_MAP_TOKEN_FILE') or '').strip()
+    if not url or not token_path:
+        return {'error': True}
+    try:
+        with open(token_path, 'r', encoding='utf-8') as handle:
+            token = handle.read().strip()
+    except OSError:
+        return {'error': True}
+    if not token:
+        return {'error': True}
+    req = request.Request(
+        '%s/%s' % (url, int(radio_id)),
+        headers={
+            'Authorization': 'Bearer ' + token,
+            'Accept': 'application/json',
+        })
+    try:
+        with request.urlopen(req, timeout=1.5) as resp:
+            payload = json.loads(resp.read().decode('utf-8'))
+    except error.HTTPError as exc:
+        if exc.code == 404:
+            return {'miss': True}
+        return {'error': True}
+    except Exception:
+        return {'error': True}
+    if not isinstance(payload, dict) or payload.get('opb_net_id') is None:
+        return {'miss': True}
+    return payload
+
 
 class routerHBP(HBSYSTEM):
 
@@ -4142,7 +4203,7 @@ class routerHBP(HBSYSTEM):
             kind, 'RX', self._system, int_id(stream_id), int_id(peer_id),
             int_id(rf_src), slot, int_id(dst_id), duration))
 
-    def _open_unit_route(self, _dst_id, _slot, _stream_id, _peer_id, _rf_src, pkt_time):
+    def _open_unit_route(self, _dst_id, _slot, _stream_id, _peer_id, _rf_src, pkt_time, log_miss=True):
         _int_dst_id = int_id(_dst_id)
         found = self._resolve_unit_target(_dst_id, _int_dst_id)
         route = {
@@ -4157,8 +4218,9 @@ class routerHBP(HBSYSTEM):
             'dst': _dst_id,
         }
         if found is None:
-            logger.info('(%s) UNIT call not routed, subscriber %s is not on another slot',
-                        self._system, _int_dst_id)
+            if log_miss:
+                logger.info('(%s) UNIT call not routed, subscriber %s is not on another slot',
+                            self._system, _int_dst_id)
             return route
         system, slot, via = found
         if not self._unit_target_idle(system, slot, _stream_id, pkt_time):
@@ -4196,12 +4258,175 @@ class routerHBP(HBSYSTEM):
         logger.debug('(%s) UNIT voice bridged to %s slot %s DST %s',
                      self._system, route['system'], target_slot, int_id(_dst_id))
 
+    def _unit_global_enabled(self):
+        aliases = CONFIG.get('ALIASES') or {}
+        url = str(aliases.get('UNIT_SUB_MAP_URL') or '').strip()
+        flood = bool((CONFIG.get('GLOBAL') or {}).get('UNIT_OBP_FLOOD', False))
+        return bool(url) or flood
+
+    def _unit_frame(self, _dst_id, _slot, _bits, _data, dmrpkt, _stream_id,
+                    _peer_id, _rf_src, _dtype_vseq, pkt_time, terminal):
+        return {
+            'dst': _dst_id,
+            'slot': _slot,
+            'bits': _bits,
+            'data': _data,
+            'dmrpkt': dmrpkt,
+            'stream': _stream_id,
+            'peer': _peer_id,
+            'rf': _rf_src,
+            'time': pkt_time,
+            'terminal': terminal,
+            'ber': _data[53:54] if len(_data) >= 54 else b'\x00',
+            'rssi': _data[54:55] if len(_data) >= 55 else b'\x00',
+        }
+
+    def _remember_global_frame(self, route, frame):
+        # Keep the voice header. Later bursts can wait; the header cannot.
+        buf = route.setdefault('buffer', [])
+        if len(buf) >= 48:
+            return
+        buf.append(frame)
+
+    def _lookup_unit_hub(self, radio_id):
+        fn = getattr(self, '_unit_hub_lookup', None)
+        if fn is not None:
+            return fn(radio_id)
+        return fetch_unit_sub_map(radio_id)
+
+    def _schedule_unit_hub_lookup(self, radio_id, stream_id):
+        if getattr(self, '_unit_hub_inline', False):
+            try:
+                result = self._lookup_unit_hub(radio_id)
+            except Exception:
+                logger.info('(%s) UNIT call not routed, subscriber map lookup failed',
+                            self._system)
+                result = {'error': True}
+            self._apply_unit_hub_result(stream_id, result)
+            return
+        schedule_off_reactor(
+            self._lookup_unit_hub, (radio_id,),
+            lambda result: self._apply_unit_hub_result(stream_id, result),
+            lambda _failure: self._apply_unit_hub_result(stream_id, {'error': True}))
+
+    def _drop_global_unit(self, route, reason):
+        route['pending'] = False
+        route['send'] = False
+        route['buffer'] = []
+        if not route.get('logged_drop'):
+            route['logged_drop'] = True
+            logger.info('(%s) UNIT call not routed, %s', self._system, reason)
+
+    def _send_unit_obp_frame(self, route, frame):
+        for target in route.get('obp_targets') or []:
+            if target not in systems:
+                continue
+            self.sendDataToOBP(
+                target, frame['data'], frame['dmrpkt'], frame['time'],
+                frame['stream'], frame['dst'], frame['peer'], frame['rf'],
+                frame['bits'], frame['slot'], b'', frame['ber'], frame['rssi'],
+                _voice=True)
+
+    def _finish_unit_obp(self, route):
+        duration = route.get('time', route['start']) - route['start']
+        if route.get('end_time'):
+            duration = route['end_time'] - route['start']
+        logger.info(
+            '(%s) *UNIT CALL END*   STREAM ID: %s SUB: %s (%s) PEER: %s (%s) '
+            'DST %s (%s), TS %s -> OBP %s, Duration: %.2f',
+            self._system, int_id(route['stream']),
+            self._id_alias(route['src'], 'subscriber_ids'), int_id(route['src']),
+            self._id_alias(route['peer'], 'peer_ids'), int_id(route['peer']),
+            self._id_alias(route['dst'], 'subscriber_ids'), int_id(route['dst']),
+            route['rx_slot'], ','.join(route.get('obp_targets') or []), duration)
+        self._report_unit_voice(
+            'END', route['stream'], route['peer'], route['src'],
+            route['rx_slot'], route['dst'], duration)
+        route['closed'] = True
+
+    def _commit_global_unit_route(self, route, targets, via):
+        names = [name for name in targets if name in systems]
+        route['pending'] = False
+        route['buffer'] = route.get('buffer') or []
+        if not names:
+            self._drop_global_unit(route, 'no enhanced OpenBridge peer for subscriber %s' % int_id(route['dst']))
+            return
+        route['obp_targets'] = names
+        route['send'] = True
+        route['via'] = via
+        logger.info(
+            '(%s) *UNIT CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) '
+            'DST %s (%s), TS %s -> OBP %s via %s',
+            self._system, int_id(route['stream']),
+            self._id_alias(route['src'], 'subscriber_ids'), int_id(route['src']),
+            self._id_alias(route['peer'], 'peer_ids'), int_id(route['peer']),
+            self._id_alias(route['dst'], 'subscriber_ids'), int_id(route['dst']),
+            route['rx_slot'], ','.join(names), via)
+        self._report_unit_voice(
+            'START', route['stream'], route['peer'], route['src'],
+            route['rx_slot'], route['dst'])
+        frames = route['buffer']
+        route['buffer'] = []
+        saw_terminal = False
+        for frame in frames:
+            self._send_unit_obp_frame(route, frame)
+            if frame['terminal']:
+                saw_terminal = True
+                route['end_time'] = frame['time']
+        if saw_terminal:
+            self._finish_unit_obp(route)
+
+    def _apply_unit_hub_result(self, stream_id, result):
+        route = self._unit_route_cache().get(stream_id)
+        if not route or not route.get('pending'):
+            return
+        result = result or {'error': True}
+        if result.get('error'):
+            self._drop_global_unit(route, 'subscriber map lookup failed for %s' % int_id(route['dst']))
+            return
+        if result.get('miss') or result.get('opb_net_id') is None:
+            # 404 and a body with no home stay here. Do not flood those.
+            self._drop_global_unit(
+                route, 'subscriber %s is not on another master' % int_id(route['dst']))
+            return
+        name = obp_stanza_for_net_id(CONFIG.get('SYSTEMS'), result.get('opb_net_id'))
+        if name:
+            self._commit_global_unit_route(route, [name], 'hub')
+            if route.get('closed'):
+                self._unit_route_cache().pop(stream_id, None)
+            return
+        if (CONFIG.get('GLOBAL') or {}).get('UNIT_OBP_FLOOD'):
+            names = [item[0] for item in iter_enhanced_obp_stanzas(CONFIG.get('SYSTEMS'))]
+            self._commit_global_unit_route(route, names, 'flood')
+            if route.get('closed'):
+                self._unit_route_cache().pop(stream_id, None)
+            return
+        self._drop_global_unit(
+            route, 'no OpenBridge peer for subscriber %s' % int_id(route['dst']))
+
+    def _begin_global_unit_route(self, route, _dst_id, _slot, _bits, _data, dmrpkt,
+                                 _stream_id, _peer_id, _rf_src, _dtype_vseq, pkt_time, terminal):
+        route['pending'] = True
+        route['stream'] = _stream_id
+        route['buffer'] = []
+        self._remember_global_frame(route, self._unit_frame(
+            _dst_id, _slot, _bits, _data, dmrpkt, _stream_id, _peer_id,
+            _rf_src, _dtype_vseq, pkt_time, terminal))
+        url = str((CONFIG.get('ALIASES') or {}).get('UNIT_SUB_MAP_URL') or '').strip()
+        if not url:
+            names = [item[0] for item in iter_enhanced_obp_stanzas(CONFIG.get('SYSTEMS'))]
+            self._commit_global_unit_route(route, names, 'flood')
+            return
+        self._schedule_unit_hub_lookup(int_id(_dst_id), _stream_id)
+
     def _forward_unit_voice(self, _dst_id, _slot, _bits, _data, dmrpkt, _stream_id,
-                            _peer_id, _rf_src, _frame_type, _dtype_vseq, pkt_time):
+                            _peer_id, _rf_src, _frame_type, _dtype_vseq, pkt_time,
+                            allow_global=True):
         """Deliver one subscriber private-call frame to the callee's slot.
 
         The target is resolved once per stream. Later frames reuse it. AMBE is
-        forwarded unchanged; only the timeslot bit is rewritten.
+        forwarded unchanged; only the timeslot bit is rewritten. A local miss
+        may use the optional hub when this call originated here.
         """
         cache = self._unit_route_cache()
         terminal = (
@@ -4210,13 +4435,38 @@ class routerHBP(HBSYSTEM):
         if route is not None and route.get('dst') != _dst_id:
             route = None
         if route is None:
+            try_global = allow_global and self._unit_global_enabled()
             route = self._open_unit_route(
-                _dst_id, _slot, _stream_id, _peer_id, _rf_src, pkt_time)
+                _dst_id, _slot, _stream_id, _peer_id, _rf_src, pkt_time,
+                log_miss=not try_global)
             cache[_stream_id] = route
+            if not route['send'] and try_global:
+                self._begin_global_unit_route(
+                    route, _dst_id, _slot, _bits, _data, dmrpkt, _stream_id,
+                    _peer_id, _rf_src, _dtype_vseq, pkt_time, terminal)
+            if route.get('closed'):
+                cache.pop(_stream_id, None)
             if len(cache) > 128:
                 for stale in list(cache):
                     if stale != _stream_id and len(cache) > 128:
                         cache.pop(stale, None)
+            if route.get('pending') or route.get('obp_targets') or route.get('closed'):
+                return
+        if route.get('pending'):
+            self._remember_global_frame(route, self._unit_frame(
+                _dst_id, _slot, _bits, _data, dmrpkt, _stream_id, _peer_id,
+                _rf_src, _dtype_vseq, pkt_time, terminal))
+            return
+        if route.get('obp_targets'):
+            frame = self._unit_frame(
+                _dst_id, _slot, _bits, _data, dmrpkt, _stream_id, _peer_id,
+                _rf_src, _dtype_vseq, pkt_time, terminal)
+            self._send_unit_obp_frame(route, frame)
+            if terminal:
+                route['end_time'] = pkt_time
+                self._finish_unit_obp(route)
+                cache.pop(_stream_id, None)
+            return
         if route.get('send'):
             self._send_resolved_unit_voice(
                 route, _slot, _bits, _data, dmrpkt, _stream_id, _dst_id,
@@ -4251,7 +4501,7 @@ class routerHBP(HBSYSTEM):
         logger.debug('(%s) Parrot unit voice forwarded to PARROT DST %s',
                      self._system, int_id(_dst_id))
 
-    def sendDataToOBP(self,_target,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,_hops = b'',_ber = b'\x00', _rssi = b'\x00',_source_server = b'\x00\x00\x00\x00', _source_rptr = b'\x00\x00\x00\x00'):
+    def sendDataToOBP(self,_target,_data,dmrpkt,pkt_time,_stream_id,_dst_id,_peer_id,_rf_src,_bits,_slot,_hops = b'',_ber = b'\x00', _rssi = b'\x00',_source_server = b'\x00\x00\x00\x00', _source_rptr = b'\x00\x00\x00\x00', _voice=False):
  #       _sysIgnore = sysIgnore
         _source_server = self._CONFIG['GLOBAL']['SERVER_ID']
         _source_rptr = _peer_id
@@ -4296,6 +4546,9 @@ class routerHBP(HBSYSTEM):
         _tmp_data = b''.join([_data[:15], _tmp_bits.to_bytes(1, 'big'), _data[16:20]])
         _tmp_data = b''.join([_tmp_data, dmrpkt])
         systems[_target].send_system(_tmp_data,b'',_ber,_rssi,_source_server,_source_rptr)
+        if _voice:
+            logger.debug('(%s) UNIT voice bridged to OBP System: %s DST_ID: %s', self._system, _target, _int_dst_id)
+            return
         logger.debug('(%s) UNIT Data Bridged to OBP System: %s DST_ID: %s', self._system, _target,_int_dst_id)
         if CONFIG['REPORTS']['REPORT']:
             systems[system]._report.send_bridgeEvent('UNIT DATA,DATA,TX,{},{},{},{},{},{}'.format(_target, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), 1, _int_dst_id).encode(encoding='utf-8', errors='ignore'))
@@ -5162,6 +5415,21 @@ class routerHBP(HBSYSTEM):
 # Motorola IPSC master (MODE: IPSC) — Copyright (C) 2026 Shane Daley, M0VUB
 # See ipsc_master.py, ipsc_voice.py
 #
+for _unit_voice_name in (
+        '_unit_route_cache',
+        '_id_alias',
+        '_unit_peer_connected',
+        '_resolve_unit_target',
+        '_unit_target_idle',
+        '_note_unit_tx',
+        '_report_unit_voice',
+        '_open_unit_route',
+        '_send_resolved_unit_voice',
+        '_forward_unit_voice',
+):
+    setattr(routerOBP, _unit_voice_name, getattr(routerHBP, _unit_voice_name))
+
+
 class routerIPSC(IpscMasterMixin, routerHBP):
 
     def __init__(self, _name, _config, _report):

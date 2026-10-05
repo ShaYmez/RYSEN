@@ -110,8 +110,10 @@ the call.
 
 Private calls use the Hytera private marker and the existing Dial-a-TG path:
 private-call a reflector ID to link, `4000` to disconnect, and `5000` for
-status. The announcement returns as group voice to TG9. Subscriber-to-
-subscriber private calls are not forwarded.
+status. The announcement returns as group voice to TG9. A subscriber
+private call is delivered on this master when the callee has been heard
+here. An optional hub can send that call to another master; see
+[ipsc-roadmap.md](ipsc-roadmap.md).
 
 TG `9990` group and unit parrot return once, at normal speed. PARROT
 playback is excluded from the generic unit relay so it cannot double.
