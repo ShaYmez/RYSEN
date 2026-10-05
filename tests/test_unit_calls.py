@@ -456,20 +456,72 @@ class TestGlobalUnitVoice(UnitCallFixture):
             PEER, bytes_3(CALLER), HBPF_DATA_SYNC, HBPF_SLT_VHEAD, 100.0)
         return packet
 
-    def test_local_hit_never_calls_the_hub(self):
+    def _home_here(self):
+        bm.CONFIG['GLOBAL'] = {'SERVER_ID': (2342).to_bytes(4, 'big')}
+        bm.CONFIG['ALIASES'] = {'UNIT_SUB_MAP_URL': 'https://hub.example/sub-map'}
+
+    def test_local_hit_without_a_hub_does_not_look_up(self):
+        self._system('SYSTEM-B', 'MASTER', peers=self._peer(ESSID))
+        local = _Target()
+        bm.systems['SYSTEM-B'] = local
+        router = self._origin()
+
+        def _boom(_radio):
+            raise AssertionError('hub lookup without a hub url')
+
+        router._unit_hub_lookup = _boom
+        self._send(router)
+        self.assertEqual(len(local.sent), 1)
+
+    def test_hub_home_on_this_master_stays_local(self):
         self._system('SYSTEM-B', 'MASTER', peers=self._peer(ESSID))
         self._obp('OBP-EU', 2040, 'europe.freestar.network')
         local = _Target()
         remote = _Target()
         bm.systems['SYSTEM-B'] = local
         bm.systems['OBP-EU'] = remote
-        bm.CONFIG['ALIASES'] = {'UNIT_SUB_MAP_URL': 'https://hub.example/sub-map'}
+        self._home_here()
         router = self._origin()
+        seen = []
 
-        def _boom(_radio):
-            raise AssertionError('hub lookup on a local hit')
+        def _lookup(radio):
+            seen.append(radio)
+            return {'opb_net_id': 2342, 'peer_id': ESSID}
 
-        router._unit_hub_lookup = _boom
+        router._unit_hub_lookup = _lookup
+        self._send(router)
+        self.assertEqual(seen, [CALLEE])
+        self.assertEqual(len(local.sent), 1)
+        self.assertEqual(remote.sent, [])
+
+    def test_last_heard_master_beats_a_local_login(self):
+        self._system('SYSTEM-B', 'MASTER', peers=self._peer(ESSID))
+        self._obp('OBP-EU', 2040, 'europe.freestar.network')
+        local = _Target()
+        remote = _Target()
+        bm.systems['SYSTEM-B'] = local
+        bm.systems['OBP-EU'] = remote
+        self._home_here()
+        router = self._origin()
+        router._unit_hub_lookup = lambda _radio: {
+            'opb_net_id': 2040,
+            'source_host': 'europe.freestar.network',
+        }
+        self._send(router)
+        self.assertEqual(local.sent, [])
+        self.assertEqual(len(remote.sent), 1)
+        self.assertTrue(remote.sent[0][15] & 0x40)
+
+    def test_hub_miss_keeps_the_local_login(self):
+        self._system('SYSTEM-B', 'MASTER', peers=self._peer(ESSID))
+        self._obp('OBP-EU', 2040, 'europe.freestar.network')
+        local = _Target()
+        remote = _Target()
+        bm.systems['SYSTEM-B'] = local
+        bm.systems['OBP-EU'] = remote
+        self._home_here()
+        router = self._origin()
+        router._unit_hub_lookup = lambda _radio: {'miss': True}
         self._send(router)
         self.assertEqual(len(local.sent), 1)
         self.assertEqual(remote.sent, [])
@@ -483,7 +535,6 @@ class TestGlobalUnitVoice(UnitCallFixture):
         remote = _Target()
         bm.systems['SYSTEM-B'] = local
         bm.systems['OBP-EU'] = remote
-        bm.CONFIG['ALIASES'] = {'UNIT_SUB_MAP_URL': 'https://hub.example/sub-map'}
         bm.CONFIG['GLOBAL'] = {'UNIT_OBP_FLOOD': True}
         router = self._origin()
 
@@ -495,6 +546,38 @@ class TestGlobalUnitVoice(UnitCallFixture):
         self.assertEqual(local.sent, [])
         self.assertEqual(remote.sent, [])
         self.assertTrue(router._unit_voice_routes[STREAM].get('local'))
+
+    def test_busy_slot_drops_when_the_hub_says_this_master(self):
+        self._system('SYSTEM-B', 'MASTER', peers=self._peer(ESSID), hang=5)
+        self._obp('OBP-EU', 2040, 'europe.freestar.network')
+        local = _Target()
+        local.STATUS[2]['TX_TYPE'] = HBPF_SLT_VHEAD
+        local.STATUS[2]['TX_TIME'] = 100.0
+        remote = _Target()
+        bm.systems['SYSTEM-B'] = local
+        bm.systems['OBP-EU'] = remote
+        self._home_here()
+        router = self._origin()
+        router._unit_hub_lookup = lambda _radio: {'opb_net_id': 2342}
+        self._send(router)
+        self.assertEqual(local.sent, [])
+        self.assertEqual(remote.sent, [])
+
+    def test_busy_local_login_does_not_block_the_heard_master(self):
+        self._system('SYSTEM-B', 'MASTER', peers=self._peer(ESSID), hang=5)
+        self._obp('OBP-EU', 2040, 'europe.freestar.network')
+        local = _Target()
+        local.STATUS[2]['TX_TYPE'] = HBPF_SLT_VHEAD
+        local.STATUS[2]['TX_TIME'] = 100.0
+        remote = _Target()
+        bm.systems['SYSTEM-B'] = local
+        bm.systems['OBP-EU'] = remote
+        self._home_here()
+        router = self._origin()
+        router._unit_hub_lookup = lambda _radio: {'opb_net_id': 2040}
+        self._send(router)
+        self.assertEqual(local.sent, [])
+        self.assertEqual(len(remote.sent), 1)
 
     def test_mocked_hub_selects_destination_master_and_not_xpeer(self):
         self._obp('OBP-EU', 2040, 'europe.freestar.network')
