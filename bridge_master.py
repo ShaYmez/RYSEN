@@ -4165,7 +4165,7 @@ class routerHBP(HBSYSTEM):
         return record.get('CONNECTION', 'YES') == 'YES'
 
     def _resolve_unit_target(self, _dst_id, _int_dst_id):
-        """Return (system, slot, via) for a subscriber on another slot, or None."""
+        """Return (system, peer, slot, via) for a subscriber on another slot."""
         mapped = SUB_MAP.get(_dst_id) if 'SUB_MAP' in globals() else None
         if mapped:
             try:
@@ -4182,7 +4182,15 @@ class routerHBP(HBSYSTEM):
                     and mode in ('MASTER', 'IPSC', 'HYTERA')
                     and cfg.get('ENABLED', True)
                     and (peer_id is None or self._unit_peer_connected(system, peer_id))):
-                return system, unit_delivery_slot(mode, heard_slot), 'sub_map'
+                if peer_id is None:
+                    state = getattr(systems.get(system), 'STATUS', {}).get(
+                        unit_delivery_slot(mode, heard_slot), {})
+                    peer_id = state.get('RX_PEER')
+                    if not peer_id or not int_id(peer_id):
+                        peer_id = _dst_id
+                return (
+                    system, peer_id,
+                    unit_delivery_slot(mode, heard_slot), 'sub_map')
 
         for system in systems:
             if system == self._system:
@@ -4195,7 +4203,7 @@ class routerHBP(HBSYSTEM):
                 if record.get('CONNECTION', 'YES') != 'YES':
                     continue
                 if peer_matches_subscriber(int_id(peer_id), _int_dst_id):
-                    return system, unit_delivery_slot(mode, None), 'peer'
+                    return system, peer_id, unit_delivery_slot(mode, None), 'peer'
         return None
 
     def _unit_target_idle(self, system, slot, stream_id, now):
@@ -4230,15 +4238,58 @@ class routerHBP(HBSYSTEM):
         # marker until the terminator so the slot does not look finished.
         state['TX_TYPE'] = HBPF_SLT_VTERM if terminal else HBPF_SLT_VHEAD
 
-    def _report_unit_voice(self, kind, stream_id, peer_id, rf_src, slot, dst_id, duration=None):
+    def _report_unit_event(self, kind, trx, system, stream_id, peer_id, rf_src,
+                           slot, dst_id, duration=None):
         if not CONFIG.get('REPORTS', {}).get('REPORT'):
             return
         report = getattr(self, '_report', None)
         if report is None:
             return
         report.send_bridgeEvent(unit_voice_event(
-            kind, 'RX', self._system, int_id(stream_id), int_id(peer_id),
+            kind, trx, system, int_id(stream_id), int_id(peer_id),
             int_id(rf_src), slot, int_id(dst_id), duration))
+
+    def _report_unit_voice(self, kind, stream_id, peer_id, rf_src, slot, dst_id,
+                           duration=None):
+        """Publish the backward-compatible caller-side hear."""
+        self._report_unit_event(
+            kind, 'RX', self._system, stream_id, peer_id, rf_src, slot,
+            dst_id, duration)
+
+    def _unit_via_peer(self, system):
+        cfg = (CONFIG.get('SYSTEMS') or {}).get(system) or {}
+        return cfg.get('NETWORK_ID') or b'\x00\x00\x00\x00'
+
+    def _report_unit_via_frame(self, route, trx, system, peer_id, slot,
+                               pkt_time, terminal):
+        """Publish one START/END pair for an observed fleet OpenBridge leg."""
+        if system not in self._configured_unit_fleet().values():
+            return
+        leg = (trx, system, int_id(peer_id), slot)
+        starts = route.setdefault('via_starts', {})
+        ends = route.setdefault('via_ends', set())
+        if leg not in starts:
+            starts[leg] = pkt_time
+            self._report_unit_event(
+                'VIA START', trx, system, route['stream'], peer_id,
+                route['src'], slot, route['dst'])
+        if terminal and leg not in ends:
+            self._report_unit_event(
+                'VIA END', trx, system, route['stream'], peer_id,
+                route['src'], slot, route['dst'], pkt_time - starts[leg])
+            ends.add(leg)
+
+    def _remember_unit_terminal(self, route, pkt_time):
+        terminals = getattr(self, '_unit_voice_terminals', None)
+        if terminals is None:
+            terminals = {}
+            self._unit_voice_terminals = terminals
+        terminals[(route['stream'], route['src'], route['dst'])] = pkt_time
+        cutoff = pkt_time - UNIT_TRANSIT_STREAM_HOLD
+        if len(terminals) > 256:
+            for stale, seen in list(terminals.items()):
+                if seen < cutoff:
+                    terminals.pop(stale, None)
 
     def _remember_unit_home(self, radio_id, when, *, local=False, net_id=None,
                             absent=False, next_hop=None, path=None,
@@ -4313,9 +4364,10 @@ class routerHBP(HBSYSTEM):
                 logger.info('(%s) UNIT call not routed, subscriber %s is not on another slot',
                             self._system, _int_dst_id)
             return route
-        system, slot, via = found
+        system, peer_id, slot, via = found
         route['local'] = True
         route['local_system'] = system
+        route['local_peer'] = peer_id
         route['local_slot'] = slot
         route['local_via'] = via
         # A hub lookup decides whether this login is still the home.
@@ -4327,6 +4379,7 @@ class routerHBP(HBSYSTEM):
             return route
         route['send'] = True
         route['system'] = system
+        route['dest_peer'] = peer_id
         route['slot'] = slot
         logger.info(
             '(%s) *UNIT CALL START* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) '
@@ -4349,9 +4402,20 @@ class routerHBP(HBSYSTEM):
         ])
         systems[route['system']].send_system(packet, b'', ber, rssi)
         route['packets'] += 1
+        if not route.get('to_start_reported'):
+            self._report_unit_event(
+                'TO START', 'TX', route['system'], _stream_id,
+                route['dest_peer'], _rf_src, target_slot, _dst_id)
+            route['to_start_reported'] = True
         self._note_unit_tx(
             route['system'], target_slot, _stream_id, _dst_id, _rf_src,
-            route.get('peer'), pkt_time, terminal)
+            route['dest_peer'], pkt_time, terminal)
+        if terminal and not route.get('to_end_reported'):
+            self._report_unit_event(
+                'TO END', 'TX', route['system'], _stream_id,
+                route['dest_peer'], _rf_src, target_slot, _dst_id,
+                pkt_time - route['start'])
+            route['to_end_reported'] = True
         logger.debug('(%s) UNIT voice bridged to %s slot %s DST %s',
                      self._system, route['system'], target_slot, int_id(_dst_id))
 
@@ -4436,6 +4500,9 @@ class routerHBP(HBSYSTEM):
             _source_server=frame.get('source_server', b'\x00\x00\x00\x00'),
             _source_rptr=frame.get('source_rptr', b'\x00\x00\x00\x00'),
             _voice=True)
+        self._report_unit_via_frame(
+            route, 'TX', target, self._unit_via_peer(target), frame['slot'],
+            frame['time'], frame['terminal'])
         return True
 
     def _unit_obp_healthy(self, system, now):
@@ -4485,6 +4552,8 @@ class routerHBP(HBSYSTEM):
             self._report_unit_voice(
                 'END', route['stream'], route['peer'], route['src'],
                 route['rx_slot'], route['dst'], duration)
+        self._remember_unit_terminal(
+            route, route.get('end_time', route.get('time', route['start'])))
         route['closed'] = True
 
     def _commit_global_unit_route(self, route, target, via):
@@ -4569,6 +4638,7 @@ class routerHBP(HBSYSTEM):
             return
         route['send'] = True
         route['system'] = system
+        route['dest_peer'] = route.get('local_peer') or route['dst']
         route['slot'] = slot
         route['local'] = True
         logger.info(
@@ -4609,6 +4679,7 @@ class routerHBP(HBSYSTEM):
             self._report_unit_voice(
                 'END', stream_id, route['peer'], route['src'],
                 route['rx_slot'], route['dst'], duration)
+        self._remember_unit_terminal(route, route['end_time'])
         route['closed'] = True
 
     def _hub_net_id(self, result):
@@ -4721,6 +4792,13 @@ class routerHBP(HBSYSTEM):
         cache = self._unit_route_cache()
         terminal = (
             _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VTERM)
+        terminal_key = (_stream_id, _rf_src, _dst_id)
+        terminals = getattr(self, '_unit_voice_terminals', {})
+        terminal_seen = terminals.get(terminal_key)
+        if terminal_seen is not None:
+            if pkt_time - terminal_seen < UNIT_TRANSIT_STREAM_HOLD:
+                return
+            terminals.pop(terminal_key, None)
         if not origin_local:
             transit_key = (_stream_id, _rf_src, _dst_id)
             previous = _UNIT_TRANSIT_STREAMS.get(transit_key)
@@ -4752,7 +4830,12 @@ class routerHBP(HBSYSTEM):
                 'expected %s', self._system, int_id(_stream_id),
                 ingress_system, route.get('ingress_system'))
             return
+        inbound_via_reported = False
         if route is None:
+            # A VTERM without an active route is stale. It must not become a
+            # fresh caller hear or a second delivery after the route was closed.
+            if terminal:
+                return
             try_global = allow_global and self._unit_global_enabled()
             start_reported = False
             if origin_local:
@@ -4801,7 +4884,13 @@ class routerHBP(HBSYSTEM):
             route['start_reported'] = start_reported
             route['ingress_system'] = ingress_system
             route['time'] = pkt_time
+            route['stream'] = _stream_id
             cache[_stream_id] = route
+            if not origin_local:
+                self._report_unit_via_frame(
+                    route, 'RX', ingress_system,
+                    self._unit_via_peer(ingress_system), _slot, pkt_time, False)
+                inbound_via_reported = True
             if cached_net is not None:
                 cached_hop = learned.get('next_hop') or cached_net
                 name = self._configured_unit_fleet().get(cached_hop)
@@ -4842,6 +4931,10 @@ class routerHBP(HBSYSTEM):
             # The opening frame is already in the hub buffer. Do not send it twice.
             if asked or route.get('pending') or route.get('obp_target') or route.get('closed'):
                 return
+        if not origin_local and not inbound_via_reported:
+            self._report_unit_via_frame(
+                route, 'RX', ingress_system,
+                self._unit_via_peer(ingress_system), _slot, pkt_time, terminal)
         if route.get('pending'):
             self._remember_global_frame(route, self._unit_frame(
                 _dst_id, _slot, _bits, _data, dmrpkt, _stream_id, _peer_id,
@@ -4881,6 +4974,7 @@ class routerHBP(HBSYSTEM):
                     'END', _stream_id, route['peer'], route['src'],
                     route['rx_slot'], _dst_id, duration)
         if terminal:
+            self._remember_unit_terminal(route, pkt_time)
             cache.pop(_stream_id, None)
 
     def _forward_parrot_unit_voice(self, _dst_id, _slot, _bits, _data, dmrpkt):
@@ -5822,7 +5916,11 @@ for _unit_voice_name in (
         '_resolve_unit_target',
         '_unit_target_idle',
         '_note_unit_tx',
+        '_report_unit_event',
         '_report_unit_voice',
+        '_unit_via_peer',
+        '_report_unit_via_frame',
+        '_remember_unit_terminal',
         '_remember_unit_home',
         '_fresh_unit_home',
         '_local_hear_time',

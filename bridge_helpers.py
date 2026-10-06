@@ -39,7 +39,7 @@ def group_voice_event(kind, trx, system, stream_id, peer_id, subscriber, slot,
 
 def unit_voice_event(kind, trx, system, stream_id, peer_id, subscriber, slot,
                      dest, duration=None):
-    """UNIT VOICE report. END carries the call duration in seconds."""
+    """UNIT VOICE report; every terminal action keeps duration at field 9."""
     body = 'UNIT VOICE,{},{},{},{},{},{},{},{}'.format(
         kind, trx, system, stream_id, peer_id, subscriber, slot, dest)
     if duration is not None:

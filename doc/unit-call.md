@@ -92,6 +92,29 @@ existing hop count travel with the voice. The hop limit remains 10.
 
 `UNIT_OBP_FLOOD` stays `False`. It is a legacy flag and does not relay unit voice. A network without the discovery hub stays local-only. 
 
+## Monitor events
+
+Unit voice keeps the existing comma-separated report layout:
+
+`UNIT VOICE,action,RX|TX,system,stream,peer,subscriber,slot,destination[,duration]`
+
+The terminal duration remains field 9 (zero-based). Existing caller-side
+`START` and `END` events are unchanged, including their original stream ID.
+Additional actions describe the route without pretending that transit audio
+was heard locally:
+
+- `TO START` / `TO END` use `TX` and identify the exact local destination
+  system, peer, and delivery slot. Hotspots therefore show TS2, while IPSC and
+  Hytera show the slot on which the callee was heard.
+- `VIA START` / `VIA END` identify each fleet OpenBridge leg. An inbound leg
+  uses `RX`; an outbound next-hop leg uses `TX`. The peer field is that
+  OpenBridge stanza's network ID.
+
+Each leg emits at most one start and one end for a stream. Duplicate or stale
+terminators are ignored. A transit or final-home master emits `VIA` (and, at
+the final home, `TO`) events but does not emit a false caller-side `START` or
+`END`.
+
 ## Configuration
 
 Local-only, as shipped in the samples:
