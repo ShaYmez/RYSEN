@@ -1,6 +1,6 @@
 # RYSEN DMRMaster+
 
-Open-source DMR master server software (SystemX). A public fork of HBlink3 / FreeDMR, developed in Python (Twisted). **Version 1.6.0** on `master`.
+RYSEN DMR Master+ (A FreeSTAR SystemX DMR Master Server). One Twisted process routes Homebrew, OpenBridge, Motorola IP Site Connect, and Hytera IP Multi-site Connect, with talkgroup bridges, private unit calls, and local dashboard selfcare. **Version 1.6.0** on `master`.
 
 ## Quick start
 
@@ -20,7 +20,8 @@ Must be run as **root** on Debian 10+, Pi OS, or recent Ubuntu. See [doc/install
 - **Hotspot proxy** — Single UDP port for many hotspots
 - **Motorola IPSC** — IP Site Connect repeaters (v1.5.0)
 - **Native Hytera** — Field-validated RD985 group/private voice, late entry,
-  A8 and A9 firmware, RDAC metadata, live RSSI and multi-repeater proxy (development branch)
+  A8 and A9 firmware, RDAC metadata, live RSSI and multi-repeater proxy (v1.6.0)
+- **Unit routing** — Local private calls, plus an optional discovery path `UNIT_SUB_MAP_URL` is set (v1.6.0)
 - **Selfcare** — Dashboard-driven static TG and settings via MariaDB
 - **Reporting** — TCP feed for [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR)
 
@@ -36,6 +37,7 @@ Must be run as **root** on Debian 10+, Pi OS, or recent Ubuntu. See [doc/install
 | [doc/ipsc.md](doc/ipsc.md) | Motorola IPSC reference (CPS, config, field tests) |
 | [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md) | IPSC future phases |
 | [doc/hytera.md](doc/hytera.md) | Native Hytera setup and supported behaviour |
+| [doc/unit-call.md](doc/unit-call.md) | Private unit calls, local and optional fleet hop |
 | [doc/hotspot-proxy-v2.md](doc/hotspot-proxy-v2.md) | Hotspot UDP proxy |
 | [doc/why-docker.md](doc/why-docker.md) | Why Docker is recommended |
 | [doc/satellite-proxy-repos.md](doc/satellite-proxy-repos.md) | Satellite proxy image workflow |
@@ -53,7 +55,7 @@ Sample configs: [RYSEN-SAMPLE-commented.cfg](RYSEN-SAMPLE-commented.cfg), [docke
 
 ## Docker image
 
-CI builds and publishes `shaymez/rysen:latest` from the root [Dockerfile](Dockerfile) on push to `master`.
+CI builds and publishes `shaymez/rysen:1.6.0` and `shaymez/rysen:latest` from the root [Dockerfile](Dockerfile) on push to `master`.
 
 ## Credits
 

@@ -1,5 +1,5 @@
 ###############################################################################
-# RYSEN v1.5.4 — production stack (rysen + mariadb + monitor + satellite proxies)
+# RYSEN v1.6.0 — production stack (rysen + mariadb + monitor + satellite proxies)
 #
 # Host config (unchanged by this file — mount only):
 #   /etc/rysen/rysen.cfg, ipsc-proxy.cfg, hytera-proxy.cfg, proxy.cfg, rules.py, json/, mysql/
@@ -10,7 +10,7 @@
 #   monitor      172.16.238.12  shaymez/rysen-monitor:latest
 #   proxy        172.16.238.20  shaymez/rysen-sp-selfcare:latest
 #   ipsc-proxy   172.16.238.30  shaymez/rysen-sp-ipsc:latest
-#   hytera-proxy 172.16.238.31  locally-built feature image
+#   hytera-proxy 172.16.238.31  local profile image (not on Docker Hub)
 #
 # Deploy on an existing VM (does not touch rysen.cfg / proxy.cfg / mysql/):
 #   curl -fsSL .../docker-compose-stack.yml -o /etc/rysen/docker-compose.yml
@@ -62,7 +62,7 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile.hytera-proxy
-    image: rysen-hytera-proxy:feature-hytera
+    image: rysen-hytera-proxy:1.6.0
     volumes:
       - /etc/rysen/hytera-proxy.cfg:/etc/rysen/hytera-proxy.cfg:ro
     ports:

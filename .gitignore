@@ -101,3 +101,6 @@ talkgroup_ids.*
 
 # Local Cursor workspace metadata
 .cursor/
+
+# Local captures and field notes (live network metadata; not published)
+_cmp/

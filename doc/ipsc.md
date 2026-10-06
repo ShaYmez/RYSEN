@@ -138,7 +138,7 @@ Slot names (`SYSTEM-62`, `IPSC-79`) change with proxy assignments — check logs
 - VTERM + 1s delay; `RelinkTime` / `DEFAULT_UA_TIMER` timeout with private disconnect prompt
 - Hotspot dial-a-tg path unchanged (GROUP TG 9 via `sendSpeech`)
 
-**Not in 1.5.0:** unit-to-unit subscriber routing (Phase 4), SMS/GPS (Phase 5) — see [ipsc-roadmap.md](ipsc-roadmap.md).
+**Shipped in 1.6.0:** unit-to-unit subscriber routing (Phase 4), local on this master and an optional fleet hop. See [unit-call.md](unit-call.md). SMS/GPS (Phase 5) remain deferred — see [ipsc-roadmap.md](ipsc-roadmap.md).
 
 ## Tests
 

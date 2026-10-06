@@ -6,7 +6,7 @@ Maintained by **Shane Daley M0VUB** (aka **ShaYmez**) — primary RYSEN / System
 
 | Version | Date | Summary |
 |---------|------|---------|
-| 1.6.0 | 2026-10-06 | Fleet-only topology discovery and shortest-path private-call relay |
+| 1.6.0 | 2026-10-06 | Topology-aware unit routing, native Hytera, OpenBridge stream ownership |
 | 1.5.4 | 2026-09-22 | Reactor stall/idle hygiene, STAT OBP hairpin, hub device control, parrot UA KeyError |
 | 1.5.3 | 2026-08-07 | Built-in version traceability, status page live version, monitor footer |
 | 1.5.2 | 2026-08-05 | BRIDGE_IDX bloat trim, reactor/audio stability, hotspot echo fix |
@@ -57,7 +57,7 @@ Config reference: [RYSEN-SAMPLE-commented.cfg](../RYSEN-SAMPLE-commented.cfg).
 
 ### Subscriber routing
 
-- **SUB_MAP** — Tracks per-subscriber system, timeslot, TG, timestamp, peer
+- **SUB_MAP** — Per-subscriber location `(system, timeslot, talkgroup, timestamp, peer)`. A private unit call on this master is placed from that record when the callee was heard on another MASTER, IPSC, or Hytera slot. Hotspot delivery uses TS2. A repeater callee uses the slot they were last heard on. If `SUB_MAP` has no row, a connected hotspot ESSID is used. The fleet hop stays off unless `[ALIASES] UNIT_SUB_MAP_URL` is set — see [unit-call.md](unit-call.md)
 - **Voice announcements** — Multi-language prompts from `Audio/`
 - **Alias downloads** — `peer_ids.json`, `subscriber_ids.json`, `talkgroup_ids.json` via `[ALIASES]`
 
@@ -117,7 +117,7 @@ Full reference: [ipsc.md](ipsc.md). Roadmap for future phases: [ipsc-roadmap.md]
 | Private voice (0x81) | Wire layer on TS1 + TS2; dial-a-tg reflector on IPSC (field-tested) |
 | Monitor | HBP-shaped `PEERS` records for RYSEN-MONITOR v1.5.0 |
 
-**Not in 1.5.0:** unit-to-unit private routing (Phase 4, now local on current `master`), SMS/GPS (Phase 5).
+**Not in 1.5.0:** unit-to-unit private routing (Phase 4, shipped in **1.6.0**) and SMS/GPS (Phase 5, still deferred).
 
 ---
 
@@ -139,10 +139,24 @@ Field-hardened on high-cardinality masters (UK / USA / Europe) under busy OBP lo
 | Feature | Detail |
 |---------|--------|
 | STAT / BRIDGE_IDX trim | Prune idle UA ON legs; slim monitor reports; stop index bloat (~50k+ → ~9–14k keys) |
-| OBP LoopControl | Keep routing when `fi is empty` (continue existing stream); do not restart unfinished overs after a 360ms LAST gap; harden stubs and packet counters |
+| OBP LoopControl | Keep routing when `fi is empty` (continue the existing stream); harden stubs and packet counters |
 | Reactor / audio pacing | Endpoint ordering, UA activate without BRIDGE_SND thrash, soft-client stretch cuts |
 | Hotspot dekey echo | `send_peers()` skips originating peer / RF source so round-tripped audio cannot parrot after PTT |
 | HBP continuity | Preserve ownership across short jitter gaps; generation / fanout isolation |
+
+---
+
+## v1.5.3 — Version traceability
+
+Always on. No operator config.
+
+| Feature | Detail |
+|---------|--------|
+| `rysen_version.py` | Single source from `version.txt`; startup log, `--version`, Docker OCI label |
+| HBP `PACKAGE_ID` | Stock values advertise `RYSEN-x.y.z` on the wire |
+| Report socket | Live version to the RYSEN-MONITOR footer |
+| Alias downloads | `User-Agent: RYSEN/x` |
+| Host status page | `.rysen_version` written in the log directory |
 
 ---
 
@@ -159,7 +173,24 @@ Field-hardened on the FreeSTAR fleet after USA Homebrew RPTPING stalls and STAT 
 
 ---
 
-## Unreleased — Native Hytera
+## v1.6.0 — Unit routing, Hytera, OpenBridge ownership
+
+### Topology-aware unit routing
+
+Local subscriber private calls (hotspot, IPSC, and Hytera on the same server) are placed from `SUB_MAP` or a connected hotspot ESSID. Hotspot delivery uses TS2. A repeater callee uses the slot they were last heard on. Dial-a-tg (`4000`, `5000`, link TGs) and parrot `9990` stay on their own paths. A busy target slot drops the private call.
+
+The optional global topology stays off unless `[ALIASES] UNIT_SUB_MAP_URL` is set; the existing bearer-token file remains the credential. Participating masters publish secret-free enhanced-OBP health immediately at startup and then at jittered intervals, with fleet membership taken from the downloaded server registry. Route replies carry the home, one next hop, a validated loop-free path, topology version and expiry. Voice is forwarded only along that validated next hop. A short bounded buffer permits a fresh lookup when the chosen hop fails. DMRE v5 origin server/repeater identity and hop count survive transit. A local callee always wins, and inbound or transit calls do not create local caller hears. Unit data, SMS and GPS are unchanged. A master whose local server ID disagrees with the fleet registry cannot publish topology. See [unit-call.md](unit-call.md).
+
+### OpenBridge stream ownership
+
+| Feature | Detail |
+|---------|--------|
+| Unfinished streams | No new CALL START when `LAST` ages past 360 ms |
+| Owner election | 1 s claim window; `LAST` refreshed before the vote; empty `fi` continues the over |
+| Second OBP | A looped first packet yields before CALL START |
+| `SINGLE_MODE` | Default off on IPSC and Hytera so dual statics stay subscribed; hangtime still serialises the RF slot. Homebrew MASTER hotspots stay last-TG-wins |
+
+### Native Hytera
 
 Field-validated on RD985 repeaters running firmware `A9.02.03.009` and
 `A8.00.09.001`.
@@ -176,15 +207,7 @@ Field-validated on RD985 repeaters running firmware `A9.02.03.009` and
 | Live RSSI | Homebrew byte 54 on call start and a throttled in-call update; Hytera reads it from the RDAC call-state poll |
 | A8 firmware | RD985 `A8.00.09.001` registered beside an A9 repeater and passed voice |
 
-Operator setup: [hytera.md](hytera.md).
-
----
-
-## Unreleased — Unit-to-unit voice
-
-Local subscriber private calls are on `master` (`da29797`, `579d9ed`): hotspot, IPSC, and Hytera on the same server, placed from `SUB_MAP` or a connected hotspot ESSID.
-
-The optional global topology stays off unless `[ALIASES] UNIT_SUB_MAP_URL` is set; the existing bearer-token file remains the credential. Participating masters publish secret-free enhanced-OBP health immediately at startup and then at jittered intervals, with fleet membership taken from the downloaded server registry. Route replies carry the home, one next hop, a validated loop-free path, topology version and expiry. Voice is sent to exactly that healthy next hop—never flooded, returned to ingress, or relayed through a configured third-party OBP. A short bounded buffer permits a fresh lookup when the chosen hop fails. DMRE v5 origin server/repeater identity and hop count survive transit. A local callee always wins, and inbound/transit calls do not create local caller hears. Unit data, SMS and GPS are unchanged. See [ipsc-roadmap.md](ipsc-roadmap.md).
+Operator setup: [hytera.md](hytera.md). The proxy is a local compose profile (`--profile hytera`); it is not a Docker Hub image.
 
 ---
 
@@ -192,6 +215,7 @@ The optional global topology stays off unless `[ALIASES] UNIT_SUB_MAP_URL` is se
 
 - [architecture.md](architecture.md) — stack overview
 - [hytera.md](hytera.md) — native Hytera setup and supported behaviour
+- [unit-call.md](unit-call.md) — private unit calls, local and optional fleet hop
 - [options.md](options.md) — OPTIONS string syntax
 - [install.md](install.md) — Docker install
 - [selfcare.md](selfcare.md) — MariaDB selfcare

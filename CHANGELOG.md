@@ -1,6 +1,10 @@
 # RYSEN DMRMaster+ Changelog
 
-## Version 1.6.0 (2026-10-06) — Topology-aware unit routing
+## Version 1.6.0 (2026-10-06)
+
+Released on **`master`** — `shaymez/rysen:1.6.0` and `:latest`.
+
+### Topology-aware unit routing
 
 - Global unit voice remains opt-in through the existing
   `UNIT_SUB_MAP_URL` / token-file configuration. Local-only installations do
@@ -20,7 +24,7 @@
   `2355` identity is reconciled with registry ID `2354` and it has a reciprocal
   link to a participating fleet master; its CQ-UK link is never transit.
 
-## Unreleased — OBP stream ownership
+### OpenBridge stream ownership
 
 - Unfinished OpenBridge streams no longer open a new CALL START when `LAST` ages past 360ms. That restart was re-claiming 2350 across the mesh after jitter or reactor lag.
 - Owner election now uses a 1s claim window and refreshes `LAST` before the vote. Empty `fi` continues the existing over instead of treating every master as a new owner.
@@ -29,7 +33,7 @@
   subscribed; hangtime still serialises the RF slot. Homebrew MASTER
   hotspots stay last-TG-wins.
 
-## Unreleased — Native Hytera
+### Native Hytera
 
 Capture-derived native Hytera IP Multi-site Connect support is field-validated
 on RD985 repeaters running `A9.02.03.009` and `A8.00.09.001`.
@@ -62,6 +66,8 @@ on RD985 repeaters running `A9.02.03.009` and `A8.00.09.001`.
   beside an A9 repeater and passed voice.
 
 See [doc/hytera.md](doc/hytera.md) for operator setup and supported behaviour.
+
+---
 
 ## Version 1.5.4 (2026-09-22)
 
@@ -153,6 +159,29 @@ See [doc/features.md](doc/features.md) and [doc/architecture.md](doc/architectur
 
 ---
 
+## Version 1.5.1 (2026-07-24)
+
+Selfcare reliability rewrite, parrot 9990 private echo, documentation overhaul.
+
+### Bug fixes
+
+- **IPSC selfcare reconnect** — `mark_ipsc_options_pending()` re-queues stored MariaDB options on register
+- **DISC=1 one-shot** — strip and persist stripped OPTIONS after apply (IPSC/hotspot poll, HBP RPTO)
+- **Hotspot ping-timeout** — fix empty-peer OPTIONS reset; clear default/dynamic reflectors + SUB_MAP
+- **Stale dial reflectors** — clear TO_TYPE OFF `#` defaults on slot reuse / disconnect
+- **Parrot TG 9990** — group or private call in → private echo out; never OBP / dial-a-tg TG 9; slim MASTER fanout
+
+### Documentation and maintenance
+
+- Selfcare docs: poll intervals, DISC persist, IPSC vs hotspot apply paths
+- Full doc overhaul: features, architecture, options, selfcare guides
+- Remove legacy install artifacts (hdstack, systemd-scripts, obsolete docker-configs)
+- Move ops scripts to `scripts/`; update credits for Shane Daley M0VUB (ShaYmez)
+
+See [doc/selfcare.md](doc/selfcare.md) and [doc/options.md](doc/options.md).
+
+---
+
 ## Version 1.5.0 (2026-06-30)
 
 Major release: Motorola IP Site Connect for SystemX — group voice, selfcare, monitor integration, and private/unit voice (Phase 3). Field-tested on SYSTEM-XTEST (GB7NR). Companion dashboard: [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR) **v1.5.0**.
@@ -209,10 +238,10 @@ See [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md) for post-1.5.0 phases. Feature re
 
 - `tests/test_ipsc_phase1.py`, `test_ipsc_outbound.py`, `test_ipsc_proxy.py`, `test_ipsc_bridge.py`, `test_ipsc_peers.py`, `test_ipsc_selfcare.py`, `test_static_tg_bridges.py`, `test_ipsc_private_voice.py`
 
-### Planned after 1.5.0 (future releases)
+### Planned after 1.5.0
 
-- **Phase 4:** Unit-to-unit private voice routing (subscriber ID → subscriber ID; narrow dial-a-tg classifier)
-- **Phase 5:** `GROUP_DATA` / `PRIVATE_DATA` — SMS, GPS, UDT (deferred; not before merge)
+- **Phase 4:** Unit-to-unit private voice — local delivery followed on `master`; the optional fleet hop shipped in **1.6.0**. See [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md).
+- **Phase 5:** `GROUP_DATA` / `PRIVATE_DATA` — SMS, GPS, UDT (still deferred)
 - Phase 6+: TMS, LRRP, ARS (node-dmr-lib reference)
 
 ---
@@ -388,29 +417,6 @@ Options=TS1_1=23426;TIMER=10;STICKY=1
 - Normal Talkgroup Systems: STICKY_TG: True
 - Test Systems (PARROT): STICKY_TG: False
 - Utility Systems: STICKY_TG: False
-
----
-
-## Version 1.5.1 (2026-07-24)
-
-Selfcare reliability rewrite, parrot 9990 private echo, documentation overhaul.
-
-### Bug fixes
-
-- **IPSC selfcare reconnect** — `mark_ipsc_options_pending()` re-queues stored MariaDB options on register
-- **DISC=1 one-shot** — strip and persist stripped OPTIONS after apply (IPSC/hotspot poll, HBP RPTO)
-- **Hotspot ping-timeout** — fix empty-peer OPTIONS reset; clear default/dynamic reflectors + SUB_MAP
-- **Stale dial reflectors** — clear TO_TYPE OFF `#` defaults on slot reuse / disconnect
-- **Parrot TG 9990** — group or private call in → private echo out; never OBP / dial-a-tg TG 9; slim MASTER fanout
-
-### Documentation and maintenance
-
-- Selfcare docs: poll intervals, DISC persist, IPSC vs hotspot apply paths
-- Full doc overhaul: features, architecture, options, selfcare guides
-- Remove legacy install artifacts (hdstack, systemd-scripts, obsolete docker-configs)
-- Move ops scripts to `scripts/`; update credits for Shane Daley M0VUB (ShaYmez)
-
-See [doc/selfcare.md](doc/selfcare.md) and [doc/options.md](doc/options.md).
 
 ---
 

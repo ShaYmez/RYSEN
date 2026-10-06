@@ -5,37 +5,39 @@ Overview of the RYSEN DMRMaster+ (SystemX) stack. For install steps see [install
 ## Stack diagram
 
 ```
-                    ┌─────────────────────────────────────┐
-                    │  Clients                            │
-                    │ Hotspots · Motorola/Hytera repeaters│
-                    │ OBP peers                           │
-                    └──────────┬──────────────────────────┘
-                               │ UDP (HBP / IPSC / Hytera)
-              ┌────────────────┼────────────────┐
-              ▼                ▼                ▼
-     ┌─────────────┐   ┌─────────────┐   ┌─────────────┐
-     │ hotspot     │   │ ipsc_proxy  │   │ OBP peers   │
-     │ proxy       │   │ :56002      │   │ (outbound)  │
-     │ :62031…     │   │ → :56003+   │   │             │
-     └──────┬──────┘   └──────┬──────┘   └──────┬──────┘
-            │                 │                 │
-            └────────────────┬┴─────────────────┘
-                             ▼
-                    ┌─────────────────┐
-                    │ bridge_master.py│
-                    │  SYSTEM-N slots │
-                    │  IPSC-N slots   │
-                    │  HYTERA-N slots │
-                    │  rules.py       │
-                    │  BRIDGE_IDX     │
-                    └────────┬────────┘
-                             │
-              ┌──────────────┼──────────────┐
-              ▼              ▼              ▼
-     ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
-     │ RYSEN-MONITOR│  │ MariaDB     │  │ Voice       │
-     │ TCP :4321   │  │ selfcare    │  │ Audio/      │
-     └─────────────┘  └─────────────┘  └─────────────┘
+                ┌────────────────────────────────────────┐
+                │                Clients                 │
+                │ Hotspots · Motorola/Hytera repeaters   │
+                │               OBP peers                │
+                └────────────────────┬───────────────────┘
+                                     │ UDP
+                                     │
+        ┌──────────────────┬─────────┴────────┬──────────────────┐
+        ▼                  ▼                  ▼                  ▼
+┌───────────────┐  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐
+│ hotspot proxy │  │   ipsc_proxy  │  │  hytera_proxy │  │   OBP peers   │
+│    :62031…    │  │     :56002    │  │   :50000 P2P  │  │   (outbound)  │
+│               │  │   → :56003+   │  │   :50001 DMR  │  │               │
+│               │  │               │  │  :50002 RDAC  │  │               │
+└───────┬───────┘  └───────┬───────┘  └───────┬───────┘  └───────┬───────┘
+        │                  │                  │                  │
+        └──────────────────┴────────┬─────────┴──────────────────┘
+                                    ▼
+                          ┌───────────────────┐
+                          │  bridge_master.py │
+                          │   SYSTEM-N slots  │
+                          │    IPSC-N slots   │
+                          │   HYTERA-N slots  │
+                          │      rules.py     │
+                          │     BRIDGE_IDX    │
+                          └─────────┬─────────┘
+                                    │
+           ┌────────────────────────┼────────────────────────┐
+           ▼                        ▼                        ▼
+   ┌───────────────┐        ┌───────────────┐        ┌───────────────┐
+   │ RYSEN-MONITOR │        │    MariaDB    │        │     Voice     │
+   │   TCP :4321   │        │    selfcare   │        │     Audio/    │
+   └───────────────┘        └───────────────┘        └───────────────┘
 ```
 
 ## Core process
@@ -65,7 +67,7 @@ clients onto these backend slots.
 | Component | Image | Public port | Backends |
 |-----------|-------|-------------|----------|
 | `ipsc_proxy.py` | `shaymez/rysen-sp-ipsc` | 56002 (CPS Master) | 56003–56202 |
-| `hytera_proxy.py` | development branch | `50000/50001/50002` for every repeater | generated `HYTERA-N` triples |
+| `hytera_proxy.py` | local build (`Dockerfile.hytera-proxy`, compose profile `hytera`) | `50000/50001/50002` for every repeater | generated `HYTERA-N` triples |
 | `hotspot_proxy_v2.py` | `shaymez/rysen-sp` | configurable | `SYSTEM-N` ports |
 | `hotspot_proxy_v2_sc.py` | `shaymez/rysen-sp-selfcare` | configurable | + MariaDB selfcare poll |
 
@@ -101,7 +103,7 @@ IPSC and Hytera repeaters, bridge timers, and the selfcare UI.
 | Path | Compose file | Contents |
 |------|--------------|----------|
 | Minimal | `docker-compose.yml` | `rysen` + `ipsc-proxy` (+ optional hotspot profile) |
-| Full stack | `docker-compose-stack.yml` | + MariaDB + monitor + selfcare proxy |
+| Full stack | `docker-compose-stack.yml` | + MariaDB + monitor + selfcare proxy (+ optional Hytera profile) |
 | Full SystemX suite | [RYSEN-Installer](https://github.com/shaymez/RYSEN-Installer) | Whiptail menus, Apache, additional services |
 
 Host config directory: `/etc/rysen/` (`rysen.cfg`, `rules.py`, `ipsc-proxy.cfg`, `proxy.cfg`, `docker-compose.yml`).

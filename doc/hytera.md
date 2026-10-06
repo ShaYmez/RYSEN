@@ -1,8 +1,8 @@
 # Native Hytera IP Multi-site Connect
 
-Native Hytera support is a separate protocol stack from Motorola IPSC. It is
-field-validated on RD985 repeaters running firmware `A9.02.03.009` and
-`A8.00.09.001`.
+Native Hytera support shipped in **1.6.0**. It is a separate protocol stack
+from Motorola IPSC, field-validated on RD985 repeaters running firmware
+`A9.02.03.009` and `A8.00.09.001`.
 
 This is an independent interoperability implementation. It is not affiliated
 with, endorsed by, or derived from Hytera source code. Hytera's published
@@ -92,9 +92,13 @@ or blacklisted ID is released. A fresh P2P registration clears stale
 DMR/RDAC endpoints before renegotiation.
 
 Run the proxy with `python3 hytera_proxy.py -c hytera-proxy.cfg`, using
-[hytera-proxy-SAMPLE.cfg](../hytera-proxy-SAMPLE.cfg). Generated backends
-set `PROXY_CONTROL: True` and `PROXY_CONTROL_IP` to the sidecar's trusted
-address. Control from any other source is ignored.
+[hytera-proxy-SAMPLE.cfg](../hytera-proxy-SAMPLE.cfg). From a source checkout,
+`docker compose --profile hytera -f docker-configs/docker-compose-stack.yml`
+builds the local image `rysen-hytera-proxy:1.6.0`. That image is not on
+Docker Hub.
+
+Generated backends set `PROXY_CONTROL: True` and `PROXY_CONTROL_IP` to the
+sidecar's trusted address. Control from any other source is ignored.
 
 ## Voice
 
@@ -113,7 +117,7 @@ private-call a reflector ID to link, `4000` to disconnect, and `5000` for
 status. The announcement returns as group voice to TG9. A subscriber
 private call is delivered on this master when the callee has been heard
 here. An optional hub can send that call to another master; see
-[ipsc-roadmap.md](ipsc-roadmap.md).
+[unit-call.md](unit-call.md).
 
 TG `9990` group and unit parrot return once, at normal speed. PARROT
 playback is excluded from the generic unit relay so it cannot double.
@@ -143,9 +147,3 @@ static-talkgroup lifecycle as IPSC. No CPS settings, SNMP, or device
 runtime controls are exposed. RDAC firmware, hardware string, serial,
 callsign, raw mode and TX/RX frequency are cached in `HyteraMetadata` for
 the PHP view only.
-
-## Captures
-
-Binary captures stay outside Git. They contain live network and subscriber
-metadata. Analyse local copies with `tools/analyze_hytera_capture.py`.
-The field diary is not published.

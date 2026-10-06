@@ -46,6 +46,7 @@ python tools/validate_bridge_index.py
 - Include tests for new behaviour where practical
 - Match existing code style and naming
 - Update [CHANGELOG.md](CHANGELOG.md) and relevant `doc/` pages for user-facing changes
+- `version.txt` is the runtime version (`rysen_version.py`). A release bump also updates file-header banners, proxy `__version__` strings, sample-config headers, [CHANGELOG.md](CHANGELOG.md), and [doc/features.md](doc/features.md)
 
 ## Proxy / satellite workflow
 
