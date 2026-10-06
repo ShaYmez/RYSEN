@@ -19,6 +19,11 @@ Released on **`master`** — `shaymez/rysen:1.6.0` and `:latest`.
 - DMRE v5 origin server/repeater and hop metadata survive transit. Local
   placement is attempted first, while inbound/transit calls do not emit local
   caller hears. Unit data, SMS and GPS are unchanged.
+- Unit-call monitor telemetry keeps the existing `UNIT VOICE,START|END`
+  caller events and CSV positions, and adds `TO START|END` for the exact local
+  callee system/peer/slot plus `VIA START|END` for inbound and outbound fleet
+  OpenBridge legs. Stream IDs are retained; each leg is emitted once and stale
+  terminators cannot create duplicate events.
 - A master whose local server ID disagrees with the fleet registry cannot
   publish topology. Scotland therefore remains local-only until its current
   `2355` identity is reconciled with registry ID `2354` and it has a reciprocal

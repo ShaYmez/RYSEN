@@ -56,6 +56,13 @@ def _voice_packet(src, dst, stream, slot, seq, dtype, payload=None,
     return bytes(packet)
 
 
+def _events(router):
+    return [
+        call.args[0].decode('utf-8').split(',')
+        for call in router._report.send_bridgeEvent.call_args_list
+    ]
+
+
 class _Target:
     def __init__(self):
         self.sent = []
@@ -318,11 +325,73 @@ class TestUnitVoiceDelivery(UnitCallFixture):
             bytes_3(CALLER), HBPF_DATA_SYNC, HBPF_SLT_VTERM, 101.0)
         self.assertNotIn(STREAM, router._unit_voice_routes)
         self.assertEqual(target.STATUS[2]['TX_TYPE'], HBPF_SLT_VTERM)
-        kinds = [
-            call.args[0].split(b',')[1]
-            for call in router._report.send_bridgeEvent.call_args_list
-        ]
-        self.assertEqual(kinds, [b'START', b'END'])
+        events = _events(router)
+        self.assertEqual(
+            [event[1] for event in events],
+            ['START', 'TO START', 'TO END', 'END'])
+        self.assertEqual(events[0][1:9], [
+            'START', 'RX', 'SYSTEM-A', '17', str(int.from_bytes(PEER, 'big')),
+            str(CALLER), '2', str(CALLEE)])
+        self.assertEqual(events[1][1:9], [
+            'TO START', 'TX', 'SYSTEM-B', '17', str(ESSID),
+            str(CALLER), '2', str(CALLEE)])
+        self.assertEqual(events[2][9], '1.00')
+        self.assertEqual(events[3][9], '1.00')
+
+        # A repeated/stale terminator must not recreate the route or any event.
+        router._forward_unit_voice(
+            bytes_3(CALLEE), 2, term[15], term, term[20:53], STREAM, PEER,
+            bytes_3(CALLER), HBPF_DATA_SYNC, HBPF_SLT_VTERM, 101.1)
+        self.assertEqual(len(target.sent), 2)
+        self.assertEqual(len(_events(router)), 4)
+
+    def test_legacy_sub_map_without_peer_resolves_connected_essid(self):
+        self._system('SYSTEM-A', 'MASTER')
+        self._system('SYSTEM-B', 'MASTER', peers=self._peer(ESSID))
+        bm.systems['SYSTEM-B'] = _Target()
+        bm.SUB_MAP[bytes_3(CALLEE)] = ('SYSTEM-B', 2, None, 50.0)
+        router = self._router('SYSTEM-A')
+        resolved = router._resolve_unit_target(bytes_3(CALLEE), CALLEE)
+        self.assertEqual(
+            resolved, ('SYSTEM-B', ESSID.to_bytes(4, 'big'), 2, 'sub_map'))
+
+    def test_ipsc_and_hytera_to_events_keep_exact_peer_and_heard_slot(self):
+        self._system('SYSTEM-A', 'MASTER')
+        bm.CONFIG['REPORTS']['REPORT'] = True
+        router = self._router('SYSTEM-A')
+        for index, (mode, slot) in enumerate((('IPSC', 1), ('HYTERA', 2)), 1):
+            with self.subTest(mode=mode, slot=slot):
+                system = mode + '-DEST'
+                peer = (235280 + index).to_bytes(4, 'big')
+                self._system(system, mode, peers={peer: {'CONNECTION': 'YES'}})
+                target = _Target()
+                bm.systems[system] = target
+                bm.SUB_MAP[bytes_3(CALLEE)] = (
+                    system, slot, None, 50.0, peer)
+                stream = index.to_bytes(4, 'big')
+                head = _voice_packet(
+                    CALLER, CALLEE, stream, 2, 0, HBPF_SLT_VHEAD)
+                term = _voice_packet(
+                    CALLER, CALLEE, stream, 2, 1, HBPF_SLT_VTERM)
+                router._forward_unit_voice(
+                    bytes_3(CALLEE), 2, head[15], head, head[20:53],
+                    stream, PEER, bytes_3(CALLER), HBPF_DATA_SYNC,
+                    HBPF_SLT_VHEAD, 100.0 + index)
+                router._forward_unit_voice(
+                    bytes_3(CALLEE), 2, term[15], term, term[20:53],
+                    stream, PEER, bytes_3(CALLER), HBPF_DATA_SYNC,
+                    HBPF_SLT_VTERM, 101.0 + index)
+                to_events = [
+                    event for event in _events(router)
+                    if event[1].startswith('TO ') and event[4] == str(index)
+                ]
+                self.assertEqual(
+                    [event[1] for event in to_events], ['TO START', 'TO END'])
+                self.assertTrue(all(event[3] == system for event in to_events))
+                self.assertTrue(
+                    all(event[5] == str(int.from_bytes(peer, 'big'))
+                        for event in to_events))
+                self.assertTrue(all(event[7] == str(slot) for event in to_events))
 
 
 class TestSubscriberPrivateCallSkipsReflector(UnitCallFixture):
@@ -715,6 +784,33 @@ class TestGlobalUnitVoice(UnitCallFixture):
         self.assertFalse(europe.sent[0][15] & 0x80)
         self.assertEqual(europe.sent[0][20:53], later[20:53])
 
+    def test_outbound_fleet_leg_reports_via_once_with_original_stream(self):
+        self._obp('OBP-EU', 2040, 'europe.freestar.network')
+        target = _Target()
+        bm.systems['OBP-EU'] = target
+        self._home_here()
+        bm.CONFIG['REPORTS']['REPORT'] = True
+        router = self._origin()
+        router._unit_hub_lookup = lambda _radio: {'opb_net_id': 2040}
+        self._send(router, slot=1)
+        term = _voice_packet(
+            CALLER, CALLEE, STREAM, 1, 1, HBPF_SLT_VTERM)
+        router._forward_unit_voice(
+            bytes_3(CALLEE), 1, term[15], term, term[20:53], STREAM,
+            PEER, bytes_3(CALLER), HBPF_DATA_SYNC, HBPF_SLT_VTERM, 101.0)
+        events = _events(router)
+        self.assertEqual(
+            [event[1] for event in events],
+            ['START', 'VIA START', 'VIA END', 'END'])
+        via = events[1:3]
+        self.assertTrue(all(event[2] == 'TX' for event in via))
+        self.assertTrue(all(event[3] == 'OBP-EU' for event in via))
+        self.assertTrue(all(event[4] == str(int.from_bytes(STREAM, 'big'))
+                            for event in via))
+        self.assertTrue(all(event[5] == '2040' for event in via))
+        self.assertTrue(all(event[7] == '1' for event in via))
+        self.assertEqual(via[1][9], '1.00')
+
     def test_unhealthy_next_hop_retries_with_bounded_buffer(self):
         self._obp('OBP-EU', 2040, 'europe.freestar.network')
         self._obp('OBP-GR', 2020, 'gr.freestar.network')
@@ -825,6 +921,43 @@ class TestInboundOpenBridgeUnitVoice(UnitCallFixture):
         self.assertTrue(target.sent[0][15] & 0x80)
         self.assertEqual(bm.BRIDGES, {})
 
+    def test_final_home_reports_inbound_via_and_exact_local_to_only(self):
+        callee_peer = (ESSID).to_bytes(4, 'big')
+        self._system('SYSTEM-B', 'MASTER', peers={
+            callee_peer: {'CONNECTION': 'YES'}})
+        self._obp_config('OBP-UK', 3180, 100.0)
+        target = _Target()
+        bm.systems['SYSTEM-B'] = target
+        bm.CONFIG['GLOBAL'] = {'SERVER_ID': (2040).to_bytes(4, 'big')}
+        bm.CONFIG['REPORTS']['REPORT'] = True
+        router = bm.routerOBP.__new__(bm.routerOBP)
+        router._system = 'OBP-UK'
+        router.STATUS = {}
+        router._unit_voice_routes = {}
+        router._report = MagicMock()
+        for seq, dtype, when in (
+                (0, HBPF_SLT_VHEAD, 100.0),
+                (1, HBPF_SLT_VTERM, 101.0)):
+            packet = _voice_packet(
+                CALLER, CALLEE, STREAM, 1, seq, dtype)
+            with unittest.mock.patch.object(bm, 'time', return_value=when):
+                router.dmrd_received(
+                    PEER, bytes_3(CALLER), bytes_3(CALLEE), seq, 1, 'unit',
+                    HBPF_DATA_SYNC, dtype, STREAM, packet, b'',
+                    b'\x01', (3180).to_bytes(4, 'big'))
+        events = _events(router)
+        self.assertEqual(
+            [event[1] for event in events],
+            ['VIA START', 'TO START', 'VIA END', 'TO END'])
+        self.assertNotIn('START', [event[1] for event in events])
+        self.assertNotIn('END', [event[1] for event in events])
+        self.assertEqual(events[0][2:8], [
+            'RX', 'OBP-UK', '17', '3180', str(CALLER), '1'])
+        self.assertEqual(events[1][2:8], [
+            'TX', 'SYSTEM-B', '17', str(ESSID), str(CALLER), '2'])
+        self.assertEqual(events[2][9], '1.00')
+        self.assertEqual(events[3][9], '1.00')
+
     def test_first_voice_burst_c_is_voice_and_learns_the_callers_master(self):
         self._system('SYSTEM-B', 'MASTER', peers=self._peer(ESSID))
         target = _Target()
@@ -897,7 +1030,18 @@ class TestInboundOpenBridgeUnitVoice(UnitCallFixture):
         self.assertEqual(
             target.extra[0],
             (b'\x02', b'\x05', b'\x90', origin, rptr))
-        router._report.send_bridgeEvent.assert_not_called()
+        events = _events(router)
+        self.assertEqual(
+            [event[1] for event in events],
+            ['VIA START', 'VIA START', 'VIA END', 'VIA END'])
+        self.assertEqual(
+            [(event[2], event[3], event[5]) for event in events],
+            [('RX', 'OBP-INGRESS', '3180'),
+             ('TX', 'OBP-EU', '2040'),
+             ('RX', 'OBP-INGRESS', '3180'),
+             ('TX', 'OBP-EU', '2040')])
+        self.assertNotIn('START', [event[1] for event in events])
+        self.assertNotIn('END', [event[1] for event in events])
 
     def test_transit_never_returns_to_ingress(self):
         target = _Target()
