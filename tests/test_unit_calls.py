@@ -345,6 +345,16 @@ class TestUnitVoiceDelivery(UnitCallFixture):
         self.assertEqual(len(target.sent), 2)
         self.assertEqual(len(_events(router)), 4)
 
+    def test_legacy_sub_map_without_peer_resolves_connected_essid(self):
+        self._system('SYSTEM-A', 'MASTER')
+        self._system('SYSTEM-B', 'MASTER', peers=self._peer(ESSID))
+        bm.systems['SYSTEM-B'] = _Target()
+        bm.SUB_MAP[bytes_3(CALLEE)] = ('SYSTEM-B', 2, None, 50.0)
+        router = self._router('SYSTEM-A')
+        resolved = router._resolve_unit_target(bytes_3(CALLEE), CALLEE)
+        self.assertEqual(
+            resolved, ('SYSTEM-B', ESSID.to_bytes(4, 'big'), 2, 'sub_map'))
+
     def test_ipsc_and_hytera_to_events_keep_exact_peer_and_heard_slot(self):
         self._system('SYSTEM-A', 'MASTER')
         bm.CONFIG['REPORTS']['REPORT'] = True

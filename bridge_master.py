@@ -4183,11 +4183,18 @@ class routerHBP(HBSYSTEM):
                     and cfg.get('ENABLED', True)
                     and (peer_id is None or self._unit_peer_connected(system, peer_id))):
                 if peer_id is None:
+                    for candidate, record in (cfg.get('PEERS') or {}).items():
+                        if (record.get('CONNECTION', 'YES') == 'YES'
+                                and peer_matches_subscriber(
+                                    int_id(candidate), _int_dst_id)):
+                            peer_id = candidate
+                            break
+                if peer_id is None:
                     state = getattr(systems.get(system), 'STATUS', {}).get(
                         unit_delivery_slot(mode, heard_slot), {})
-                    peer_id = state.get('RX_PEER')
-                    if not peer_id or not int_id(peer_id):
-                        peer_id = _dst_id
+                    candidate = state.get('RX_PEER')
+                    if candidate and self._unit_peer_connected(system, candidate):
+                        peer_id = candidate
                 return (
                     system, peer_id,
                     unit_delivery_slot(mode, heard_slot), 'sub_map')
@@ -4402,7 +4409,7 @@ class routerHBP(HBSYSTEM):
         ])
         systems[route['system']].send_system(packet, b'', ber, rssi)
         route['packets'] += 1
-        if not route.get('to_start_reported'):
+        if route.get('dest_peer') is not None and not route.get('to_start_reported'):
             self._report_unit_event(
                 'TO START', 'TX', route['system'], _stream_id,
                 route['dest_peer'], _rf_src, target_slot, _dst_id)
@@ -4410,7 +4417,8 @@ class routerHBP(HBSYSTEM):
         self._note_unit_tx(
             route['system'], target_slot, _stream_id, _dst_id, _rf_src,
             route['dest_peer'], pkt_time, terminal)
-        if terminal and not route.get('to_end_reported'):
+        if (terminal and route.get('dest_peer') is not None
+                and not route.get('to_end_reported')):
             self._report_unit_event(
                 'TO END', 'TX', route['system'], _stream_id,
                 route['dest_peer'], _rf_src, target_slot, _dst_id,
