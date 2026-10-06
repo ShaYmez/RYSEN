@@ -4189,12 +4189,6 @@ class routerHBP(HBSYSTEM):
                                     int_id(candidate), _int_dst_id)):
                             peer_id = candidate
                             break
-                if peer_id is None:
-                    state = getattr(systems.get(system), 'STATUS', {}).get(
-                        unit_delivery_slot(mode, heard_slot), {})
-                    candidate = state.get('RX_PEER')
-                    if candidate and self._unit_peer_connected(system, candidate):
-                        peer_id = candidate
                 return (
                     system, peer_id,
                     unit_delivery_slot(mode, heard_slot), 'sub_map')
