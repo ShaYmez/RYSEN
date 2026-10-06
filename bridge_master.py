@@ -4646,7 +4646,7 @@ class routerHBP(HBSYSTEM):
             return
         route['send'] = True
         route['system'] = system
-        route['dest_peer'] = route.get('local_peer') or route['dst']
+        route['dest_peer'] = route.get('local_peer')
         route['slot'] = slot
         route['local'] = True
         logger.info(
