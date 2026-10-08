@@ -1698,18 +1698,46 @@ def try_download(_path, _file, _url, _stale,):
     
     return result
 
-#Read list of listed servers from CSV (actually TSV) file 
-def mk_server_dict(path,filename):
+# Fleet registry from SystemX_Hosts. The hub publishes CSV; some masters
+# still have a tab-separated copy under the .tsv alias filename.
+def mk_server_dict(path, filename):
     server_ids = {}
+    full = ''.join([path, filename])
     try:
-        with open(''.join([path,filename]),newline='') as csvfile:
-            reader = csv.DictReader(csvfile,dialect='excel-tab')
-            for _row in reader:
-                server_ids[_row['OPB Net ID']] = _row['Country']
-        return(server_ids)
+        with open(full, 'r', encoding='utf-8-sig', newline='') as csvfile:
+            lines = [
+                line for line in csvfile
+                if line.strip() and not line.lstrip().startswith('#')
+            ]
+        if not lines:
+            return server_ids
+        sample = ''.join(lines[:8])
+        try:
+            dialect = csv.Sniffer().sniff(sample, delimiters='\t,')
+        except csv.Error:
+            dialect = csv.excel_tab
+        reader = csv.DictReader(lines, dialect=dialect)
+        headers = reader.fieldnames or []
+        folded = {
+            (name or '').strip().lstrip('\ufeff').lower(): name
+            for name in headers
+        }
+        country_key = folded.get('country')
+        net_key = folded.get('opb net id') or folded.get('opb_net_id')
+        if not country_key or not net_key:
+            raise KeyError('Country')
+        for row in reader:
+            net_id = str(row.get(net_key) or '').strip()
+            country = str(row.get(country_key) or '').strip()
+            if not net_id.isdigit():
+                continue
+            server_ids[net_id] = country
+        return server_ids
     except IOError as err:
-        logger.warning('ID ALIAS MAPPER: %s could not be read due to IOError: %s',filename,err)
-        return(False)
+        logger.warning(
+            'ID ALIAS MAPPER: %s could not be read due to IOError: %s',
+            filename, err)
+        return False
 
 
 # ID ALIAS CREATION
@@ -1768,12 +1796,25 @@ def mk_aliases(_config):
     else:
         if subscriber_ids:
             logger.info('(ALIAS) ID ALIAS MAPPER: local_subscriber_ids dictionary is available')
-    try:        
-        server_ids = mk_server_dict(_config['ALIASES']['PATH'], _config['ALIASES']['SERVER_ID_FILE'])
+    try:
+        loaded_servers = mk_server_dict(
+            _config['ALIASES']['PATH'], _config['ALIASES']['SERVER_ID_FILE'])
     except Exception as e:
-        logger.info('(ALIAS) ID ALIAS MAPPER: problem with data in server_ids dictionary, not updating: %s',e)
-    if server_ids:
+        logger.info(
+            '(ALIAS) ID ALIAS MAPPER: problem with data in server_ids dictionary, not updating: %s',
+            e)
+        loaded_servers = None
+    if loaded_servers:
+        server_ids = loaded_servers
         logger.info('(ALIAS) ID ALIAS MAPPER: server_ids dictionary is available')
+    else:
+        server_ids = _config.get('_SERVER_IDS') or {}
+        if server_ids:
+            logger.warning(
+                '(ALIAS) ID ALIAS MAPPER: keeping previously loaded server_ids')
+        else:
+            logger.warning(
+                '(ALIAS) ID ALIAS MAPPER: server_ids dictionary is empty')
         
         
     return peer_ids, subscriber_ids, talkgroup_ids, local_subscriber_ids, server_ids

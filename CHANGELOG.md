@@ -6,6 +6,14 @@
   call. A subscriber that is only logged in on a mid-path master is no longer
   stolen from the hub or learned home, which was dropping one direction of
   NZ ↔ England private calls when the callee also had a hotspot on Apollo.
+- Fleet server_ids loading accepts the hub CSV (comment line, commas, BOM)
+  as well as the older TSV copy, and a failed reload keeps the last good
+  registry. An empty registry now logs instead of silently disabling topology
+  health reports.
+- Alias reloads apply the new dictionaries, including `_SERVER_IDS`.
+- A hub "no healthy fleet route" is a lookup failure, not an absent radio.
+  Dropping a private call that already reported START also reports END so the
+  dashboard does not stick in TX.
 
 ## Version 1.6.0 (2026-10-06)
 

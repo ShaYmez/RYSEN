@@ -117,6 +117,8 @@ def post_health_snapshot(config, opener=None, now=None):
         return {'disabled': True}
     snapshot = enhanced_obp_health_snapshot(config, now=now)
     if snapshot.get('opb_net_id') is None:
+        if not server_registry_net_ids(config):
+            return {'disabled': True, 'empty_registry': True}
         return {'disabled': True}
     body = json.dumps(snapshot, separators=(',', ':')).encode('utf-8')
     req = request.Request(
@@ -133,6 +135,25 @@ def post_health_snapshot(config, opener=None, now=None):
         return {'ok': True}
     except Exception:
         return {'error': True}
+
+
+def interpret_hub_lookup(payload=None, http_status=None):
+    """Turn a hub body and status into error, miss, or a route payload.
+
+    A missing radio is a 404 without an error string. "No healthy fleet route"
+    and any other error body are lookup failures, not an absent subscriber.
+    """
+    if http_status is not None and http_status != 200 and http_status != 404:
+        return {'error': True}
+    if isinstance(payload, dict) and payload.get('error'):
+        return {'error': True}
+    if http_status == 404 or (isinstance(payload, dict) and payload.get('miss')):
+        return {'miss': True}
+    if not isinstance(payload, dict):
+        return {'miss': True}
+    if payload.get('opb_net_id') is None and payload.get('home_net_id') is None:
+        return {'miss': True}
+    return payload
 
 
 def validate_topology_route(payload, current_master, fleet_net_ids,
@@ -249,7 +270,10 @@ def start_health_reporter(config, logger, reactor=None, random_fn=None):
         state['call'] = reactor.callLater(delay, run)
 
     def done(result):
-        if result and result.get('error'):
+        if result and result.get('empty_registry'):
+            logger.warning(
+                '(UNIT TOPOLOGY) health report skipped, server registry is empty')
+        elif result and result.get('error'):
             logger.warning('(UNIT TOPOLOGY) health report failed')
         schedule_next()
 

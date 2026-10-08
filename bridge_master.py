@@ -81,6 +81,7 @@ from selfcare_db import (
 )
 from bridge_helpers import iter_routing_master_systems as _iter_routing_master_systems
 from unit_hub import (
+    interpret_hub_lookup,
     schedule_off_reactor,
     server_registry_net_ids,
     start_health_reporter,
@@ -1955,8 +1956,21 @@ def threadAlias():
     logger.debug('(ALIAS) starting alias thread')
     reactor.callInThread(aliasb)
 
-def setAlias(_peer_ids,_subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids):
-    peer_ids, subscriber_ids, talkgroup_ids,local_subscriber_ids,server_ids = _peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids,_server_ids
+def setAlias(_peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids):
+    global peer_ids, subscriber_ids, talkgroup_ids, local_subscriber_ids, server_ids
+    peer_ids = _peer_ids or {}
+    subscriber_ids = _subscriber_ids or {}
+    talkgroup_ids = _talkgroup_ids or {}
+    local_subscriber_ids = _local_subscriber_ids or {}
+    if _server_ids:
+        server_ids = _server_ids
+    subscriber_ids[900999] = 'D-APRS'
+    subscriber_ids[4294967295] = 'SC'
+    CONFIG['_SUB_IDS'] = subscriber_ids
+    CONFIG['_PEER_IDS'] = peer_ids
+    CONFIG['_LOCAL_SUBSCRIBER_IDS'] = local_subscriber_ids
+    if _server_ids:
+        CONFIG['_SERVER_IDS'] = _server_ids
     
 def aliasb():
     _peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids = mk_aliases(CONFIG)
@@ -3498,15 +3512,21 @@ def fetch_unit_sub_map(radio_id, current_master=None):
     try:
         with request.urlopen(req, timeout=1.5) as resp:
             payload = json.loads(resp.read().decode('utf-8'))
+            status = getattr(resp, 'status', 200)
     except error.HTTPError as exc:
-        if exc.code == 404:
-            return {'miss': True}
-        return {'error': True}
+        body = b''
+        try:
+            body = exc.read()
+        except Exception:
+            body = b''
+        try:
+            payload = json.loads(body.decode('utf-8')) if body else None
+        except Exception:
+            payload = None
+        return interpret_hub_lookup(payload, exc.code)
     except Exception:
         return {'error': True}
-    if not isinstance(payload, dict) or payload.get('opb_net_id') is None:
-        return {'miss': True}
-    return payload
+    return interpret_hub_lookup(payload, status)
 
 
 # One hub lookup per radio, then route from that home. A later transmission
@@ -4497,9 +4517,21 @@ class routerHBP(HBSYSTEM):
         route['pending'] = False
         route['send'] = False
         route['buffer'] = []
+        if (route.get('origin_local') and route.get('start_reported')
+                and not route.get('end_reported')):
+            ended = route.get('time', route.get('start', 0))
+            self._report_unit_voice(
+                'END', route['stream'], route['peer'], route['src'],
+                route['rx_slot'], route['dst'],
+                max(0.0, float(ended) - float(route['start'])))
+            route['end_reported'] = True
         if not route.get('logged_drop'):
             route['logged_drop'] = True
             logger.info('(%s) UNIT call not routed, %s', self._system, reason)
+        route['closed'] = True
+        stream = route.get('stream')
+        if stream is not None:
+            self._unit_route_cache().pop(stream, None)
 
     def _send_unit_obp_frame(self, route, frame):
         target = route.get('obp_target')
@@ -4763,7 +4795,8 @@ class routerHBP(HBSYSTEM):
                 self._unit_route_cache().pop(stream_id, None)
             return
         if result.get('error'):
-            self._drop_global_unit(route, 'subscriber map lookup failed for %s' % int_id(route['dst']))
+            self._drop_global_unit(
+                route, 'subscriber map lookup failed for %s' % int_id(route['dst']))
             return
         if result.get('miss') or home is None:
             # 404 and a body with no home stay here. Do not flood those.

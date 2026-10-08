@@ -875,6 +875,22 @@ class TestGlobalUnitVoice(UnitCallFixture):
         self._send(router)
         self.assertEqual(europe.sent, [])
 
+    def test_hub_route_error_ends_a_started_call_and_does_not_cache_absent(self):
+        self._obp('OBP-EU', 2040, 'europe.freestar.network')
+        europe = _Target()
+        bm.systems['OBP-EU'] = europe
+        self._home_here()
+        bm.CONFIG['REPORTS']['REPORT'] = True
+        router = self._origin()
+        router._unit_hub_lookup = lambda _radio: {'error': True}
+        self._send(router)
+        self.assertEqual(europe.sent, [])
+        self.assertNotIn(CALLEE, bm._UNIT_HOMES)
+        self.assertEqual(
+            [event[1] for event in _events(router)],
+            ['START', 'END'])
+        self.assertEqual(router._unit_voice_routes, {})
+
     def test_legacy_flood_flag_does_not_relay(self):
         self._obp('OBP-EU', 2040, 'europe.freestar.network')
         self._obp('OBP-XPEER', 9999, 'xpeer.freestar.network')

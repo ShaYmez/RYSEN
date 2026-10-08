@@ -94,7 +94,11 @@ caller, so the call is not sent back the way it arrived. DMRE v5 origin
 server, origin repeater, and the existing hop count travel with the voice.
 The hop limit remains 10.
 
-`UNIT_OBP_FLOOD` stays `False`. It is a legacy flag and does not relay unit voice. A network without the discovery hub stays local-only. 
+`UNIT_OBP_FLOOD` stays `False`. It is a legacy flag and does not relay unit voice. A network without the discovery hub stays local-only.
+
+A hub reply with an error string, including `No healthy fleet route`, is a
+lookup failure. It does not cache the destination as absent. If START was
+already reported, the drop emits END. 
 
 ## Monitor events
 

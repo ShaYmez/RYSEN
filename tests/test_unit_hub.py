@@ -144,6 +144,48 @@ class TestUnitHubTopology(unittest.TestCase):
             'path': [2020, 9999, 3180],
         }, 2020, {2020, 2040, 3180}, {2040}, now=1000))
 
+    def test_no_healthy_route_is_an_error_not_a_miss(self):
+        self.assertEqual(
+            unit_hub.interpret_hub_lookup(
+                {'error': 'No healthy fleet route'}, 200),
+            {'error': True})
+        self.assertEqual(
+            unit_hub.interpret_hub_lookup(
+                {'error': 'No healthy fleet route'}, 404),
+            {'error': True})
+        self.assertEqual(
+            unit_hub.interpret_hub_lookup(None, 404),
+            {'miss': True})
+        self.assertEqual(
+            unit_hub.interpret_hub_lookup({'opb_net_id': 2342}, 200)['opb_net_id'],
+            2342)
+
+    def test_empty_registry_skips_report_and_warns(self):
+        class _Reactor:
+            def callLater(self, delay, callback):
+                if delay == 0:
+                    callback()
+                return MagicMock(active=lambda: False, cancel=lambda: None)
+
+        logger = MagicMock()
+        config = {
+            'GLOBAL': {'SERVER_ID': (2040).to_bytes(4, 'big')},
+            'ALIASES': {
+                'UNIT_SUB_MAP_URL': 'https://api.example/v2/internal/sub-map',
+                'UNIT_SUB_MAP_TOKEN_FILE': '/run/secret',
+            },
+            '_SERVER_IDS': {},
+            'SYSTEMS': {},
+        }
+        with patch.object(unit_hub, '_read_token', return_value='tok'), patch.object(
+                unit_hub, 'schedule_off_reactor',
+                side_effect=lambda fn, args, callback, _errback: callback(fn(*args))):
+            unit_hub.start_health_reporter(
+                config, logger, reactor=_Reactor(),
+                random_fn=lambda _low, _high: 60.0)
+        logger.warning.assert_any_call(
+            '(UNIT TOPOLOGY) health report skipped, server registry is empty')
+
     def test_legacy_home_response_remains_directly_compatible(self):
         route = unit_hub.validate_topology_route(
             {'opb_net_id': 2040}, 2381, {2381, 2040}, {2040}, now=1000)
