@@ -199,12 +199,19 @@ class playback(HBSYSTEM):
             
             # Is this is a new call stream?
             if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
+                # A missed terminator used to leave the previous over in
+                # CALL_DATA, so the next unkey played every stuck recording.
+                self.CALL_DATA = []
                 self.STATUS['RX_START'] = pkt_time
                 self._record_rf_src = _rf_src
                 logger.info('(%s) *START RECORDING* STREAM ID: %s SUB: %s (%s) REPEATER: %s (%s) TGID %s (%s), TS %s', \
                                   self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
                 self.CALL_DATA.append(_data)
                 self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
+                # Slot RX_TYPE starts as (and returns to) VTERM. Leave it set
+                # or a header-plus-terminator kerchunk never satisfies the
+                # playback check below.
+                self.STATUS[_slot]['RX_TYPE'] = _dtype_vseq
                 return
 
             # Final actions - Is this a voice terminator?

@@ -3672,6 +3672,12 @@ class routerHBP(HBSYSTEM):
                     if _ignore_key in _sysIgnore:
                         #logger.debug("(DEDUP) HBP Source - Skipping system %s TS: %s",_target['SYSTEM'],_target['TS'])
                         continue
+                    # Group 9990 is already handed to playback by
+                    # _forward_parrot_unit_voice. Bridging it again doubles
+                    # every AMBE burst. The echo still uses this bridge to
+                    # leave PARROT toward the caller.
+                    if _target['SYSTEM'] == 'PARROT' and is_parrot_bridge(_bridge):
+                        continue
                     if _target_system['MODE'] == 'OPENBRIDGE':
                         if _noOBP == True or is_parrot_bridge(_bridge):
                             continue
@@ -3774,7 +3780,12 @@ class routerHBP(HBSYSTEM):
                         #   From the same group as the last TX to this HBSystem, but from a different subscriber, and it has been less than stream timeout
                         # The "continue" at the end of each means the next iteration of the for loop that tests for matching rules
                         #
-                        if (_target_system['GROUP_HANGTIME'] <= 0 and (
+                        # Parrot playback is the reason this slot was keyed.
+                        # Do not drop the echo because the slot still remembers
+                        # that over, or a different TG inside hangtime.
+                        _parrot_echo = (
+                            self._system == 'PARROT' and is_parrot_bridge(_bridge))
+                        if (not _parrot_echo and _target_system['GROUP_HANGTIME'] <= 0 and (
                                 (_target_status[_target['TS']]['RX_TYPE'] != HBPF_SLT_VTERM
                                  and _target['TGID'] != _target_status[_target['TS']]['RX_TGID']
                                  and (pkt_time - _target_status[_target['TS']]['RX_TIME']) < STREAM_TO)
@@ -3784,22 +3795,24 @@ class routerHBP(HBSYSTEM):
                             if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
                                 logger.info('(%s) Call not routed to TGID %s, target slot is in a call: HBSystem: %s, TS: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'])
                             continue
-                        if ((_target['TGID'] != _target_status[_target['TS']]['RX_TGID']) and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < _target_system['GROUP_HANGTIME'])):
+                        if (not _parrot_echo and (_target['TGID'] != _target_status[_target['TS']]['RX_TGID']) and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < _target_system['GROUP_HANGTIME'])):
                             if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
                                 logger.info('(%s) Call not routed to TGID %s, target active or in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
                             continue
-                        if ((_target['TGID'] != _target_status[_target['TS']]['TX_TGID']) and ((pkt_time - _target_status[_target['TS']]['TX_TIME']) < _target_system['GROUP_HANGTIME'])):
+                        if (not _parrot_echo and (_target['TGID'] != _target_status[_target['TS']]['TX_TGID']) and ((pkt_time - _target_status[_target['TS']]['TX_TIME']) < _target_system['GROUP_HANGTIME'])):
                             if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
                                 logger.info('(%s) Call not routed to TGID%s, target in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']))
                             continue
-                        if (not _late_join
+                        if (not _parrot_echo
+                                and not _late_join
                                 and (_target['TGID'] == _target_status[_target['TS']]['RX_TGID'])
                                 and _target_status[_target['TS']]['RX_TYPE'] != HBPF_SLT_VTERM
                                 and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < STREAM_TO)):
                             if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
                                 logger.info('(%s) Call not routed to TGID%s, matching call already active on target: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
                             continue
-                        if (not _late_join
+                        if (not _parrot_echo
+                                and not _late_join
                                 and (_target['TGID'] == _target_status[_target['TS']]['TX_TGID'])
                                 and _target_status[_target['TS']]['TX_TYPE'] != HBPF_SLT_VTERM
                                 and (_rf_src != _target_status[_target['TS']]['TX_RFS'])
@@ -4983,7 +4996,12 @@ class routerHBP(HBSYSTEM):
             cache.pop(_stream_id, None)
 
     def _forward_parrot_unit_voice(self, _dst_id, _slot, _bits, _data, dmrpkt):
-        """Send unit-voice to the PARROT playback peer (private call to TG 9990)."""
+        """Send one voice frame to the PARROT playback peer (group or private 9990).
+
+        This does not go through bridge hangtime. A private echo leaves the
+        PARROT slot showing the caller's radio ID, and that hangtime was
+        dropping the next group call before playback ever saw it.
+        """
         if 'PARROT' not in systems or not CONFIG['SYSTEMS'].get('PARROT', {}).get('ENABLED'):
             logger.warning('(%s) Parrot private call but PARROT system is not enabled', self._system)
             return
@@ -5451,6 +5469,14 @@ class routerHBP(HBSYSTEM):
         
         #Handle group calls
         if _call_type == 'group' or _call_type == 'vcsbk':
+            # Before the voice-terminator guards. Those can return without
+            # bridging, and playback only echoes once it sees the terminator.
+            # Private 9990 already uses this direct handoff.
+            if (self._system != 'PARROT'
+                    and _call_type == 'group'
+                    and is_parrot_talkgroup(_int_dst_id)):
+                self._forward_parrot_unit_voice(
+                    _dst_id, _slot, _bits, _data, dmrpkt)
 
             _hbp_is_vterm = (
                 _frame_type == HBPF_DATA_SYNC

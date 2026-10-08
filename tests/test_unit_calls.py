@@ -468,6 +468,28 @@ class TestSubscriberPrivateCallSkipsReflector(UnitCallFixture):
         router._forward_parrot_unit_voice.assert_called()
         router._forward_unit_voice.assert_not_called()
 
+    def test_group_9990_reaches_playback_even_when_terminator_is_rejected(self):
+        """Group parrot must be handed to playback before the VTERM guards return."""
+        self._system('SYSTEM-A', 'MASTER')
+        router = self._router('SYSTEM-A')
+        router._forward_parrot_unit_voice = MagicMock()
+        slot = router.STATUS[2]
+        slot['RX_TYPE'] = HBPF_SLT_VTERM
+        slot['RX_STREAM_ID'] = b'\x11\x11\x11\x11'
+        slot['RX_RFS'] = bytes_3(1)
+        slot['RX_PEER'] = b'\x00\x00\x00\x09'
+        slot['RX_TGID'] = bytes_3(91)
+        packet = _voice_packet(CALLER, 9990, STREAM, 2, 1, HBPF_SLT_VTERM)
+        packet = bytearray(packet)
+        packet[15] &= ~0x40
+        try:
+            router.dmrd_received(
+                PEER, bytes_3(CALLER), bytes_3(9990), 1, 2, 'group',
+                HBPF_DATA_SYNC, HBPF_SLT_VTERM, STREAM, bytes(packet))
+        except Exception:
+            pass
+        router._forward_parrot_unit_voice.assert_called()
+
 
 class TestHomebrewUnitAcl(unittest.TestCase):
     def _master(self):

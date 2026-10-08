@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Parrot TG 9990 helpers — never OBP, never dial-a-tg / TG 9."""
 import unittest
+from unittest.mock import patch
 
+from const import HBPF_DATA_SYNC, HBPF_SLT_VHEAD, HBPF_SLT_VTERM
 from dmr_utils3 import decode
 from dmr_utils3.utils import bytes_3, bytes_4, int_id
 
@@ -178,6 +180,65 @@ class TestParrotSkipsUaTimer(unittest.TestCase):
         self.assertNotIn(
             "CONFIG['SYSTEMS'][self._system]\n                        ['DEFAULT_UA_TIMER'] * 60",
             source)
+
+
+class TestPlaybackRecording(unittest.TestCase):
+
+    def _player(self):
+        import playback as pbmod
+        pbmod.subscriber_ids = {}
+        pbmod.peer_ids = {}
+        pbmod.talkgroup_ids = {}
+        player = pbmod.playback.__new__(pbmod.playback)
+        player._system = 'PARROT'
+        player.CALL_DATA = [b'previous-over']
+        player._record_rf_src = bytes_3(1)
+        player.send_system = lambda packet: None
+        player.STATUS = {
+            'RX_START': 0,
+            2: {
+                'RX_STREAM_ID': b'\x00\x00\x00\x01',
+                'RX_TYPE': HBPF_SLT_VTERM,
+            },
+        }
+        return pbmod, player
+
+    def _packet(self, stream, seq, dtype):
+        packet = bytearray(55)
+        packet[0:4] = b'DMRD'
+        packet[4] = seq
+        packet[5:8] = CALLER
+        packet[8:11] = bytes_3(9990)
+        packet[15] = (HBPF_DATA_SYNC << 4) | (dtype & 0x0F) | 0x80
+        packet[16:20] = stream
+        return bytes(packet)
+
+    def test_new_stream_discards_a_stuck_recording(self):
+        pbmod, player = self._player()
+        fresh = self._packet(b'\x00\x00\x00\x02', 0, HBPF_SLT_VHEAD)
+        player.dmrd_received(
+            PEER, CALLER, bytes_3(9990), 0, 2, 'group',
+            HBPF_DATA_SYNC, HBPF_SLT_VHEAD, b'\x00\x00\x00\x02', fresh)
+        self.assertEqual(player.CALL_DATA, [fresh])
+        self.assertEqual(player.STATUS[2]['RX_TYPE'], HBPF_SLT_VHEAD)
+
+    def test_kerchunk_still_plays_when_slot_was_already_idle(self):
+        pbmod, player = self._player()
+        sent = []
+        player.send_system = sent.append
+        stream = b'\x00\x00\x00\x03'
+        header = self._packet(stream, 0, HBPF_SLT_VHEAD)
+        term = self._packet(stream, 1, HBPF_SLT_VTERM)
+        with patch.object(pbmod, 'sleep'):
+            player.dmrd_received(
+                PEER, CALLER, bytes_3(9990), 0, 2, 'group',
+                HBPF_DATA_SYNC, HBPF_SLT_VHEAD, stream, header)
+            player.dmrd_received(
+                PEER, CALLER, bytes_3(9990), 1, 2, 'group',
+                HBPF_DATA_SYNC, HBPF_SLT_VTERM, stream, term)
+        self.assertTrue(sent)
+        self.assertEqual(player.CALL_DATA, [])
+        self.assertFalse(sent[0][15] & 0x40)
 
 
 if __name__ == '__main__':
