@@ -4846,20 +4846,19 @@ class routerHBP(HBSYSTEM):
                 self._report_unit_voice(
                     'START', _stream_id, _peer_id, _rf_src, _slot, _dst_id)
                 start_reported = True
-            # Inbound OpenBridge voice must terminate on this master. It may
-            # teach us where the caller came from, but it must never consult or
-            # follow the destination home cache back onto the OBP mesh.
+            # Transit frames follow the same evidence order as local calls.
+            # A recent RF hear here wins. Otherwise the learned or hub home
+            # decides, and a mere login on this master is only the fallback.
+            # A subscriber ID logged in on two masters at once would otherwise
+            # pull the call onto whichever one happens to sit mid-path. The
+            # ingress link is never used as the next hop.
             url_set = (
                 allow_global
                 and bool(str((CONFIG.get('ALIASES') or {}).get(
                     'UNIT_SUB_MAP_URL') or '').strip()))
             radio = int_id(_dst_id)
-            learned = (
-                self._fresh_unit_home(radio, pkt_time)
-                if url_set and origin_local else None)
-            heard = (
-                self._local_hear_time(_dst_id)
-                if url_set and origin_local else None)
+            learned = self._fresh_unit_home(radio, pkt_time) if url_set else None
+            heard = self._local_hear_time(_dst_id) if url_set else None
             heard_here = (
                 heard is not None
                 and pkt_time - heard < UNIT_HOME_HOLD
@@ -4877,7 +4876,7 @@ class routerHBP(HBSYSTEM):
             elif learned and learned.get('absent'):
                 hold = False
             else:
-                hold = try_global and url_set and origin_local
+                hold = try_global and url_set
             route = self._open_unit_route(
                 _dst_id, _slot, _stream_id, _peer_id, _rf_src, pkt_time,
                 log_miss=not try_global and not (learned and learned.get('absent')),
@@ -4896,6 +4895,10 @@ class routerHBP(HBSYSTEM):
             if cached_net is not None:
                 cached_hop = learned.get('next_hop') or cached_net
                 name = self._configured_unit_fleet().get(cached_hop)
+                if name and ingress_system and name == ingress_system:
+                    # The cached hop points back where this came from. Let
+                    # the hub decide; its ingress check handles it.
+                    name = None
                 if name:
                     route['pending'] = True
                     route['stream'] = _stream_id

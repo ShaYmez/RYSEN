@@ -1,5 +1,12 @@
 # RYSEN DMRMaster+ Changelog
 
+## Unreleased
+
+- Transit unit voice follows the same home evidence as a locally originated
+  call. A subscriber that is only logged in on a mid-path master is no longer
+  stolen from the hub or learned home, which was dropping one direction of
+  NZ ↔ England private calls when the callee also had a hotspot on Apollo.
+
 ## Version 1.6.0 (2026-10-06)
 
 Released on **`master`** — `shaymez/rysen:1.6.0` and `:latest`.

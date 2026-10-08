@@ -85,10 +85,14 @@ Voice goes to that one healthy next hop. The start of the call is buffered
 while the lookup runs. A failed hop is looked up again a limited number of
 times, then dropped. A third-party OpenBridge stanza is not a candidate.
 
-A callee heard on this master is delivered locally. Inbound and transit
-calls do not record a local listen for the caller, so the call is not sent
-back the way it arrived. DMRE v5 origin server, origin repeater, and the
-existing hop count travel with the voice. The hop limit remains 10.
+A callee with a recent RF hear on this master is delivered locally. A
+subscriber that is only logged in here is not stolen from another fleet
+home: inbound and transit frames follow the learned or hub route, and a
+matching local peer is used only when this master is the home or the hub
+has none. Inbound and transit calls do not record a local listen for the
+caller, so the call is not sent back the way it arrived. DMRE v5 origin
+server, origin repeater, and the existing hop count travel with the voice.
+The hop limit remains 10.
 
 `UNIT_OBP_FLOOD` stays `False`. It is a legacy flag and does not relay unit voice. A network without the discovery hub stays local-only. 
 

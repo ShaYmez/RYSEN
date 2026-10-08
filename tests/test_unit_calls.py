@@ -93,8 +93,10 @@ class UnitCallFixture(unittest.TestCase):
                 '2020': 'Greece',
                 '2040': 'Europe',
                 '2342': 'UK',
+                '2353': 'Apollo',
                 '2381': 'UK',
                 '3180': 'USA',
+                '5301': 'New Zealand',
             },
         }
 
@@ -906,11 +908,15 @@ class TestInboundOpenBridgeUnitVoice(UnitCallFixture):
         }
         router = bm.routerOBP.__new__(bm.routerOBP)
         router._system = 'OBP-UK'
+        router._CONFIG = bm.CONFIG
         router.STATUS = {}
         router._unit_voice_routes = {}
-        router._fresh_unit_home = MagicMock(
-            side_effect=AssertionError(
-                'inbound OpenBridge voice consulted the global home cache'))
+        router._unit_hub_inline = True
+        router._unit_hub_lookup = lambda _radio: {
+            'current_master': 2040,
+            'home_net_id': 2040,
+            'path': [2040],
+        }
         packet = _voice_packet(CALLER, CALLEE, STREAM, 1, 0, HBPF_SLT_VHEAD)
         router.dmrd_received(
             PEER, bytes_3(CALLER), bytes_3(CALLEE), 0, 1, 'unit',
@@ -1062,6 +1068,86 @@ class TestInboundOpenBridgeUnitVoice(UnitCallFixture):
             HBPF_DATA_SYNC, HBPF_SLT_VHEAD, STREAM, packet, b'',
             b'\x02', (3180).to_bytes(4, 'big'))
         self.assertEqual(target.sent, [])
+
+    def test_transit_does_not_steal_a_dual_homed_login(self):
+        """G4CNC was logged into Apollo while transmitting from UK.
+
+        NZ → Apollo must not dump the call onto the idle Apollo hotspot just
+        because the subscriber ID matches a connected peer.
+        """
+        self._system('SYSTEM-44', 'MASTER', peers=self._peer(ESSID))
+        local = _Target()
+        uk = _Target()
+        bm.systems['SYSTEM-44'] = local
+        self._obp_config('OBP-NZ', 5301, 9999999999.0)
+        self._obp_config('OBP-UK', 2342, 9999999999.0)
+        bm.systems['OBP-UK'] = uk
+        bm.CONFIG['GLOBAL'] = {'SERVER_ID': (2353).to_bytes(4, 'big')}
+        bm.CONFIG['ALIASES'] = {'UNIT_SUB_MAP_URL': 'https://hub.example/sub-map'}
+        router = bm.routerOBP.__new__(bm.routerOBP)
+        router._system = 'OBP-NZ'
+        router._CONFIG = bm.CONFIG
+        router.STATUS = {}
+        router._unit_voice_routes = {}
+        router._unit_hub_inline = True
+        router._report = MagicMock()
+        router._unit_hub_lookup = lambda _radio: {
+            'current_master': 2353,
+            'home_net_id': 2342,
+            'next_hop_net_id': 2342,
+            'path': [2353, 2342],
+        }
+        packet = _voice_packet(CALLER, CALLEE, STREAM, 1, 0, HBPF_SLT_VHEAD)
+        router._forward_unit_voice(
+            bytes_3(CALLEE), 1, packet[15], packet, packet[20:53],
+            STREAM, PEER, bytes_3(CALLER), HBPF_DATA_SYNC,
+            HBPF_SLT_VHEAD, 100.0, origin_local=False,
+            ingress_system='OBP-NZ',
+            source_server=(5301).to_bytes(4, 'big'))
+        self.assertEqual(local.sent, [])
+        self.assertEqual(len(uk.sent), 1)
+        self.assertEqual(router._unit_voice_routes[STREAM].get('obp_target'), 'OBP-UK')
+        self.assertEqual(router._unit_voice_routes[STREAM].get('via'), 'hub')
+
+    def test_transit_learned_home_skips_a_matching_local_peer(self):
+        self._system('SYSTEM-44', 'MASTER', peers=self._peer(ESSID))
+        local = _Target()
+        uk = _Target()
+        bm.systems['SYSTEM-44'] = local
+        self._obp_config('OBP-NZ', 5301, 9999999999.0)
+        self._obp_config('OBP-UK', 2342, 9999999999.0)
+        bm.systems['OBP-UK'] = uk
+        bm.CONFIG['GLOBAL'] = {'SERVER_ID': (2353).to_bytes(4, 'big')}
+        bm.CONFIG['ALIASES'] = {'UNIT_SUB_MAP_URL': 'https://hub.example/sub-map'}
+        bm._UNIT_HOMES[CALLEE] = {
+            'local': False,
+            'net_id': 2342,
+            'absent': False,
+            'at': 100.0,
+            'next_hop': 2342,
+            'path': (2353, 2342),
+            'topology_version': None,
+            'expires_at': None,
+        }
+        router = bm.routerOBP.__new__(bm.routerOBP)
+        router._system = 'OBP-NZ'
+        router._CONFIG = bm.CONFIG
+        router.STATUS = {}
+        router._unit_voice_routes = {}
+        router._unit_hub_inline = True
+        router._report = MagicMock()
+        router._unit_hub_lookup = MagicMock(
+            side_effect=AssertionError('learned home should not consult the hub'))
+        packet = _voice_packet(CALLER, CALLEE, STREAM, 1, 0, HBPF_SLT_VHEAD)
+        router._forward_unit_voice(
+            bytes_3(CALLEE), 1, packet[15], packet, packet[20:53],
+            STREAM, PEER, bytes_3(CALLER), HBPF_DATA_SYNC,
+            HBPF_SLT_VHEAD, 100.0, origin_local=False,
+            ingress_system='OBP-NZ',
+            source_server=(5301).to_bytes(4, 'big'))
+        self.assertEqual(local.sent, [])
+        self.assertEqual(len(uk.sent), 1)
+        self.assertEqual(router._unit_voice_routes[STREAM].get('via'), 'home')
 
     def test_returning_transit_stream_on_another_ingress_is_dropped(self):
         bm.CONFIG['GLOBAL'] = {'SERVER_ID': (2381).to_bytes(4, 'big')}
