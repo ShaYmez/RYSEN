@@ -249,6 +249,32 @@ class TestPlaybackRecording(unittest.TestCase):
         self.assertEqual(player.CALL_DATA, [])
         self.assertFalse(sent[0][15] & 0x40)
 
+    def test_late_vterm_after_a_finished_over_does_not_echo(self):
+        pbmod, player = self._player()
+        player.CALL_DATA = []
+        player._record_rf_src = None
+        sent = []
+        player.send_system = sent.append
+        stream = b'\x00\x00\x00\x30'
+        late = b'\x00\x00\x00\x31'
+        header = self._packet(stream, 0, HBPF_SLT_VHEAD)
+        term = self._packet(stream, 1, HBPF_SLT_VTERM)
+        stale = self._packet(late, 2, HBPF_SLT_VTERM)
+        with patch.object(pbmod, 'sleep'):
+            player.dmrd_received(
+                PEER, CALLER, bytes_3(9990), 0, 2, 'group',
+                HBPF_DATA_SYNC, HBPF_SLT_VHEAD, stream, header)
+            player.dmrd_received(
+                PEER, CALLER, bytes_3(9990), 1, 2, 'group',
+                HBPF_DATA_SYNC, HBPF_SLT_VTERM, stream, term)
+            played = len(sent)
+            self.assertTrue(played)
+            player.dmrd_received(
+                PEER, CALLER, bytes_3(9990), 2, 2, 'group',
+                HBPF_DATA_SYNC, HBPF_SLT_VTERM, late, stale)
+        self.assertEqual(len(sent), played)
+        self.assertEqual(player.CALL_DATA, [])
+
     def test_same_radio_keeps_recording_when_stream_id_rolls(self):
         pbmod, player = self._player()
         player.CALL_DATA = []

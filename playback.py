@@ -372,9 +372,18 @@ class playback(HBSYSTEM):
             # or a header-plus-terminator kerchunk never satisfies the
             # playback check below.
             if _is_vterm:
-                self._finish_recording()
-            else:
-                self._arm_idle_play()
+                # This branch just opened CALL_DATA with one frame. A lone
+                # terminator is a late VTERM after a finished over, not a
+                # kerchunk — those arrive as header then terminator.
+                logger.debug(
+                    '(%s) Ignoring lone VTERM for stream %s with no recording',
+                    self._system, int_id(_stream_id))
+                self.CALL_DATA = []
+                self._record_rf_src = None
+                self._record_dst = None
+                self._cancel_idle_play()
+                return
+            self._arm_idle_play()
             return
 
         # Final actions - Is this a voice terminator?
