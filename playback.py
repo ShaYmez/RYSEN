@@ -63,6 +63,11 @@ PARROT_SRC = bytes_3(9990)
 HBP_UNIT_CALL = 0x40
 UNIT_LC_OPT = b'\x03\x00\x20'
 PLAYBACK_FRAME_S = 0.06
+# MMDVM / hotspots mint a new stream ID about every 10s of one PTT.
+# Keep recording when the same radio stays on 9990 across that rollover.
+PARROT_STREAM_CONTINUE_S = 1.0
+# Play even if the terminator never arrives (TOT, dropped VTERM).
+PARROT_IDLE_PLAY_S = 1.25
 
 
 def parrot_echo_lc_blocks(src, dst, unit_call):
@@ -117,6 +122,23 @@ def rewrite_parrot_echo_packet(packet, stream_id, seq, src, dst, lc_blocks, unit
     rewritten = dmrbits.tobytes()
     pkt[20:53] = rewritten[:33]
     return bytes(pkt)
+
+
+def ensure_parrot_terminator(packets):
+    """Add a voice terminator so an idle or rolled-over recording still closes."""
+    if not packets:
+        return packets
+    last = packets[-1]
+    if len(last) < 16:
+        return packets
+    bits = last[15]
+    frame_type = (bits & 0x30) >> 4
+    dtype_vseq = bits & 0x0F
+    if frame_type == HBPF_DATA_SYNC and dtype_vseq == HBPF_SLT_VTERM:
+        return packets
+    term = bytearray(last)
+    term[15] = (bits & 0xC0) | (HBPF_DATA_SYNC << 4) | HBPF_SLT_VTERM
+    return list(packets) + [bytes(term)]
 
 
 def build_parrot_echo_packets(packets, unit_call, caller_id, stream_id=None):
@@ -188,62 +210,171 @@ class playback(HBSYSTEM):
         }
         self.CALL_DATA = []
         self._record_rf_src = None
+        self._record_dst = None
+        self._record_unit = False
+        self._record_peer = None
+        self._record_slot = 2
+        self._idle_play = None
+
+    def _cancel_idle_play(self):
+        idle = getattr(self, '_idle_play', None)
+        if idle is not None:
+            try:
+                if idle.active():
+                    idle.cancel()
+            except Exception:
+                pass
+        self._idle_play = None
+
+    def _arm_idle_play(self):
+        self._cancel_idle_play()
+        try:
+            if not reactor.running:
+                return
+        except Exception:
+            return
+        self._idle_play = reactor.callLater(PARROT_IDLE_PLAY_S, self._play_idle)
+
+    def _is_same_parrot_over(self, rf_src, dst_id, pkt_time, slot):
+        if not self.CALL_DATA:
+            return False
+        if getattr(self, '_record_rf_src', None) != rf_src:
+            return False
+        record_dst = getattr(self, '_record_dst', None)
+        if record_dst is not None and record_dst != dst_id:
+            return False
+        last = self.STATUS.get(slot, {}).get('RX_TIME')
+        if last is None:
+            return False
+        return (pkt_time - last) < PARROT_STREAM_CONTINUE_S
+
+    def _mark_recording(self, peer_id, rf_src, dst_id, slot, stream_id,
+                        dtype_vseq, pkt_time, call_type):
+        self._record_rf_src = rf_src
+        self._record_dst = dst_id
+        self._record_unit = (call_type == 'unit')
+        self._record_peer = peer_id
+        self._record_slot = slot
+        self.STATUS[slot]['RX_RFS'] = rf_src
+        self.STATUS[slot]['RX_TYPE'] = dtype_vseq
+        self.STATUS[slot]['RX_TGID'] = dst_id
+        self.STATUS[slot]['RX_TIME'] = pkt_time
+        self.STATUS[slot]['RX_STREAM_ID'] = stream_id
+
+    def _play_recording(self, packets, unit_call, echo_dst, peer_id, slot, duration):
+        self._cancel_idle_play()
+        packets = ensure_parrot_terminator(packets)
+        sleep(2)
+        echoed, new_stream_id, echo_src, echo_tg = build_parrot_echo_packets(
+            packets, unit_call, echo_dst)
+        logger.info(
+            '(%s) *START  PLAYBACK* STREAM ID: %s SUB: %s (%s) REPEATER: %s (%s) '
+            'TGID %s (%s), TS %s, Duration: %s, %s',
+            self._system, int_id(new_stream_id),
+            get_alias(echo_src, subscriber_ids), int_id(echo_src),
+            get_alias(peer_id, peer_ids), int_id(peer_id),
+            get_alias(echo_tg, talkgroup_ids), int_id(echo_tg),
+            slot, duration, 'unit' if unit_call else 'group')
+        for frame in echoed:
+            self.send_system(frame)
+            sleep(PLAYBACK_FRAME_S)
+        logger.info('(%s) *END    PLAYBACK* STREAM ID: %s',
+                    self._system, int_id(new_stream_id))
+
+    def _finish_recording(self, extra=None, reason='terminator'):
+        packets = list(self.CALL_DATA or [])
+        if extra:
+            packets.append(extra)
+        if not packets:
+            return
+        duration = time() - self.STATUS.get('RX_START', time())
+        slot = getattr(self, '_record_slot', None) or 2
+        stream_id = self.STATUS.get(slot, {}).get(
+            'RX_STREAM_ID', b'\x00\x00\x00\x00')
+        logger.info('(%s) *END   RECORDING* STREAM ID: %s (%s)',
+                    self._system, int_id(stream_id), reason)
+        echo_dst = getattr(self, '_record_rf_src', None)
+        peer_id = getattr(self, '_record_peer', None) or b'\x00\x00\x00\x00'
+        unit_call = bool(getattr(self, '_record_unit', False))
+        self.CALL_DATA = []
+        self._record_rf_src = None
+        self._record_dst = None
+        self._play_recording(packets, unit_call, echo_dst, peer_id, slot, duration)
+
+    def _play_idle(self):
+        self._idle_play = None
+        if self.CALL_DATA:
+            self._finish_recording(reason='idle')
 
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         pkt_time = time()
-        dmrpkt = _data[20:53]
         _bits = _data[15]
-        
-        
-        if _call_type in ('group', 'unit'):
-            
-            # Is this is a new call stream?
-            if (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
-                # A missed terminator used to leave the previous over in
-                # CALL_DATA, so the next unkey played every stuck recording.
-                self.CALL_DATA = []
-                self.STATUS['RX_START'] = pkt_time
-                self._record_rf_src = _rf_src
-                logger.info('(%s) *START RECORDING* STREAM ID: %s SUB: %s (%s) REPEATER: %s (%s) TGID %s (%s), TS %s', \
-                                  self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+        _is_vterm = (
+            _frame_type == const.HBPF_DATA_SYNC
+            and _dtype_vseq == const.HBPF_SLT_VTERM)
+
+        if _call_type not in ('group', 'unit'):
+            return
+
+        if _stream_id != self.STATUS[_slot]['RX_STREAM_ID']:
+            if self._is_same_parrot_over(_rf_src, _dst_id, pkt_time, _slot):
+                logger.info(
+                    '(%s) *CONTINUE RECORDING* STREAM ID: %s (was %s) SUB: %s',
+                    self._system, int_id(_stream_id),
+                    int_id(self.STATUS[_slot]['RX_STREAM_ID']), int_id(_rf_src))
                 self.CALL_DATA.append(_data)
-                self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
-                # Slot RX_TYPE starts as (and returns to) VTERM. Leave it set
-                # or a header-plus-terminator kerchunk never satisfies the
-                # playback check below.
-                self.STATUS[_slot]['RX_TYPE'] = _dtype_vseq
+                self._mark_recording(
+                    _peer_id, _rf_src, _dst_id, _slot, _stream_id,
+                    _dtype_vseq, pkt_time, _call_type)
+                if _is_vterm:
+                    self._finish_recording()
+                else:
+                    self._arm_idle_play()
                 return
 
-            # Final actions - Is this a voice terminator?
-            if (_frame_type == const.HBPF_DATA_SYNC) and (_dtype_vseq == const.HBPF_SLT_VTERM) and (self.STATUS[_slot]['RX_TYPE'] != const.HBPF_SLT_VTERM) and (self.CALL_DATA):
-                call_duration = pkt_time - self.STATUS['RX_START']
-                self.CALL_DATA.append(_data)
-                logger.info('(%s) *END   RECORDING* STREAM ID: %s', self._system, int_id(_stream_id))
-                sleep(2)
-                _unit_call = (_call_type == 'unit')
-                _echo_dst = self._record_rf_src if self._record_rf_src is not None else _rf_src
-                _echoed, _new_stream_id, _echo_src, _echo_tg = build_parrot_echo_packets(
-                    self.CALL_DATA, _unit_call, _echo_dst)
-                logger.info('(%s) *START  PLAYBACK* STREAM ID: %s SUB: %s (%s) REPEATER: %s (%s) TGID %s (%s), TS %s, Duration: %s, %s', \
-                                  self._system, int_id(_new_stream_id), get_alias(_echo_src, subscriber_ids), int_id(_echo_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_echo_tg, talkgroup_ids), int_id(_echo_tg), _slot, call_duration, 'unit' if _unit_call else 'group')
-                for i in _echoed:
-                    self.send_system(i)
-                    sleep(PLAYBACK_FRAME_S)
-                self.CALL_DATA = []
-                self._record_rf_src = None
-                logger.info('(%s) *END    PLAYBACK* STREAM ID: %s', self._system, int_id(_new_stream_id))
-
+            # A missed terminator used to leave the previous over in
+            # CALL_DATA, so the next unkey played every stuck recording.
+            if self.CALL_DATA:
+                try:
+                    if reactor.running:
+                        self._finish_recording(reason='new-stream')
+                except Exception:
+                    pass
+            self._cancel_idle_play()
+            self.CALL_DATA = []
+            self.STATUS['RX_START'] = pkt_time
+            self._record_rf_src = _rf_src
+            self._record_dst = _dst_id
+            logger.info('(%s) *START RECORDING* STREAM ID: %s SUB: %s (%s) REPEATER: %s (%s) TGID %s (%s), TS %s', \
+                              self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+            self.CALL_DATA.append(_data)
+            self._mark_recording(
+                _peer_id, _rf_src, _dst_id, _slot, _stream_id,
+                _dtype_vseq, pkt_time, _call_type)
+            # Slot RX_TYPE starts as (and returns to) VTERM. Leave it set
+            # or a header-plus-terminator kerchunk never satisfies the
+            # playback check below.
+            if _is_vterm:
+                self._finish_recording()
             else:
-                if self.CALL_DATA:
-                    self.CALL_DATA.append(_data)
+                self._arm_idle_play()
+            return
 
+        # Final actions - Is this a voice terminator?
+        if _is_vterm and (self.STATUS[_slot]['RX_TYPE'] != const.HBPF_SLT_VTERM) and (self.CALL_DATA):
+            self.CALL_DATA.append(_data)
+            self._mark_recording(
+                _peer_id, _rf_src, _dst_id, _slot, _stream_id,
+                _dtype_vseq, pkt_time, _call_type)
+            self._finish_recording()
+            return
 
-            # Mark status variables for use later
-            self.STATUS[_slot]['RX_RFS']       = _rf_src
-            self.STATUS[_slot]['RX_TYPE']      = _dtype_vseq
-            self.STATUS[_slot]['RX_TGID']      = _dst_id
-            self.STATUS[_slot]['RX_TIME']      = pkt_time
-            self.STATUS[_slot]['RX_STREAM_ID'] = _stream_id
+        if self.CALL_DATA:
+            self.CALL_DATA.append(_data)
+        self._mark_recording(
+            _peer_id, _rf_src, _dst_id, _slot, _stream_id,
+            _dtype_vseq, pkt_time, _call_type)
+        self._arm_idle_play()
 
 
 #************************************************

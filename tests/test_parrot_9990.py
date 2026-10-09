@@ -19,6 +19,7 @@ from playback import (
     HBP_UNIT_CALL,
     PARROT_SRC,
     build_parrot_echo_packets,
+    ensure_parrot_terminator,
     parrot_echo_addresses,
 )
 from voice_lib import words
@@ -70,11 +71,12 @@ class TestParrotSourceGuards(unittest.TestCase):
     def test_playback_group_echo_for_group_inbound(self):
         with open('playback.py', encoding='utf-8') as fh:
             source = fh.read()
-        self.assertIn("if _call_type in ('group', 'unit'):", source)
+        self.assertIn("if _call_type not in ('group', 'unit'):", source)
         self.assertIn('PARROT_SRC = bytes_3(9990)', source)
         self.assertIn('build_parrot_echo_packets', source)
         self.assertIn('rewrite_parrot_echo_packet', source)
-        self.assertIn('_unit_call = (_call_type == \'unit\')', source)
+        self.assertIn("self._record_unit = (call_type == 'unit')", source)
+        self.assertIn('_is_same_parrot_over', source)
         self.assertNotIn('_bits_out = i[15] | 0x40', source)
         self.assertIn('parrot_echo_addresses', source)
 
@@ -194,6 +196,11 @@ class TestPlaybackRecording(unittest.TestCase):
         player._system = 'PARROT'
         player.CALL_DATA = [b'previous-over']
         player._record_rf_src = bytes_3(1)
+        player._record_dst = None
+        player._record_unit = False
+        player._record_peer = None
+        player._record_slot = 2
+        player._idle_play = None
         player.send_system = lambda packet: None
         player.STATUS = {
             'RX_START': 0,
@@ -240,6 +247,57 @@ class TestPlaybackRecording(unittest.TestCase):
         self.assertTrue(sent)
         self.assertEqual(player.CALL_DATA, [])
         self.assertFalse(sent[0][15] & 0x40)
+
+    def test_same_radio_keeps_recording_when_stream_id_rolls(self):
+        pbmod, player = self._player()
+        player.CALL_DATA = []
+        player._record_rf_src = None
+        sent = []
+        player.send_system = sent.append
+        first = b'\x00\x00\x00\x10'
+        second = b'\x00\x00\x00\x11'
+        header = self._packet(first, 0, HBPF_SLT_VHEAD)
+        body = self._packet(first, 1, 0)
+        rolled = self._packet(second, 2, 0)
+        term = self._packet(second, 3, HBPF_SLT_VTERM)
+        with patch.object(pbmod, 'sleep'):
+            player.dmrd_received(
+                PEER, CALLER, bytes_3(9990), 0, 2, 'group',
+                HBPF_DATA_SYNC, HBPF_SLT_VHEAD, first, header)
+            player.dmrd_received(
+                PEER, CALLER, bytes_3(9990), 1, 2, 'group',
+                HBPF_DATA_SYNC, 0, first, body)
+            player.dmrd_received(
+                PEER, CALLER, bytes_3(9990), 2, 2, 'group',
+                HBPF_DATA_SYNC, 0, second, rolled)
+            player.dmrd_received(
+                PEER, CALLER, bytes_3(9990), 3, 2, 'group',
+                HBPF_DATA_SYNC, HBPF_SLT_VTERM, second, term)
+        self.assertEqual(len(sent), 4)
+        self.assertEqual(player.CALL_DATA, [])
+
+    def test_new_stream_after_a_gap_starts_fresh(self):
+        pbmod, player = self._player()
+        player.CALL_DATA = []
+        player._record_rf_src = None
+        first = b'\x00\x00\x00\x12'
+        second = b'\x00\x00\x00\x13'
+        header = self._packet(first, 0, HBPF_SLT_VHEAD)
+        later = self._packet(second, 0, HBPF_SLT_VHEAD)
+        player.dmrd_received(
+            PEER, CALLER, bytes_3(9990), 0, 2, 'group',
+            HBPF_DATA_SYNC, HBPF_SLT_VHEAD, first, header)
+        player.STATUS[2]['RX_TIME'] -= 2.0
+        player.dmrd_received(
+            PEER, CALLER, bytes_3(9990), 0, 2, 'group',
+            HBPF_DATA_SYNC, HBPF_SLT_VHEAD, second, later)
+        self.assertEqual(player.CALL_DATA, [later])
+
+    def test_idle_recording_gets_a_terminator(self):
+        header = self._packet(b'\x00\x00\x00\x14', 0, HBPF_SLT_VHEAD)
+        closed = ensure_parrot_terminator([header])
+        self.assertEqual(len(closed), 2)
+        self.assertEqual(closed[1][15] & 0x3F, (HBPF_DATA_SYNC << 4) | HBPF_SLT_VTERM)
 
 
 class TestParrotMonitorEvents(unittest.TestCase):
