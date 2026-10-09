@@ -200,6 +200,7 @@ class TestPlaybackRecording(unittest.TestCase):
         player._record_unit = False
         player._record_peer = None
         player._record_slot = 2
+        player._record_streams = set()
         player._idle_play = None
         player.send_system = lambda packet: None
         player.STATUS = {
@@ -272,6 +273,40 @@ class TestPlaybackRecording(unittest.TestCase):
                 HBPF_DATA_SYNC, 0, second, rolled)
             player.dmrd_received(
                 PEER, CALLER, bytes_3(9990), 3, 2, 'group',
+                HBPF_DATA_SYNC, HBPF_SLT_VTERM, second, term)
+        self.assertEqual(len(sent), 4)
+        self.assertEqual(player.CALL_DATA, [])
+
+    def test_stale_vterm_from_an_old_stream_does_not_end_the_over(self):
+        pbmod, player = self._player()
+        player.CALL_DATA = []
+        player._record_rf_src = None
+        sent = []
+        player.send_system = sent.append
+        first = b'\x00\x00\x00\x20'
+        second = b'\x00\x00\x00\x21'
+        header = self._packet(first, 0, HBPF_SLT_VHEAD)
+        body = self._packet(first, 1, 0)
+        rolled = self._packet(second, 2, 0)
+        stale = self._packet(first, 3, HBPF_SLT_VTERM)
+        term = self._packet(second, 4, HBPF_SLT_VTERM)
+        with patch.object(pbmod, 'sleep'):
+            player.dmrd_received(
+                PEER, CALLER, bytes_3(9990), 0, 2, 'group',
+                HBPF_DATA_SYNC, HBPF_SLT_VHEAD, first, header)
+            player.dmrd_received(
+                PEER, CALLER, bytes_3(9990), 1, 2, 'group',
+                HBPF_DATA_SYNC, 0, first, body)
+            player.dmrd_received(
+                PEER, CALLER, bytes_3(9990), 2, 2, 'group',
+                HBPF_DATA_SYNC, 0, second, rolled)
+            player.dmrd_received(
+                PEER, CALLER, bytes_3(9990), 3, 2, 'group',
+                HBPF_DATA_SYNC, HBPF_SLT_VTERM, first, stale)
+            self.assertEqual(sent, [])
+            self.assertEqual(len(player.CALL_DATA), 3)
+            player.dmrd_received(
+                PEER, CALLER, bytes_3(9990), 4, 2, 'group',
                 HBPF_DATA_SYNC, HBPF_SLT_VTERM, second, term)
         self.assertEqual(len(sent), 4)
         self.assertEqual(player.CALL_DATA, [])

@@ -214,6 +214,7 @@ class playback(HBSYSTEM):
         self._record_unit = False
         self._record_peer = None
         self._record_slot = 2
+        self._record_streams = set()
         self._idle_play = None
 
     def _cancel_idle_play(self):
@@ -248,6 +249,9 @@ class playback(HBSYSTEM):
             return False
         return (pkt_time - last) < PARROT_STREAM_CONTINUE_S
 
+    def _seen_parrot_stream(self, stream_id):
+        return stream_id in (getattr(self, '_record_streams', None) or ())
+
     def _mark_recording(self, peer_id, rf_src, dst_id, slot, stream_id,
                         dtype_vseq, pkt_time, call_type):
         self._record_rf_src = rf_src
@@ -255,6 +259,11 @@ class playback(HBSYSTEM):
         self._record_unit = (call_type == 'unit')
         self._record_peer = peer_id
         self._record_slot = slot
+        streams = getattr(self, '_record_streams', None)
+        if streams is None:
+            streams = set()
+            self._record_streams = streams
+        streams.add(stream_id)
         self.STATUS[slot]['RX_RFS'] = rf_src
         self.STATUS[slot]['RX_TYPE'] = dtype_vseq
         self.STATUS[slot]['RX_TGID'] = dst_id
@@ -299,6 +308,7 @@ class playback(HBSYSTEM):
         self.CALL_DATA = []
         self._record_rf_src = None
         self._record_dst = None
+        self._record_streams = set()
         self._play_recording(packets, unit_call, echo_dst, peer_id, slot, duration)
 
     def _play_idle(self):
@@ -318,6 +328,12 @@ class playback(HBSYSTEM):
 
         if _stream_id != self.STATUS[_slot]['RX_STREAM_ID']:
             if self._is_same_parrot_over(_rf_src, _dst_id, pkt_time, _slot):
+                if _is_vterm and self._seen_parrot_stream(_stream_id):
+                    logger.debug(
+                        '(%s) Ignoring stale VTERM for stream %s while recording %s',
+                        self._system, int_id(_stream_id),
+                        int_id(self.STATUS[_slot]['RX_STREAM_ID']))
+                    return
                 logger.info(
                     '(%s) *CONTINUE RECORDING* STREAM ID: %s (was %s) SUB: %s',
                     self._system, int_id(_stream_id),
@@ -342,6 +358,7 @@ class playback(HBSYSTEM):
                     pass
             self._cancel_idle_play()
             self.CALL_DATA = []
+            self._record_streams = set()
             self.STATUS['RX_START'] = pkt_time
             self._record_rf_src = _rf_src
             self._record_dst = _dst_id
