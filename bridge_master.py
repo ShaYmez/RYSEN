@@ -4123,12 +4123,15 @@ class routerHBP(HBSYSTEM):
         logger.info('(%s) Reset all star mode -> dial mode', self._system)
 
     def _relay_unit_voice_packet(self, _dst_id, _slot, _bits, _data, dmrpkt, _peer_id=None):
-        """Forward one unit-voice DMRD frame toward a destination system (parrot echo path)."""
+        """Forward one unit-voice DMRD frame toward a destination system (parrot echo path).
+
+        Returns (system, slot, peer) when a frame is sent, otherwise None.
+        """
         _int_dst_id = int_id(_dst_id)
 
-        def _send(_d_system, _d_slot):
+        def _send(_d_system, _d_slot, _d_peer=None):
             if _d_system == self._system or _d_system not in systems:
-                return False
+                return None
             _send_bits = _bits ^ (1 << 7) if _slot != _d_slot else _bits
             _tmp_data = b''.join([
                 _data[:15], _send_bits.to_bytes(1, 'big'), _data[16:20], dmrpkt,
@@ -4136,15 +4139,17 @@ class routerHBP(HBSYSTEM):
             systems[_d_system].send_system(_tmp_data)
             logger.debug('(%s) UNIT voice bridged to %s slot %s DST %s',
                          self._system, _d_system, _d_slot, _int_dst_id)
-            return True
+            return (_d_system, _d_slot, _d_peer)
 
         if _dst_id in SUB_MAP:
             try:
                 _entry = SUB_MAP[_dst_id]
                 _d_system = _entry[0]
                 _d_slot = _entry[1]
-                if _send(_d_system, _d_slot):
-                    return
+                _d_peer = _entry[4] if len(_entry) >= 5 else None
+                _delivered = _send(_d_system, _d_slot, _d_peer)
+                if _delivered:
+                    return _delivered
             except (TypeError, ValueError, IndexError):
                 pass
 
@@ -4157,8 +4162,9 @@ class routerHBP(HBSYSTEM):
             _peers = CONFIG['SYSTEMS'][_d_system].get('PEERS') or {}
             for _to_peer in _peers:
                 if str(int_id(_to_peer))[:7] == str(_int_dst_id)[:7]:
-                    if _send(_d_system, _slot):
-                        return
+                    _delivered = _send(_d_system, _slot, _to_peer)
+                    if _delivered:
+                        return _delivered
 
         if CONFIG['SYSTEMS'][self._system].get('MODE') != 'IPSC':
             for _d_system in systems:
@@ -4173,8 +4179,10 @@ class routerHBP(HBSYSTEM):
                     _int_peer = int_id(_to_peer)
                     if (_int_peer == _int_dst_id
                             or str(_int_peer)[:7] == str(_int_dst_id)[:7]):
-                        if _send(_d_system, _slot):
-                            return
+                        _delivered = _send(_d_system, _slot, _to_peer)
+                        if _delivered:
+                            return _delivered
+        return None
 
     def _unit_route_cache(self):
         cache = getattr(self, '_unit_voice_routes', None)
@@ -5028,6 +5036,147 @@ class routerHBP(HBSYSTEM):
             self._remember_unit_terminal(route, pkt_time)
             cache.pop(_stream_id, None)
 
+    def _parrot_monitor_state(self):
+        state = getattr(self, '_parrot_monitor', None)
+        if state is None:
+            state = {
+                'current': None,
+                'start': 0,
+                'ended': True,
+                'echo_to': None,
+            }
+            self._parrot_monitor = state
+        return state
+
+    def _parrot_report(self):
+        """Monitor socket for parrot events. Audio still forwards when this is None."""
+        if not CONFIG.get('REPORTS', {}).get('REPORT'):
+            return None
+        parrot_cfg = CONFIG.get('SYSTEMS', {}).get('PARROT') or {}
+        if not parrot_cfg.get('ENABLED'):
+            return None
+        if 'PARROT' not in systems:
+            return None
+        parrot = systems.get('PARROT')
+        report = getattr(parrot, '_report', None) if parrot is not None else None
+        if report is None:
+            report = getattr(self, '_report', None)
+        if report is None or not hasattr(report, 'send_bridgeEvent'):
+            return None
+        return report
+
+    def _parrot_monitor_open(self, stream_id, pkt_time, terminal=False):
+        state = self._parrot_monitor_state()
+        current = state.get('current')
+        if current == stream_id:
+            return False
+        if current is not None and not state.get('ended') and terminal:
+            return False
+        state['current'] = stream_id
+        state['start'] = pkt_time
+        state['ended'] = False
+        state['echo_to'] = None
+        return True
+
+    def _parrot_monitor_close(self, stream_id, pkt_time):
+        state = self._parrot_monitor_state()
+        if state.get('current') != stream_id or state.get('ended'):
+            return None
+        state['ended'] = True
+        return max(0.0, float(pkt_time) - float(state.get('start', pkt_time)))
+
+    def _report_parrot_unit(self, kind, trx, system, stream_id, peer_id, rf_src,
+                            slot, dst_id, duration=None):
+        report = self._parrot_report()
+        if report is None or peer_id is None:
+            return
+        report.send_bridgeEvent(unit_voice_event(
+            kind, trx, system, int_id(stream_id), int_id(peer_id),
+            int_id(rf_src), slot, int_id(dst_id), duration))
+
+    def _report_parrot_group_leg(self, stream_id, peer_id, rf_src, rssi,
+                                 frame_type, dtype_vseq, pkt_time):
+        report = self._parrot_report()
+        if report is None:
+            return
+        terminal = (
+            frame_type == HBPF_DATA_SYNC and dtype_vseq == HBPF_SLT_VTERM)
+        if self._parrot_monitor_open(stream_id, pkt_time, terminal=terminal):
+            report.send_bridgeEvent(group_voice_event(
+                'START', 'TX', 'PARROT', int_id(stream_id), int_id(peer_id),
+                int_id(rf_src), 2, PARROT_TG, rssi))
+        if terminal:
+            duration = self._parrot_monitor_close(stream_id, pkt_time)
+            if duration is None:
+                return
+            report.send_bridgeEvent(
+                'GROUP VOICE,END,TX,PARROT,{},{},{},{},{},{:.2f}'.format(
+                    int_id(stream_id), int_id(peer_id), int_id(rf_src),
+                    2, PARROT_TG, duration).encode('utf-8', 'ignore'))
+
+    def _report_parrot_private_inbound(self, stream_id, peer_id, rf_src, dst_id,
+                                       slot, frame_type, dtype_vseq, pkt_time):
+        if self._parrot_report() is None:
+            return
+        terminal = (
+            frame_type == HBPF_DATA_SYNC and dtype_vseq == HBPF_SLT_VTERM)
+        if self._parrot_monitor_open(stream_id, pkt_time, terminal=terminal):
+            self._report_parrot_unit(
+                'START', 'RX', self._system, stream_id, peer_id, rf_src,
+                slot, dst_id)
+            self._report_parrot_unit(
+                'TO START', 'TX', 'PARROT', stream_id, peer_id, rf_src,
+                2, dst_id)
+        if terminal:
+            duration = self._parrot_monitor_close(stream_id, pkt_time)
+            if duration is None:
+                return
+            self._report_parrot_unit(
+                'END', 'RX', self._system, stream_id, peer_id, rf_src,
+                slot, dst_id, duration)
+            self._report_parrot_unit(
+                'TO END', 'TX', 'PARROT', stream_id, peer_id, rf_src,
+                2, dst_id, duration)
+
+    def _report_parrot_private_echo(self, stream_id, peer_id, rf_src, dst_id,
+                                    slot, frame_type, dtype_vseq, pkt_time,
+                                    delivered):
+        if self._parrot_report() is None:
+            return
+        terminal = (
+            frame_type == HBPF_DATA_SYNC and dtype_vseq == HBPF_SLT_VTERM)
+        state = self._parrot_monitor_state()
+        if self._parrot_monitor_open(stream_id, pkt_time, terminal=terminal):
+            self._report_parrot_unit(
+                'START', 'RX', 'PARROT', stream_id, peer_id, rf_src,
+                slot, dst_id)
+            if delivered:
+                d_system, d_slot, d_peer = delivered
+                state['echo_to'] = delivered
+                self._report_parrot_unit(
+                    'TO START', 'TX', d_system, stream_id, d_peer, rf_src,
+                    d_slot, dst_id)
+        elif (delivered and state.get('current') == stream_id
+                and not state.get('ended') and not state.get('echo_to')):
+            d_system, d_slot, d_peer = delivered
+            state['echo_to'] = delivered
+            self._report_parrot_unit(
+                'TO START', 'TX', d_system, stream_id, d_peer, rf_src,
+                d_slot, dst_id)
+        if terminal:
+            duration = self._parrot_monitor_close(stream_id, pkt_time)
+            if duration is None:
+                return
+            self._report_parrot_unit(
+                'END', 'RX', 'PARROT', stream_id, peer_id, rf_src,
+                slot, dst_id, duration)
+            echo_to = state.get('echo_to') or delivered
+            if echo_to:
+                d_system, d_slot, d_peer = echo_to
+                self._report_parrot_unit(
+                    'TO END', 'TX', d_system, stream_id, d_peer, rf_src,
+                    d_slot, dst_id, duration)
+
     def _forward_parrot_unit_voice(self, _dst_id, _slot, _bits, _data, dmrpkt):
         """Send one voice frame to the PARROT playback peer (group or private 9990).
 
@@ -5330,7 +5479,11 @@ class routerHBP(HBSYSTEM):
         #Handle  private voice calls (for reflectors and parrot)
         elif _call_type == 'unit' and not _data_call:
             if self._system == 'PARROT':
-                self._relay_unit_voice_packet(_dst_id, _slot, _bits, _data, dmrpkt, _peer_id)
+                _parrot_delivered = self._relay_unit_voice_packet(
+                    _dst_id, _slot, _bits, _data, dmrpkt, _peer_id)
+                self._report_parrot_private_echo(
+                    _stream_id, _peer_id, _rf_src, _dst_id, _slot,
+                    _frame_type, _dtype_vseq, pkt_time, _parrot_delivered)
                 self.STATUS[_slot]['RX_PEER']      = _peer_id
                 self.STATUS[_slot]['RX_SEQ']       = _seq
                 self.STATUS[_slot]['RX_RFS']       = _rf_src
@@ -5348,6 +5501,9 @@ class routerHBP(HBSYSTEM):
                     logger.info('(%s) Parrot: Private call from %s to %s',
                                 self._system, int_id(_rf_src), _int_dst_id)
                 self._forward_parrot_unit_voice(_dst_id, _slot, _bits, _data, dmrpkt)
+                self._report_parrot_private_inbound(
+                    _stream_id, _peer_id, _rf_src, _dst_id, _slot,
+                    _frame_type, _dtype_vseq, pkt_time)
                 self.STATUS[_slot]['RX_PEER']      = _peer_id
                 self.STATUS[_slot]['RX_SEQ']       = _seq
                 self.STATUS[_slot]['RX_RFS']       = _rf_src
@@ -5510,6 +5666,9 @@ class routerHBP(HBSYSTEM):
                     and is_parrot_talkgroup(_int_dst_id)):
                 self._forward_parrot_unit_voice(
                     _dst_id, _slot, _bits, _data, dmrpkt)
+                self._report_parrot_group_leg(
+                    _stream_id, _peer_id, _rf_src, _rssi,
+                    _frame_type, _dtype_vseq, pkt_time)
 
             _hbp_is_vterm = (
                 _frame_type == HBPF_DATA_SYNC

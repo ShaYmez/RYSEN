@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Parrot TG 9990 helpers — never OBP, never dial-a-tg / TG 9."""
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+import bridge_master as bm
 from const import HBPF_DATA_SYNC, HBPF_SLT_VHEAD, HBPF_SLT_VTERM
 from dmr_utils3 import decode
 from dmr_utils3.utils import bytes_3, bytes_4, int_id
@@ -239,6 +240,113 @@ class TestPlaybackRecording(unittest.TestCase):
         self.assertTrue(sent)
         self.assertEqual(player.CALL_DATA, [])
         self.assertFalse(sent[0][15] & 0x40)
+
+
+class TestParrotMonitorEvents(unittest.TestCase):
+
+    def setUp(self):
+        self._systems = dict(bm.systems)
+        bm.systems.clear()
+        self._config = getattr(bm, 'CONFIG', None)
+        bm.CONFIG = {
+            'REPORTS': {'REPORT': True},
+            'ALLSTAR': {'ENABLED': False},
+            'SYSTEMS': {
+                'PARROT': {
+                    'MODE': 'PEER',
+                    'ENABLED': True,
+                    'GROUP_HANGTIME': 5,
+                    'ANNOUNCEMENT_LANGUAGE': 'en_US',
+                    'PEERS': {},
+                },
+            },
+        }
+
+    def tearDown(self):
+        bm.systems.clear()
+        bm.systems.update(self._systems)
+        if self._config is None:
+            if hasattr(bm, 'CONFIG'):
+                delattr(bm, 'CONFIG')
+        else:
+            bm.CONFIG = self._config
+
+    def _router(self):
+        router = bm.routerHBP.__new__(bm.routerHBP)
+        router._system = 'SYSTEM-A'
+        router._report = MagicMock()
+        parrot = MagicMock()
+        parrot._report = router._report
+        parrot.send_system = MagicMock()
+        bm.systems['PARROT'] = parrot
+        return router
+
+    def _events(self, router):
+        return [
+            call.args[0].decode('utf-8').split(',')
+            for call in router._report.send_bridgeEvent.call_args_list
+        ]
+
+    def test_stale_terminator_does_not_end_a_newer_group_stream(self):
+        router = self._router()
+        older = b'\x00\x00\x00\x01'
+        newer = b'\x00\x00\x00\x02'
+        router._report_parrot_group_leg(
+            newer, PEER, CALLER, b'\x00',
+            HBPF_DATA_SYNC, HBPF_SLT_VHEAD, 100.0)
+        router._report_parrot_group_leg(
+            older, PEER, CALLER, b'\x00',
+            HBPF_DATA_SYNC, HBPF_SLT_VTERM, 100.5)
+        router._report_parrot_group_leg(
+            newer, PEER, CALLER, b'\x00',
+            HBPF_DATA_SYNC, HBPF_SLT_VTERM, 101.0)
+        events = self._events(router)
+        self.assertEqual([event[1] for event in events], ['START', 'END'])
+        self.assertEqual(events[0][4], str(int_id(newer)))
+        self.assertEqual(events[1][4], str(int_id(newer)))
+        self.assertEqual(events[1][9], '1.00')
+
+    def test_repeated_group_terminator_emits_end_once(self):
+        router = self._router()
+        stream = b'\x00\x00\x00\x03'
+        router._report_parrot_group_leg(
+            stream, PEER, CALLER, b'\x04',
+            HBPF_DATA_SYNC, HBPF_SLT_VHEAD, 50.0)
+        router._report_parrot_group_leg(
+            stream, PEER, CALLER, b'\x04',
+            HBPF_DATA_SYNC, HBPF_SLT_VTERM, 52.0)
+        router._report_parrot_group_leg(
+            stream, PEER, CALLER, b'\x04',
+            HBPF_DATA_SYNC, HBPF_SLT_VTERM, 52.1)
+        events = self._events(router)
+        self.assertEqual([event[1] for event in events], ['START', 'END'])
+        self.assertEqual(events[0][9], '4')
+        self.assertEqual(events[1][9], '2.00')
+
+    def test_missing_report_socket_still_forwards_audio(self):
+        router = self._router()
+        router._report = None
+        bm.systems['PARROT']._report = None
+        packet = bytearray(55)
+        packet[0:4] = b'DMRD'
+        router._forward_parrot_unit_voice(
+            bytes_3(9990), 2, 0x80, bytes(packet), bytes(packet[20:53]))
+        router._report_parrot_group_leg(
+            b'\x00\x00\x00\x04', PEER, CALLER, b'\x00',
+            HBPF_DATA_SYNC, HBPF_SLT_VHEAD, 1.0)
+        bm.systems['PARROT'].send_system.assert_called_once()
+
+    def test_parrot_bridge_skip_and_direct_audio_path_are_unchanged(self):
+        with open('bridge_master.py', encoding='utf-8') as fh:
+            source = fh.read()
+        self.assertIn(
+            "if _target['SYSTEM'] == 'PARROT' and is_parrot_bridge(_bridge):",
+            source)
+        self.assertIn('self._forward_parrot_unit_voice(', source)
+        self.assertIn('self._report_parrot_group_leg(', source)
+        forward = source.split('def _forward_parrot_unit_voice', 1)[1]
+        forward = forward.split('def sendDataToOBP', 1)[0]
+        self.assertNotIn('send_bridgeEvent', forward)
 
 
 if __name__ == '__main__':

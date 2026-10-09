@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Local subscriber private calls: reflector isolation, delivery, and ACLs."""
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import bridge_master as bm
 from const import HBPF_DATA_SYNC, HBPF_SLT_VHEAD, HBPF_SLT_VTERM, HBPF_VOICE
-from dmr_utils3.utils import bytes_3
+from dmr_utils3.utils import bytes_3, int_id
 from hblink import HBSYSTEM
 
 
@@ -143,6 +143,14 @@ class UnitCallFixture(unittest.TestCase):
         return {
             (radio_id).to_bytes(4, 'big'): {'CONNECTION': 'YES'},
         }
+
+    def _enable_parrot_monitor(self, router):
+        bm.CONFIG['REPORTS']['REPORT'] = True
+        self._system('PARROT', 'PEER')
+        parrot = _Target()
+        parrot._report = router._report
+        bm.systems['PARROT'] = parrot
+        return parrot
 
 
 class TestUnitVoiceDelivery(UnitCallFixture):
@@ -468,27 +476,151 @@ class TestSubscriberPrivateCallSkipsReflector(UnitCallFixture):
         router._forward_parrot_unit_voice.assert_called()
         router._forward_unit_voice.assert_not_called()
 
+    def _group_9990(self, dst, stream, seq, dtype):
+        packet = bytearray(_voice_packet(CALLER, dst, stream, 2, seq, dtype))
+        packet[15] &= ~0x40
+        return bytes(packet)
+
     def test_group_9990_reaches_playback_even_when_terminator_is_rejected(self):
         """Group parrot must be handed to playback before the VTERM guards return."""
         self._system('SYSTEM-A', 'MASTER')
         router = self._router('SYSTEM-A')
-        router._forward_parrot_unit_voice = MagicMock()
+        self._enable_parrot_monitor(router)
+        original = router._forward_parrot_unit_voice
+        router._forward_parrot_unit_voice = MagicMock(side_effect=original)
         slot = router.STATUS[2]
         slot['RX_TYPE'] = HBPF_SLT_VTERM
         slot['RX_STREAM_ID'] = b'\x11\x11\x11\x11'
         slot['RX_RFS'] = bytes_3(1)
         slot['RX_PEER'] = b'\x00\x00\x00\x09'
         slot['RX_TGID'] = bytes_3(91)
-        packet = _voice_packet(CALLER, 9990, STREAM, 2, 1, HBPF_SLT_VTERM)
-        packet = bytearray(packet)
-        packet[15] &= ~0x40
+        packet = self._group_9990(9990, STREAM, 1, HBPF_SLT_VTERM)
         try:
             router.dmrd_received(
                 PEER, bytes_3(CALLER), bytes_3(9990), 1, 2, 'group',
-                HBPF_DATA_SYNC, HBPF_SLT_VTERM, STREAM, bytes(packet))
+                HBPF_DATA_SYNC, HBPF_SLT_VTERM, STREAM, packet)
         except Exception:
             pass
         router._forward_parrot_unit_voice.assert_called()
+        parrot = [event for event in _events(router) if event[3] == 'PARROT']
+        self.assertEqual([event[1] for event in parrot], ['START', 'END'])
+        self.assertEqual(parrot[0][:9], [
+            'GROUP VOICE', 'START', 'TX', 'PARROT', str(int_id(STREAM)),
+            str(int_id(PEER)), str(CALLER), '2', '9990'])
+        self.assertEqual(parrot[1][:9], [
+            'GROUP VOICE', 'END', 'TX', 'PARROT', str(int_id(STREAM)),
+            str(int_id(PEER)), str(CALLER), '2', '9990'])
+
+    def test_group_9990_header_and_rejected_terminator_report_once(self):
+        self._system('SYSTEM-A', 'MASTER')
+        router = self._router('SYSTEM-A')
+        parrot = self._enable_parrot_monitor(router)
+        original = router._forward_parrot_unit_voice
+        router._forward_parrot_unit_voice = MagicMock(side_effect=original)
+        slot = router.STATUS[2]
+        slot['RX_TYPE'] = HBPF_SLT_VTERM
+        slot['RX_STREAM_ID'] = b'\x11\x11\x11\x11'
+        slot['RX_RFS'] = bytes_3(1)
+        slot['RX_PEER'] = b'\x00\x00\x00\x09'
+        slot['RX_TGID'] = bytes_3(91)
+        head = self._group_9990(9990, STREAM, 0, HBPF_SLT_VHEAD)
+        term = self._group_9990(9990, STREAM, 1, HBPF_SLT_VTERM)
+        extra = self._group_9990(9990, STREAM, 2, HBPF_SLT_VTERM)
+        for seq, dtype, packet in (
+                (0, HBPF_SLT_VHEAD, head),
+                (1, HBPF_SLT_VTERM, term),
+                (2, HBPF_SLT_VTERM, extra)):
+            try:
+                router.dmrd_received(
+                    PEER, bytes_3(CALLER), bytes_3(9990), seq, 2, 'group',
+                    HBPF_DATA_SYNC, dtype, STREAM, packet)
+            except Exception:
+                pass
+        self.assertEqual(router._forward_parrot_unit_voice.call_count, 3)
+        self.assertEqual(len(parrot.sent), 3)
+        parrot_events = [
+            event for event in _events(router) if event[3] == 'PARROT']
+        self.assertEqual(
+            [event[1] for event in parrot_events], ['START', 'END'])
+
+    def test_private_9990_reports_caller_and_parrot_without_unit_forward(self):
+        self._system('SYSTEM-A', 'MASTER')
+        router = self._router('SYSTEM-A')
+        parrot = self._enable_parrot_monitor(router)
+        router._forward_unit_voice = MagicMock()
+        now = [100.0]
+        with patch.object(bm, 'time', side_effect=lambda: now[0]):
+            self._receive(router, 9990, STREAM, 0, HBPF_SLT_VHEAD)
+            now[0] = 101.0
+            self._receive(router, 9990, STREAM, 1, HBPF_SLT_VTERM)
+            now[0] = 102.0
+            self._receive(router, 9990, STREAM, 2, HBPF_SLT_VTERM)
+        router._forward_unit_voice.assert_not_called()
+        self.assertEqual(len(parrot.sent), 3)
+        events = _events(router)
+        self.assertEqual(
+            [event[1] for event in events],
+            ['START', 'TO START', 'END', 'TO END'])
+        self.assertEqual(events[0][2:9], [
+            'RX', 'SYSTEM-A', str(int_id(STREAM)), str(int_id(PEER)),
+            str(CALLER), '2', '9990'])
+        self.assertEqual(events[1][2:9], [
+            'TX', 'PARROT', str(int_id(STREAM)), str(int_id(PEER)),
+            str(CALLER), '2', '9990'])
+        self.assertEqual(events[2][9], '1.00')
+        self.assertEqual(events[3][9], '1.00')
+
+    def test_private_echo_from_parrot_reports_delivery_once(self):
+        self._system('PARROT', 'PEER')
+        self._system('SYSTEM-A', 'MASTER', peers={PEER: {'CONNECTION': 'YES'}})
+        bm.CONFIG['REPORTS']['REPORT'] = True
+        target = _Target()
+        bm.systems['SYSTEM-A'] = target
+        router = self._router('PARROT')
+        bm.systems['PARROT'] = router
+        bm.SUB_MAP[bytes_3(CALLER)] = ('SYSTEM-A', 2, None, 50.0, PEER)
+        router._forward_unit_voice = MagicMock()
+        now = [100.0]
+        with patch.object(bm, 'time', side_effect=lambda: now[0]):
+            packet = _voice_packet(9990, CALLER, STREAM, 2, 0, HBPF_SLT_VHEAD)
+            router.dmrd_received(
+                PEER, bytes_3(9990), bytes_3(CALLER), 0, 2, 'unit',
+                HBPF_DATA_SYNC, HBPF_SLT_VHEAD, STREAM, packet)
+            now[0] = 101.0
+            packet = _voice_packet(9990, CALLER, STREAM, 2, 1, HBPF_SLT_VTERM)
+            router.dmrd_received(
+                PEER, bytes_3(9990), bytes_3(CALLER), 1, 2, 'unit',
+                HBPF_DATA_SYNC, HBPF_SLT_VTERM, STREAM, packet)
+        router._forward_unit_voice.assert_not_called()
+        self.assertEqual(len(target.sent), 2)
+        events = _events(router)
+        self.assertEqual(
+            [event[1] for event in events],
+            ['START', 'TO START', 'END', 'TO END'])
+        self.assertEqual(events[0][2:9], [
+            'RX', 'PARROT', str(int_id(STREAM)), str(int_id(PEER)),
+            '9990', '2', str(CALLER)])
+        self.assertEqual(events[1][2:9], [
+            'TX', 'SYSTEM-A', str(int_id(STREAM)), str(int_id(PEER)),
+            '9990', '2', str(CALLER)])
+        self.assertEqual(events[2][9], '1.00')
+        self.assertEqual(events[3][9], '1.00')
+
+    def test_normal_calls_do_not_gain_parrot_monitor_events(self):
+        self._system('SYSTEM-A', 'MASTER')
+        self._system('SYSTEM-B', 'MASTER', peers=self._peer(ESSID))
+        router = self._router('SYSTEM-A')
+        parrot = self._enable_parrot_monitor(router)
+        bm.systems['SYSTEM-B'] = _Target()
+        group = self._group_9990(2350, STREAM, 1, HBPF_SLT_VTERM)
+        router.dmrd_received(
+            PEER, bytes_3(CALLER), bytes_3(2350), 1, 2, 'group',
+            HBPF_DATA_SYNC, HBPF_SLT_VTERM, STREAM, group)
+        self._receive(router, CALLEE, STREAM2, 0, HBPF_SLT_VHEAD)
+        parrot_events = [
+            event for event in _events(router) if event[3] == 'PARROT']
+        self.assertEqual(parrot_events, [])
+        self.assertEqual(parrot.sent, [])
 
 
 class TestHomebrewUnitAcl(unittest.TestCase):
