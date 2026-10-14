@@ -335,25 +335,29 @@ def decode_fich(air200):
 
 
 def encode_dch(info80):
-    """V/D mode 2 DCH: CRC, convolution, whiten, interleave. 200 air bits."""
-    payload = list(info80) + crc16(info80)
+    """V/D mode 2 DCH: whiten the 10 data bytes, then CRC, convolution, interleave.
+
+    The PN sequence covers the callsign bytes before the CRC. The
+    convolutional codeword is not whitened again.
+    """
+    if len(info80) != 80:
+        raise ValueError('DCH data is 80 bits')
+    whitened = [bit ^ mask for bit, mask in zip(info80, pn_bits(80))]
+    payload = whitened + crc16(whitened)
     convolved = conv_encode(payload)
-    whitened = [bit ^ mask for bit, mask in zip(convolved, pn_bits(len(convolved)))]
-    air = interleave_dibits(_bits_to_dibits(whitened), 5, 20)
+    air = interleave_dibits(_bits_to_dibits(convolved), 5, 20)
     return _dibits_to_bits(air)
 
 
 def decode_dch(air200):
     dibits = deinterleave_dibits(_bits_to_dibits(air200), 5, 20)
-    whitened = _dibits_to_bits(dibits)
-    convolved = [bit ^ mask for bit, mask in zip(whitened, pn_bits(len(whitened)))]
-    decoded = conv_decode(convolved)
+    decoded = conv_decode(_dibits_to_bits(dibits))
     if decoded is None or len(decoded) < 96:
         return None
     info = decoded[:80]
     if decoded[80:96] != crc16(info):
         return None
-    return info
+    return [bit ^ mask for bit, mask in zip(info, pn_bits(80))]
 
 
 def encode_voice(ambe49):

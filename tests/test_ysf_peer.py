@@ -9,23 +9,29 @@ from dmr_utils3.utils import bytes_3
 
 from const import LC_OPT
 import config
+import ysf_protocol as ysf
 from ysf_protocol import (
     DT_VOICE_FR,
     FI_COMMUNICATION,
     FRAME_SYNC,
     bits_to_bytes,
     bytes_to_bits,
+    conv_encode,
+    crc16,
+    decode_dch,
     decode_dn_frame,
     decode_fich,
     encode_dch,
     encode_dn_frame,
     encode_fich,
     encode_voice,
+    interleave_dibits,
     pack_fich,
     pack_poll,
     pack_unlink,
     pack_ysfd,
     parse_ysfd,
+    pn_bits,
 )
 from ysf_voice import (
     SILENCE_49,
@@ -131,6 +137,16 @@ class TestYsfProtocol(unittest.TestCase):
         decoded = decode_dn_frame(_voice_fr_frame())
         self.assertEqual(decoded['fich']['dt'], DT_VOICE_FR)
         self.assertIsNone(decoded['ambes'])
+
+    def test_dch_whitens_the_callsign_before_the_crc(self):
+        info = bytes_to_bits(b'M0ABC     ')
+        whitened = [bit ^ mask for bit, mask in zip(info, pn_bits(80))]
+        coded = conv_encode(whitened + crc16(whitened))
+        expect = ysf._dibits_to_bits(
+            interleave_dibits(ysf._bits_to_dibits(coded), 5, 20))
+        self.assertEqual(encode_dch(info), expect)
+        self.assertEqual(bits_to_bytes(decode_dch(expect)), b'M0ABC     ')
+        self.assertNotEqual(crc16(info), crc16(whitened))
 
 
 class TestYsfVoice(unittest.TestCase):
