@@ -201,6 +201,7 @@ class YsfPeerMixin(object):
         self._rx_lc = None
         self._rx_emb = None
         self._last_drop_dt = None
+        self._last_drop_dgid = None
         self._callsigns = None
         stats = self._config.setdefault('STATS', {})
         stats.setdefault('CONNECTION', 'NO')
@@ -227,10 +228,12 @@ class YsfPeerMixin(object):
         return int(radio).to_bytes(4, 'big')
 
     def _slot(self):
-        return 2 if int(self._config.get('TS', 2)) != 1 else 1
+        # XLX module audio is always slot 2. YSF uses the same rules leg.
+        return 2
 
     def _tgid(self):
-        return bytes_3(int(self._config.get('TGID', 9)) & 0xFFFFFF)
+        # XLX module audio is always TG 9. YSF uses the same rules leg.
+        return bytes_3(9)
 
     def _index(self):
         if self._callsigns is None:
@@ -319,6 +322,20 @@ class YsfPeerMixin(object):
         self._tx_source = pad_callsign(
             callsign_for_id(self._CONFIG, ident, fallback))
 
+    def _wanted_dgid(self):
+        return int(self._config.get('DGID') or 0) & 0x7F
+
+    def _write_dn(self, chunk, end):
+        frame = encode_dn_frame(
+            chunk, self._tx_fn, self._wanted_dgid(),
+            self._tx_source, self._gateway(), fi=FI_COMMUNICATION)
+        packet = pack_ysfd(
+            self._gateway(), self._tx_source, 'ALL',
+            self._tx_seq, end, frame)
+        self._tx_fn = (self._tx_fn + 1) % 6
+        self._tx_seq = (self._tx_seq + 1) & 0x7F
+        self._write(packet)
+
     def _pump_tx(self, force=False):
         if (not force and self._tx_timer is not None
                 and getattr(self._tx_timer, 'active', lambda: True)()):
@@ -328,22 +345,18 @@ class YsfPeerMixin(object):
             for _ in range(5):
                 chunk.append(self._tx_q.popleft() if self._tx_q else SILENCE_49)
             end = self._tx_ending and not self._tx_q
-            frame = encode_dn_frame(
-                chunk, self._tx_fn, int(self._config.get('DGID') or 0),
-                self._tx_source, self._gateway(), fi=FI_COMMUNICATION)
-            packet = pack_ysfd(
-                self._gateway(), self._tx_source, 'ALL',
-                self._tx_seq, end, frame)
-            self._tx_fn = (self._tx_fn + 1) % 6
-            self._tx_seq = (self._tx_seq + 1) & 0x7F
-            self._write(packet)
+            self._write_dn(chunk, end)
             if end:
                 self._tx_ending = False
                 self._tx_stream = None
             if not self._ysf_immediate and not force:
                 self._tx_timer = self._schedule(YSF_FRAME_S, self._tx_fired)
                 return
+        # A terminator can arrive after the last full group was already sent,
+        # or after a header with no voice. The reflector still needs the end bit.
         if self._tx_ending and not self._tx_q:
+            if self._tx_stream is not None:
+                self._write_dn([SILENCE_49] * 5, True)
             self._tx_ending = False
             self._tx_stream = None
 
@@ -363,6 +376,15 @@ class YsfPeerMixin(object):
             return
         decoded = decode_dn_frame(parsed['frame'])
         if decoded is None or decoded['fich'] is None:
+            return
+        wanted = self._wanted_dgid()
+        got = int(decoded['fich'].get('dgid') or 0)
+        if wanted and got != wanted:
+            if got != self._last_drop_dgid:
+                logger.info(
+                    '(%s) Dropping YSF DGID %s; this stanza is room %s',
+                    self._system, got, wanted)
+                self._last_drop_dgid = got
             return
         dt = decoded['fich']['dt']
         if dt != DT_VD_MODE2 or not decoded['ambes']:

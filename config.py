@@ -370,8 +370,6 @@ def build_config(_config_file):
                         'CALLSIGN': bytes(config.get(section, 'CALLSIGN').ljust(10)[:10], 'utf-8'),
                         'DGID': config.getint(section, 'DGID', fallback=0),
                         'RADIO_ID': config.getint(section, 'RADIO_ID').to_bytes(4, 'big'),
-                        'TS': config.getint(section, 'TS', fallback=2),
-                        'TGID': config.getint(section, 'TGID', fallback=9),
                         'DESCRIPTION': config.get(section, 'DESCRIPTION', fallback=''),
                         'GROUP_HANGTIME': config.getint(section, 'GROUP_HANGTIME', fallback=5),
                         'USE_ACL': False,

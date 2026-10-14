@@ -241,6 +241,71 @@ class TestYsfVoice(unittest.TestCase):
         self.assertEqual(peer._tx_stream, b'\x0a\x0b\x0c\x0d')
         self.assertFalse(peer._tx_ending)
 
+    def test_terminator_after_full_group_sets_the_end_bit(self):
+        peer = _Peer()
+        src = bytes_3(2350001)
+        dst = bytes_3(9)
+        lc = b''.join((LC_OPT, dst, src))
+        word = ambe49_to_72(SILENCE_49)
+        header = _dmrd(
+            0, _HEAD_BITS,
+            lc_payload(bptc.encode_header_lc(lc), 'VOICE_LC_HEAD'))
+        peer.ysf_send_system(header)
+        for position in range(5):
+            payload = voice_payload([word, word, word], _embed(position % 6, None))
+            peer.ysf_send_system(_dmrd(position + 1, _BURST_BITS[position % 6], payload))
+        self.assertEqual(len(peer.box), 3)
+        self.assertFalse(any(parse_ysfd(packet)['end'] for packet in peer.box))
+        term = _dmrd(
+            6, _TERM_BITS,
+            lc_payload(bptc.encode_terminator_lc(lc), 'VOICE_LC_TERM'))
+        peer.ysf_send_system(term)
+        self.assertEqual(len(peer.box), 4)
+        closing = parse_ysfd(peer.box[-1])
+        self.assertTrue(closing['end'])
+        self.assertEqual(decode_dn_frame(closing['frame'])['ambes'], [SILENCE_49] * 5)
+        self.assertIsNone(peer._tx_stream)
+
+    def test_header_only_terminator_sets_the_end_bit(self):
+        peer = _Peer()
+        src = bytes_3(2350001)
+        dst = bytes_3(9)
+        lc = b''.join((LC_OPT, dst, src))
+        peer.ysf_send_system(_dmrd(
+            0, _HEAD_BITS,
+            lc_payload(bptc.encode_header_lc(lc), 'VOICE_LC_HEAD')))
+        self.assertEqual(peer.box, [])
+        peer.ysf_send_system(_dmrd(
+            1, _TERM_BITS,
+            lc_payload(bptc.encode_terminator_lc(lc), 'VOICE_LC_TERM')))
+        self.assertEqual(len(peer.box), 1)
+        self.assertTrue(parse_ysfd(peer.box[0])['end'])
+
+    def test_nonzero_dgid_drops_other_rooms(self):
+        peer = _Peer()
+        peer._config['DGID'] = 7
+        match = pack_ysfd(
+            'GB3ABC', 'M0ABC', 'ALL', 1, False,
+            encode_dn_frame([SILENCE_49] * 5, 0, 7, 'M0ABC', 'MX0SXC'))
+        other = pack_ysfd(
+            'GB3ABC', 'M0ABC', 'ALL', 2, True,
+            encode_dn_frame([SILENCE_49] * 5, 0, 3, 'M0ABC', 'MX0SXC'))
+        peer.ysf_datagram_received(match, ('127.0.0.1', 42000))
+        held = len(peer.captured)
+        self.assertGreater(held, 0)
+        self.assertTrue(peer._rx_open)
+        peer.ysf_datagram_received(other, ('127.0.0.1', 42000))
+        self.assertEqual(len(peer.captured), held)
+        self.assertTrue(peer._rx_open)
+        self.assertFalse(peer._rx_ending)
+
+        open_room = _Peer()
+        foreign = pack_ysfd(
+            'GB3ABC', 'M0ABC', 'ALL', 1, True,
+            encode_dn_frame([SILENCE_49] * 5, 0, 7, 'M0ABC', 'MX0SXC'))
+        open_room.ysf_datagram_received(foreign, ('127.0.0.1', 42000))
+        self.assertGreater(len(open_room.captured), 0)
+
 
 class TestYsfConfig(unittest.TestCase):
 
@@ -312,8 +377,6 @@ DESCRIPTION: Room
         self.assertEqual(system['IP'], '')
         self.assertEqual(system['CALLSIGN'], b'MX0SXC    ')
         self.assertEqual(system['DGID'], 0)
-        self.assertEqual(system['TS'], 2)
-        self.assertEqual(system['TGID'], 9)
         self.assertEqual(system['MASTER_SOCKADDR'], ('127.0.0.1', 42000))
         self.assertEqual(int.from_bytes(system['RADIO_ID'], 'big'), 2356427)
 
