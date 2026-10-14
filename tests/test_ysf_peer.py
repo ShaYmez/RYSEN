@@ -174,6 +174,52 @@ class TestYsfVoice(unittest.TestCase):
         peer.ysf_datagram_received(foreign, ('127.0.0.1', 42000))
         self.assertEqual(peer.captured, [])
 
+    def test_voice_fr_end_does_not_close_a_dn_call(self):
+        peer = _Peer()
+        frame = encode_dn_frame([SILENCE_49] * 5, 0, 0, 'M0ABC', 'MX0SXC')
+        dn = pack_ysfd('GB3ABC', 'M0ABC', 'ALL', 1, False, frame)
+        peer.ysf_datagram_received(dn, ('127.0.0.1', 42000))
+        held = len(peer.captured)
+        self.assertGreater(held, 0)
+        self.assertTrue(peer._rx_open)
+        voice_fr = pack_ysfd('GB3ABC', 'M0ABC', 'ALL', 2, True, _voice_fr_frame())
+        peer.ysf_datagram_received(voice_fr, ('127.0.0.1', 42000))
+        self.assertEqual(len(peer.captured), held)
+        self.assertTrue(peer._rx_open)
+        self.assertFalse(peer._rx_ending)
+        self.assertNotEqual(peer.captured[-1][15] & 0x2F, _TERM_BITS)
+
+    def test_disconnected_reflector_is_resolved_again(self):
+        peer = _Peer()
+        stats = peer._config['STATS']
+        stats['CONNECTION'] = 'NO'
+        stats['DNS_TIME'] = 0
+        peer._config['_MASTER_IP'] = 'ysf.example.net'
+        peer._config['MASTER_IP'] = '1.2.3.4'
+        peer._config['MASTER_PORT'] = 42000
+        peer._config['MASTER_SOCKADDR'] = ('1.2.3.4', 42000)
+        seen = []
+
+        def resolve(host):
+            seen.append(host)
+            return '9.9.9.9'
+
+        peer._ysf_resolve = resolve
+        peer.ysf_maintenance_loop()
+        self.assertEqual(seen, ['ysf.example.net'])
+        self.assertEqual(peer._config['MASTER_IP'], '9.9.9.9')
+        self.assertEqual(peer._config['MASTER_SOCKADDR'], ('9.9.9.9', 42000))
+        peer.ysf_maintenance_loop()
+        self.assertEqual(seen, ['ysf.example.net'])
+
+        stats['CONNECTION'] = 'YES'
+        stats['LAST_PING_ACK_TIME'] = 10 ** 12
+        stats['DNS_TIME'] = 0
+        peer._config['MASTER_IP'] = '1.2.3.4'
+        peer.ysf_maintenance_loop()
+        self.assertEqual(seen, ['ysf.example.net'])
+        self.assertEqual(peer._config['MASTER_IP'], '1.2.3.4')
+
     def test_dmr_bursts_regroup_into_ysfd(self):
         peer = _Peer()
         src = bytes_3(2350001)

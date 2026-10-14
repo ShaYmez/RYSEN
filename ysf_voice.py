@@ -255,6 +255,7 @@ class YsfPeerMixin(object):
         self._write(pack_unlink(self._gateway()))
 
     def ysf_maintenance_loop(self):
+        self._maybe_reresolve()
         self.ysf_send_poll()
         stats = self._config.setdefault('STATS', {})
         if stats.get('CONNECTION') != 'YES':
@@ -266,6 +267,45 @@ class YsfPeerMixin(object):
         if last and (time() - last) > limit:
             stats['CONNECTION'] = 'NO'
             logger.info('(%s) YSF reflector timed out', self._system)
+
+    def _maybe_reresolve(self):
+        """Look the reflector up again while disconnected, same as an HBP peer."""
+        stats = self._config.setdefault('STATS', {})
+        if stats.get('CONNECTION') == 'YES':
+            return
+        if stats.get('DNS_TIME', 0) >= (time() - 600):
+            return
+        host = self._config.get('_MASTER_IP')
+        if not host:
+            return
+        stats['DNS_TIME'] = time()
+        self._resolve_master(host)
+
+    def _resolve_master(self, host):
+        if self._ysf_immediate:
+            resolver = getattr(self, '_ysf_resolve', None)
+            if resolver is None:
+                return
+            ip = resolver(host)
+            if ip:
+                self._update_sockaddr(ip)
+            return
+        from twisted.internet import reactor
+        deferred = reactor.resolve(host)
+        deferred.addCallback(self._update_sockaddr)
+        deferred.addErrback(self._resolve_failed)
+
+    def _update_sockaddr(self, ip):
+        if not ip:
+            return
+        self._config['MASTER_IP'] = ip
+        port = self._config.get('MASTER_PORT')
+        if port is not None:
+            self._config['MASTER_SOCKADDR'] = (ip, port)
+        logger.info('(%s) hostname resolution performed: %s', self._system, ip)
+
+    def _resolve_failed(self, failure):
+        logger.info('(%s) hostname resolution error: %s', self._system, failure)
 
     def _touch(self):
         stats = self._config.setdefault('STATS', {})
@@ -393,7 +433,9 @@ class YsfPeerMixin(object):
                     '(%s) Dropping YSF data type %s; only DN (V/D mode 2) is bridged',
                     self._system, dt)
                 self._last_drop_dt = dt
-            if parsed['end']:
+            # A Voice FR (or other non-DN) end bit belongs to a stream we are
+            # not bridging. It must not hang up the DN call already open.
+            if parsed['end'] and dt == DT_VD_MODE2 and self._rx_open:
                 self._rx_ending = True
                 self._pump_rx()
             return
