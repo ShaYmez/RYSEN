@@ -63,6 +63,7 @@ from mk_voice import pkt_gen
 from ipsc_master import IpscMasterMixin
 from hytera_master import HyteraMasterMixin
 from repeater_modes import is_generated_master, is_routing_master
+from ysf_voice import YsfPeerMixin
 from control_bans import ControlBanStore, radio_id_core as control_radio_id_core
 from selfcare_db import (
     HYTERA_CLIENT_MODE,
@@ -6172,6 +6173,14 @@ for _unit_voice_name in (
     setattr(routerOBP, _unit_voice_name, getattr(routerHBP, _unit_voice_name))
 
 
+class routerYSF(YsfPeerMixin, routerHBP):
+    """Outbound YSF reflector. Rules legs use this system name like an XLX peer."""
+
+    def __init__(self, _name, _config, _report):
+        routerHBP.__init__(self, _name, _config, _report)
+        self.init_ysf()
+
+
 class routerIPSC(IpscMasterMixin, routerHBP):
 
     def __init__(self, _name, _config, _report):
@@ -6569,6 +6578,8 @@ if __name__ == '__main__':
                 systems[system] = routerIPSC(system, CONFIG, report_server)
             elif CONFIG['SYSTEMS'][system]['MODE'] == 'HYTERA':
                 systems[system] = routerHYTERA(system, CONFIG, report_server)
+            elif CONFIG['SYSTEMS'][system]['MODE'] == 'YSFPEER':
+                systems[system] = routerYSF(system, CONFIG, report_server)
             else:
                 if (is_routing_master(CONFIG['SYSTEMS'][system]['MODE'])
                         and CONFIG['SYSTEMS'][system]['ANNOUNCEMENT_LANGUAGE']
