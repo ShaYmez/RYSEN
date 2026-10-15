@@ -238,7 +238,11 @@ class TestYsfVoice(unittest.TestCase):
 
     def test_poll_ack_stamps_connected_and_logs_link(self):
         peer = _Peer()
-        peer.ysf_datagram_received(pack_poll('GB7ABC'), ('127.0.0.1', 42000))
+        with self.assertLogs('ysf_voice', level='INFO') as caught:
+            peer.ysf_datagram_received(pack_poll('GB7ABC'), ('127.0.0.1', 42000))
+        self.assertEqual(
+            caught.output,
+            ['INFO:ysf_voice:(YSF-TEST) YSF reflector logged in 127.0.0.1:42000'])
         stats = peer._config['STATS']
         self.assertEqual(stats['CONNECTION'], 'YES')
         self.assertTrue(stats['CONNECTED'])

@@ -313,7 +313,10 @@ class YsfPeerMixin(object):
         now = time()
         if not stats.get('CONNECTED'):
             stats['CONNECTED'] = now
-            logger.info('(%s) YSF reflector linked', self._system)
+            addr = self._config.get('MASTER_SOCKADDR') or ('', '')
+            logger.info(
+                '(%s) YSF reflector logged in %s:%s',
+                self._system, addr[0], addr[1])
         stats['CONNECTION'] = 'YES'
         stats['LAST_PING_ACK_TIME'] = now
 
