@@ -14,6 +14,8 @@ from ysf_protocol import (
     CSD_COUNT,
     DT_VOICE_FR,
     FI_COMMUNICATION,
+    FI_HEADER,
+    FI_TERMINATOR,
     FRAME_SYNC,
     RADIO_CODE,
     RADIO_SERIAL,
@@ -25,8 +27,10 @@ from ysf_protocol import (
     decode_dch,
     decode_dn_frame,
     decode_fich,
+    decode_header_frame,
     encode_dch,
     encode_dn_frame,
+    encode_header_frame,
     encode_fich,
     encode_voice,
     interleave_dibits,
@@ -171,6 +175,15 @@ class TestYsfProtocol(unittest.TestCase):
         self.assertEqual(block[6], sum(block[:6]) & 0xFF)
         self.assertTrue(RADIO_TEXT.startswith(b'SYSTEMX'))
 
+    def test_header_frame_carries_both_callsign_blocks(self):
+        frame = encode_header_frame('ALL', 'M0ABC', 'MX0SXC', 'M0ABC', 0)
+        self.assertEqual(len(frame), 120)
+        decoded = decode_header_frame(frame)
+        self.assertEqual(decoded['fich']['fi'], FI_HEADER)
+        self.assertEqual(decoded['fich']['ft'], CSD_COUNT - 1)
+        self.assertEqual(decoded['csd1'], b'ALL       M0ABC     ')
+        self.assertEqual(decoded['csd2'], b'MX0SXC    M0ABC     ')
+
 
 class TestYsfVoice(unittest.TestCase):
 
@@ -287,19 +300,21 @@ class TestYsfVoice(unittest.TestCase):
         term = _dmrd(3, _TERM_BITS, lc_payload(bptc.encode_terminator_lc(lc), 'VOICE_LC_TERM'))
         for packet in [header] + bursts + [term]:
             peer.ysf_send_system(packet)
-        self.assertEqual(len(peer.box), 2)
-        first = parse_ysfd(peer.box[0])
-        second = parse_ysfd(peer.box[1])
-        self.assertFalse(first['end'])
-        self.assertTrue(second['end'])
-        self.assertEqual(first['source'], b'M0ABC     ')
-        self.assertEqual(first['gateway'], b'MX0SXC    ')
-        decoded = decode_dn_frame(first['frame'])
-        self.assertEqual(decoded['ambes'], [SILENCE_49] * 5)
-        # The sixth AMBE word is flushed with silence on the terminator frame.
-        tail = decode_dn_frame(second['frame'])['ambes']
-        self.assertEqual(tail[0], SILENCE_49)
-        self.assertEqual(tail[1:], [SILENCE_49] * 4)
+        self.assertEqual(len(peer.box), 4)
+        opened = parse_ysfd(peer.box[0])
+        voice = parse_ysfd(peer.box[1])
+        tail = parse_ysfd(peer.box[2])
+        closing = parse_ysfd(peer.box[3])
+        self.assertEqual(decode_header_frame(opened['frame'])['fich']['fi'], FI_HEADER)
+        self.assertFalse(opened['end'])
+        self.assertEqual(voice['source'], b'M0ABC     ')
+        self.assertEqual(voice['gateway'], b'MX0SXC    ')
+        self.assertEqual(decode_dn_frame(voice['frame'])['ambes'], [SILENCE_49] * 5)
+        # The sixth AMBE word is flushed with silence, then a terminator.
+        self.assertFalse(tail['end'])
+        self.assertEqual(decode_dn_frame(tail['frame'])['ambes'], [SILENCE_49] * 5)
+        self.assertTrue(closing['end'])
+        self.assertEqual(decode_dn_frame(closing['frame'])['fich']['fi'], FI_TERMINATOR)
 
     def test_new_stream_flushes_the_previous_one_immediately(self):
         peer = _Peer()
@@ -323,7 +338,10 @@ class TestYsfVoice(unittest.TestCase):
         burst = _dmrd(1, _BURST_BITS[0], payload)
         peer.ysf_send_system(header)
         peer.ysf_send_system(burst)
-        self.assertEqual(peer.box, [])
+        self.assertEqual(len(peer.box), 1)
+        self.assertEqual(
+            decode_header_frame(parse_ysfd(peer.box[0])['frame'])['fich']['fi'],
+            FI_HEADER)
         timer = _Timer()
         peer._tx_timer = timer
         nxt = _dmrd(
@@ -333,10 +351,14 @@ class TestYsfVoice(unittest.TestCase):
         peer.ysf_send_system(nxt)
         self.assertTrue(timer.cancelled)
         self.assertIsNone(peer._tx_timer)
-        self.assertEqual(len(peer.box), 1)
-        flushed = parse_ysfd(peer.box[0])
+        # Old voice, its terminator, then the new stream's header.
+        self.assertEqual(len(peer.box), 4)
+        flushed = parse_ysfd(peer.box[2])
         self.assertTrue(flushed['end'])
         self.assertEqual(flushed['source'], b'M0ABC     ')
+        self.assertEqual(
+            decode_header_frame(parse_ysfd(peer.box[3])['frame'])['fich']['fi'],
+            FI_HEADER)
         self.assertEqual(peer._tx_stream, b'\x0a\x0b\x0c\x0d')
         self.assertFalse(peer._tx_ending)
 
@@ -353,16 +375,16 @@ class TestYsfVoice(unittest.TestCase):
         for position in range(5):
             payload = voice_payload([word, word, word], _embed(position % 6, None))
             peer.ysf_send_system(_dmrd(position + 1, _BURST_BITS[position % 6], payload))
-        self.assertEqual(len(peer.box), 3)
+        self.assertEqual(len(peer.box), 4)
         self.assertFalse(any(parse_ysfd(packet)['end'] for packet in peer.box))
         term = _dmrd(
             6, _TERM_BITS,
             lc_payload(bptc.encode_terminator_lc(lc), 'VOICE_LC_TERM'))
         peer.ysf_send_system(term)
-        self.assertEqual(len(peer.box), 4)
+        self.assertEqual(len(peer.box), 5)
         closing = parse_ysfd(peer.box[-1])
         self.assertTrue(closing['end'])
-        self.assertEqual(decode_dn_frame(closing['frame'])['ambes'], [SILENCE_49] * 5)
+        self.assertEqual(decode_dn_frame(closing['frame'])['fich']['fi'], FI_TERMINATOR)
         self.assertIsNone(peer._tx_stream)
 
     def test_header_only_terminator_sets_the_end_bit(self):
@@ -373,12 +395,16 @@ class TestYsfVoice(unittest.TestCase):
         peer.ysf_send_system(_dmrd(
             0, _HEAD_BITS,
             lc_payload(bptc.encode_header_lc(lc), 'VOICE_LC_HEAD')))
-        self.assertEqual(peer.box, [])
+        self.assertEqual(len(peer.box), 1)
+        self.assertFalse(parse_ysfd(peer.box[0])['end'])
         peer.ysf_send_system(_dmrd(
             1, _TERM_BITS,
             lc_payload(bptc.encode_terminator_lc(lc), 'VOICE_LC_TERM')))
-        self.assertEqual(len(peer.box), 1)
-        self.assertTrue(parse_ysfd(peer.box[0])['end'])
+        self.assertEqual(len(peer.box), 2)
+        self.assertTrue(parse_ysfd(peer.box[1])['end'])
+        self.assertEqual(
+            decode_dn_frame(parse_ysfd(peer.box[1])['frame'])['fich']['fi'],
+            FI_TERMINATOR)
 
     def test_nonzero_dgid_drops_other_rooms(self):
         peer = _Peer()

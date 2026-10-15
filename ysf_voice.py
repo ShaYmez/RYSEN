@@ -32,9 +32,11 @@ from ysf_protocol import (
     CSD_COUNT,
     DT_VD_MODE2,
     FI_COMMUNICATION,
+    FI_TERMINATOR,
     CALLSIGN_LENGTH,
     decode_dn_frame,
     encode_dn_frame,
+    encode_header_frame,
     pack_poll,
     pack_unlink,
     pack_ysfd,
@@ -46,6 +48,9 @@ logger = logging.getLogger(__name__)
 
 YSF_FRAME_S = 0.100
 DMR_BURST_S = 0.060
+# Close the reflector stream when DMR stops without a terminator. OpenBridge
+# often does that; pYSF keeps the transmission up until it sees FI=terminator.
+YSF_HANG_S = 0.45
 
 _HEAD_BITS = 0b00100001
 _TERM_BITS = 0b00100010
@@ -186,6 +191,7 @@ class YsfPeerMixin(object):
         self._tx_q = deque()
         self._tx_ending = False
         self._tx_timer = None
+        self._tx_hang = None
         self._tx_stream = None
         self._tx_source = pad_callsign(self._config.get('CALLSIGN'))
         self._tx_fn = 0
@@ -362,6 +368,7 @@ class YsfPeerMixin(object):
             return
         if self._tx_stream is not None:
             self._cancel_timer('_tx_timer')
+            self._cancel_timer('_tx_hang')
             self._tx_ending = True
             self._pump_tx(force=True)
         self._tx_stream = stream
@@ -371,44 +378,81 @@ class YsfPeerMixin(object):
         fallback = _alias_key(self._gateway())
         self._tx_source = pad_callsign(
             callsign_for_id(self._CONFIG, ident, fallback))
+        # pYSF ignores voice until an FI=header frame opens the stream.
+        self._write_header()
 
     def _wanted_dgid(self):
         return int(self._config.get('DGID') or 0) & 0x7F
 
-    def _write_dn(self, chunk, end):
-        frame = encode_dn_frame(
-            chunk, self._tx_fn, self._wanted_dgid(),
-            self._tx_source, self._gateway(), fi=FI_COMMUNICATION)
+    def _write_ysfd(self, frame, end):
         packet = pack_ysfd(
             self._gateway(), self._tx_source, 'ALL',
             self._tx_seq, end, frame)
-        self._tx_fn = (self._tx_fn + 1) % CSD_COUNT
         self._tx_seq = (self._tx_seq + 1) & 0x7F
         self._write(packet)
+
+    def _write_header(self):
+        self._write_ysfd(encode_header_frame(
+            'ALL', self._tx_source, self._gateway(), self._tx_source,
+            self._wanted_dgid()), False)
+
+    def _write_terminator(self):
+        # FI=terminator is what pYSF removes the stream on. The YSFD end bit
+        # is what a G4KLX reflector removes the stream on.
+        self._write_ysfd(encode_dn_frame(
+            [SILENCE_49] * 5, 0, self._wanted_dgid(),
+            self._tx_source, self._gateway(), fi=FI_TERMINATOR), True)
+
+    def _write_dn(self, chunk):
+        frame = encode_dn_frame(
+            chunk, self._tx_fn, self._wanted_dgid(),
+            self._tx_source, self._gateway(), fi=FI_COMMUNICATION)
+        self._tx_fn = (self._tx_fn + 1) % CSD_COUNT
+        self._write_ysfd(frame, False)
+
+    def _finish_tx(self):
+        if self._tx_stream is not None:
+            self._write_terminator()
+        self._tx_ending = False
+        self._tx_stream = None
+        self._cancel_timer('_tx_hang')
+
+    def _arm_tx_hang(self):
+        # Tests run the scheduler inline. A hang fired there would cut the
+        # over between bursts, so only the live reactor timer closes it.
+        if self._ysf_immediate or self._tx_stream is None:
+            return
+        self._cancel_timer('_tx_hang')
+        self._tx_hang = self._schedule(YSF_HANG_S, self._tx_hang_fired)
+
+    def _tx_hang_fired(self):
+        self._tx_hang = None
+        if self._tx_stream is None or self._tx_ending:
+            return
+        self._tx_ending = True
+        self._pump_tx()
 
     def _pump_tx(self, force=False):
         if (not force and self._tx_timer is not None
                 and getattr(self._tx_timer, 'active', lambda: True)()):
             return
+        self._cancel_timer('_tx_hang')
         while len(self._tx_q) >= 5 or (self._tx_ending and self._tx_q):
             chunk = []
             for _ in range(5):
                 chunk.append(self._tx_q.popleft() if self._tx_q else SILENCE_49)
-            end = self._tx_ending and not self._tx_q
-            self._write_dn(chunk, end)
-            if end:
-                self._tx_ending = False
-                self._tx_stream = None
-            if not self._ysf_immediate and not force:
+            self._write_dn(chunk)
+            if self._tx_ending and not self._tx_q:
+                self._finish_tx()
+            if not self._ysf_immediate and not force and self._tx_stream is not None:
                 self._tx_timer = self._schedule(YSF_FRAME_S, self._tx_fired)
                 return
         # A terminator can arrive after the last full group was already sent,
-        # or after a header with no voice. The reflector still needs the end bit.
+        # or after a header with no voice.
         if self._tx_ending and not self._tx_q:
-            if self._tx_stream is not None:
-                self._write_dn([SILENCE_49] * 5, True)
-            self._tx_ending = False
-            self._tx_stream = None
+            self._finish_tx()
+        elif self._tx_stream is not None:
+            self._arm_tx_hang()
 
     def _tx_fired(self):
         self._tx_timer = None

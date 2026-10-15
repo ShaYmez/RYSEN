@@ -435,6 +435,78 @@ def _dch_for_fn(fn, source, gateway):
     return bytes_to_bits(cycle[fn % CSD_COUNT])
 
 
+def encode_header_csd(info20):
+    """20 callsign bytes -> 45 air bytes of one header CSD block.
+
+    Same whitening, CRC and K=5 code as the DN DCH. The interleave is 9 by 20
+    because a header block is 20 bytes plus CRC, not the 10-byte DN slot.
+    """
+    if len(info20) != 20:
+        raise ValueError('header CSD is 20 bytes')
+    info = bytes_to_bits(info20)
+    whitened = [bit ^ mask for bit, mask in zip(info, pn_bits(160))]
+    coded = conv_encode(whitened + crc16(whitened))
+    air = interleave_dibits(_bits_to_dibits(coded), 9, 20)
+    return bits_to_bytes(_dibits_to_bits(air))
+
+
+def decode_header_csd(air45):
+    """45 header-CSD air bytes -> 20 callsign bytes, or None when the CRC fails."""
+    if len(air45) != 45:
+        return None
+    dibits = deinterleave_dibits(_bits_to_dibits(bytes_to_bits(air45)), 9, 20)
+    decoded = conv_decode(_dibits_to_bits(dibits))
+    if decoded is None or len(decoded) < 176:
+        return None
+    info = decoded[:160]
+    if decoded[160:176] != crc16(info):
+        return None
+    raw = [bit ^ mask for bit, mask in zip(info, pn_bits(160))]
+    return bits_to_bytes(raw)
+
+
+def encode_header_frame(dest, source, downlink, uplink, dgid, ft=None):
+    """120-byte FI=header frame. pYSF opens a stream only when it sees one."""
+    if ft is None:
+        ft = CSD_COUNT - 1
+    fich = encode_fich(pack_fich(FI_HEADER, 0, ft, dgid))
+    csd1 = encode_header_csd(pad_callsign(dest) + pad_callsign(source))
+    csd2 = encode_header_csd(pad_callsign(downlink) + pad_callsign(uplink))
+    body = bytearray()
+    for index in range(5):
+        start = index * 9
+        body += csd1[start:start + 9]
+        body += csd2[start:start + 9]
+    frame = FRAME_SYNC + bits_to_bytes(fich) + bytes(body)
+    if len(frame) != FRAME_BYTES:
+        raise ValueError('header frame is %s bytes' % len(frame))
+    return frame
+
+
+def decode_header_frame(frame):
+    """Return fich plus the two 20-byte header blocks, or None."""
+    if len(frame) != FRAME_BYTES:
+        return None
+    bits = bytes_to_bits(frame)
+    if bits_to_bytes(bits[:40]) != FRAME_SYNC:
+        return None
+    fich = decode_fich(bits[40:240])
+    if fich is None:
+        return None
+    raw = frame[30:]
+    csd1 = bytearray()
+    csd2 = bytearray()
+    for index in range(5):
+        start = index * 18
+        csd1 += raw[start:start + 9]
+        csd2 += raw[start + 9:start + 18]
+    return {
+        'fich': fich,
+        'csd1': decode_header_csd(bytes(csd1)),
+        'csd2': decode_header_csd(bytes(csd2)),
+    }
+
+
 def encode_dn_frame(ambe49s, fn, dgid, source, gateway, fi=FI_COMMUNICATION, ft=None):
     """One 120-byte DN communication frame carrying five 49-bit AMBE words."""
     if len(ambe49s) != 5:
