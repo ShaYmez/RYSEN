@@ -346,9 +346,12 @@ class YsfPeerMixin(object):
             self._begin_tx(packet[5:8], stream)
             return
         if frame_type == 0x2 and dtype == 0x2:
-            self._begin_tx(packet[5:8], stream)
-            self._tx_ending = True
-            self._pump_tx()
+            # A terminator must not open a stream. After the hang timer has
+            # already closed the over, a late unkey would otherwise emit a
+            # header and a terminator with nobody talking.
+            if self._tx_stream == stream:
+                self._tx_ending = True
+                self._pump_tx()
             return
         if frame_type not in (0x0, 0x1):
             return

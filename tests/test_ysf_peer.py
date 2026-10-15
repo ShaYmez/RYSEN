@@ -405,6 +405,10 @@ class TestYsfVoice(unittest.TestCase):
         self.assertEqual(
             decode_dn_frame(parse_ysfd(peer.box[1])['frame'])['fich']['fi'],
             FI_TERMINATOR)
+        peer.ysf_send_system(_dmrd(
+            2, _TERM_BITS,
+            lc_payload(bptc.encode_terminator_lc(lc), 'VOICE_LC_TERM')))
+        self.assertEqual(len(peer.box), 2)
 
     def test_nonzero_dgid_drops_other_rooms(self):
         peer = _Peer()
