@@ -236,6 +236,16 @@ class TestYsfVoice(unittest.TestCase):
         self.assertEqual(seen, ['ysf.example.net'])
         self.assertEqual(peer._config['MASTER_IP'], '1.2.3.4')
 
+    def test_poll_ack_stamps_connected_and_logs_link(self):
+        peer = _Peer()
+        peer.ysf_datagram_received(pack_poll('GB7ABC'), ('127.0.0.1', 42000))
+        stats = peer._config['STATS']
+        self.assertEqual(stats['CONNECTION'], 'YES')
+        self.assertTrue(stats['CONNECTED'])
+        first = stats['CONNECTED']
+        peer.ysf_datagram_received(pack_poll('GB7ABC'), ('127.0.0.1', 42000))
+        self.assertEqual(stats['CONNECTED'], first)
+
     def test_dmr_bursts_regroup_into_ysfd(self):
         peer = _Peer()
         src = bytes_3(2350001)

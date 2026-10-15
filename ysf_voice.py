@@ -266,6 +266,7 @@ class YsfPeerMixin(object):
             * self._CONFIG['GLOBAL']['MAX_MISSED'])
         if last and (time() - last) > limit:
             stats['CONNECTION'] = 'NO'
+            stats['CONNECTED'] = None
             logger.info('(%s) YSF reflector timed out', self._system)
 
     def _maybe_reresolve(self):
@@ -309,8 +310,12 @@ class YsfPeerMixin(object):
 
     def _touch(self):
         stats = self._config.setdefault('STATS', {})
+        now = time()
+        if not stats.get('CONNECTED'):
+            stats['CONNECTED'] = now
+            logger.info('(%s) YSF reflector linked', self._system)
         stats['CONNECTION'] = 'YES'
-        stats['LAST_PING_ACK_TIME'] = time()
+        stats['LAST_PING_ACK_TIME'] = now
 
     def _schedule(self, delay, callback):
         if self._ysf_immediate:
