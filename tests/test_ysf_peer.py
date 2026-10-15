@@ -11,9 +11,13 @@ from const import LC_OPT
 import config
 import ysf_protocol as ysf
 from ysf_protocol import (
+    CSD_COUNT,
     DT_VOICE_FR,
     FI_COMMUNICATION,
     FRAME_SYNC,
+    RADIO_CODE,
+    RADIO_SERIAL,
+    RADIO_TEXT,
     bits_to_bytes,
     bytes_to_bits,
     conv_encode,
@@ -147,6 +151,25 @@ class TestYsfProtocol(unittest.TestCase):
         self.assertEqual(encode_dch(info), expect)
         self.assertEqual(bits_to_bytes(decode_dch(expect)), b'M0ABC     ')
         self.assertNotEqual(crc16(info), crc16(whitened))
+
+    def test_outbound_csd_names_the_radio_systemx(self):
+        silence = [SILENCE_49] * 5
+        remark = encode_dn_frame(silence, 4, 0, 'M0ABC', 'MX0SXC')
+        decoded = decode_dn_frame(remark)
+        self.assertEqual(decoded['fich']['fn'], 4)
+        self.assertEqual(decoded['fich']['ft'], CSD_COUNT - 1)
+        self.assertEqual(bits_to_bytes(decoded['dch']), b'SYSTEMX   ')
+        serial = encode_dn_frame(silence, 5, 0, 'M0ABC', 'MX0SXC')
+        self.assertEqual(
+            bits_to_bytes(decode_dn_frame(serial)['dch']),
+            b'MX0SX' + RADIO_SERIAL)
+        radio = encode_dn_frame(silence, 6, 0, 'M0ABC', 'MX0SXC')
+        block = bits_to_bytes(decode_dn_frame(radio)['dch'])
+        self.assertEqual(block[4], RADIO_CODE)
+        self.assertNotEqual(block[4], 0x2B)
+        self.assertEqual(block[5], 0x03)
+        self.assertEqual(block[6], sum(block[:6]) & 0xFF)
+        self.assertTrue(RADIO_TEXT.startswith(b'SYSTEMX'))
 
 
 class TestYsfVoice(unittest.TestCase):

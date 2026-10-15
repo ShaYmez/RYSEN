@@ -29,6 +29,7 @@ from dmr_utils3.utils import bytes_3
 
 from const import DMRD, LC_OPT
 from ysf_protocol import (
+    CSD_COUNT,
     DT_VD_MODE2,
     FI_COMMUNICATION,
     CALLSIGN_LENGTH,
@@ -365,6 +366,7 @@ class YsfPeerMixin(object):
             self._pump_tx(force=True)
         self._tx_stream = stream
         self._tx_ending = False
+        self._tx_fn = 0
         ident = int.from_bytes(src, 'big') if src else 0
         fallback = _alias_key(self._gateway())
         self._tx_source = pad_callsign(
@@ -380,7 +382,7 @@ class YsfPeerMixin(object):
         packet = pack_ysfd(
             self._gateway(), self._tx_source, 'ALL',
             self._tx_seq, end, frame)
-        self._tx_fn = (self._tx_fn + 1) % 6
+        self._tx_fn = (self._tx_fn + 1) % CSD_COUNT
         self._tx_seq = (self._tx_seq + 1) & 0x7F
         self._write(packet)
 

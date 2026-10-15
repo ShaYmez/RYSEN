@@ -22,6 +22,16 @@ FRAME_BYTES = 120
 YSFD_BYTES = 155
 CALLSIGN_LENGTH = 10
 
+# One DN transmission cycles FN 0..6 with FT = 6. pYSF stores FN 4 as the
+# 10-character remark, FN 5 as station id + 5-character serial, and FN 6 as
+# the radio-id block. The Radio column is that block's model byte (0x2B is
+# FT-70D) unless the collector maps the serial, for example
+# ser_lnks = {"SYSTEMX": "SYSX1"}.
+CSD_COUNT = 7
+RADIO_TEXT = b'SYSTEMX'
+RADIO_SERIAL = b'SYSX1'
+RADIO_CODE = 0x01
+
 FI_HEADER = 0
 FI_COMMUNICATION = 1
 FI_TERMINATOR = 2
@@ -392,6 +402,24 @@ def decode_voice(air104):
     return ambe
 
 
+def radio_info_block(code=RADIO_CODE):
+    """10-byte radio-id block. pYSF takes the model from byte 4.
+
+    Byte 5 is the 0x03 marker and byte 6 is the sum of the bytes before it.
+    ``code`` is not a Yaesu model, so an unmapped dashboard prints the number
+    instead of a handheld name such as FT-70D.
+    """
+    block = bytearray(10)
+    block[0] = 0x07
+    block[1] = 0x22
+    block[2] = 0x61
+    block[3] = 0x5F
+    block[4] = code & 0xFF
+    block[5] = 0x03
+    block[6] = sum(block[:6]) & 0xFF
+    return bytes(block)
+
+
 def _dch_for_fn(fn, source, gateway):
     source = pad_callsign(source)
     gateway = pad_callsign(gateway)
@@ -400,17 +428,21 @@ def _dch_for_fn(fn, source, gateway):
         source,
         gateway,
         gateway,
-        pad_callsign(''),
-        pad_callsign(''),
+        pad_callsign(RADIO_TEXT),
+        gateway[:5] + RADIO_SERIAL,
+        radio_info_block(),
     )
-    return bytes_to_bits(cycle[fn % 6])
+    return bytes_to_bits(cycle[fn % CSD_COUNT])
 
 
-def encode_dn_frame(ambe49s, fn, dgid, source, gateway, fi=FI_COMMUNICATION, ft=5):
+def encode_dn_frame(ambe49s, fn, dgid, source, gateway, fi=FI_COMMUNICATION, ft=None):
     """One 120-byte DN communication frame carrying five 49-bit AMBE words."""
     if len(ambe49s) != 5:
         raise ValueError('a DN frame carries five AMBE words')
-    fich = encode_fich(pack_fich(fi, fn % 6, ft, dgid))
+    if ft is None:
+        ft = CSD_COUNT - 1
+    fn = fn % CSD_COUNT
+    fich = encode_fich(pack_fich(fi, fn, ft, dgid))
     dch = encode_dch(_dch_for_fn(fn, source, gateway))
     bits = bytes_to_bits(FRAME_SYNC) + fich
     for index, ambe in enumerate(ambe49s):
