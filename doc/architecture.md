@@ -57,6 +57,7 @@ Docker entrypoint: [entrypoint](../entrypoint) — starts `bridge_master.py -c r
 | `[HYTERA]` + `GENERATOR: N` | HYTERA | Hytera backends `HYTERA-0` … `HYTERA-(N-1)` |
 | `[OBP-…]` | OPENBRIDGE | Outbound bridge to external network |
 | `[PARROT]` etc. | PEER | Outbound HBP peer connections |
+| `[YSF-…]` | YSFPEER | Outbound DN link to one YSF reflector |
 
 Each generated HBP/IPSC slot gets its own UDP port. A generated Hytera slot
 uses a private P2P/DMR/RDAC port triple. The protocol proxies multiplex public
@@ -118,6 +119,7 @@ Optional host helpers in [scripts/](../scripts/) (`systemx-start`, `menu`, etc.)
 |------|------|
 | `bridge_master.py` | Routing, bridges, OPTIONS, selfcare poll |
 | `hblink.py` | HBP master/peer protocol |
+| `ysf_protocol.py` / `ysf_voice.py` | YSF reflector peer and DN AMBE packing |
 | `ipsc_master.py` | IPSC registration and opcode dispatch |
 | `ipsc_voice.py` | IPSC voice encode/decode + jitter buffer |
 | `ipsc_proxy.py` | Public 56002 front-end |

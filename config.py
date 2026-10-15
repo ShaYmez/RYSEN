@@ -351,6 +351,44 @@ def build_config(_config_file):
                         'LAST_PING_ACK_TIME': 0,
                     }})
 
+                elif config.get(section, 'MODE') == 'YSFPEER':
+                    _bind = config.get(section, 'IP').strip()
+                    _bind_ip = gethostbyname(_bind) if _bind else ''
+                    _master_ip = gethostbyname(config.get(section, 'MASTER_IP'))
+                    _port = config.getint(section, 'PORT')
+                    _master_port = config.getint(section, 'MASTER_PORT')
+                    CONFIG['SYSTEMS'].update({section: {
+                        'MODE': 'YSFPEER',
+                        'ENABLED': config.getboolean(section, 'ENABLED'),
+                        'SOCK_ADDR': (_bind_ip, _port),
+                        'IP': _bind_ip,
+                        'PORT': _port,
+                        'MASTER_SOCKADDR': (_master_ip, _master_port),
+                        'MASTER_IP': _master_ip,
+                        '_MASTER_IP': config.get(section, 'MASTER_IP'),
+                        'MASTER_PORT': _master_port,
+                        'CALLSIGN': bytes(config.get(section, 'CALLSIGN').ljust(10)[:10], 'utf-8'),
+                        'DGID': config.getint(section, 'DGID', fallback=0),
+                        'RADIO_ID': config.getint(section, 'RADIO_ID').to_bytes(4, 'big'),
+                        'DESCRIPTION': config.get(section, 'DESCRIPTION', fallback=''),
+                        'GROUP_HANGTIME': config.getint(section, 'GROUP_HANGTIME', fallback=5),
+                        'USE_ACL': False,
+                        'SUB_ACL': 'PERMIT:ALL',
+                        'TG1_ACL': 'PERMIT:ALL',
+                        'TG2_ACL': 'PERMIT:ALL',
+                        'ANNOUNCEMENT_LANGUAGE': config.get(section, 'ANNOUNCEMENT_LANGUAGE', fallback='en_GB'),
+                    }})
+                    CONFIG['SYSTEMS'][section].update({'STATS': {
+                        'CONNECTION': 'NO',
+                        'CONNECTED': None,
+                        'PINGS_SENT': 0,
+                        'PINGS_ACKD': 0,
+                        'NUM_OUTSTANDING': 0,
+                        'PING_OUTSTANDING': False,
+                        'LAST_PING_TX_TIME': 0,
+                        'LAST_PING_ACK_TIME': 0,
+                    }})
+
                 elif config.get(section, 'MODE') == 'MASTER':
                     CONFIG['SYSTEMS'].update({section: {
                         'MODE': config.get(section, 'MODE'),
