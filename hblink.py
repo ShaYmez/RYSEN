@@ -71,6 +71,12 @@ from os.path import isfile, getmtime
 from urllib.request import urlopen, Request
 
 import csv
+from nxdn_aliases import (
+    DEFAULT_NXDN_FILE,
+    attach_callsign_index,
+    attach_nxdn_maps,
+    load_nxdn_file,
+)
 
 
 logging.TRACE = 5
@@ -1772,6 +1778,13 @@ def mk_aliases(_config):
         #Try updating server ids file
         result = try_download(_config['ALIASES']['PATH'], _config['ALIASES']['SERVER_ID_FILE'], _config['ALIASES']['SERVER_ID_URL'], _config['ALIASES']['STALE_TIME'])
         logger.info('(ALIAS) %s', result)
+        nxdn_url = (_config['ALIASES'].get('NXDN_URL') or '').strip()
+        if nxdn_url:
+            nxdn_file = _config['ALIASES'].get('NXDN_FILE') or DEFAULT_NXDN_FILE
+            result = try_download(
+                _config['ALIASES']['PATH'], nxdn_file, nxdn_url,
+                _config['ALIASES']['STALE_TIME'])
+            logger.info('(ALIAS) %s', result)
         
     # Make Dictionaries
     try:
@@ -1839,6 +1852,25 @@ def mk_aliases(_config):
         else:
             logger.warning(
                 '(ALIAS) ID ALIAS MAPPER: server_ids dictionary is empty')
+
+    nxdn_file = _config['ALIASES'].get('NXDN_FILE') or DEFAULT_NXDN_FILE
+    try:
+        nxdn_ids, _unused_call = load_nxdn_file(
+            _config['ALIASES']['PATH'] + nxdn_file)
+    except Exception as e:
+        logger.info(
+            '(ALIAS) ID ALIAS MAPPER: problem with data in nxdn_ids, not updating: %s',
+            e)
+        nxdn_ids = _config.get('_NXDN_IDS') or {}
+    else:
+        if nxdn_ids:
+            logger.info(
+                '(ALIAS) ID ALIAS MAPPER: nxdn_ids dictionary is available (%s)',
+                len(nxdn_ids))
+    attach_nxdn_maps(_config, nxdn_ids, _config.get('_NXDN_IDS'))
+    _config['_SUB_IDS'] = subscriber_ids
+    _config['_LOCAL_SUBSCRIBER_IDS'] = local_subscriber_ids
+    attach_callsign_index(_config)
         
         
     return peer_ids, subscriber_ids, talkgroup_ids, local_subscriber_ids, server_ids

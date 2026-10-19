@@ -227,6 +227,10 @@ def build_config(_config_file):
                     'SERVER_ID_FILE': config.get(section, 'SERVER_ID_FILE'),
                     'UNIT_SUB_MAP_URL': config.get(section, 'UNIT_SUB_MAP_URL', fallback=''),
                     'UNIT_SUB_MAP_TOKEN_FILE': config.get(section, 'UNIT_SUB_MAP_TOKEN_FILE', fallback=''),
+                    'NXDN_FILE': config.get(section, 'NXDN_FILE', fallback='nxdn_ids.csv'),
+                    'NXDN_URL': config.get(
+                        section, 'NXDN_URL',
+                        fallback='https://database.radioid.net/static/nxdn.csv'),
                 })
                 
                 

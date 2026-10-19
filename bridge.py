@@ -48,6 +48,7 @@ from dmr_utils3 import decode, bptc, const
 import config
 import log
 from const import *
+from nxdn_aliases import attach_callsign_index
 from nxdn_voice import NxdnPeerMixin
 from ysf_voice import YsfPeerMixin
 from bridge_helpers import (
@@ -1292,6 +1293,7 @@ if __name__ == '__main__':
     CONFIG['_PEER_IDS'] = peer_ids
     CONFIG['_LOCAL_SUBSCRIBER_IDS'] = local_subscriber_ids
     CONFIG['_SERVER_IDS'] = server_ids
+    attach_callsign_index(CONFIG)
     
     # Import the ruiles file as a module, and create BRIDGES from it
     spec = importlib.util.spec_from_file_location("module.name", cli_args.RULES_FILE)

@@ -26,6 +26,7 @@ from dmr_utils3 import bptc
 from dmr_utils3.utils import bytes_3
 
 from const import DMRD, LC_OPT
+from nxdn_aliases import dmr_id_for_nxdn, nxdn_id_for_dmr
 from nxdn_protocol import (
     FLAG_END,
     FLAG_GROUP,
@@ -80,6 +81,7 @@ class NxdnPeerMixin(object):
         self._tx_timer = None
         self._tx_hang = None
         self._tx_stream = None
+        self._tx_nxdn_src = None
         self._tx_part = 0
         self._rx_q = deque()
         self._rx_ending = False
@@ -110,6 +112,12 @@ class NxdnPeerMixin(object):
 
     def _nxdn_id(self):
         return int(self._config.get('NXDN_ID') or 0) & 0xFFFF
+
+    def _mapped_nxdn_id(self, dmr_id):
+        return nxdn_id_for_dmr(self._CONFIG, dmr_id, self._nxdn_id())
+
+    def _mapped_dmr_id(self, nxdn_id):
+        return dmr_id_for_nxdn(self._CONFIG, nxdn_id, nxdn_id)
 
     def _ran(self):
         return int(self._config.get('RAN') or 0) & 0x3F
@@ -224,7 +232,7 @@ class NxdnPeerMixin(object):
         dtype = bits & 0x0F
         stream = packet[16:20]
         if frame_type == 0x2 and dtype == 0x1:
-            self._begin_tx(stream)
+            self._begin_tx(packet[5:8], stream)
             return
         if frame_type == 0x2 and dtype == 0x2:
             # A terminator must not open a stream. After the hang timer has
@@ -236,7 +244,7 @@ class NxdnPeerMixin(object):
             return
         if frame_type not in (0x0, 0x1):
             return
-        self._begin_tx(stream)
+        self._begin_tx(packet[5:8], stream)
         for word in ambe72_from_payload(packet[20:53]):
             self._tx_q.append(ambe72_to_49(word))
         self._pump_tx()
@@ -247,7 +255,7 @@ class NxdnPeerMixin(object):
         if timer is not None and getattr(timer, 'active', lambda: False)():
             timer.cancel()
 
-    def _begin_tx(self, stream):
+    def _begin_tx(self, src, stream):
         if self._tx_stream == stream:
             return
         if self._tx_stream is not None:
@@ -258,23 +266,29 @@ class NxdnPeerMixin(object):
         self._tx_stream = stream
         self._tx_ending = False
         self._tx_part = 0
+        ident = int.from_bytes(src, 'big') if src else 0
+        self._tx_nxdn_src = self._mapped_nxdn_id(ident)
         # A reflector does not open a call on voice alone.
         self._write_header()
 
     def _write_nxdn(self, flags, payload):
-        self._write(pack_data(self._nxdn_id(), self._talkgroup(), flags, payload))
+        src = self._tx_nxdn_src if self._tx_nxdn_src is not None else self._nxdn_id()
+        self._write(pack_data(src, self._talkgroup(), flags, payload))
 
     def _write_header(self):
+        src = self._tx_nxdn_src if self._tx_nxdn_src is not None else self._nxdn_id()
         self._write_nxdn(FLAG_GROUP | FLAG_HEADER, signalling_payload(
-            MESSAGE_VCALL, self._nxdn_id(), self._talkgroup(), self._ran()))
+            MESSAGE_VCALL, src, self._talkgroup(), self._ran()))
 
     def _write_trailer(self):
+        src = self._tx_nxdn_src if self._tx_nxdn_src is not None else self._nxdn_id()
         self._write_nxdn(FLAG_GROUP | FLAG_END, signalling_payload(
-            MESSAGE_TX_REL, self._nxdn_id(), self._talkgroup(), self._ran()))
+            MESSAGE_TX_REL, src, self._talkgroup(), self._ran()))
 
     def _write_voice(self, chunk):
+        src = self._tx_nxdn_src if self._tx_nxdn_src is not None else self._nxdn_id()
         payload = voice_payload(
-            chunk, self._nxdn_id(), self._talkgroup(), self._tx_part, self._ran())
+            chunk, src, self._talkgroup(), self._tx_part, self._ran())
         self._tx_part = (self._tx_part + 1) % 4
         self._write_nxdn(FLAG_GROUP, payload)
 
@@ -332,6 +346,9 @@ class NxdnPeerMixin(object):
         parsed = parse_data(data)
         if parsed is None:
             return
+        # Ignore our own TX. Mapped talker IDs are echoed while _tx_stream is open.
+        if self._tx_stream is not None:
+            return
         if parsed['src'] == self._nxdn_id():
             return
         payload = parsed['payload']
@@ -378,7 +395,7 @@ class NxdnPeerMixin(object):
         if stream == b'\x00\x00\x00\x00':
             stream = b'\x00\x00\x00\x01'
         self._rx_stream = stream
-        src = bytes_3(int(source) & 0xFFFFFF)
+        src = bytes_3(self._mapped_dmr_id(source) & 0xFFFFFF)
         self._rx_src = src
         lc = b''.join((LC_OPT, self._tgid(), src))
         self._rx_lc = lc

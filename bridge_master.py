@@ -1980,6 +1980,8 @@ def setAlias(_peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids, 
     CONFIG['_LOCAL_SUBSCRIBER_IDS'] = local_subscriber_ids
     if server_ids:
         CONFIG['_SERVER_IDS'] = server_ids
+    from nxdn_aliases import attach_callsign_index
+    attach_callsign_index(CONFIG)
     
 def aliasb():
     _peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids = mk_aliases(CONFIG)

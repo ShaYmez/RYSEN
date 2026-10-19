@@ -32,6 +32,13 @@ from nxdn_protocol import (
     unpack_half,
     voice_payload,
 )
+from nxdn_aliases import (
+    attach_callsign_index,
+    attach_nxdn_maps,
+    dmr_id_for_nxdn,
+    nxdn_id_for_dmr,
+    parse_nxdn_csv,
+)
 from nxdn_voice import NxdnPeerMixin
 from ysf_voice import (
     SILENCE_49,
@@ -386,6 +393,57 @@ DESCRIPTION: Off
             self.assertEqual(router._tgid(), bytes_3(9))
             self.assertIn(1, router.STATUS)
             self.assertIn(2, router.STATUS)
+
+
+class TestNxdnAliases(unittest.TestCase):
+
+    def test_csv_and_callsign_join(self):
+        by_id, by_call = parse_nxdn_csv(
+            'RADIO_ID,CALLSIGN,FIRST_NAME\n'
+            '2425,M0VUB,Shane\n'
+            '4720,G4XTZ,Alan\n'
+            '1272,M0JKT,Freestar\n'
+        )
+        self.assertEqual(by_id[2425], 'M0VUB')
+        self.assertEqual(by_call['G4XTZ'], 4720)
+        config = {
+            '_SUB_IDS': {2345875: 'M0VUB', 2345370: 'G4XTZ', 2340189: 'M0JKT'},
+            '_LOCAL_SUBSCRIBER_IDS': {},
+        }
+        attach_nxdn_maps(config, by_id)
+        attach_callsign_index(config)
+        self.assertEqual(nxdn_id_for_dmr(config, 2345875, 1272), 2425)
+        self.assertEqual(dmr_id_for_nxdn(config, 4720, 4720), 2345370)
+        self.assertEqual(nxdn_id_for_dmr(config, 999999, 1272), 1272)
+        self.assertEqual(dmr_id_for_nxdn(config, 99, 99), 99)
+
+    def test_mapped_over_uses_talker_nxdn_id(self):
+        peer = _Peer()
+        peer._CONFIG.update({
+            '_SUB_IDS': {2350001: 'M0VUB'},
+            '_LOCAL_SUBSCRIBER_IDS': {},
+        })
+        attach_nxdn_maps(peer._CONFIG, {2425: 'M0VUB'})
+        attach_callsign_index(peer._CONFIG)
+        src = bytes_3(2350001)
+        dst = bytes_3(9)
+        lc = b''.join((LC_OPT, dst, src))
+        peer.nxdn_send_system(_dmrd(
+            0, _HEAD_BITS, lc_payload(bptc.encode_header_lc(lc), 'VOICE_LC_HEAD')))
+        self.assertEqual(parse_data(peer.box[0])['src'], 2425)
+
+    def test_inbound_nxdn_id_becomes_dmr_id(self):
+        peer = _Peer()
+        peer._CONFIG.update({
+            '_SUB_IDS': {2345370: 'G4XTZ'},
+            '_LOCAL_SUBSCRIBER_IDS': {},
+        })
+        attach_nxdn_maps(peer._CONFIG, {4720: 'G4XTZ'})
+        attach_callsign_index(peer._CONFIG)
+        payload = voice_payload([SILENCE_49] * 4, 4720, 65000, 0)
+        peer.nxdn_datagram_received(
+            pack_data(4720, 65000, FLAG_GROUP, payload), ('127.0.0.1', 41400))
+        self.assertEqual(peer.captured[0][5:8], bytes_3(2345370))
 
 
 if __name__ == '__main__':
