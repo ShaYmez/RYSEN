@@ -1741,6 +1741,17 @@ def mk_server_dict(path, filename):
 
 
 # ID ALIAS CREATION
+def coalesce_alias_dict(new_dict, previous_dict, label):
+    """Prefer a successful reload; never replace a good map with an empty one."""
+    if new_dict:
+        return new_dict
+    if previous_dict:
+        logger.warning('(ALIAS) keeping previously loaded %s', label)
+        return previous_dict
+    logger.warning('(ALIAS) %s dictionary is empty', label)
+    return {}
+
+
 # Download
 def mk_aliases(_config):
     peer_ids = {}
@@ -1767,35 +1778,48 @@ def mk_aliases(_config):
         peer_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['PEER_FILE'])
     except Exception as e:
         logger.error('(ALIAS) ID ALIAS MAPPER: problem with data in peer_ids dictionary, not updating: %s',e)
+        peer_ids = _config.get('_PEER_IDS') or {}
     else:
         if peer_ids:
             logger.info('(ALIAS) ID ALIAS MAPPER: peer_ids dictionary is available')
+    peer_ids = coalesce_alias_dict(peer_ids, _config.get('_PEER_IDS'), 'peer_ids')
 
     try:
         subscriber_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['SUBSCRIBER_FILE'])
     except Exception as e:
         logger.info('(ALIAS) ID ALIAS MAPPER: problem with data in subscriber_ids dictionary, not updating: %s',e)
+        subscriber_ids = _config.get('_SUB_IDS') or {}
     else:
-        #Add special IDs to DB
-        subscriber_ids[900999] = 'D-APRS'
-        subscriber_ids[4294967295] = 'SC'
-
         if subscriber_ids:
             logger.info('(ALIAS) ID ALIAS MAPPER: subscriber_ids dictionary is available')
+    subscriber_ids = coalesce_alias_dict(
+        subscriber_ids, _config.get('_SUB_IDS'), 'subscriber_ids')
+    subscriber_ids[900999] = 'D-APRS'
+    subscriber_ids[4294967295] = 'SC'
+
     try:
         talkgroup_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['TGID_FILE'])
     except Exception as e:
         logger.info('(ALIAS) ID ALIAS MAPPER: problem with data in talkgroup_ids dictionary, not updating: %s',e)
+        talkgroup_ids = _config.get('_TG_IDS') or {}
     else:
         if talkgroup_ids:
             logger.info('(ALIAS) ID ALIAS MAPPER: talkgroup_ids dictionary is available')
-    try:   
-        local_subscriber_ids = mk_id_dict(_config['ALIASES']['PATH'], _config['ALIASES']['LOCAL_SUBSCRIBER_FILE'])
+    talkgroup_ids = coalesce_alias_dict(
+        talkgroup_ids, _config.get('_TG_IDS'), 'talkgroup_ids')
+
+    try:
+        local_subscriber_ids = mk_id_dict(
+            _config['ALIASES']['PATH'], _config['ALIASES']['LOCAL_SUBSCRIBER_FILE'])
     except Exception as e:
         logger.info('(ALIAS) ID ALIAS MAPPER: problem with data in local_subscriber_ids dictionary, not updating: %s',e)
+        local_subscriber_ids = _config.get('_LOCAL_SUBSCRIBER_IDS') or {}
     else:
-        if subscriber_ids:
+        if local_subscriber_ids:
             logger.info('(ALIAS) ID ALIAS MAPPER: local_subscriber_ids dictionary is available')
+    local_subscriber_ids = coalesce_alias_dict(
+        local_subscriber_ids, _config.get('_LOCAL_SUBSCRIBER_IDS'),
+        'local_subscriber_ids')
     try:
         loaded_servers = mk_server_dict(
             _config['ALIASES']['PATH'], _config['ALIASES']['SERVER_ID_FILE'])

@@ -52,7 +52,7 @@ from twisted.internet import reactor, task
 from twisted.internet.defer import inlineCallbacks
 
 # Things we import from the main hblink module
-from hblink import HBSYSTEM, OPENBRIDGE, systems, hblink_handler, reportFactory, REPORT_OPCODES, mk_aliases, acl_check
+from hblink import HBSYSTEM, OPENBRIDGE, systems, hblink_handler, reportFactory, REPORT_OPCODES, mk_aliases, acl_check, coalesce_alias_dict
 from dmr_utils3.utils import bytes_3, int_id, get_alias, bytes_4
 from dmr_utils3 import decode, bptc, const
 import config
@@ -1959,19 +1959,26 @@ def threadAlias():
 
 def setAlias(_peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids):
     global peer_ids, subscriber_ids, talkgroup_ids, local_subscriber_ids, server_ids
-    peer_ids = _peer_ids or {}
-    subscriber_ids = _subscriber_ids or {}
-    talkgroup_ids = _talkgroup_ids or {}
-    local_subscriber_ids = _local_subscriber_ids or {}
+    peer_ids = coalesce_alias_dict(_peer_ids, CONFIG.get('_PEER_IDS'), 'peer_ids')
+    subscriber_ids = coalesce_alias_dict(
+        _subscriber_ids, CONFIG.get('_SUB_IDS'), 'subscriber_ids')
+    talkgroup_ids = coalesce_alias_dict(
+        _talkgroup_ids, CONFIG.get('_TG_IDS'), 'talkgroup_ids')
+    local_subscriber_ids = coalesce_alias_dict(
+        _local_subscriber_ids, CONFIG.get('_LOCAL_SUBSCRIBER_IDS'),
+        'local_subscriber_ids')
     if _server_ids:
         server_ids = _server_ids
+    elif CONFIG.get('_SERVER_IDS'):
+        server_ids = CONFIG['_SERVER_IDS']
     subscriber_ids[900999] = 'D-APRS'
     subscriber_ids[4294967295] = 'SC'
     CONFIG['_SUB_IDS'] = subscriber_ids
     CONFIG['_PEER_IDS'] = peer_ids
+    CONFIG['_TG_IDS'] = talkgroup_ids
     CONFIG['_LOCAL_SUBSCRIBER_IDS'] = local_subscriber_ids
-    if _server_ids:
-        CONFIG['_SERVER_IDS'] = _server_ids
+    if server_ids:
+        CONFIG['_SERVER_IDS'] = server_ids
     
 def aliasb():
     _peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids = mk_aliases(CONFIG)
@@ -6389,6 +6396,7 @@ if __name__ == '__main__':
     
     CONFIG['_SUB_IDS'] = subscriber_ids
     CONFIG['_PEER_IDS'] = peer_ids
+    CONFIG['_TG_IDS'] = talkgroup_ids
     CONFIG['_LOCAL_SUBSCRIBER_IDS'] = local_subscriber_ids
     CONFIG['_SERVER_IDS'] = server_ids
     
@@ -6615,7 +6623,7 @@ if __name__ == '__main__':
     # config.py already converts STALE_DAYS to seconds.
     alias_time = CONFIG['ALIASES']['STALE_TIME']
     aliasa_task = task.LoopingCall(threadAlias)
-    aliasa = aliasa_task.start(alias_time)
+    aliasa = aliasa_task.start(alias_time, now=False)
     aliasa.addErrback(loopingErrHandle)
     
     #Options parsing

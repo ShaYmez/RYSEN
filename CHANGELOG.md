@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Alias reload hardening: a failed or empty subscriber/peer/TGID reload no
+  longer wipes in-memory registration maps, so `ALLOW_UNREG_ID: False` stays
+  enforced without bricking hotspots after a bad second read at startup. The
+  periodic alias loop defers its first run until after `STALE_TIME`.
 - Transit unit voice follows the same home evidence as a locally originated
   call. A subscriber that is only logged in on a mid-path master is no longer
   stolen from the hub or learned home, which was dropping one direction of
