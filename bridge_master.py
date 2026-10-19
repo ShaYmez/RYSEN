@@ -63,6 +63,7 @@ from mk_voice import pkt_gen
 from ipsc_master import IpscMasterMixin
 from hytera_master import HyteraMasterMixin
 from repeater_modes import is_generated_master, is_routing_master
+from nxdn_voice import NxdnPeerMixin
 from ysf_voice import YsfPeerMixin
 from control_bans import ControlBanStore, radio_id_core as control_radio_id_core
 from selfcare_db import (
@@ -6188,6 +6189,14 @@ class routerYSF(YsfPeerMixin, routerHBP):
         self.init_ysf()
 
 
+class routerNXDN(NxdnPeerMixin, routerHBP):
+    """Outbound NXDN reflector. Rules legs use this system name like an XLX peer."""
+
+    def __init__(self, _name, _config, _report):
+        routerHBP.__init__(self, _name, _config, _report)
+        self.init_nxdn()
+
+
 class routerIPSC(IpscMasterMixin, routerHBP):
 
     def __init__(self, _name, _config, _report):
@@ -6588,6 +6597,8 @@ if __name__ == '__main__':
                 systems[system] = routerHYTERA(system, CONFIG, report_server)
             elif CONFIG['SYSTEMS'][system]['MODE'] == 'YSFPEER':
                 systems[system] = routerYSF(system, CONFIG, report_server)
+            elif CONFIG['SYSTEMS'][system]['MODE'] == 'NXDNPEER':
+                systems[system] = routerNXDN(system, CONFIG, report_server)
             else:
                 if (is_routing_master(CONFIG['SYSTEMS'][system]['MODE'])
                         and CONFIG['SYSTEMS'][system]['ANNOUNCEMENT_LANGUAGE']

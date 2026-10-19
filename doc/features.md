@@ -44,6 +44,7 @@ Config reference: [RYSEN-SAMPLE-commented.cfg](../RYSEN-SAMPLE-commented.cfg).
 
 - **`rules.py`** — Static conference bridges between systems/timeslots/TGs
 - **YSFPEER** — One stanza logs into one YSF reflector (DN / V/D mode 2). A rules leg on TS 2 / TG 9 ties that room to a talkgroup, the same way an XLX leg does. Voice FR is not bridged.
+- **NXDNPEER** — One stanza logs into one NXDN reflector. A rules leg on TS 2 / TG 9 ties that room to a talkgroup. `TALKGROUP` in the stanza is the reflector room. `NXDN_ID` is the 16-bit source on every outbound over. Data calls are not bridged.
 - **UA bridges** — Created on first PTT to a talkgroup
 - **Dial-a-tg reflectors** — `#NNNN` bridges; private-call codes 4000 (connect), 5000 (status), link TGs
 - **Stat bridges** — Always-on TG routing (`GEN_STAT_BRIDGES`, static TG entries)

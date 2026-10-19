@@ -48,6 +48,7 @@ from dmr_utils3 import decode, bptc, const
 import config
 import log
 from const import *
+from nxdn_voice import NxdnPeerMixin
 from ysf_voice import YsfPeerMixin
 from bridge_helpers import (
     allow_bridge_target,
@@ -1210,6 +1211,14 @@ class routerYSF(YsfPeerMixin, routerHBP):
         self.init_ysf()
 
 
+class routerNXDN(NxdnPeerMixin, routerHBP):
+    """Outbound NXDN reflector. Same rules leg as bridge_master.routerNXDN."""
+
+    def __init__(self, _name, _config, _report):
+        routerHBP.__init__(self, _name, _config, _report)
+        self.init_nxdn()
+
+
 class bridgeReportFactory(reportFactory):
 
     def send_bridge(self):
@@ -1312,6 +1321,8 @@ if __name__ == '__main__':
                 systems[system] = routerOBP(system, CONFIG, report_server)
             elif CONFIG['SYSTEMS'][system]['MODE'] == 'YSFPEER':
                 systems[system] = routerYSF(system, CONFIG, report_server)
+            elif CONFIG['SYSTEMS'][system]['MODE'] == 'NXDNPEER':
+                systems[system] = routerNXDN(system, CONFIG, report_server)
             else:
                 systems[system] = routerHBP(system, CONFIG, report_server)
             reactor.listenUDP(CONFIG['SYSTEMS'][system]['PORT'], systems[system], interface=CONFIG['SYSTEMS'][system]['IP'])

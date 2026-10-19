@@ -58,6 +58,7 @@ Docker entrypoint: [entrypoint](../entrypoint) — starts `bridge_master.py -c r
 | `[OBP-…]` | OPENBRIDGE | Outbound bridge to external network |
 | `[PARROT]` etc. | PEER | Outbound HBP peer connections |
 | `[YSF-…]` | YSFPEER | Outbound DN link to one YSF reflector |
+| `[NXDN-…]` | NXDNPEER | Outbound link to one NXDN reflector |
 
 Each generated HBP/IPSC slot gets its own UDP port. A generated Hytera slot
 uses a private P2P/DMR/RDAC port triple. The protocol proxies multiplex public
