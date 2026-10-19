@@ -21,7 +21,7 @@ import logging
 from io import StringIO
 from os.path import isfile
 
-from ysf_voice import callsign_for_id, callsign_index, id_for_callsign
+from ysf_voice import callsign_for_id, callsign_index
 
 logger = logging.getLogger(__name__)
 
@@ -92,14 +92,31 @@ def nxdn_id_for_dmr(config, dmr_id, default):
     return int(default or 0) & 0xFFFF
 
 
+def _dmr_ids_for_callsign(table, callsign):
+    found = []
+    want = _callsign(callsign)
+    if not want:
+        return found
+    for ident, name in (table or {}).items():
+        if _callsign(name) != want:
+            continue
+        try:
+            found.append(int(ident))
+        except (TypeError, ValueError):
+            continue
+    return found
+
+
 def dmr_id_for_nxdn(config, nxdn_id, default):
-    """NXDN ID -> DMR subscriber ID via callsign, else the 16-bit NXDN ID."""
+    """NXDN ID -> DMR subscriber ID via callsign, else the 16-bit NXDN ID.
+
+    RadioID lists some callsigns twice. The lower ID is the one hotspots
+    log in with. A local subscriber entry still wins over the downloaded list.
+    """
     callsign = (config.get('_NXDN_IDS') or {}).get(int(nxdn_id or 0) & 0xFFFF)
     if callsign:
-        index = config.get('_SUB_CALL')
-        if index is None:
-            index = attach_callsign_index(config)
-        mapped = id_for_callsign(index, callsign, 0)
-        if mapped:
-            return int(mapped)
+        for key in ('_LOCAL_SUBSCRIBER_IDS', '_SUB_IDS'):
+            found = _dmr_ids_for_callsign(config.get(key), callsign)
+            if found:
+                return min(found)
     return int(default or nxdn_id or 0)

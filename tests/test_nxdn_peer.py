@@ -39,8 +39,9 @@ from nxdn_aliases import (
     nxdn_id_for_dmr,
     parse_nxdn_csv,
 )
-from nxdn_voice import NxdnPeerMixin
+from nxdn_voice import NXDN_FRAME_S, NXDN_TX_PRIME, NxdnPeerMixin, next_deadline
 from ysf_voice import (
+    DMR_BURST_S,
     SILENCE_49,
     _BURST_BITS,
     _HEAD_BITS,
@@ -62,6 +63,17 @@ class _Transport(object):
 
     def write(self, packet, addr):
         self.box.append(packet)
+
+
+class _Timer(object):
+    def __init__(self):
+        self._active = True
+
+    def active(self):
+        return self._active
+
+    def cancel(self):
+        self._active = False
 
 
 class _Peer(NxdnPeerMixin):
@@ -444,6 +456,95 @@ class TestNxdnAliases(unittest.TestCase):
         peer.nxdn_datagram_received(
             pack_data(4720, 65000, FLAG_GROUP, payload), ('127.0.0.1', 41400))
         self.assertEqual(peer.captured[0][5:8], bytes_3(2345370))
+
+    def test_lower_dmr_id_is_used_unless_a_local_entry_exists(self):
+        config = {
+            '_SUB_IDS': {
+                2345370: 'G4XTZ',
+                2344669: 'G4XTZ',
+                2345875: 'M0VUB',
+                2348831: 'M0VUB',
+            },
+            '_LOCAL_SUBSCRIBER_IDS': {},
+        }
+        attach_nxdn_maps(config, {4720: 'G4XTZ', 2425: 'M0VUB'})
+        self.assertEqual(dmr_id_for_nxdn(config, 4720, 4720), 2344669)
+        self.assertEqual(dmr_id_for_nxdn(config, 2425, 2425), 2345875)
+        config['_LOCAL_SUBSCRIBER_IDS'] = {2345370: 'G4XTZ'}
+        self.assertEqual(dmr_id_for_nxdn(config, 4720, 4720), 2345370)
+
+
+class _ClockPeer(_Peer):
+    def __init__(self):
+        super(_ClockPeer, self).__init__()
+        self._nxdn_immediate = False
+        self.scheduled = []
+
+    def _schedule(self, delay, callback):
+        self.scheduled.append(delay)
+        return _Timer()
+
+
+class TestNxdnClock(unittest.TestCase):
+
+    def test_deadline_stays_on_the_grid(self):
+        self.assertAlmostEqual(next_deadline(None, 10.0, NXDN_FRAME_S), 10.080)
+        self.assertAlmostEqual(next_deadline(10.080, 10.082, NXDN_FRAME_S), 10.160)
+        self.assertAlmostEqual(next_deadline(10.0, 10.200, NXDN_FRAME_S), 10.280)
+
+    def test_outbound_voice_waits_for_two_frames(self):
+        peer = _ClockPeer()
+        src = bytes_3(2350001)
+        dst = bytes_3(9)
+        lc = b''.join((LC_OPT, dst, src))
+        peer.nxdn_send_system(_dmrd(
+            0, _HEAD_BITS, lc_payload(bptc.encode_header_lc(lc), 'VOICE_LC_HEAD')))
+        for position in range(2):
+            peer.nxdn_send_system(_silence_burst(position + 1, position))
+        self.assertEqual(len(peer.box), 1)
+        self.assertLess(len(peer._tx_q), NXDN_TX_PRIME)
+        peer.nxdn_send_system(_silence_burst(3, 2))
+        self.assertEqual(len(peer.box), 2)
+        self.assertTrue(parse_data(peer.box[1])['payload'][0] == LICH_VOICE)
+        self.assertTrue(any(abs(delay - NXDN_FRAME_S) < 0.005 for delay in peer.scheduled))
+
+    def test_inbound_voice_waits_for_two_frames(self):
+        peer = _ClockPeer()
+        payload = voice_payload([SILENCE_49] * 4, 100, 65000, 0)
+        peer.nxdn_datagram_received(
+            pack_data(100, 65000, FLAG_GROUP, payload), ('127.0.0.1', 41400))
+        self.assertEqual(peer.captured, [])
+        peer.nxdn_datagram_received(
+            pack_data(100, 65000, FLAG_GROUP, payload), ('127.0.0.1', 41400))
+        self.assertEqual(len(peer.captured), 2)
+        self.assertTrue(any(abs(delay - DMR_BURST_S) < 0.005 for delay in peer.scheduled))
+
+    def test_mapped_echo_does_not_open_a_return_over(self):
+        peer = _Peer()
+        peer._CONFIG.update({
+            '_SUB_IDS': {2350001: 'M0VUB'},
+            '_LOCAL_SUBSCRIBER_IDS': {},
+        })
+        attach_nxdn_maps(peer._CONFIG, {2425: 'M0VUB', 4720: 'G4XTZ'})
+        attach_callsign_index(peer._CONFIG)
+        src = bytes_3(2350001)
+        dst = bytes_3(9)
+        lc = b''.join((LC_OPT, dst, src))
+        peer.nxdn_send_system(_dmrd(
+            0, _HEAD_BITS, lc_payload(bptc.encode_header_lc(lc), 'VOICE_LC_HEAD')))
+        peer.nxdn_send_system(_dmrd(
+            1, _TERM_BITS, lc_payload(bptc.encode_terminator_lc(lc), 'VOICE_LC_TERM')))
+        self.assertEqual(peer._tx_echo_src, 2425)
+        self.assertIsNone(peer._tx_stream)
+        echo = voice_payload([SILENCE_49] * 4, 2425, 65000, 0)
+        peer.nxdn_datagram_received(
+            pack_data(2425, 65000, FLAG_GROUP, echo), ('127.0.0.1', 41400))
+        self.assertEqual(peer.captured, [])
+        other = voice_payload([SILENCE_49] * 4, 4720, 65000, 0)
+        peer.nxdn_datagram_received(
+            pack_data(4720, 65000, FLAG_GROUP, other), ('127.0.0.1', 41400))
+        self.assertGreaterEqual(len(peer.captured), 2)
+        self.assertEqual(peer.captured[0][5:8], bytes_3(4720))
 
 
 if __name__ == '__main__':

@@ -4,7 +4,10 @@
 
 - NXDNPEER maps DMR and NXDN IDs by callsign from RadioID `nxdn.csv` plus
   `subscriber_ids.json`, the same join YSF already uses. Stanza `NXDN_ID` is
-  the fallback when a talker is not in both tables.
+  the fallback when a talker is not in both tables. When a callsign has more
+  than one DMR ID, the lower one is used. Voice is paced on a fixed 80 ms
+  NXDN / 60 ms DMR clock, with two frames buffered before the first voice
+  frame, so a busy reactor does not stretch the over.
 - Alias reload hardening: a failed or empty subscriber/peer/TGID reload no
   longer wipes in-memory registration maps, so `ALLOW_UNREG_ID: False` stays
   enforced without bricking hotspots after a bad second read at startup. The

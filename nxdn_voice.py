@@ -61,10 +61,25 @@ from ysf_voice import (
 
 logger = logging.getLogger(__name__)
 
+
+def next_deadline(due, now, interval):
+    """Next send time on a fixed grid.
+
+    A stall longer than one frame starts a new grid instead of bursting
+    several frames back to back to catch up.
+    """
+    if due is None or due < now - interval:
+        due = now
+    return due + interval
+
 # Four 20 ms words. DMR delivers three words every 60 ms.
 NXDN_FRAME_S = 0.080
 # Close the reflector stream when DMR stops without a terminator.
 NXDN_HANG_S = 0.45
+# Hold two frames before the first voice so a late reactor tick does not
+# open a hole. The header still goes out as soon as the over starts.
+NXDN_TX_PRIME = 8
+NXDN_RX_PRIME = 6
 
 
 class NxdnPeerMixin(object):
@@ -83,6 +98,10 @@ class NxdnPeerMixin(object):
         self._tx_stream = None
         self._tx_nxdn_src = None
         self._tx_part = 0
+        self._tx_due = None
+        self._tx_primed = False
+        self._tx_echo_src = None
+        self._tx_echo_until = 0
         self._rx_q = deque()
         self._rx_ending = False
         self._rx_timer = None
@@ -93,6 +112,8 @@ class NxdnPeerMixin(object):
         self._rx_pos = 0
         self._rx_src = b'\x00\x00\x00'
         self._rx_nxdn_src = None
+        self._rx_due = None
+        self._rx_primed = False
         self._rx_lc = None
         self._rx_emb = None
         stats = self._config.setdefault('STATS', {})
@@ -266,8 +287,13 @@ class NxdnPeerMixin(object):
         self._tx_stream = stream
         self._tx_ending = False
         self._tx_part = 0
+        self._tx_primed = False
+        self._tx_due = None
         ident = int.from_bytes(src, 'big') if src else 0
         self._tx_nxdn_src = self._mapped_nxdn_id(ident)
+        logger.info(
+            '(%s) NXDN transmit DMR %s as NXDN %s',
+            self._system, ident, self._tx_nxdn_src)
         # A reflector does not open a call on voice alone.
         self._write_header()
 
@@ -295,9 +321,21 @@ class NxdnPeerMixin(object):
     def _finish_tx(self):
         if self._tx_stream is not None:
             self._write_trailer()
+        # The reflector echoes our source ID for a few frames after the trailer.
+        self._tx_echo_src = self._tx_nxdn_src
+        self._tx_echo_until = time() + NXDN_HANG_S
         self._tx_ending = False
         self._tx_stream = None
+        self._tx_primed = False
+        self._tx_due = None
         self._cancel_timer('_tx_hang')
+
+    def _arm_tx_clock(self):
+        if self._nxdn_immediate or self._tx_stream is None:
+            return
+        now = time()
+        self._tx_due = next_deadline(self._tx_due, now, NXDN_FRAME_S)
+        self._tx_timer = self._schedule(max(0.0, self._tx_due - time()), self._tx_fired)
 
     def _arm_tx_hang(self):
         # Tests run the scheduler inline. A hang fired there would cut the
@@ -319,6 +357,14 @@ class NxdnPeerMixin(object):
                 and getattr(self._tx_timer, 'active', lambda: True)()):
             return
         self._cancel_timer('_tx_hang')
+        # Wait until two NXDN frames are queued so the 80 ms clock has a cushion.
+        if (not self._nxdn_immediate and not force
+                and not self._tx_ending and not self._tx_primed):
+            if len(self._tx_q) < NXDN_TX_PRIME:
+                if self._tx_stream is not None:
+                    self._arm_tx_hang()
+                return
+            self._tx_primed = True
         while len(self._tx_q) >= 4 or (self._tx_ending and self._tx_q):
             chunk = []
             for _ in range(4):
@@ -327,7 +373,7 @@ class NxdnPeerMixin(object):
             if self._tx_ending and not self._tx_q:
                 self._finish_tx()
             if not self._nxdn_immediate and not force and self._tx_stream is not None:
-                self._tx_timer = self._schedule(NXDN_FRAME_S, self._tx_fired)
+                self._arm_tx_clock()
                 return
         if self._tx_ending and not self._tx_q:
             self._finish_tx()
@@ -346,10 +392,14 @@ class NxdnPeerMixin(object):
         parsed = parse_data(data)
         if parsed is None:
             return
-        # Ignore our own TX. Mapped talker IDs are echoed while _tx_stream is open.
+        # Ignore our own TX. The reflector echoes the talker's NXDN ID, which
+        # is not the stanza fallback once the callsign join has a match.
         if self._tx_stream is not None:
             return
-        if parsed['src'] == self._nxdn_id():
+        src = parsed['src']
+        if src == self._nxdn_id():
+            return
+        if src == self._tx_echo_src and time() < self._tx_echo_until:
             return
         payload = parsed['payload']
         if is_data(payload, parsed['flags']):
@@ -361,22 +411,22 @@ class NxdnPeerMixin(object):
                 self._pump_rx()
             return
         if kind == 'header':
-            if (not self._rx_open) or parsed['src'] != self._rx_nxdn_src:
+            if (not self._rx_open) or src != self._rx_nxdn_src:
                 if self._rx_open:
                     self._cancel_timer('_rx_timer')
                     self._rx_ending = True
                     self._pump_rx(force=True)
-                self._open_rx(parsed['src'])
+                self._open_rx(src)
             return
         words = audio_words(payload)
         if not words:
             return
-        if (not self._rx_open) or parsed['src'] != self._rx_nxdn_src:
+        if (not self._rx_open) or src != self._rx_nxdn_src:
             if self._rx_open:
                 self._cancel_timer('_rx_timer')
                 self._rx_ending = True
                 self._pump_rx(force=True)
-            self._open_rx(parsed['src'])
+            self._open_rx(src)
         for word in words:
             self._rx_q.append(word)
         if parsed['end']:
@@ -389,13 +439,19 @@ class NxdnPeerMixin(object):
         self._rx_ending = False
         self._rx_q.clear()
         self._rx_nxdn_src = source
+        self._rx_primed = False
+        self._rx_due = None
         self._rx_pos = 0
         self._rx_seq = 0
         stream = os.urandom(4)
         if stream == b'\x00\x00\x00\x00':
             stream = b'\x00\x00\x00\x01'
         self._rx_stream = stream
-        src = bytes_3(self._mapped_dmr_id(source) & 0xFFFFFF)
+        dmr_id = self._mapped_dmr_id(source) & 0xFFFFFF
+        logger.info(
+            '(%s) NXDN receive NXDN %s as DMR %s',
+            self._system, source, dmr_id)
+        src = bytes_3(dmr_id)
         self._rx_src = src
         lc = b''.join((LC_OPT, self._tgid(), src))
         self._rx_lc = lc
@@ -428,10 +484,23 @@ class NxdnPeerMixin(object):
         self._rx_ending = False
         self._rx_nxdn_src = None
 
+    def _arm_rx_clock(self):
+        if self._nxdn_immediate or not self._rx_open:
+            return
+        now = time()
+        self._rx_due = next_deadline(self._rx_due, now, DMR_BURST_S)
+        self._rx_timer = self._schedule(max(0.0, self._rx_due - time()), self._rx_fired)
+
     def _pump_rx(self, force=False):
         if (not force and self._rx_timer is not None
                 and getattr(self._rx_timer, 'active', lambda: True)()):
             return
+        # Wait until two DMR bursts are queued so the 60 ms clock has a cushion.
+        if (not self._nxdn_immediate and not force
+                and not self._rx_ending and not self._rx_primed):
+            if len(self._rx_q) < NXDN_RX_PRIME:
+                return
+            self._rx_primed = True
         while len(self._rx_q) >= 3 or (self._rx_ending and self._rx_q):
             self._emit_header()
             words = []
@@ -444,7 +513,7 @@ class NxdnPeerMixin(object):
                 _BURST_BITS[position],
                 dmr_voice_payload(words, _embed(position, self._rx_emb)))
             if not self._nxdn_immediate and not force:
-                self._rx_timer = self._schedule(DMR_BURST_S, self._rx_fired)
+                self._arm_rx_clock()
                 return
         if self._rx_ending and self._rx_open:
             if self._rx_header_sent or self._rx_q:
