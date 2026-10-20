@@ -3981,6 +3981,46 @@ class routerHBP(HBSYSTEM):
                     _sysIgnore.append(_ignore_key)
        
         return _sysIgnore
+
+    def _forward_group_data(self, _dst_id, _slot, _bits, _data, dmrpkt,
+                            _rf_src, _stream_id, _peer_id, pkt_time):
+        """Fan group SMS/data out the TG bridge without opening a voice call."""
+        _int_dst_id = int_id(_dst_id)
+        _bridge = str(_int_dst_id)
+        if _bridge not in BRIDGES:
+            logger.info(
+                '(%s) GROUP Data TG %s has no bridge',
+                self._system, _int_dst_id)
+            return
+        for _target in BRIDGES[_bridge]:
+            if (not _target.get('ACTIVE')
+                    or _target.get('TGID') != _dst_id
+                    or _target.get('SYSTEM') == self._system):
+                continue
+            _d_system = _target['SYSTEM']
+            if _d_system not in systems:
+                continue
+            _d_slot = _target['TS']
+            _tmp_bits = _bits ^ (1 << 7) if _slot != _d_slot else _bits
+            _mode = CONFIG['SYSTEMS'][_d_system]['MODE']
+            if _mode == 'OPENBRIDGE':
+                if CONFIG['SYSTEMS'][_d_system].get('VER', 1) > 1:
+                    self.sendDataToOBP(
+                        _d_system, _data, dmrpkt, pkt_time, _stream_id,
+                        _dst_id, _peer_id, _rf_src, _tmp_bits, _d_slot)
+                continue
+            _dst_status = systems[_d_system].STATUS[_d_slot]
+            _hang = CONFIG['SYSTEMS'][_d_system].get('GROUP_HANGTIME', 0)
+            if (_dst_status['RX_TYPE'] == HBPF_SLT_VTERM
+                    and _dst_status['TX_TYPE'] == HBPF_SLT_VTERM
+                    and time() - _dst_status['TX_TIME'] > _hang):
+                self.sendDataToHBP(
+                    _d_system, _d_slot, _dst_id, _tmp_bits, _data, dmrpkt,
+                    _rf_src, _stream_id, _peer_id)
+            else:
+                logger.debug(
+                    '(%s) GROUP Data not bridged to %s slot %s - target busy',
+                    self._system, _d_system, _d_slot)
     
     def sendDataToHBP(self,_d_system,_d_slot,_dst_id,_tmp_bits,_data,dmrpkt,_rf_src,_stream_id,_peer_id):
         #Assemble transmit HBP packet header
@@ -5453,6 +5493,44 @@ class routerHBP(HBSYSTEM):
                                     
                                 else:
                                     logger.debug('(%s) UNIT Data not bridged to HBP on slot %s - target busy: %s DST_ID: %s',self._system,_d_slot,_d_system,_int_dst_id)
+
+        if (_call_type == 'group'
+                and _frame_type == HBPF_DATA_SYNC
+                and (_dtype_vseq in (6, 7, 8)
+                     or (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']
+                         and _dtype_vseq == 3))):
+            _data_call = True
+            if _dtype_vseq == 3:
+                logger.info(
+                    '(%s) *GROUP CSBK* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s',
+                    self._system, int_id(_stream_id),
+                    get_alias(_rf_src, subscriber_ids), int_id(_rf_src),
+                    get_alias(_peer_id, peer_ids), int_id(_peer_id),
+                    get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+            elif _dtype_vseq == 6:
+                logger.info(
+                    '(%s) *GROUP DATA HEADER* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s',
+                    self._system, int_id(_stream_id),
+                    get_alias(_rf_src, subscriber_ids), int_id(_rf_src),
+                    get_alias(_peer_id, peer_ids), int_id(_peer_id),
+                    get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+            elif _dtype_vseq == 7:
+                logger.info(
+                    '(%s) *GROUP 1/2 DATA BLOCK* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s',
+                    self._system, int_id(_stream_id),
+                    get_alias(_rf_src, subscriber_ids), int_id(_rf_src),
+                    get_alias(_peer_id, peer_ids), int_id(_peer_id),
+                    get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+            elif _dtype_vseq == 8:
+                logger.info(
+                    '(%s) *GROUP 3/4 DATA BLOCK* STREAM ID: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s',
+                    self._system, int_id(_stream_id),
+                    get_alias(_rf_src, subscriber_ids), int_id(_rf_src),
+                    get_alias(_peer_id, peer_ids), int_id(_peer_id),
+                    get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot)
+            self._forward_group_data(
+                _dst_id, _slot, _bits, _data, dmrpkt, _rf_src, _stream_id,
+                _peer_id, pkt_time)
                                 
         #Handle AMI private calls
         if _call_type == 'unit' and not _data_call and self.STATUS[_slot]['_allStarMode'] and CONFIG['ALLSTAR']['ENABLED']:
@@ -5668,7 +5746,7 @@ class routerHBP(HBSYSTEM):
             self.STATUS[_slot]['packets'] = self.STATUS[_slot]['packets'] +1                
         
         #Handle group calls
-        if _call_type == 'group' or _call_type == 'vcsbk':
+        if (_call_type == 'group' or _call_type == 'vcsbk') and not _data_call:
             # Before the voice-terminator guards. Those can return without
             # bridging, and playback only echoes once it sees the terminator.
             # Private 9990 already uses this direct handoff.

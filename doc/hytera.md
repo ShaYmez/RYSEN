@@ -24,7 +24,8 @@ Sample config: [HYTERA-SAMPLE.cfg](../HYTERA-SAMPLE.cfg). Selfcare:
 | Inbound and outbound group voice | OK |
 | Dial-a-TG private activation and TG9 group announcement | OK |
 | Group and private/unit parrot on `9990` | OK |
-| Private SMS inbound (MD380 via RD985) | Routed; 1/2-rate blocks |
+| Private SMS both ways, including confirmed read (MD380 ↔ hotspot via RD985) | OK |
+| Group SMS routed on the talkgroup (not treated as group voice) | OK |
 | Mid-stream group join (late entry) | OK |
 | Delayed static admission keeps the original Voice LC Header | OK |
 | NAT-aware multi-repeater proxy | OK |
