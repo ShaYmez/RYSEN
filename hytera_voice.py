@@ -25,10 +25,14 @@ from const import (
 from hytera_const import (
     CALL_PRIVATE,
     CALL_GROUP,
+    DATA_DTYPE_SLOT,
+    DATA_SLOT_DTYPE,
     MEDIA_MIN_LEN,
     MEDIA_PAYLOAD_LEN,
     MEDIA_PAYLOAD_OFFSET,
     MEDIA_SEQUENCE_OFFSET,
+    SLOT_DATA_CSBK,
+    SLOT_DATA_HEADER,
     SLOT_HYTERA_SYNC,
     SLOT_VOICE_A,
     SLOT_VOICE_B,
@@ -138,6 +142,13 @@ class HyteraOutboundPacer:
     def send_control(self, packet):
         self._send_cb(packet)
 
+    def mark_active(self, ts):
+        """Treat an immediate control send as the start of RF playout."""
+        if ts not in self._active:
+            return
+        self._active[ts] = True
+        self._last_sent[ts] = self._clock.seconds()
+
     def enqueue(self, ts, packet, jitter_depth=None):
         if ts not in self._queues:
             return False
@@ -193,7 +204,7 @@ class HyteraOutboundPacer:
 
 
 class HyteraVoiceTranslator:
-    """Translate capture-validated RD985 group and private voice."""
+    """Translate capture-validated RD985 voice and private SMS/data."""
 
     def __init__(self, peer_id=0, stream_factory=None):
         self._peer_id = int(peer_id).to_bytes(4, 'big')
@@ -266,6 +277,14 @@ class HyteraVoiceTranslator:
             frame_type = (
                 HBPF_VOICE_SYNC if slot_type == SLOT_VOICE_A else HBPF_VOICE)
             flags = (frame_type << 4) | dtype
+        elif slot_type in DATA_SLOT_DTYPE:
+            if stream_id is None or self._calls[ts] != call_key:
+                stream_id = self._stream_factory()
+                if len(stream_id) != 4 or not any(stream_id):
+                    return None
+                self._streams[ts] = stream_id
+                self._calls[ts] = call_key
+            flags = (HBPF_DATA_SYNC << 4) | DATA_SLOT_DTYPE[slot_type]
         else:
             return None
 
@@ -429,6 +448,24 @@ class HyteraVoiceTranslator:
                 private_call=self._out_private[ts])
             self._out_seq[ts] = (self._out_seq[ts] + 1) & 0xffffffff
             return ts, packet, True
+
+        if frame_type == HBPF_DATA_SYNC and dtype in DATA_DTYPE_SLOT:
+            slot_type = DATA_DTYPE_SLOT[dtype]
+            payload = dmrd_payload_to_hytera(dmrd[20:53], quality)
+            if payload is None or not any(stream):
+                return None
+            new_stream = self._out_streams[ts] != stream
+            if new_stream:
+                self._out_streams[ts] = stream
+                self._out_seq[ts] = 0
+                self._out_last_dmrd_seq[ts] = None
+                self._out_late_join[ts] = False
+                self._out_private[ts] = private_call
+            packet = self._build_outbound(
+                ts, 0x01, slot_type, source, destination, payload,
+                private_call=private_call or self._out_private[ts])
+            self._out_seq[ts] = (self._out_seq[ts] + 1) & 0xffffffff
+            return ts, packet, not new_stream
 
         if frame_type == HBPF_DATA_SYNC and dtype == HBPF_SLT_VTERM:
             if self._out_streams[ts] != stream:

@@ -22,6 +22,8 @@ from dmr_utils3.utils import int_id
 from hblink import HBSYSTEM, acl_check, build_peer_record, logger
 from hytera_const import (
     DEFAULT_UNKNOWN_CAPTURE_FILE,
+    SLOT_DATA_CSBK,
+    SLOT_DATA_HEADER,
     P2P_COMMAND_REPLY,
     P2P_DMR_STARTUP,
     P2P_RDAC_STARTUP,
@@ -855,7 +857,7 @@ class HyteraMasterMixin:
                            _rssi=b'\x00', _source_server=b'\x00\x00\x00\x00',
                            _source_rptr=b'\x00\x00\x00\x00',
                            _late_join=False, _late_join_sequence=None):
-        """Bridge outbound group or private DMRD voice to the RD985."""
+        """Bridge outbound group or private DMRD voice and SMS to the RD985."""
         if not self._config.get('REPEAT', True):
             reason = 'repeater output disabled'
         elif not self._hytera_registered:
@@ -888,11 +890,14 @@ class HyteraMasterMixin:
                 ts, wire_packet, jitter_depth=1)
         if paced:
             return self._hytera_outbound.enqueue(ts, wire_packet)
+        slot = int.from_bytes(wire_packet[18:20], 'big') if len(wire_packet) >= 20 else 0
         if (_late_join
                 or (wire_packet[8] & 0x3f) == 0x02
-                or wire_packet[18:20] == b'\x11\x11'):
+                or slot in (0x1111, SLOT_DATA_CSBK, SLOT_DATA_HEADER)):
             self._hytera_outbound.reset_slot(ts)
         self._hytera_outbound.send_control(wire_packet)
+        if slot in (SLOT_DATA_CSBK, SLOT_DATA_HEADER):
+            self._hytera_outbound.mark_active(ts)
         return True
 
     def hytera_dereg(self):

@@ -12,6 +12,7 @@ from hytera_const import (
     RDAC_STEP1_REQUEST,
     RDAC_STEP3_REQUEST,
 )
+from hytera_const import SLOT_DATA_BLOCK, SLOT_DATA_CSBK, SLOT_DATA_HEADER
 from hytera_master import HyteraMasterMixin, unknown_hytera_media_record
 from hytera_rdac_meta import (
     build_hrnp_ack,
@@ -163,6 +164,39 @@ class TestHyteraInboundVoice(unittest.TestCase):
 
     def test_unknown_length_is_gated(self):
         self.assertIsNone(self.translator.translate_group(b'\x00' * 103))
+
+    def test_private_sms_hello_maps_csbk_header_and_blocks(self):
+        packets = wire_fixture('sms_private_hello_ts1.hex')
+        translated = [self.translator.translate_voice(packet) for packet in packets]
+        self.assertTrue(all(item is not None for item in translated))
+        self.assertEqual([item[15] for item in translated],
+                         [0x63, 0x63, 0x63, 0x63, 0x66, 0x68, 0x68, 0x68, 0x68, 0x68])
+        self.assertEqual(translated[0][5:8], (2348831).to_bytes(3, 'big'))
+        self.assertEqual(translated[0][8:11], (2345875).to_bytes(3, 'big'))
+        self.assertEqual(len({item[16:20] for item in translated}), 1)
+
+    def test_private_sms_long_grows_data_blocks(self):
+        packets = wire_fixture('sms_private_long_ts1.hex')
+        translated = [self.translator.translate_voice(packet) for packet in packets]
+        self.assertEqual(len(translated), 16)
+        self.assertEqual([item[15] for item in translated],
+                         [0x63, 0x63, 0x63, 0x63, 0x66] + [0x68] * 11)
+
+    def test_sms_round_trip_keeps_captured_slot_types(self):
+        packets = wire_fixture('sms_private_hello_ts1.hex')
+        expected = [
+            SLOT_DATA_CSBK, SLOT_DATA_CSBK, SLOT_DATA_CSBK, SLOT_DATA_CSBK,
+            SLOT_DATA_HEADER,
+            SLOT_DATA_BLOCK, SLOT_DATA_BLOCK, SLOT_DATA_BLOCK,
+            SLOT_DATA_BLOCK, SLOT_DATA_BLOCK,
+        ]
+        for packet, slot in zip(packets, expected):
+            dmrd = self.translator.translate_voice(packet)
+            encoded = self.translator.encode_voice(dmrd)
+            self.assertIsNotNone(encoded)
+            ts, wire, _paced = encoded
+            self.assertEqual(ts, 1)
+            self.assertEqual(int.from_bytes(wire[18:20], 'big'), slot)
 
     def test_payload_conversion_requires_exact_length(self):
         self.assertIsNone(hytera_payload_to_dmrd(b'\x00' * 33))
@@ -638,6 +672,29 @@ class TestHyteraInboundDispatch(unittest.TestCase):
             'Hytera DMR RX' in line and header.hex() in line
             for line in logs.output))
 
+    def test_private_sms_is_dispatched_not_dumped(self):
+        from tempfile import TemporaryDirectory
+
+        packets = wire_fixture('sms_private_hello_ts1.hex')
+        with TemporaryDirectory() as tmp:
+            capture = Path(tmp) / 'hytera-unknown.jsonl'
+            self.master._hytera_capture_file = str(capture)
+            for packet in packets:
+                self.master.hytera_dmr_received(
+                    packet, ('203.0.113.9', 50001))
+            self.assertFalse(capture.exists())
+
+        self.assertEqual(len(self.received), 10)
+        self.assertEqual(self.received[0][5], 'unit')
+        self.assertEqual(self.received[0][4], 1)
+        self.assertEqual(self.received[0][6], 2)
+        self.assertEqual([item[7] for item in self.received],
+                         [3, 3, 3, 3, 6, 8, 8, 8, 8, 8])
+        self.assertEqual(self.received[0][1], (2348831).to_bytes(3, 'big'))
+        self.assertEqual(self.received[0][2], (2345875).to_bytes(3, 'big'))
+        stream = self.received[0][8]
+        self.assertTrue(all(item[8] == stream for item in self.received))
+
 
 class TestHyteraProxyControl(unittest.TestCase):
 
@@ -963,6 +1020,21 @@ class TestHyteraOutboundDispatch(unittest.TestCase):
         self.clock.advance(0.001)
         self.assertEqual(len(writes), 2)
         self.assertEqual(writes[1][0][8], 0x01)
+
+    def test_private_sms_csbk_is_sent_to_repeater(self):
+        self.assertTrue(self.master.hytera_send_system(
+            dmrd(0x63, self.payload, source=2345875, destination=2348831)))
+        writes = self.master._hytera_services['dmr'].transport.writes
+        self.assertEqual(len(writes), 1)
+        self.assertEqual(writes[0][0][18:20], b'\x33\x33')
+        self.assertEqual(writes[0][0][62], 0)
+
+        self.assertTrue(self.master.hytera_send_system(
+            dmrd(0x66, self.payload, source=2345875, destination=2348831)))
+        self.assertEqual(len(writes), 1)
+        self.clock.advance(0.060)
+        self.assertEqual(len(writes), 2)
+        self.assertEqual(writes[1][0][18:20], b'\x44\x44')
 
     def test_private_transmit_and_unregistered_transmit_gate(self):
         self.assertTrue(self.master.hytera_send_system(
