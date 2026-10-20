@@ -33,6 +33,7 @@ SLOT_NAMES = {
     0x3333: 'data_csbk',
     0x4444: 'data_header',
     0x5555: 'data_block',
+    0x6666: 'data_block_34',
     0x7777: 'voice_a',
     0x8888: 'voice_b',
     0x9999: 'voice_c',

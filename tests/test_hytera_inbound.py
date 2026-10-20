@@ -12,7 +12,12 @@ from hytera_const import (
     RDAC_STEP1_REQUEST,
     RDAC_STEP3_REQUEST,
 )
-from hytera_const import SLOT_DATA_BLOCK, SLOT_DATA_CSBK, SLOT_DATA_HEADER
+from hytera_const import (
+    SLOT_DATA_BLOCK,
+    SLOT_DATA_BLOCK_34,
+    SLOT_DATA_CSBK,
+    SLOT_DATA_HEADER,
+)
 from hytera_master import HyteraMasterMixin, unknown_hytera_media_record
 from hytera_rdac_meta import (
     build_hrnp_ack,
@@ -165,6 +170,18 @@ class TestHyteraInboundVoice(unittest.TestCase):
 
     def test_unknown_length_is_gated(self):
         self.assertIsNone(self.translator.translate_group(b'\x00' * 103))
+
+    def test_pd685g_hsms_34_block_is_translated_not_dumped(self):
+        packet = wire_fixture('sms_private_pd685g_34_ts2.hex')[0]
+        dmrd = self.translator.translate_voice(packet)
+        self.assertIsNotNone(dmrd)
+        self.assertEqual(dmrd[5:8], (2345875).to_bytes(3, 'big'))
+        self.assertEqual(dmrd[8:11], (2348831).to_bytes(3, 'big'))
+        self.assertEqual(dmrd[15], 0xe8)
+        self.assertEqual(dmr_burst_dtype(dmrd[20:53]), 8)
+        encoded = self.translator.encode_voice(dmrd)
+        self.assertIsNotNone(encoded)
+        self.assertEqual(int.from_bytes(encoded[1][18:20], 'big'), SLOT_DATA_BLOCK)
 
     def test_private_sms_hello_maps_csbk_header_and_blocks(self):
         packets = wire_fixture('sms_private_hello_ts1.hex')

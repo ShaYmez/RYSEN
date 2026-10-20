@@ -25,6 +25,7 @@ Sample config: [HYTERA-SAMPLE.cfg](../HYTERA-SAMPLE.cfg). Selfcare:
 | Dial-a-TG private activation and TG9 group announcement | OK |
 | Group and private/unit parrot on `9990` | OK |
 | Private SMS both ways, including confirmed read (MD380 ↔ hotspot via RD985) | OK |
+| PD685G H-SMS 3/4-rate blocks (`6666`) inbound to Homebrew | OK |
 | Group SMS routed on the talkgroup (not treated as group voice) | OK |
 | Mid-stream group join (late entry) | OK |
 | Delayed static admission keeps the original Voice LC Header | OK |

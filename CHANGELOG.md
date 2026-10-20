@@ -20,6 +20,9 @@
   The RF source is kept on that TG so a reply can come back. OpenBridge
   peers that give every preamble CSBK its own stream ID no longer reset
   the Hytera 60 ms downlink.
+- Hytera PD685G H-SMS 3/4-rate data uses slot type `6666`. Those bursts
+  are translated as Homebrew dtype 8 so a repeater radio can reply to a
+  hotspot instead of the body being dumped as unknown media.
 - NXDNPEER maps DMR and NXDN IDs by callsign from RadioID `nxdn.csv` plus
   `subscriber_ids.json`, the same join YSF already uses. Stanza `NXDN_ID` is
   the fallback when a talker is not in both tables. When a callsign has more

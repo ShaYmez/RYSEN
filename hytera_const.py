@@ -65,10 +65,12 @@ SLOT_VOICE_E = 0xBBBB
 SLOT_VOICE_F = 0xCCCC
 SLOT_WAKEUP = 0xDDDD
 SLOT_HYTERA_SYNC = 0xEEEE
-# Private SMS captured on GB7NR: 3333 preamble, 4444 header, 5555 data.
+# Private SMS captured on GB7NR: 3333 preamble, 4444 header, 5555 1/2-rate
+# data. PD685G H-SMS uses 6666 for 3/4-rate data blocks.
 SLOT_DATA_CSBK = 0x3333
 SLOT_DATA_HEADER = 0x4444
 SLOT_DATA_BLOCK = 0x5555
+SLOT_DATA_BLOCK_34 = 0x6666
 
 # DMRD voice subtype values represented by each Hytera slot marker.
 VOICE_SLOT_DTYPE = {
@@ -86,6 +88,7 @@ DATA_SLOT_DTYPE = {
     SLOT_DATA_CSBK: 3,
     SLOT_DATA_HEADER: 6,
     SLOT_DATA_BLOCK: 7,
+    SLOT_DATA_BLOCK_34: 8,
 }
 DATA_DTYPE_SLOT = {
     3: SLOT_DATA_CSBK,
