@@ -893,7 +893,9 @@ class HyteraMasterMixin:
         slot = int.from_bytes(wire_packet[18:20], 'big') if len(wire_packet) >= 20 else 0
         if (_late_join
                 or (wire_packet[8] & 0x3f) == 0x02
-                or slot in (0x1111, SLOT_DATA_CSBK, SLOT_DATA_HEADER)):
+                or slot == 0x1111
+                or (slot == SLOT_DATA_CSBK
+                    and not self._hytera_outbound.is_active(ts))):
             self._hytera_outbound.reset_slot(ts)
         self._hytera_outbound.send_control(wire_packet)
         if slot in (SLOT_DATA_CSBK, SLOT_DATA_HEADER):

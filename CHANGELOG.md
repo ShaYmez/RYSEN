@@ -8,7 +8,9 @@
 - Hytera private SMS is translated both ways. Captured RD985 slot types
   `3333` / `4444` / `5555` map to Homebrew CSBK, data header and 1/2-rate
   data blocks (the burst slot type, not 3/4). A later preamble from the
-  same radios opens a new stream because SMS has no VTERM.
+  same radios opens a new stream because SMS has no VTERM. A hotspot that
+  uses one stream for the CSBK preamble and another for the header keeps
+  the 60 ms downlink intact instead of dropping the rest of the preamble.
 - NXDNPEER maps DMR and NXDN IDs by callsign from RadioID `nxdn.csv` plus
   `subscriber_ids.json`, the same join YSF already uses. Stanza `NXDN_ID` is
   the fallback when a talker is not in both tables. When a callsign has more

@@ -163,6 +163,9 @@ class HyteraOutboundPacer:
         self._active[ts] = True
         self._last_sent[ts] = self._clock.seconds()
 
+    def is_active(self, ts):
+        return bool(self._active.get(ts))
+
     def enqueue(self, ts, packet, jitter_depth=None):
         if ts not in self._queues:
             return False
@@ -233,6 +236,7 @@ class HyteraVoiceTranslator:
         self._out_last_dmrd_seq = {1: None, 2: None}
         self._out_late_join = {1: False, 2: False}
         self._out_private = {1: False, 2: False}
+        self._out_last_data_dtype = {1: None, 2: None}
 
     def reset(self):
         self._streams = {1: None, 2: None}
@@ -245,6 +249,7 @@ class HyteraVoiceTranslator:
         self._out_last_dmrd_seq = {1: None, 2: None}
         self._out_late_join = {1: False, 2: False}
         self._out_private = {1: False, 2: False}
+        self._out_last_data_dtype = {1: None, 2: None}
 
     def set_peer_id(self, peer_id):
         self._peer_id = int(peer_id).to_bytes(4, 'big')
@@ -408,6 +413,7 @@ class HyteraVoiceTranslator:
             self._out_last_dmrd_seq[ts] = None
             self._out_late_join[ts] = False
             self._out_private[ts] = private_call
+            self._out_last_data_dtype[ts] = None
             payload = dmrd_payload_to_hytera(dmrd[20:53], quality)
             if payload is None:
                 return None
@@ -436,6 +442,7 @@ class HyteraVoiceTranslator:
                 self._out_streams[ts] = stream
                 self._out_late_join[ts] = late_join and not private_call
                 self._out_private[ts] = private_call
+                self._out_last_data_dtype[ts] = None
                 self._out_seq[ts] = (
                     late_join_sequence
                     if late_join and late_join_sequence is not None
@@ -485,17 +492,27 @@ class HyteraVoiceTranslator:
             payload = dmrd_payload_to_hytera(dmrd[20:53], quality)
             if payload is None or not any(stream):
                 return None
-            new_stream = self._out_streams[ts] != stream
+            last_dtype = self._out_last_data_dtype[ts]
+            # MMDVM often uses one stream for the CSBK preamble and another
+            # for the header and blocks. That is still one RF SMS.
+            join_body = (
+                dtype in (6, 7, 8)
+                and last_dtype in (3, 6, 7, 8)
+                and self._out_streams[ts] is not None)
+            new_stream = self._out_streams[ts] != stream and not join_body
             if new_stream:
                 self._out_streams[ts] = stream
                 self._out_seq[ts] = 0
                 self._out_last_dmrd_seq[ts] = None
                 self._out_late_join[ts] = False
                 self._out_private[ts] = private_call
+            else:
+                self._out_streams[ts] = stream
             packet = self._build_outbound(
                 ts, 0x01, slot_type, source, destination, payload,
                 private_call=private_call or self._out_private[ts])
             self._out_seq[ts] = (self._out_seq[ts] + 1) & 0xffffffff
+            self._out_last_data_dtype[ts] = dtype
             return ts, packet, not new_stream
 
         if frame_type == HBPF_DATA_SYNC and dtype == HBPF_SLT_VTERM:
@@ -512,6 +529,7 @@ class HyteraVoiceTranslator:
             self._out_last_dmrd_seq[ts] = None
             self._out_late_join[ts] = False
             self._out_private[ts] = False
+            self._out_last_data_dtype[ts] = None
             return ts, packet, True
 
         return None
