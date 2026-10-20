@@ -31,6 +31,7 @@ import sys
 
 from rysen_version import advertised_package_id
 import const
+from hytera_const import DEFAULT_UNKNOWN_CAPTURE_FILE
 from repeater_modes import is_repeater_protocol
 
 import socket
@@ -548,6 +549,9 @@ def build_config(_config_file):
                             section, 'KEEPALIVE_WATCHDOG', fallback=60),
                         'TRACE_PACKETS': config.getboolean(
                             section, 'TRACE_PACKETS', fallback=False),
+                        'CAPTURE_FILE': config.get(
+                            section, 'CAPTURE_FILE',
+                            fallback=DEFAULT_UNKNOWN_CAPTURE_FILE).strip(),
                         'ALLOWED_PEER_IDS': _parse_csv_ints(
                             config.get(section, 'ALLOWED_PEER_IDS', fallback='')),
                         'ALLOWED_PEER_IPS': _parse_csv_strings(

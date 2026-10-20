@@ -38,7 +38,11 @@ are blocked for that call and its hangtime. They are not queued.
 unsubscribed when the first is keyed.
 
 Unknown media lengths, including reported 103-byte packets, are rejected
-until they are capture-validated. SNMP is out of scope.
+until they are capture-validated. The master logs each rejected DMR packet
+with hex and appends it to `CAPTURE_FILE` (default
+`/opt/rysen/log/hytera-unknown.jsonl`, host `/var/log/rysen`). Set
+`TRACE_PACKETS: True` on one Hytera stanza only when collecting SMS/GPS/UDT
+fixtures — voice hex will flood. SNMP is out of scope.
 
 ## CPS programming
 

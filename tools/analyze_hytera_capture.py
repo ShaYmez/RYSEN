@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 ###############################################################################
-#   Describe Hytera 72-byte UDP media from PCAP or PCAPNG captures.
+#   Describe Hytera UDP media from PCAP or PCAPNG captures.
 #   This deliberately has no RYSEN runtime dependency. It is intended for
 #   offline capture comparison and emits one deterministic JSON object per
-#   media packet.
+#   UDP packet. 72-byte voice fields are included when the payload is long
+#   enough; other lengths keep len, ports and hex.
 #
 #   Copyright (C) 2026 Shane Daley, M0VUB <shane@freestar.network>
 #
@@ -161,9 +162,8 @@ def _redact(address):
 
 def _describe(timestamp, previous, udp, redact):
     source, source_port, destination, destination_port, packet = udp
-    if len(packet) != MEDIA_LEN:
+    if not packet:
         return None
-    slot = int.from_bytes(packet[18:20], 'big')
     entry = {
         'timestamp': datetime.fromtimestamp(
             timestamp, timezone.utc).isoformat(timespec='microseconds'),
@@ -173,6 +173,13 @@ def _describe(timestamp, previous, udp, redact):
         'source_port': source_port,
         'destination': _redact(destination) if redact else destination,
         'destination_port': destination_port,
+        'len': len(packet),
+        'packet_hex': packet.hex(),
+    }
+    if len(packet) < MEDIA_LEN:
+        return entry
+    slot = int.from_bytes(packet[18:20], 'big')
+    entry.update({
         'sequence': int.from_bytes(packet[4:8], 'little'),
         'packet_type': f'0x{packet[8]:02x}',
         'timeslot': 2 if packet[16:18] == b'\x22\x22' else 1,
@@ -181,8 +188,7 @@ def _describe(timestamp, previous, udp, redact):
         'destination_id': int.from_bytes(packet[63:67], 'little') >> 8,
         'source_id': int.from_bytes(packet[67:71], 'little') >> 8,
         'prefix': packet[:4].hex(),
-        'packet_hex': packet.hex(),
-    }
+    })
     return entry
 
 

@@ -10,6 +10,8 @@
 ###############################################################################
 
 import json
+import os
+from datetime import datetime, timezone
 from time import time
 
 from twisted.internet import reactor
@@ -19,6 +21,7 @@ from dmr_utils3.utils import int_id
 
 from hblink import HBSYSTEM, acl_check, build_peer_record, logger
 from hytera_const import (
+    DEFAULT_UNKNOWN_CAPTURE_FILE,
     P2P_COMMAND_REPLY,
     P2P_DMR_STARTUP,
     P2P_RDAC_STARTUP,
@@ -59,6 +62,33 @@ from hytera_rdac_meta import (
 )
 from hytera_voice import HyteraOutboundPacer, HyteraVoiceTranslator
 from selfcare_db import build_ipsc_seed_options
+
+
+def unknown_hytera_media_record(data, addr, system, now=None):
+    """Describe rejected DMR media for the capture log. Does not translate."""
+    if now is None:
+        now = time()
+    host, port = addr[0], addr[1]
+    record = {
+        'hex': data.hex(),
+        'len': len(data),
+        'source': host,
+        'source_port': port,
+        'system': system,
+        'timestamp': datetime.fromtimestamp(
+            now, timezone.utc).isoformat(timespec='microseconds'),
+    }
+    slot = media_slot_type(data)
+    if slot is not None:
+        record['slot_type'] = '0x{:04x}'.format(slot)
+    timeslot = media_timeslot(data)
+    if timeslot is not None:
+        record['timeslot'] = timeslot
+    ids = media_radio_ids(data)
+    if ids is not None:
+        record['destination_id'] = ids[1]
+        record['source_id'] = ids[0]
+    return record
 
 
 def build_registration_reply(data):
@@ -149,6 +179,8 @@ class HyteraMasterMixin:
             self._config.get('HYTERA_REPEATER_ID', 0)).to_bytes(4, 'big')
         self._hytera_watchdog = self._config.get('KEEPALIVE_WATCHDOG', 60)
         self._hytera_trace = self._config.get('TRACE_PACKETS', False)
+        self._hytera_capture_file = self._config.get(
+            'CAPTURE_FILE', DEFAULT_UNKNOWN_CAPTURE_FILE)
         self._hytera_proxy_enabled = self._config.get('PROXY_CONTROL', False)
         self._hytera_proxy_control_ip = self._config.get(
             'PROXY_CONTROL_IP', '')
@@ -436,6 +468,10 @@ class HyteraMasterMixin:
             self._hytera_dmr_addr = addr
             self._touch_hytera_peer(addr)
             return
+        if self._hytera_trace:
+            logger.debug(
+                '(%s) Hytera DMR RX %s:%s len=%s data=%s',
+                self._system, addr[0], addr[1], len(data), data.hex())
         dmrd = self._hytera_voice.translate_voice(data)
         if dmrd is not None:
             self._poll_hytera_rssi(time())
@@ -446,9 +482,7 @@ class HyteraMasterMixin:
                     '(%s) Ignored expected Hytera control-media burst from '
                     '%s:%s', self._system, addr[0], addr[1])
                 return
-            logger.warning(
-                '(%s) Ignored malformed Hytera DMR packet from %s:%s len=%s',
-                self._system, addr[0], addr[1], len(data))
+            self._record_unknown_hytera_media(data, addr)
             return
         self._hytera_dmr_addr = addr
         self._touch_hytera_peer(addr)
@@ -506,6 +540,30 @@ class HyteraMasterMixin:
         self.dmrd_received(
             peer_id, rf_src, dst_id, seq, slot, call_type,
             frame_type, dtype_vseq, stream_id, data)
+
+    def _record_unknown_hytera_media(self, data, addr):
+        """Keep rejected DMR media as hex so SMS/GPS/UDT can be classified."""
+        record = unknown_hytera_media_record(data, addr, self._system)
+        logger.info(
+            '(%s) Unknown Hytera DMR media from %s:%s len=%s slot=%s '
+            'ids=%s data=%s',
+            self._system, addr[0], addr[1], record['len'],
+            record.get('slot_type'),
+            (record.get('source_id'), record.get('destination_id')),
+            record['hex'])
+        path = getattr(self, '_hytera_capture_file', '') or ''
+        if not path:
+            return
+        try:
+            parent = os.path.dirname(path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            with open(path, 'a', encoding='utf-8') as handle:
+                handle.write(json.dumps(record, sort_keys=True) + '\n')
+        except OSError as error:
+            logger.warning(
+                '(%s) Hytera unknown-media capture write failed: %s',
+                self._system, error)
 
     def hytera_rdac_received(self, data, addr):
         if (not self._hytera_registered or not self._hytera_addr

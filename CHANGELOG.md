@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Hytera unknown DMR media (non-72-byte SMS/GPS/UDT candidates) is logged
+  with hex and appended to `CAPTURE_FILE` so RYSEN can replace IPSC2 as the
+  capture oracle. Voice translation is unchanged.
 - NXDNPEER maps DMR and NXDN IDs by callsign from RadioID `nxdn.csv` plus
   `subscriber_ids.json`, the same join YSF already uses. Stanza `NXDN_ID` is
   the fallback when a talker is not in both tables. When a callsign has more

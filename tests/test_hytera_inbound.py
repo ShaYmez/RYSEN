@@ -2,6 +2,7 @@
 import json
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock
 
 from const import DMRD
@@ -11,7 +12,7 @@ from hytera_const import (
     RDAC_STEP1_REQUEST,
     RDAC_STEP3_REQUEST,
 )
-from hytera_master import HyteraMasterMixin
+from hytera_master import HyteraMasterMixin, unknown_hytera_media_record
 from hytera_rdac_meta import (
     build_hrnp_ack,
     build_rdac_rssi_request,
@@ -536,6 +537,7 @@ class TestHyteraInboundDispatch(unittest.TestCase):
         self.master._config = {'USE_ACL': False}
         self.master._CONFIG = {'GLOBAL': {'USE_ACL': False}}
         self.master._hytera_trace = False
+        self.master._hytera_capture_file = ''
         self.master._hytera_zero_peer_warned = False
         self.master._hytera_voice = HyteraVoiceTranslator(
             peer_id=235287, stream_factory=lambda: b'\x01\x02\x03\x04')
@@ -597,6 +599,44 @@ class TestHyteraInboundDispatch(unittest.TestCase):
                 bytes(sync), ('203.0.113.9', 50001))
 
         self.assertEqual(self.received, [])
+
+    def test_unknown_length_is_dumped_and_not_dispatched(self):
+        packet = b'\x00' * 103
+        with TemporaryDirectory() as tmp:
+            capture = Path(tmp) / 'hytera-unknown.jsonl'
+            self.master._hytera_capture_file = str(capture)
+            with self.assertLogs('hblink', level='INFO') as logs:
+                self.master.hytera_dmr_received(
+                    packet, ('203.0.113.9', 50001))
+            lines = capture.read_text(encoding='utf-8').splitlines()
+
+        self.assertEqual(self.received, [])
+        self.assertTrue(any(
+            'Unknown Hytera DMR media' in line and packet.hex() in line
+            for line in logs.output))
+        self.assertEqual(len(lines), 1)
+        record = json.loads(lines[0])
+        self.assertEqual(record['len'], 103)
+        self.assertEqual(record['hex'], packet.hex())
+        self.assertEqual(record['source'], '203.0.113.9')
+        self.assertEqual(record['source_port'], 50001)
+        self.assertEqual(record['system'], 'HYTERA')
+        self.assertEqual(
+            unknown_hytera_media_record(
+                packet, ('203.0.113.9', 50001), 'HYTERA', now=0)['len'],
+            103)
+
+    def test_trace_logs_hex_of_admitted_voice(self):
+        self.master._hytera_trace = True
+        header = fixture('header')
+        with self.assertLogs('hblink', level='DEBUG') as logs:
+            self.master.hytera_dmr_received(
+                header, ('203.0.113.9', 50001))
+
+        self.assertEqual(len(self.received), 1)
+        self.assertTrue(any(
+            'Hytera DMR RX' in line and header.hex() in line
+            for line in logs.output))
 
 
 class TestHyteraProxyControl(unittest.TestCase):

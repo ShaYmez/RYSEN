@@ -80,6 +80,9 @@ VOICE_SLOT_DTYPE = {
 PRIN = b'PRIN'
 PRCL = b'PRCL'
 
+# Host /var/log/rysen is mounted at /opt/rysen/log in the SystemX image.
+DEFAULT_UNKNOWN_CAPTURE_FILE = '/opt/rysen/log/hytera-unknown.jsonl'
+
 # The first capture-validated RDAC identity response is emitted after the
 # OK-DMR step-1 request. It exposes the repeater's 24-bit DMR ID at 18:21.
 RDAC_ID_RESPONSE_PREFIX = b'\x7e\x04\x00\x00'
