@@ -73,6 +73,20 @@ def hytera_payload_to_dmrd(payload):
     return bytes(swapped[:33])
 
 
+def dmr_burst_dtype(payload):
+    """Return the 4-bit ETSI slot-type data type from a 33-byte DMR burst."""
+    if len(payload) != 33:
+        return None
+    value = int.from_bytes(payload, 'big')
+
+    def bits(start, length):
+        shift = 264 - (start + length)
+        return (value >> shift) & ((1 << length) - 1)
+
+    slot_type = (bits(98, 10) << 10) | bits(156, 10)
+    return (slot_type >> 12) & 0x0F
+
+
 def hytera_uplink_rssi(packet):
     """Raw byte at the voice-payload quality offset.
 
@@ -211,6 +225,7 @@ class HyteraVoiceTranslator:
         self._stream_factory = stream_factory or (lambda: os.urandom(4))
         self._streams = {1: None, 2: None}
         self._calls = {1: None, 2: None}
+        self._last_data_slot = {1: None, 2: None}
         self._last_wire_seq = {1: None, 2: None}
         self._dmrd_seq = 0
         self._out_streams = {1: None, 2: None}
@@ -222,6 +237,7 @@ class HyteraVoiceTranslator:
     def reset(self):
         self._streams = {1: None, 2: None}
         self._calls = {1: None, 2: None}
+        self._last_data_slot = {1: None, 2: None}
         self._last_wire_seq = {1: None, 2: None}
         self._dmrd_seq = 0
         self._out_streams = {1: None, 2: None}
@@ -258,6 +274,11 @@ class HyteraVoiceTranslator:
         call_key = (source, destination, call_type)
         stream_id = self._streams[ts]
 
+        payload = hytera_payload_to_dmrd(
+            data[MEDIA_PAYLOAD_OFFSET:MEDIA_PAYLOAD_OFFSET + MEDIA_PAYLOAD_LEN])
+        if payload is None:
+            return None
+
         if slot_type == SLOT_VOICE_LC_HEADER:
             if stream_id is None or self._calls[ts] != call_key:
                 stream_id = self._stream_factory()
@@ -266,10 +287,12 @@ class HyteraVoiceTranslator:
                 self._streams[ts] = stream_id
                 self._calls[ts] = call_key
             flags = (HBPF_DATA_SYNC << 4) | HBPF_SLT_VHEAD
+            self._last_data_slot[ts] = None
         elif slot_type == SLOT_VOICE_LC_TERMINATOR:
             if stream_id is None or self._calls[ts] != call_key:
                 return None
             flags = (HBPF_DATA_SYNC << 4) | HBPF_SLT_VTERM
+            self._last_data_slot[ts] = None
         elif slot_type in VOICE_SLOT_DTYPE:
             if stream_id is None or self._calls[ts] != call_key:
                 return None
@@ -278,20 +301,28 @@ class HyteraVoiceTranslator:
                 HBPF_VOICE_SYNC if slot_type == SLOT_VOICE_A else HBPF_VOICE)
             flags = (frame_type << 4) | dtype
         elif slot_type in DATA_SLOT_DTYPE:
-            if stream_id is None or self._calls[ts] != call_key:
+            # SMS has no VTERM. A later preamble after header/blocks is a
+            # new message, even when the same radios talk again.
+            start_new = (
+                stream_id is None
+                or self._calls[ts] != call_key
+                or (slot_type == SLOT_DATA_CSBK
+                    and self._last_data_slot[ts] not in (None, SLOT_DATA_CSBK)))
+            if start_new:
                 stream_id = self._stream_factory()
                 if len(stream_id) != 4 or not any(stream_id):
                     return None
                 self._streams[ts] = stream_id
                 self._calls[ts] = call_key
-            flags = (HBPF_DATA_SYNC << 4) | DATA_SLOT_DTYPE[slot_type]
+            burst_dtype = dmr_burst_dtype(payload)
+            dtype = (
+                burst_dtype if burst_dtype in (3, 6, 7, 8)
+                else DATA_SLOT_DTYPE[slot_type])
+            flags = (HBPF_DATA_SYNC << 4) | dtype
+            self._last_data_slot[ts] = slot_type
         else:
             return None
 
-        payload = hytera_payload_to_dmrd(
-            data[MEDIA_PAYLOAD_OFFSET:MEDIA_PAYLOAD_OFFSET + MEDIA_PAYLOAD_LEN])
-        if payload is None:
-            return None
         rssi = hytera_uplink_rssi(data)
 
         if ts == 2:

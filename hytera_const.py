@@ -81,10 +81,11 @@ VOICE_SLOT_DTYPE = {
 }
 
 # Homebrew DATA_SYNC dtypes used by the existing UNIT DATA / SMS path.
+# Captured MD380/RD985 5555 bursts carry ETSI 1/2-rate slot type 7, not 3/4.
 DATA_SLOT_DTYPE = {
     SLOT_DATA_CSBK: 3,
     SLOT_DATA_HEADER: 6,
-    SLOT_DATA_BLOCK: 8,
+    SLOT_DATA_BLOCK: 7,
 }
 DATA_DTYPE_SLOT = {
     3: SLOT_DATA_CSBK,

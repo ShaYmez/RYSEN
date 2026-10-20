@@ -24,6 +24,7 @@ from hytera_rdac_meta import (
 from hytera_voice import (
     HyteraOutboundPacer,
     HyteraVoiceTranslator,
+    dmr_burst_dtype,
     dmrd_payload_to_hytera,
     hytera_payload_to_dmrd,
     hytera_uplink_rssi,
@@ -170,17 +171,33 @@ class TestHyteraInboundVoice(unittest.TestCase):
         translated = [self.translator.translate_voice(packet) for packet in packets]
         self.assertTrue(all(item is not None for item in translated))
         self.assertEqual([item[15] for item in translated],
-                         [0x63, 0x63, 0x63, 0x63, 0x66, 0x68, 0x68, 0x68, 0x68, 0x68])
+                         [0x63, 0x63, 0x63, 0x63, 0x66, 0x67, 0x67, 0x67, 0x67, 0x67])
         self.assertEqual(translated[0][5:8], (2348831).to_bytes(3, 'big'))
         self.assertEqual(translated[0][8:11], (2345875).to_bytes(3, 'big'))
         self.assertEqual(len({item[16:20] for item in translated}), 1)
+        self.assertEqual(
+            [dmr_burst_dtype(item[20:53]) for item in translated],
+            [3, 3, 3, 3, 6, 7, 7, 7, 7, 7])
+
+    def test_second_sms_from_same_radios_gets_a_new_stream(self):
+        streams = [b'\x01\x02\x03\x04', b'\x11\x12\x13\x14']
+        translator = HyteraVoiceTranslator(
+            peer_id=235287, stream_factory=lambda: streams.pop(0))
+        packets = wire_fixture('sms_private_hello_ts1.hex')
+        first = [translator.translate_voice(packet) for packet in packets]
+        second = [translator.translate_voice(packet) for packet in packets]
+        self.assertTrue(all(item is not None for item in first + second))
+        self.assertEqual(first[0][16:20], b'\x01\x02\x03\x04')
+        self.assertEqual(second[0][16:20], b'\x11\x12\x13\x14')
+        self.assertEqual(len({item[16:20] for item in first}), 1)
+        self.assertEqual(len({item[16:20] for item in second}), 1)
 
     def test_private_sms_long_grows_data_blocks(self):
         packets = wire_fixture('sms_private_long_ts1.hex')
         translated = [self.translator.translate_voice(packet) for packet in packets]
         self.assertEqual(len(translated), 16)
         self.assertEqual([item[15] for item in translated],
-                         [0x63, 0x63, 0x63, 0x63, 0x66] + [0x68] * 11)
+                         [0x63, 0x63, 0x63, 0x63, 0x66] + [0x67] * 11)
 
     def test_sms_round_trip_keeps_captured_slot_types(self):
         packets = wire_fixture('sms_private_hello_ts1.hex')
@@ -689,7 +706,7 @@ class TestHyteraInboundDispatch(unittest.TestCase):
         self.assertEqual(self.received[0][4], 1)
         self.assertEqual(self.received[0][6], 2)
         self.assertEqual([item[7] for item in self.received],
-                         [3, 3, 3, 3, 6, 8, 8, 8, 8, 8])
+                         [3, 3, 3, 3, 6, 7, 7, 7, 7, 7])
         self.assertEqual(self.received[0][1], (2348831).to_bytes(3, 'big'))
         self.assertEqual(self.received[0][2], (2345875).to_bytes(3, 'big'))
         stream = self.received[0][8]
