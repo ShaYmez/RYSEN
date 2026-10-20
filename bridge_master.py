@@ -2971,6 +2971,8 @@ class routerOBP(OPENBRIDGE):
         if is_parrot_talkgroup(_int_dst_id):
             return
 
+        _data_call = False
+
         # Match UNIT data, SMS/GPS, and send it to the dst_id if it is in SUB_MAP
         _obp_unit_data = False
         if (_call_type == 'unit'
@@ -3180,8 +3182,55 @@ class routerOBP(OPENBRIDGE):
                 source_server=_source_server, source_rptr=_source_rptr,
                 ber=_ber, rssi=_rssi)
             return
+
+        if (_call_type == 'group'
+                and _frame_type == HBPF_DATA_SYNC
+                and (_dtype_vseq in (6, 7, 8)
+                     or (_stream_id not in self.STATUS
+                         and _dtype_vseq == 3))):
+            _data_call = True
+            if _dtype_vseq == 3:
+                logger.info(
+                    '(%s) *GROUP CSBK* STREAM ID: %s, RPTR: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, SRC: %s, RPTR: %s',
+                    self._system, int_id(_stream_id),
+                    self.get_rptr(_source_rptr),
+                    get_alias(_rf_src, subscriber_ids), int_id(_rf_src),
+                    get_alias(_peer_id, peer_ids), int_id(_peer_id),
+                    get_alias(_dst_id, talkgroup_ids), int_id(_dst_id),
+                    _slot, int_id(_source_server), int_id(_source_rptr))
+            elif _dtype_vseq == 6:
+                logger.info(
+                    '(%s) *GROUP DATA HEADER* STREAM ID: %s, RPTR: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, SRC: %s, RPTR: %s',
+                    self._system, int_id(_stream_id),
+                    self.get_rptr(_source_rptr),
+                    get_alias(_rf_src, subscriber_ids), int_id(_rf_src),
+                    get_alias(_peer_id, peer_ids), int_id(_peer_id),
+                    get_alias(_dst_id, talkgroup_ids), int_id(_dst_id),
+                    _slot, int_id(_source_server), int_id(_source_rptr))
+            elif _dtype_vseq == 7:
+                logger.info(
+                    '(%s) *GROUP 1/2 DATA BLOCK* STREAM ID: %s, RPTR: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, SRC: %s, RPTR: %s',
+                    self._system, int_id(_stream_id),
+                    self.get_rptr(_source_rptr),
+                    get_alias(_rf_src, subscriber_ids), int_id(_rf_src),
+                    get_alias(_peer_id, peer_ids), int_id(_peer_id),
+                    get_alias(_dst_id, talkgroup_ids), int_id(_dst_id),
+                    _slot, int_id(_source_server), int_id(_source_rptr))
+            elif _dtype_vseq == 8:
+                logger.info(
+                    '(%s) *GROUP 3/4 DATA BLOCK* STREAM ID: %s, RPTR: %s SUB: %s (%s) PEER: %s (%s) TGID %s (%s), TS %s, SRC: %s, RPTR: %s',
+                    self._system, int_id(_stream_id),
+                    self.get_rptr(_source_rptr),
+                    get_alias(_rf_src, subscriber_ids), int_id(_rf_src),
+                    get_alias(_peer_id, peer_ids), int_id(_peer_id),
+                    get_alias(_dst_id, talkgroup_ids), int_id(_dst_id),
+                    _slot, int_id(_source_server), int_id(_source_rptr))
+            self._forward_group_data(
+                _dst_id, _slot, _bits, _data, dmrpkt, _rf_src, _stream_id,
+                _peer_id, pkt_time)
+            return
             
-        if _call_type == 'group' or _call_type == 'vcsbk':
+        if (_call_type == 'group' or _call_type == 'vcsbk') and not _data_call:
             _obp_is_vterm = (
                 _frame_type == HBPF_DATA_SYNC
                 and _dtype_vseq == HBPF_SLT_VTERM)
@@ -3992,6 +4041,10 @@ class routerHBP(HBSYSTEM):
                 '(%s) GROUP Data TG %s has no bridge',
                 self._system, _int_dst_id)
             return
+        if is_routing_master(
+                CONFIG['SYSTEMS'].get(self._system, {}).get('MODE')):
+            activate_ua_bridge_source(
+                _bridge, self._system, _slot, peer_id=_peer_id)
         for _target in BRIDGES[_bridge]:
             if (not _target.get('ACTIVE')
                     or _target.get('TGID') != _dst_id
@@ -6257,6 +6310,7 @@ for _unit_voice_name in (
         '_apply_unit_hub_result',
         '_begin_global_unit_route',
         '_forward_unit_voice',
+        '_forward_group_data',
 ):
     setattr(routerOBP, _unit_voice_name, getattr(routerHBP, _unit_voice_name))
 

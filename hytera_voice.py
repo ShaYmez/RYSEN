@@ -494,11 +494,14 @@ class HyteraVoiceTranslator:
                 return None
             last_dtype = self._out_last_data_dtype[ts]
             # MMDVM often uses one stream for the CSBK preamble and another
-            # for the header and blocks. That is still one RF SMS.
+            # for the header and blocks. OpenBridge peers can go further and
+            # give every preamble CSBK its own stream ID. That is still one
+            # RF SMS. A CSBK after header/blocks is a later text, not a join.
             join_body = (
-                dtype in (6, 7, 8)
-                and last_dtype in (3, 6, 7, 8)
-                and self._out_streams[ts] is not None)
+                self._out_streams[ts] is not None
+                and (
+                    (dtype in (6, 7, 8) and last_dtype in (3, 6, 7, 8))
+                    or (dtype == 3 and last_dtype == 3)))
             new_stream = self._out_streams[ts] != stream and not join_body
             if new_stream:
                 self._out_streams[ts] = stream

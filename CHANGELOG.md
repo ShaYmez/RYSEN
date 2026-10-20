@@ -17,6 +17,9 @@
   header and 1/2- or 3/4-rate blocks fan out on the talkgroup bridge
   (and OpenBridge VER>1) the same way unit data does, so a group text
   no longer logs `*CALL START*` and times out as a short voice call.
+  The RF source is kept on that TG so a reply can come back. OpenBridge
+  peers that give every preamble CSBK its own stream ID no longer reset
+  the Hytera 60 ms downlink.
 - NXDNPEER maps DMR and NXDN IDs by callsign from RadioID `nxdn.csv` plus
   `subscriber_ids.json`, the same join YSF already uses. Stanza `NXDN_ID` is
   the fallback when a talker is not in both tables. When a callsign has more

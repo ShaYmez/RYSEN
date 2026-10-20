@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Group SMS/data stays off the voice path and fans out on the TG bridge."""
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import bridge_master as bm
 from const import HBPF_DATA_SYNC, HBPF_SLT_VHEAD
@@ -39,7 +39,9 @@ def _group_data_packet(src, dst, stream, slot, seq, dtype):
 class GroupDataFixture(UnitCallFixture):
     def setUp(self):
         super().setUp()
-        for name in ('subscriber_ids', 'talkgroup_ids', 'peer_ids'):
+        for name in (
+                'subscriber_ids', 'talkgroup_ids', 'peer_ids',
+                'local_subscriber_ids'):
             if not hasattr(bm, name):
                 setattr(bm, name, {})
 
@@ -154,6 +156,37 @@ class TestGroupDataRouting(GroupDataFixture):
         self.assertEqual(router.STATUS[1]['RX_STREAM_ID'], STREAM)
         self.assertTrue(target.sent)
         self.assertNotEqual(target.extra[0], (None,))
+
+    def test_openbridge_group_data_fans_out_to_hytera(self):
+        self._system('HYTERA-0', 'HYTERA')
+        target = _Target()
+        bm.systems['HYTERA-0'] = target
+        bm.CONFIG['SYSTEMS']['OBP-UK'] = {
+            'MODE': 'OPENBRIDGE',
+            'ENABLED': True,
+            'VER': 2,
+            'ENHANCED_OBP': False,
+            'GROUP_HANGTIME': 5,
+            'ANNOUNCEMENT_LANGUAGE': 'en_US',
+        }
+        bm.CONFIG['GLOBAL'] = {'SERVER_ID': (2040).to_bytes(4, 'big')}
+        bm.BRIDGES[str(TG)] = [
+            self._bridge('HYTERA-0'),
+            self._bridge('OBP-UK'),
+        ]
+        router = bm.routerOBP.__new__(bm.routerOBP)
+        router._system = 'OBP-UK'
+        router._CONFIG = bm.CONFIG
+        router._report = MagicMock()
+        router.STATUS = {}
+        packet = _group_data_packet(CALLER, TG, STREAM, 1, 0, 3)
+        router.dmrd_received(
+            PEER, bytes_3(CALLER), TG_BYTES, 0, 1, 'group',
+            HBPF_DATA_SYNC, 3, STREAM, packet, b'', b'',
+            (2342).to_bytes(4, 'big'))
+        self.assertEqual(len(target.sent), 1)
+        self.assertEqual(target.sent[0][8:11], TG_BYTES)
+        self.assertNotIn(STREAM, router.STATUS)
 
 
 if __name__ == '__main__':

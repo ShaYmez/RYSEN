@@ -1053,6 +1053,33 @@ class TestHyteraOutboundDispatch(unittest.TestCase):
         self.assertEqual(len(writes), 2)
         self.assertEqual(writes[1][0][18:20], b'\x44\x44')
 
+    def test_obp_sms_keeps_preamble_when_each_csbk_uses_a_new_stream(self):
+        writes = self.master._hytera_services['dmr'].transport.writes
+        for index in range(4):
+            stream = (index + 1).to_bytes(4, 'big')
+            self.assertTrue(self.master.hytera_send_system(
+                dmrd(0x63, self.payload, stream=stream,
+                     source=2345548, destination=2348831)))
+        self.assertEqual(len(writes), 1)
+        self.assertEqual(writes[0][0][18:20], b'\x33\x33')
+
+        body = b'\xaa\xbb\xcc\xdd'
+        self.assertTrue(self.master.hytera_send_system(
+            dmrd(0x66, self.payload, stream=body,
+                 source=2345548, destination=2348831)))
+        for _ in range(5):
+            self.assertTrue(self.master.hytera_send_system(
+                dmrd(0x67, self.payload, stream=body,
+                     source=2345548, destination=2348831)))
+        self.assertEqual(len(writes), 1)
+
+        expected = (
+            [b'\x33\x33'] * 3 + [b'\x44\x44'] + [b'\x55\x55'] * 5)
+        for slot in expected:
+            self.clock.advance(0.060)
+            self.assertEqual(writes[-1][0][18:20], slot)
+        self.assertEqual(len(writes), 10)
+
     def test_hotspot_sms_keeps_preamble_when_header_uses_new_stream(self):
         preamble = b'\x10\x20\x30\x40'
         body = b'\xaa\xbb\xcc\xdd'
