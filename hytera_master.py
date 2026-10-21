@@ -24,6 +24,7 @@ from hytera_const import (
     DEFAULT_UNKNOWN_CAPTURE_FILE,
     SLOT_DATA_CSBK,
     SLOT_DATA_HEADER,
+    SLOT_VOICE_LC_HEADER,
     P2P_COMMAND_REPLY,
     P2P_DMR_STARTUP,
     P2P_RDAC_STARTUP,
@@ -888,9 +889,16 @@ class HyteraMasterMixin:
         if paced:
             return self._hytera_outbound.enqueue(ts, wire_packet)
         slot = int.from_bytes(wire_packet[18:20], 'big') if len(wire_packet) >= 20 else 0
+        # A replacement OpenBridge stream ID or extra VHEAD must not dump the
+        # 60 ms queue while the RD985 is already in RF playout. That hole is
+        # what sounds like the downlink dropping out mid-over.
+        if (self._hytera_outbound.is_active(ts)
+                and (slot == SLOT_VOICE_LC_HEADER
+                     or (wire_packet[8] & 0x3f) == 0x02)):
+            return True
         if (_late_join
                 or (wire_packet[8] & 0x3f) == 0x02
-                or slot == 0x1111
+                or slot == SLOT_VOICE_LC_HEADER
                 or (slot == SLOT_DATA_CSBK
                     and not self._hytera_outbound.is_active(ts))):
             self._hytera_outbound.reset_slot(ts)

@@ -1190,6 +1190,32 @@ class TestHyteraOutboundDispatch(unittest.TestCase):
             dmrd(0x21, self.payload)))
         self.assertEqual(len(writes), 1)
 
+    def test_new_obp_stream_does_not_dump_active_voice_queue(self):
+        stream_a = b'\x01\x01\x01\x01'
+        stream_b = b'\x02\x02\x02\x02'
+        writes = self.master._hytera_services['dmr'].transport.writes
+
+        self.assertTrue(self.master.hytera_send_system(
+            dmrd(0x04, self.payload, stream=stream_a)))
+        self.assertEqual(len(writes), 1)
+        self.assertEqual(writes[0][0][8], 0x02)
+
+        self.assertTrue(self.master.hytera_send_system(
+            dmrd(0x05, self.payload, stream=stream_a)))
+        self.assertTrue(self.master.hytera_send_system(
+            dmrd(0x01, self.payload, stream=stream_a)))
+        self.clock.advance(0.180)
+        self.assertEqual(len(writes), 2)
+        queued_before = len(self.master._hytera_outbound._queues[1])
+
+        self.assertTrue(self.master.hytera_send_system(
+            dmrd(0x04, self.payload, stream=stream_b)))
+        self.assertEqual(
+            len(self.master._hytera_outbound._queues[1]), queued_before)
+        self.assertEqual(len(writes), 2)
+        self.clock.advance(0.060)
+        self.assertEqual(len(writes), 3)
+
     def test_midstream_join_replaces_stale_queue_and_buffers_three_bursts(self):
         self.master._hytera_outbound.enqueue(1, b'stale')
         self.assertTrue(self.master.hytera_send_system(

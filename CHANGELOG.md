@@ -5,7 +5,9 @@
 - Hytera outbound voice drops oldest bursts past 480 ms instead of
   growing seconds of delay when the reactor is busy. TRACE no longer
   hex-dumps routine voice, and the router timer does not log every
-  inactive bridge.
+  inactive bridge. A replacement OpenBridge stream ID or extra VHEAD
+  no longer dumps the 60 ms queue while the repeater is already in
+  RF playout, which had punched 400–600 ms holes in the downlink.
 - Hytera unknown DMR media (non-72-byte SMS/GPS/UDT candidates) is logged
   with hex and appended to `CAPTURE_FILE` so RYSEN can replace IPSC2 as the
   capture oracle. Voice translation is unchanged.
