@@ -3183,7 +3183,7 @@ class routerOBP(OPENBRIDGE):
                 ber=_ber, rssi=_rssi)
             return
 
-        if (_call_type == 'group'
+        if ((_call_type == 'group' or _call_type == 'vcsbk')
                 and _frame_type == HBPF_DATA_SYNC
                 and (_dtype_vseq in (6, 7, 8)
                      or (_stream_id not in self.STATUS
@@ -5547,7 +5547,7 @@ class routerHBP(HBSYSTEM):
                                 else:
                                     logger.debug('(%s) UNIT Data not bridged to HBP on slot %s - target busy: %s DST_ID: %s',self._system,_d_slot,_d_system,_int_dst_id)
 
-        if (_call_type == 'group'
+        if ((_call_type == 'group' or _call_type == 'vcsbk')
                 and _frame_type == HBPF_DATA_SYNC
                 and (_dtype_vseq in (6, 7, 8)
                      or (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']

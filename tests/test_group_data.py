@@ -54,10 +54,11 @@ class GroupDataFixture(UnitCallFixture):
             'TO_TYPE': 'NONE',
         }
 
-    def _receive(self, router, seq, dtype, tgid=TG, stream=STREAM, slot=1):
+    def _receive(self, router, seq, dtype, tgid=TG, stream=STREAM, slot=1,
+                 call_type='group'):
         packet = _group_data_packet(CALLER, tgid, stream, slot, seq, dtype)
         router.dmrd_received(
-            PEER, bytes_3(CALLER), bytes_3(tgid), seq, slot, 'group',
+            PEER, bytes_3(CALLER), bytes_3(tgid), seq, slot, call_type,
             HBPF_DATA_SYNC, dtype, stream, packet)
         return packet
 
@@ -187,6 +188,58 @@ class TestGroupDataRouting(GroupDataFixture):
         self.assertEqual(len(target.sent), 1)
         self.assertEqual(target.sent[0][8:11], TG_BYTES)
         self.assertNotIn(STREAM, router.STATUS)
+
+    def test_homebrew_vcsbk_csbk_does_not_open_voice(self):
+        self._system('HYTERA-0', 'HYTERA')
+        self._system('SYSTEM-B', 'MASTER', peers=self._peer(234587501))
+        target = _Target()
+        bm.systems['SYSTEM-B'] = target
+        bm.BRIDGES[str(TG)] = [
+            self._bridge('HYTERA-0'),
+            self._bridge('SYSTEM-B', ts=2),
+        ]
+        router = self._router('HYTERA-0')
+        self._receive(router, 0, 3, call_type='vcsbk')
+        self._receive(router, 1, 7, call_type='vcsbk')
+        self.assertEqual(len(target.sent), 2)
+        self.assertTrue(all(extra == (None,) for extra in target.extra))
+        self.assertEqual(router.STATUS[1]['RX_STREAM_ID'], b'\x00\x00\x00\x00')
+
+    def test_openbridge_vcsbk_csbk_does_not_open_voice(self):
+        self._system('HYTERA-0', 'HYTERA')
+        target = _Target()
+        bm.systems['HYTERA-0'] = target
+        bm.CONFIG['SYSTEMS']['OBP-UK'] = {
+            'MODE': 'OPENBRIDGE',
+            'ENABLED': True,
+            'VER': 2,
+            'ENHANCED_OBP': False,
+            'GROUP_HANGTIME': 5,
+            'ANNOUNCEMENT_LANGUAGE': 'en_US',
+        }
+        bm.CONFIG['GLOBAL'] = {'SERVER_ID': (2040).to_bytes(4, 'big')}
+        bm.BRIDGES[str(TG)] = [
+            self._bridge('HYTERA-0'),
+            self._bridge('OBP-UK'),
+        ]
+        router = bm.routerOBP.__new__(bm.routerOBP)
+        router._system = 'OBP-UK'
+        router._CONFIG = bm.CONFIG
+        router._report = MagicMock()
+        router.STATUS = {}
+        csbk = _group_data_packet(CALLER, TG, STREAM, 1, 0, 3)
+        half = _group_data_packet(CALLER, TG, b'\x00\x00\x00\x32', 1, 1, 7)
+        router.dmrd_received(
+            PEER, bytes_3(CALLER), TG_BYTES, 0, 1, 'vcsbk',
+            HBPF_DATA_SYNC, 3, STREAM, csbk, b'', b'',
+            (2342).to_bytes(4, 'big'))
+        router.dmrd_received(
+            PEER, bytes_3(CALLER), TG_BYTES, 1, 1, 'vcsbk',
+            HBPF_DATA_SYNC, 7, b'\x00\x00\x00\x32', half, b'', b'',
+            (2342).to_bytes(4, 'big'))
+        self.assertEqual(len(target.sent), 2)
+        self.assertNotIn(STREAM, router.STATUS)
+        self.assertNotIn(b'\x00\x00\x00\x32', router.STATUS)
 
 
 if __name__ == '__main__':

@@ -19,7 +19,9 @@
   no longer logs `*CALL START*` and times out as a short voice call.
   The RF source is kept on that TG so a reply can come back. OpenBridge
   peers that give every preamble CSBK its own stream ID no longer reset
-  the Hytera 60 ms downlink.
+  the Hytera 60 ms downlink. Homebrew and OpenBridge tag group CSBK and
+  1/2-rate blocks as `vcsbk`; those bursts now take the group-data path
+  instead of logging `*CALL START*`.
 - Hytera PD685G H-SMS 3/4-rate data uses slot type `6666`. Those bursts
   are translated as Homebrew dtype 8 so a repeater radio can reply to a
   hotspot instead of the body being dumped as unknown media.
