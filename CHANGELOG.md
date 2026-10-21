@@ -18,6 +18,8 @@
   Field-validated on GB7NR: MD380 ↔ hotspot private SMS, including
   confirmed read both ways, and same-repeater MD380 ↔ Anytone 868
   1/2-rate private SMS both ways when both radios are on the same slot.
+  Anytone GPS to D-APRS `9059` uses that same 1/2-rate unit-data path
+  through the RD985 and reached APRS-IS.
 - Hytera and Homebrew group SMS/data stay off the group-voice path. CSBK,
   header and 1/2- or 3/4-rate blocks fan out on the talkgroup bridge
   (and OpenBridge VER>1) the same way unit data does, so a group text
