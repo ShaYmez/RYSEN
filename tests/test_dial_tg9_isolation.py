@@ -17,6 +17,7 @@ from bridge_helpers import (
     private_call_may_create_reflector,
     sanitize_dial_reflectors_for_system,
     to_target_forward_systems,
+    unit_data_hairpin_to_origin,
     unit_delivery_slot,
 )
 
@@ -106,6 +107,9 @@ class TestPrivateCallReflectorNine(unittest.TestCase):
         self.assertEqual(unit_delivery_slot('MASTER', 1), 2)
         self.assertEqual(unit_delivery_slot('IPSC', 1), 1)
         self.assertEqual(unit_delivery_slot('HYTERA', None), 2)
+        self.assertTrue(unit_data_hairpin_to_origin('HYTERA-0', 'HYTERA-0', 1, 1))
+        self.assertFalse(unit_data_hairpin_to_origin('HYTERA-0', 'HYTERA-0', 1, 2))
+        self.assertFalse(unit_data_hairpin_to_origin('HYTERA-0', 'SYSTEM-17', 2, 2))
 
 
 class TestSanitizeReflectorNine(unittest.TestCase):

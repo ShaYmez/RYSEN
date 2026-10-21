@@ -94,6 +94,27 @@ class TestPrivateSmsRouting(PrivateSmsFixture):
         self.assertEqual(target.sent[0][8:11], bytes_3(HOTSPOT_RADIO))
         self.assertTrue(target.sent[0][15] & 0x80)
 
+    def test_same_repeater_same_slot_does_not_hairpin(self):
+        self._system('HYTERA-0', 'HYTERA')
+        hytera = _Target()
+        bm.systems['HYTERA-0'] = hytera
+        bm.SUB_MAP[bytes_3(HOTSPOT_RADIO)] = (
+            'HYTERA-0', 2, None, 50.0, PEER)
+        router = self._router('HYTERA-0')
+        self._receive(router, 0, 3)
+        self.assertEqual(hytera.sent, [])
+
+    def test_same_repeater_other_slot_hairpins(self):
+        self._system('HYTERA-0', 'HYTERA')
+        hytera = _Target()
+        bm.systems['HYTERA-0'] = hytera
+        bm.SUB_MAP[bytes_3(HOTSPOT_RADIO)] = (
+            'HYTERA-0', 1, None, 50.0, PEER)
+        router = self._router('HYTERA-0')
+        self._receive(router, 0, 3)
+        self.assertEqual(len(hytera.sent), 1)
+        self.assertFalse(hytera.sent[0][15] & 0x80)
+
     def test_busy_target_is_skipped(self):
         self._system('HYTERA-0', 'HYTERA')
         self._system('SYSTEM-17', 'MASTER', peers=self._peer(HOTSPOT_PEER))

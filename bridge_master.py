@@ -155,6 +155,7 @@ from bridge_helpers import (
     unit_voice_event,
     peer_matches_subscriber,
     unit_delivery_slot,
+    unit_data_hairpin_to_origin,
     unit_slot_is_idle,
     iter_enhanced_obp_stanzas,
     obp_stanza_for_net_id,
@@ -3115,7 +3116,9 @@ class routerOBP(OPENBRIDGE):
                     _dst_slot  = systems[_d_system].STATUS[_d_slot]
                     logger.info('(%s) SUB_MAP matched, System: %s Slot: %s, Time: %s',self._system, _d_system,_d_slot,_d_time)
                     #If slot is idle for RX and TX
-                if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):                
+                if unit_data_hairpin_to_origin(self._system, _d_system, _slot, _d_slot):
+                    logger.info('(%s) UNIT Data not hairpinned to originating slot %s DST_ID: %s',self._system, _d_slot, _int_dst_id)
+                elif (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):                
                 #rewrite slot if required
                     if _slot != _d_slot:
                         _tmp_bits = _bits ^ 1 << 7
@@ -5495,7 +5498,9 @@ class routerHBP(HBSYSTEM):
                     _dst_slot  = systems[_d_system].STATUS[_d_slot]
                     logger.info('(%s) SUB_MAP matched, System: %s Slot: %s, Time: %s',self._system, _d_system,_d_slot,_d_time)
                     #If slot is idle for RX and TX
-                    if (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):                
+                    if unit_data_hairpin_to_origin(self._system, _d_system, _slot, _d_slot):
+                        logger.info('(%s) UNIT Data not hairpinned to originating slot %s DST_ID: %s',self._system, _d_slot, _int_dst_id)
+                    elif (_dst_slot['RX_TYPE'] == HBPF_SLT_VTERM) and (_dst_slot['TX_TYPE'] == HBPF_SLT_VTERM) and (time() - _dst_slot['TX_TIME'] > CONFIG['SYSTEMS'][_d_system]['GROUP_HANGTIME']):                
                     #rewrite slot if required
                         if _slot != _d_slot:
                             _tmp_bits = _bits ^ 1 << 7
