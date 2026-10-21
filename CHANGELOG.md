@@ -5,20 +5,20 @@
 Work on `master` since **1.6.0**. Image tags stay `1.6.0` / `:latest` until
 the next version bump.
 
-### Native Hytera (GB7NR)
+### Native Hytera
 
-- Private SMS both ways on 1/2-rate (`3333`/`4444`/`5555`). MD380 ↔ hotspot
+- Private SMS both ways on 1/2-rate (`3333`/`4444`/`5555`). MD380 <-> hotspot
   including confirmed read, and same-repeater MD380 ↔ Anytone on the same
   slot. Split CSBK/header streams no longer drop the preamble. Same-repeater
   texts are hairpinned; the RD985 does not repeat unit SMS itself.
 - Group SMS stays off voice and fans out on the talkgroup, including
   Homebrew `vcsbk` CSBKs.
-- PD685G 3/4-rate `6666` in and out. Anytone H-SMS is still 1/2-rate only.
+- PD685G radio 3/4-rate `6666` in and out. Anytone H-SMS is still 1/2-rate only.
 - Anytone GPS to D-APRS `9059` reached APRS-IS.
 - Unknown non-72-byte media is dumped to `CAPTURE_FILE`. 103-byte packets
   stay rejected.
 - Outbound voice caps at 480 ms and no longer dumps the queue when
-  OpenBridge changes stream ID. ChatterBox 2350 on GB7NR is usable.
+  OpenBridge changes stream ID. ChatterBox 2350 on RD985 is usable.
   TRACE does not hex-dump voice. DEBUG no longer logs every idle bridge.
 
 ### YSFPEER
