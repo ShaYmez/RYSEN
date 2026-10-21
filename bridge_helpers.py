@@ -415,11 +415,6 @@ def unit_delivery_slot(mode, heard_slot):
     return 2
 
 
-def unit_data_hairpin_to_origin(src_system, dst_system, src_slot, dst_slot):
-    """Same-repeater unit SMS already went out on RF; echoing that slot garbles it."""
-    return src_system == dst_system and src_slot == dst_slot
-
-
 def _unit_numeric_id(value):
     try:
         if isinstance(value, (bytes, bytearray)):

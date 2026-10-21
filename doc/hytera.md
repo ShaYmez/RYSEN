@@ -25,7 +25,6 @@ Sample config: [HYTERA-SAMPLE.cfg](../HYTERA-SAMPLE.cfg). Selfcare:
 | Dial-a-TG private activation and TG9 group announcement | OK |
 | Group and private/unit parrot on `9990` | OK |
 | Private SMS both ways, including confirmed read (MD380 ↔ hotspot via RD985) | OK |
-| Same-repeater private SMS keeps the originating slot (no self-hairpin) | OK |
 | PD685G H-SMS 3/4-rate blocks (`6666`) inbound to Homebrew | OK |
 | PD685G 3/4-rate replies encoded back to Hytera as `6666` | OK |
 | Group SMS routed on the talkgroup (not treated as group voice) | OK |
