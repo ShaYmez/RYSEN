@@ -7,36 +7,19 @@ the next version bump.
 
 ### Native Hytera (GB7NR)
 
-- Unknown DMR media (non-72-byte SMS/GPS/UDT candidates) is logged with hex
-  and appended to `CAPTURE_FILE`. Voice translation is unchanged. Reported
-  103-byte packets stay rejected until they are capture-validated.
-- Private SMS is translated both ways. Captured RD985 slot types `3333` /
-  `4444` / `5555` map to Homebrew CSBK, data header and 1/2-rate blocks
-  (ETSI dtype 7, not 3/4). SMS has no VTERM, so a later preamble from the
-  same radios opens a new stream. A hotspot that splits CSBK and header
-  across stream IDs, or an OpenBridge peer that gives every CSBK its own
-  stream, keeps the 60 ms downlink instead of dropping the preamble.
-  Field-validated on GB7NR: MD380 ↔ hotspot including confirmed read, and
-  same-repeater MD380 ↔ Anytone 868 1/2-rate both ways on the matching
-  slot. The RD985 does not locally repeat unit SMS when IP multi-site is
-  linked, so same-repeater private SMS is hairpinned back to the origin.
-- Anytone GPS to D-APRS `9059` uses that same 1/2-rate unit-data path
-  through the RD985 and reached APRS-IS.
-- Group SMS/data stay off the voice path. CSBK, header and 1/2- or 3/4-rate
-  blocks fan out on the talkgroup bridge (and OpenBridge VER>1). Homebrew
-  and OpenBridge tag group CSBK and 1/2-rate as `vcsbk`; those bursts now
-  take the group-data path instead of logging `*CALL START*`.
-- PD685G H-SMS 3/4-rate uses slot type `6666` (Homebrew dtype 8) in both
-  directions so a repeater radio can reply without the body being dumped or
-  relabelled as 1/2-rate. Anytone H-SMS RX remains 1/2-rate only; there is
-  no 3/4→1/2 transcoder in the master.
-- Outbound voice drops oldest bursts past 480 ms instead of growing seconds
-  of delay when the reactor is busy. TRACE no longer hex-dumps routine
-  voice. The router timer does not log every inactive bridge. A replacement
-  OpenBridge stream ID or extra VHEAD no longer dumps the 60 ms queue
-  while the repeater is already in RF playout. Field-validated on GB7NR
-  ChatterBox 2350: usable downlink with occasional kerchunk/hangtime nicks,
-  not the previous 400–600 ms holes or 10 s of stacked delay.
+- Private SMS both ways on 1/2-rate (`3333`/`4444`/`5555`). MD380 ↔ hotspot
+  including confirmed read, and same-repeater MD380 ↔ Anytone on the same
+  slot. Split CSBK/header streams no longer drop the preamble. Same-repeater
+  texts are hairpinned; the RD985 does not repeat unit SMS itself.
+- Group SMS stays off voice and fans out on the talkgroup, including
+  Homebrew `vcsbk` CSBKs.
+- PD685G 3/4-rate `6666` in and out. Anytone H-SMS is still 1/2-rate only.
+- Anytone GPS to D-APRS `9059` reached APRS-IS.
+- Unknown non-72-byte media is dumped to `CAPTURE_FILE`. 103-byte packets
+  stay rejected.
+- Outbound voice caps at 480 ms and no longer dumps the queue when
+  OpenBridge changes stream ID. ChatterBox 2350 on GB7NR is usable.
+  TRACE does not hex-dump voice. DEBUG no longer logs every idle bridge.
 
 ### YSFPEER
 
