@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import logging
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -553,6 +554,53 @@ class TestHyteraOutboundVoice(unittest.TestCase):
         clock.advance(0.001)
         self.assertEqual(sent, [b'a', b'b'])
 
+    def test_pacer_drops_oldest_when_queue_exceeds_cap(self):
+        clock = Clock()
+        sent = []
+        pacer = HyteraOutboundPacer(
+            sent.append, clock=clock, max_queue=4)
+
+        def voice(tag):
+            packet = bytearray(72)
+            packet[18:20] = b'\x77\x77'
+            packet[26] = tag
+            return bytes(packet)
+
+        for packet in (voice(1), voice(2), voice(3), voice(4), voice(5), voice(6)):
+            self.assertTrue(pacer.enqueue(1, packet))
+
+        clock.advance(0.180)
+        self.assertEqual([packet[26] for packet in sent], [3])
+        clock.advance(0.060)
+        self.assertEqual([packet[26] for packet in sent], [3, 4])
+        clock.advance(0.060)
+        self.assertEqual([packet[26] for packet in sent], [3, 4, 5])
+        clock.advance(0.060)
+        self.assertEqual([packet[26] for packet in sent], [3, 4, 5, 6])
+
+    def test_pacer_does_not_trim_sms_data_bursts(self):
+        clock = Clock()
+        sent = []
+        pacer = HyteraOutboundPacer(
+            sent.append, clock=clock, max_queue=4)
+
+        def data(slot, tag):
+            packet = bytearray(72)
+            packet[18:20] = slot
+            packet[26] = tag
+            return bytes(packet)
+
+        for tag, slot in enumerate(
+                (b'\x33\x33', b'\x33\x33', b'\x44\x44',
+                 b'\x55\x55', b'\x55\x55', b'\x66\x66'), start=1):
+            self.assertTrue(pacer.enqueue(1, data(slot, tag)))
+
+        clock.advance(0.180)
+        self.assertEqual(len(sent), 1)
+        for _ in range(5):
+            clock.advance(0.060)
+        self.assertEqual([packet[26] for packet in sent], [1, 2, 3, 4, 5, 6])
+
     def test_pacer_terminator_restores_startup_buffer(self):
         clock = Clock()
         sent = []
@@ -694,16 +742,23 @@ class TestHyteraInboundDispatch(unittest.TestCase):
                 packet, ('203.0.113.9', 50001), 'HYTERA', now=0)['len'],
             103)
 
-    def test_trace_logs_hex_of_admitted_voice(self):
+    def test_trace_skips_voice_hex_and_logs_sms(self):
         self.master._hytera_trace = True
         header = fixture('header')
         with self.assertLogs('hblink', level='DEBUG') as logs:
             self.master.hytera_dmr_received(
                 header, ('203.0.113.9', 50001))
+            logging.getLogger('hblink').debug('trace-voice-check')
 
         self.assertEqual(len(self.received), 1)
+        self.assertFalse(any(header.hex() in line for line in logs.output))
+
+        csbk = wire_fixture('sms_private_hello_ts1.hex')[0]
+        with self.assertLogs('hblink', level='DEBUG') as logs:
+            self.master.hytera_dmr_received(
+                csbk, ('203.0.113.9', 50001))
         self.assertTrue(any(
-            'Hytera DMR RX' in line and header.hex() in line
+            'Hytera DMR packet from' in line and csbk.hex() in line
             for line in logs.output))
 
     def test_private_sms_is_dispatched_not_dumped(self):

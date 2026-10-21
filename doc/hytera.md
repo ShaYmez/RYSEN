@@ -25,6 +25,7 @@ Sample config: [HYTERA-SAMPLE.cfg](../HYTERA-SAMPLE.cfg). Selfcare:
 | Dial-a-TG private activation and TG9 group announcement | OK |
 | Group and private/unit parrot on `9990` | OK |
 | Private SMS both ways, including confirmed read (MD380 ↔ hotspot via RD985) | OK |
+| Same-repeater private SMS both ways (MD380 ↔ Anytone 868, 1/2-rate) | OK |
 | PD685G H-SMS 3/4-rate blocks (`6666`) inbound to Homebrew | OK |
 | PD685G 3/4-rate replies encoded back to Hytera as `6666` | OK |
 | Group SMS routed on the talkgroup (not treated as group voice) | OK |
@@ -46,7 +47,11 @@ until they are capture-validated. The master logs each rejected DMR packet
 with hex and appends it to `CAPTURE_FILE` (default
 `/opt/rysen/log/hytera-unknown.jsonl`, host `/var/log/rysen`). Set
 `TRACE_PACKETS: True` on one Hytera stanza only when collecting SMS/GPS/UDT
-fixtures — voice hex will flood. SNMP is out of scope.
+fixtures. Routine voice bursts are not hex-dumped; data and unknown slots
+still are. Do not leave `LOG_LEVEL: DEBUG` on a live master — the router
+timer used to log every inactive bridge each tick and that delayed the
+60 ms Hytera pacer. UA still drops the talkgroup after 10 minutes with no
+local PTT. SNMP is out of scope.
 
 ## CPS programming
 

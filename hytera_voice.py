@@ -31,6 +31,8 @@ from hytera_const import (
     MEDIA_PAYLOAD_LEN,
     MEDIA_PAYLOAD_OFFSET,
     MEDIA_SEQUENCE_OFFSET,
+    SLOT_DATA_BLOCK,
+    SLOT_DATA_BLOCK_34,
     SLOT_DATA_CSBK,
     SLOT_DATA_HEADER,
     SLOT_HYTERA_SYNC,
@@ -62,6 +64,16 @@ OUTBOUND_INTERVAL = 0.060
 # OpenBridge ingress can arrive in short bursts.  Three queued bursts provide
 # 180 ms of playout cover while preserving a prompt normal call start.
 OUTBOUND_JITTER_DEPTH = 3
+# Hard cap so a slow reactor cannot grow seconds of delay. Eight bursts is
+# 480 ms; older voice frames are dropped so the downlink stays near live
+# audio. SMS/data is not trimmed — a bunched preamble can exceed eight.
+OUTBOUND_MAX_QUEUE = 8
+_DATA_SLOT_TYPES = frozenset({
+    SLOT_DATA_CSBK,
+    SLOT_DATA_HEADER,
+    SLOT_DATA_BLOCK,
+    SLOT_DATA_BLOCK_34,
+})
 
 
 def hytera_payload_to_dmrd(payload):
@@ -128,11 +140,13 @@ class HyteraOutboundPacer:
     """Deliver queued media at the RD985's observed 60 ms cadence."""
 
     def __init__(self, send_cb, clock=None, interval=OUTBOUND_INTERVAL,
-                 jitter_depth=OUTBOUND_JITTER_DEPTH):
+                 jitter_depth=OUTBOUND_JITTER_DEPTH,
+                 max_queue=OUTBOUND_MAX_QUEUE):
         self._send_cb = send_cb
         self._clock = clock or reactor
         self._interval = interval
         self._jitter_depth = jitter_depth
+        self._max_queue = max(1, int(max_queue))
         self._queues = {1: deque(), 2: deque()}
         self._timers = {1: None, 2: None}
         self._next = {1: 0.0, 2: 0.0}
@@ -166,10 +180,23 @@ class HyteraOutboundPacer:
     def is_active(self, ts):
         return bool(self._active.get(ts))
 
+    @staticmethod
+    def _is_voice_media(packet):
+        if len(packet) < 20:
+            return True
+        slot = int.from_bytes(packet[18:20], 'big')
+        return slot not in _DATA_SLOT_TYPES
+
     def enqueue(self, ts, packet, jitter_depth=None):
         if ts not in self._queues:
             return False
-        self._queues[ts].append(packet)
+        queue = self._queues[ts]
+        queue.append(packet)
+        if self._is_voice_media(packet):
+            overflow = len(queue) - self._max_queue
+            if overflow > 0:
+                for _ in range(overflow):
+                    queue.popleft()
         if self._timers[ts] is None:
             now = self._clock.seconds()
             # Buffer only at call acquisition. Once RF playout is active, a

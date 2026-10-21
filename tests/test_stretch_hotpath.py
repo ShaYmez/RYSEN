@@ -175,6 +175,14 @@ class TestObpEmptyFiOwner(unittest.TestCase):
             "logger.info('(ROUTER) Conference Bridge INACTIVE (OFF timer running):",
             block)
 
+    def test_inactive_no_change_is_not_logged(self):
+        with open('bridge_master.py', encoding='utf-8') as fh:
+            master = fh.read()
+        with open('bridge.py', encoding='utf-8') as fh:
+            legacy = fh.read()
+        self.assertNotIn('INACTIVE (no change)', master)
+        self.assertNotIn('INACTIVE (no change)', legacy)
+
 
 if __name__ == '__main__':
     unittest.main()

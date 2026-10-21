@@ -49,6 +49,7 @@ from hytera_const import (
     rdac_repeater_id,
     is_p2p_ack,
     is_p2p_ping,
+    hytera_trace_interesting_media,
     media_radio_ids,
     media_slot_type,
     media_timeslot,
@@ -470,10 +471,6 @@ class HyteraMasterMixin:
             self._hytera_dmr_addr = addr
             self._touch_hytera_peer(addr)
             return
-        if self._hytera_trace:
-            logger.debug(
-                '(%s) Hytera DMR RX %s:%s len=%s data=%s',
-                self._system, addr[0], addr[1], len(data), data.hex())
         dmrd = self._hytera_voice.translate_voice(data)
         if dmrd is not None:
             self._poll_hytera_rssi(time())
@@ -488,12 +485,12 @@ class HyteraMasterMixin:
             return
         self._hytera_dmr_addr = addr
         self._touch_hytera_peer(addr)
-        ids = media_radio_ids(data)
-        logger.debug(
-            '(%s) Hytera DMR packet from %s:%s len=%s slot=%s ids=%s%s',
-            self._system, addr[0], addr[1], len(data),
-            media_timeslot(data), ids,
-            ' data=' + data.hex() if self._hytera_trace else '')
+        if self._hytera_trace and hytera_trace_interesting_media(data):
+            ids = media_radio_ids(data)
+            logger.debug(
+                '(%s) Hytera DMR packet from %s:%s len=%s slot=%s ids=%s data=%s',
+                self._system, addr[0], addr[1], len(data),
+                media_timeslot(data), ids, data.hex())
         self._dispatch_hytera_dmrd(dmrd, addr)
 
     def _dispatch_hytera_dmrd(self, data, addr):
@@ -846,7 +843,7 @@ class HyteraMasterMixin:
                 or self._hytera_dmr_addr is None):
             return False
         protocol.transport.write(packet, self._hytera_dmr_addr)
-        if self._hytera_trace:
+        if self._hytera_trace and hytera_trace_interesting_media(packet):
             logger.debug(
                 '(%s) Hytera DMR TX %s:%s len=%s data=%s',
                 self._system, self._hytera_dmr_addr[0],

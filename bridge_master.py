@@ -1530,8 +1530,6 @@ def rule_timer_loop():
                         timeout_in = _system['TIMER'] - _now
                         _bridge_used = True
                         logger.debug('(ROUTER) Conference Bridge ACTIVE (ON timer running): System: %s Bridge: %s, TS: %s, TGID: %s, Timeout in: %.2fs,', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']),  timeout_in)
-                elif _system['ACTIVE'] == False:
-                    logger.debug('(ROUTER) Conference Bridge INACTIVE (no change): System: %s Bridge: %s, TS: %s, TGID: %s', _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
             elif _system['TO_TYPE'] == 'OFF':
                 # PRIORITY: Static TGs always override - they use TO_TYPE='OFF'
                 # Static TGs (TS1_STATIC/TS2_STATIC) have highest priority and always remain active

@@ -167,12 +167,34 @@ def media_radio_ids(data):
     return source, destination
 
 
+_ROUTINE_VOICE_SLOTS = frozenset({
+    SLOT_VOICE_LC_HEADER,
+    SLOT_VOICE_LC_TERMINATOR,
+    SLOT_VOICE_A,
+    SLOT_VOICE_B,
+    SLOT_VOICE_C,
+    SLOT_VOICE_D,
+    SLOT_VOICE_E,
+    SLOT_VOICE_F,
+    SLOT_WAKEUP,
+    SLOT_HYTERA_SYNC,
+})
+
+
 def media_slot_type(data):
     """Return the 16-bit Hytera slot/burst type."""
     if len(data) < MEDIA_MIN_LEN:
         return None
     return int.from_bytes(
         data[MEDIA_SLOT_TYPE_OFFSET:MEDIA_SLOT_TYPE_OFFSET + 2], 'big')
+
+
+def hytera_trace_interesting_media(data):
+    """Hex-dump SMS/data and unknown slots; skip routine voice bursts."""
+    slot = media_slot_type(data)
+    if slot is None:
+        return True
+    return slot not in _ROUTINE_VOICE_SLOTS
 
 
 def media_call_type(data):

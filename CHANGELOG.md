@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Hytera outbound voice drops oldest bursts past 480 ms instead of
+  growing seconds of delay when the reactor is busy. TRACE no longer
+  hex-dumps routine voice, and the router timer does not log every
+  inactive bridge.
 - Hytera unknown DMR media (non-72-byte SMS/GPS/UDT candidates) is logged
   with hex and appended to `CAPTURE_FILE` so RYSEN can replace IPSC2 as the
   capture oracle. Voice translation is unchanged.
@@ -12,7 +16,8 @@
   uses one stream for the CSBK preamble and another for the header keeps
   the 60 ms downlink intact instead of dropping the rest of the preamble.
   Field-validated on GB7NR: MD380 ↔ hotspot private SMS, including
-  confirmed read both ways.
+  confirmed read both ways, and same-repeater MD380 ↔ Anytone 868
+  1/2-rate private SMS both ways when both radios are on the same slot.
 - Hytera and Homebrew group SMS/data stay off the group-voice path. CSBK,
   header and 1/2- or 3/4-rate blocks fan out on the talkgroup bridge
   (and OpenBridge VER>1) the same way unit data does, so a group text
