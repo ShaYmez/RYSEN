@@ -181,7 +181,7 @@ class TestHyteraInboundVoice(unittest.TestCase):
         self.assertEqual(dmr_burst_dtype(dmrd[20:53]), 8)
         encoded = self.translator.encode_voice(dmrd)
         self.assertIsNotNone(encoded)
-        self.assertEqual(int.from_bytes(encoded[1][18:20], 'big'), SLOT_DATA_BLOCK)
+        self.assertEqual(int.from_bytes(encoded[1][18:20], 'big'), SLOT_DATA_BLOCK_34)
 
     def test_private_sms_hello_maps_csbk_header_and_blocks(self):
         packets = wire_fixture('sms_private_hello_ts1.hex')

@@ -26,6 +26,7 @@ Sample config: [HYTERA-SAMPLE.cfg](../HYTERA-SAMPLE.cfg). Selfcare:
 | Group and private/unit parrot on `9990` | OK |
 | Private SMS both ways, including confirmed read (MD380 ↔ hotspot via RD985) | OK |
 | PD685G H-SMS 3/4-rate blocks (`6666`) inbound to Homebrew | OK |
+| PD685G 3/4-rate replies encoded back to Hytera as `6666` | OK |
 | Group SMS routed on the talkgroup (not treated as group voice) | OK |
 | Mid-stream group join (late entry) | OK |
 | Delayed static admission keeps the original Voice LC Header | OK |

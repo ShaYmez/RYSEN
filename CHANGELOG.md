@@ -24,7 +24,9 @@
   instead of logging `*CALL START*`.
 - Hytera PD685G H-SMS 3/4-rate data uses slot type `6666`. Those bursts
   are translated as Homebrew dtype 8 so a repeater radio can reply to a
-  hotspot instead of the body being dumped as unknown media.
+  hotspot instead of the body being dumped as unknown media. Outbound
+  dtype 8 is encoded as Hytera `6666`, not `5555`, so a 3/4-rate reply
+  is not relabelled as 1/2-rate on the repeater downlink.
 - NXDNPEER maps DMR and NXDN IDs by callsign from RadioID `nxdn.csv` plus
   `subscriber_ids.json`, the same join YSF already uses. Stanza `NXDN_ID` is
   the fallback when a talker is not in both tables. When a callsign has more

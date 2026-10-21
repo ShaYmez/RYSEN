@@ -94,7 +94,7 @@ DATA_DTYPE_SLOT = {
     3: SLOT_DATA_CSBK,
     6: SLOT_DATA_HEADER,
     7: SLOT_DATA_BLOCK,
-    8: SLOT_DATA_BLOCK,
+    8: SLOT_DATA_BLOCK_34,
 }
 
 # Proxy control datagrams. They are private RYSEN control messages, not Hytera.
