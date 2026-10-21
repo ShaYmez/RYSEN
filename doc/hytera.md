@@ -1,8 +1,9 @@
 # Native Hytera IP Multi-site Connect
 
-Native Hytera support shipped in **1.6.0**. It is a separate protocol stack
-from Motorola IPSC, field-validated on RD985 repeaters running firmware
-`A9.02.03.009` and `A8.00.09.001`.
+Native Hytera support shipped in **1.6.0**. SMS, GPS and downlink pacing
+were field-validated on GB7NR after that release. It is a separate protocol
+stack from Motorola IPSC, field-validated on RD985 repeaters running
+firmware `A9.02.03.009` and `A8.00.09.001`.
 
 This is an independent interoperability implementation. It is not affiliated
 with, endorsed by, or derived from Hytera source code. Hytera's published
@@ -22,10 +23,11 @@ Sample config: [HYTERA-SAMPLE.cfg](../HYTERA-SAMPLE.cfg). Selfcare:
 |------|--------|
 | P2P / DMR / RDAC registration, redirects and keepalives | OK |
 | Inbound and outbound group voice | OK |
+| ChatterBox 2350 downlink on GB7NR (no stacked delay / mid-over holes) | OK |
 | Dial-a-TG private activation and TG9 group announcement | OK |
 | Group and private/unit parrot on `9990` | OK |
 | Private SMS both ways, including confirmed read (MD380 ↔ hotspot via RD985) | OK |
-| Same-repeater private SMS both ways (MD380 ↔ Anytone 868, 1/2-rate) | OK |
+| Same-repeater private SMS both ways (MD380 ↔ Anytone 868, 1/2-rate, same slot) | OK |
 | Anytone GPS to D-APRS `9059` (1/2-rate unit data via RD985 → APRS-IS) | OK |
 | PD685G H-SMS 3/4-rate blocks (`6666`) inbound to Homebrew | OK |
 | PD685G 3/4-rate replies encoded back to Hytera as `6666` | OK |
@@ -51,8 +53,19 @@ with hex and appends it to `CAPTURE_FILE` (default
 fixtures. Routine voice bursts are not hex-dumped; data and unknown slots
 still are. Do not leave `LOG_LEVEL: DEBUG` on a live master — the router
 timer used to log every inactive bridge each tick and that delayed the
-60 ms Hytera pacer. UA still drops the talkgroup after 10 minutes with no
-local PTT. SNMP is out of scope.
+60 ms Hytera pacer. SNMP is out of scope.
+
+## Limits
+
+- UA still drops the talkgroup 10 minutes after the last local PTT.
+  Listening does not refresh that timer. Kerchunking during a network
+  over steals the RF slot for group hangtime (~5 s on GB7NR).
+- Same-repeater private SMS must be on the matching timeslot. The RD985
+  does not locally repeat unit data when IP multi-site is linked; the
+  master hairpins it.
+- Anytone H-SMS RX is 1/2-rate only. PD685G 3/4-rate (`6666`) is mapped
+  correctly but will not inbox on an Anytone. There is no transcoder.
+- Motorola IPSC SMS/GPS remains deferred. See [ipsc-roadmap.md](ipsc-roadmap.md).
 
 ## CPS programming
 
@@ -121,7 +134,10 @@ bridge path as other masters. Hytera-only sync packets are ignored.
 Duplicate wire sequences are suppressed.
 
 Outbound voice is paced at 60 ms. A three-burst jitter buffer is used at
-call start. Late entry waits for the repeater's activation headers, then
+call start. Oldest voice is dropped past eight bursts (480 ms) so a busy
+reactor cannot stack seconds of delay. A replacement OpenBridge stream ID
+or extra VHEAD does not dump that queue while RF playout is already
+active. Late entry waits for the repeater's activation headers, then
 joins the running stream without synthesizing a new call start. After
 playout has started, a missing burst stays missing instead of re-buffering
 the call.

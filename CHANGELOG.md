@@ -2,62 +2,95 @@
 
 ## Unreleased
 
-- Hytera outbound voice drops oldest bursts past 480 ms instead of
-  growing seconds of delay when the reactor is busy. TRACE no longer
-  hex-dumps routine voice, and the router timer does not log every
-  inactive bridge. A replacement OpenBridge stream ID or extra VHEAD
-  no longer dumps the 60 ms queue while the repeater is already in
-  RF playout, which had punched 400–600 ms holes in the downlink.
-- Hytera unknown DMR media (non-72-byte SMS/GPS/UDT candidates) is logged
-  with hex and appended to `CAPTURE_FILE` so RYSEN can replace IPSC2 as the
-  capture oracle. Voice translation is unchanged.
-- Hytera private SMS is translated both ways. Captured RD985 slot types
-  `3333` / `4444` / `5555` map to Homebrew CSBK, data header and 1/2-rate
-  data blocks (the burst slot type, not 3/4). A later preamble from the
-  same radios opens a new stream because SMS has no VTERM. A hotspot that
-  uses one stream for the CSBK preamble and another for the header keeps
-  the 60 ms downlink intact instead of dropping the rest of the preamble.
-  Field-validated on GB7NR: MD380 ↔ hotspot private SMS, including
-  confirmed read both ways, and same-repeater MD380 ↔ Anytone 868
-  1/2-rate private SMS both ways when both radios are on the same slot.
-  Anytone GPS to D-APRS `9059` uses that same 1/2-rate unit-data path
+Work on `master` since **1.6.0**. Image tags stay `1.6.0` / `:latest` until
+the next version bump.
+
+### Native Hytera (GB7NR)
+
+- Unknown DMR media (non-72-byte SMS/GPS/UDT candidates) is logged with hex
+  and appended to `CAPTURE_FILE`. Voice translation is unchanged. Reported
+  103-byte packets stay rejected until they are capture-validated.
+- Private SMS is translated both ways. Captured RD985 slot types `3333` /
+  `4444` / `5555` map to Homebrew CSBK, data header and 1/2-rate blocks
+  (ETSI dtype 7, not 3/4). SMS has no VTERM, so a later preamble from the
+  same radios opens a new stream. A hotspot that splits CSBK and header
+  across stream IDs, or an OpenBridge peer that gives every CSBK its own
+  stream, keeps the 60 ms downlink instead of dropping the preamble.
+  Field-validated on GB7NR: MD380 ↔ hotspot including confirmed read, and
+  same-repeater MD380 ↔ Anytone 868 1/2-rate both ways on the matching
+  slot. The RD985 does not locally repeat unit SMS when IP multi-site is
+  linked, so same-repeater private SMS is hairpinned back to the origin.
+- Anytone GPS to D-APRS `9059` uses that same 1/2-rate unit-data path
   through the RD985 and reached APRS-IS.
-- Hytera and Homebrew group SMS/data stay off the group-voice path. CSBK,
-  header and 1/2- or 3/4-rate blocks fan out on the talkgroup bridge
-  (and OpenBridge VER>1) the same way unit data does, so a group text
-  no longer logs `*CALL START*` and times out as a short voice call.
-  The RF source is kept on that TG so a reply can come back. OpenBridge
-  peers that give every preamble CSBK its own stream ID no longer reset
-  the Hytera 60 ms downlink. Homebrew and OpenBridge tag group CSBK and
-  1/2-rate blocks as `vcsbk`; those bursts now take the group-data path
-  instead of logging `*CALL START*`.
-- Hytera PD685G H-SMS 3/4-rate data uses slot type `6666`. Those bursts
-  are translated as Homebrew dtype 8 so a repeater radio can reply to a
-  hotspot instead of the body being dumped as unknown media. Outbound
-  dtype 8 is encoded as Hytera `6666`, not `5555`, so a 3/4-rate reply
-  is not relabelled as 1/2-rate on the repeater downlink.
-- NXDNPEER maps DMR and NXDN IDs by callsign from RadioID `nxdn.csv` plus
-  `subscriber_ids.json`, the same join YSF already uses. Stanza `NXDN_ID` is
-  the fallback when a talker is not in both tables. When a callsign has more
-  than one DMR ID, the lower one is used. Voice is paced on a fixed 80 ms
-  NXDN / 60 ms DMR clock, with two frames buffered before the first voice
-  frame, so a busy reactor does not stretch the over.
-- Alias reload hardening: a failed or empty subscriber/peer/TGID reload no
-  longer wipes in-memory registration maps, so `ALLOW_UNREG_ID: False` stays
-  enforced without bricking hotspots after a bad second read at startup. The
-  periodic alias loop defers its first run until after `STALE_TIME`.
+- Group SMS/data stay off the voice path. CSBK, header and 1/2- or 3/4-rate
+  blocks fan out on the talkgroup bridge (and OpenBridge VER>1). Homebrew
+  and OpenBridge tag group CSBK and 1/2-rate as `vcsbk`; those bursts now
+  take the group-data path instead of logging `*CALL START*`.
+- PD685G H-SMS 3/4-rate uses slot type `6666` (Homebrew dtype 8) in both
+  directions so a repeater radio can reply without the body being dumped or
+  relabelled as 1/2-rate. Anytone H-SMS RX remains 1/2-rate only; there is
+  no 3/4→1/2 transcoder in the master.
+- Outbound voice drops oldest bursts past 480 ms instead of growing seconds
+  of delay when the reactor is busy. TRACE no longer hex-dumps routine
+  voice. The router timer does not log every inactive bridge. A replacement
+  OpenBridge stream ID or extra VHEAD no longer dumps the 60 ms queue
+  while the repeater is already in RF playout. Field-validated on GB7NR
+  ChatterBox 2350: usable downlink with occasional kerchunk/hangtime nicks,
+  not the previous 400–600 ms holes or 10 s of stacked delay.
+
+### YSFPEER
+
+- A talkgroup can reach a YSF room as a native `YSFPEER` without MMDVM_CM.
+  Each over opens with a header and closes with a terminator and the end
+  bit, stamped like an XLX leg (slot 2, TG 9), so a pYSF reflector carries
+  the voice. Callsign bytes are whitened before the DCH CRC. The bridge
+  radio identifies as `SYSTEMX`.
+- A DN call stays up when another YSF mode ends. The reflector is looked
+  up again after a disconnect. A DMR unkey that arrives after the YSF over
+  has already closed is ignored.
+- The first reflector poll ack stamps `YSFPEER CONNECTED` (RYMon was
+  crashing because `CONNECTION` was YES while `CONNECTED` stayed None).
+  Login is logged with the reflector address, the same way a Homebrew
+  peer is.
+
+### NXDNPEER
+
+- A talkgroup can reach an NXDN room as a native `NXDNPEER` without a
+  separate gateway. Talkers map DMR and NXDN IDs by callsign from RadioID
+  `nxdn.csv` plus `subscriber_ids.json`, the same join YSF already uses.
+  Stanza `NXDN_ID` is the fallback (sample `1272` / M0JKT). A callsign with
+  two DMR IDs uses the lower one. Voice is paced on a fixed 80 ms NXDN /
+  60 ms DMR clock, with two frames buffered before the first voice frame.
+
+### Parrot 9990
+
+- Group 9990 goes straight to parrot, the same bypass private 9990 already
+  had, so playback sees the terminator instead of dying on hangtime.
+  Linked Systems still reports PARROT START/END.
+- A long parrot over survives the hotspot minting a new stream about every
+  10 seconds. A late VTERM from the previous stream ID is ignored, and a
+  lone terminator after the over has finished is not treated as a new
+  kerchunk.
+
+### Unit routing and aliases
+
 - Transit unit voice follows the same home evidence as a locally originated
-  call. A subscriber that is only logged in on a mid-path master is no longer
-  stolen from the hub or learned home, which was dropping one direction of
-  NZ ↔ England private calls when the callee also had a hotspot on Apollo.
-- Fleet server_ids loading accepts the hub CSV (comment line, commas, BOM)
-  as well as the older TSV copy, and a failed reload keeps the last good
-  registry. An empty registry now logs instead of silently disabling topology
-  health reports.
-- Alias reloads apply the new dictionaries, including `_SERVER_IDS`.
+  call. A subscriber that is only logged in on a mid-path master is no
+  longer stolen from the hub or learned home, which was dropping one
+  direction of NZ ↔ England private calls when the callee also had a
+  hotspot on Apollo.
+- Fleet `server_ids` loading accepts the hub CSV (comment line, commas,
+  BOM) as well as the older TSV copy. A failed reload keeps the last good
+  registry. An empty registry logs instead of silently disabling topology
+  health reports. Alias reloads apply the new dictionaries, including
+  `_SERVER_IDS`.
 - A hub "no healthy fleet route" is a lookup failure, not an absent radio.
-  Dropping a private call that already reported START also reports END so the
-  dashboard does not stick in TX.
+  Dropping a private call that already reported START also reports END so
+  the dashboard does not stick in TX.
+- A failed or empty subscriber/peer/TGID reload no longer wipes in-memory
+  registration maps, so `ALLOW_UNREG_ID: False` stays enforced after a bad
+  second read at startup. The periodic alias loop defers its first run
+  until after `STALE_TIME`.
 
 ## Version 1.6.0 (2026-10-06)
 
