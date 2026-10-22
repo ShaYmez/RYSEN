@@ -9,9 +9,10 @@ the next version bump.
 
 - Private SMS both ways on 1/2-rate (`3333`/`4444`/`5555`). MD380 ↔ hotspot
   including confirmed read, same-repeater MD380 ↔ Anytone on the same slot,
-  and Anytone H-SMS ↔ Z3DMR beta (2345875 ↔ 2348831) on Europe. Split
-  CSBK/header streams no longer drop the preamble. Same-repeater texts are
-  hairpinned; the RD985 does not repeat unit SMS itself.
+  and Anytone H-SMS ↔ Z3DMR beta (2345875 ↔ 2348831) on one master and
+  across UK and Europe. Later wakeups stay SMS when they cross OpenBridge.
+  Split CSBK/header streams no longer drop the preamble. Same-repeater
+  texts are hairpinned; the RD985 does not repeat unit SMS itself.
 - Group SMS stays off voice and fans out on the talkgroup, including
   Homebrew `vcsbk` CSBKs.
 - PD685G radio 3/4-rate `6666` in and out. Anytone H-SMS is still 1/2-rate only.
