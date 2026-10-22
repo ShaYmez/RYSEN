@@ -201,6 +201,52 @@ class TestPrivateSmsRouting(PrivateSmsFixture):
         self.assertEqual(target.sent[0][8:11], bytes_3(REPEATER_RADIO))
         self.assertEqual(router.STATUS[SMS_STREAM]['packets'], 1)
 
+    def test_openbridge_followup_csbk_stays_sms(self):
+        self._system('HYTERA-0', 'HYTERA')
+        target = _Target()
+        bm.systems['HYTERA-0'] = target
+        bm.CONFIG['SYSTEMS']['OBP-UK'] = {
+            'MODE': 'OPENBRIDGE',
+            'ENABLED': True,
+            'VER': 2,
+            'ENHANCED_OBP': False,
+            'GROUP_HANGTIME': 5,
+            'ANNOUNCEMENT_LANGUAGE': 'en_US',
+        }
+        bm.CONFIG['GLOBAL']['SERVER_ID'] = (2040).to_bytes(4, 'big')
+        bm.SUB_MAP[bytes_3(REPEATER_RADIO)] = (
+            'HYTERA-0', 1, None, 50.0, PEER)
+        router = bm.routerOBP.__new__(bm.routerOBP)
+        router._system = 'OBP-UK'
+        router._CONFIG = bm.CONFIG
+        router._report = MagicMock()
+        router.STATUS = {}
+        router._unit_voice_routes = {}
+        body = b'\x00\x00\x00\x42'
+        bursts = (
+            (0, 3, SMS_STREAM),
+            (1, 3, SMS_STREAM),
+            (2, 3, SMS_STREAM),
+            (3, 3, SMS_STREAM),
+            (4, 6, body),
+            (5, 7, body),
+            (6, 7, body),
+        )
+        for seq, dtype, stream in bursts:
+            packet = _unit_data_packet(
+                HOTSPOT_RADIO, REPEATER_RADIO, stream, 2, seq, dtype)
+            router.dmrd_received(
+                PEER, bytes_3(HOTSPOT_RADIO), bytes_3(REPEATER_RADIO),
+                seq, 2, 'unit', HBPF_DATA_SYNC, dtype, stream, packet,
+                b'', b'', (2342).to_bytes(4, 'big'))
+        self.assertEqual(len(target.sent), 7)
+        self.assertEqual(
+            [pkt[15] & 0x0F for pkt in target.sent],
+            [3, 3, 3, 3, 6, 7, 7])
+        self.assertEqual(router._unit_voice_routes, {})
+        self.assertTrue(router.STATUS[SMS_STREAM]['DATA'])
+        self.assertTrue(router.STATUS[body]['DATA'])
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -2971,12 +2971,18 @@ class routerOBP(OPENBRIDGE):
 
         _data_call = False
 
-        # Match UNIT data, SMS/GPS, and send it to the dst_id if it is in SUB_MAP
+        # Match UNIT data, SMS/GPS, and send it to the dst_id if it is in SUB_MAP.
+        # A text is several CSBKs then the body. The first CSBK creates the
+        # stream, so later CSBKs must stay data. Otherwise they open a private
+        # voice call on the far master and the message never assembles.
         _obp_unit_data = False
+        _obp_stream = self.STATUS.get(_stream_id)
+        _obp_csbk = (
+            _dtype_vseq == 3
+            and (_obp_stream is None or _obp_stream.get('DATA')))
         if (_call_type == 'unit'
                 and _frame_type == HBPF_DATA_SYNC
-                and (_dtype_vseq in (6, 7, 8)
-                     or ((_stream_id not in self.STATUS) and _dtype_vseq == 3))):
+                and (_dtype_vseq in (6, 7, 8) or _obp_csbk)):
             _obp_unit_data = True
         
             _int_dst_id = int_id(_dst_id)
@@ -3000,6 +3006,7 @@ class routerOBP(OPENBRIDGE):
                     'packets': 0,
                     'crcs': set(),
                     'LC': b''.join([LC_OPT,_dst_id,_rf_src]),
+                    'DATA': True,
                 }
             else:
                 # Outbound stubs / races — harden before LoopControl
@@ -3010,6 +3017,7 @@ class routerOBP(OPENBRIDGE):
                 _obp_st.setdefault('crcs', set())
                 _obp_st.setdefault('lastSeq', False)
                 _obp_st.setdefault('lastData', False)
+                _obp_st['DATA'] = True
             
             self.STATUS[_stream_id]['LAST'] = pkt_time
             self.STATUS[_stream_id].setdefault('packets', 0)
