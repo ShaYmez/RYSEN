@@ -28,6 +28,18 @@ class TestSelfcareHelpers(unittest.TestCase):
     def test_ipsc_client_mode_is_zero(self):
         self.assertEqual(IPSC_CLIENT_MODE, 0)
 
+    def test_touch_hytera_seen_marks_only_hytera_rows(self):
+        db = SelfcareDB.__new__(SelfcareDB)
+        db.dbpool = MagicMock()
+        db.dbpool.runOperation.return_value = succeed(None)
+
+        deferred = db.touch_hytera_seen(235287, '198.51.100.8')
+
+        self.assertTrue(deferred.called)
+        sql, params = db.dbpool.runOperation.call_args.args
+        self.assertIn('logged_in = 1', sql)
+        self.assertEqual(params, ('198.51.100.8', 235287, HYTERA_CLIENT_MODE))
+
     def test_clear_modified_accepts_hytera_rows(self):
         db = SelfcareDB.__new__(SelfcareDB)
         db.dbpool = MagicMock()

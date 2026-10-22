@@ -449,6 +449,7 @@ class HyteraMasterMixin:
         if is_p2p_ping(data):
             if self._hytera_registered:
                 self._touch_hytera_peer(addr, update_p2p_addr=True)
+                self._sync_hytera_selfcare_seen(host)
                 self._send_p2p(build_ping_reply(data), addr)
             else:
                 self._send_p2p(b'\x00', addr)
@@ -808,6 +809,27 @@ class HyteraMasterMixin:
             lambda f: logger.error(
                 '(%s) Hytera selfcare upsert failed for %s: %s',
                 self._system, repeater_id, f.getErrorMessage()))
+
+    def _sync_hytera_selfcare_seen(self, host):
+        """Refresh Clients.logged_in while the repeater is still pinging.
+
+        The hotspot selfcare proxy marks every Clients row offline when it
+        starts. IPSC keepalives write that flag back. Hytera must do the same,
+        or a live RD985 stays offline until it registers again.
+        """
+        full_config = getattr(self, '_CONFIG', {})
+        ss = full_config.get('SELF SERVICE', {})
+        if not ss.get('ENABLED'):
+            return
+        db = full_config.get('_SELF_SERVICE_DB')
+        repeater_id = int_id(getattr(self, '_hytera_peer_id', b'\x00\x00\x00\x00'))
+        if db is None or not repeater_id:
+            return
+        d = db.touch_hytera_seen(repeater_id, host)
+        d.addErrback(
+            lambda f, _rid=repeater_id: logger.error(
+                '(%s) Hytera selfcare touch failed for %s: %s',
+                self._system, _rid, f.getErrorMessage()))
 
     def _sync_hytera_selfcare_logout(self):
         full_config = getattr(self, '_CONFIG', {})

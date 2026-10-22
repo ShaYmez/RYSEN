@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 import unittest
+from unittest.mock import MagicMock
+
+from twisted.internet.defer import succeed
 
 from hytera_const import (
     P2P_DMR_STARTUP,
@@ -127,6 +130,33 @@ class TestHyteraP2P(unittest.TestCase):
             [addr for _, addr in master.transport.writes],
             [('203.0.113.9', 50000), ('203.0.113.9', 50000)])
         self.assertEqual(master._hytera_addr, ('203.0.113.9', 50000))
+
+    def test_registered_ping_refreshes_hytera_selfcare(self):
+        class Transport:
+            def write(self, packet, addr):
+                return None
+
+        db = MagicMock()
+        db.touch_hytera_seen.return_value = succeed(None)
+        master = object.__new__(HyteraMasterMixin)
+        master._system = 'HYTERA'
+        master._CONFIG = {
+            'SELF SERVICE': {'ENABLED': True},
+            '_SELF_SERVICE_DB': db,
+        }
+        master._hytera_registered = True
+        master._hytera_addr = ('203.0.113.9', 50000)
+        master._hytera_last_seen = 0
+        master._hytera_peer_id = (235287).to_bytes(4, 'big')
+        master._peers = {master._hytera_peer_id: {}}
+        master._hytera_trace = False
+        master.transport = Transport()
+
+        master.hytera_p2p_received(
+            b'ZZZZ\x0a\x00\x00\x00\x14' + b'\x00' * 11,
+            ('203.0.113.9', 50000))
+
+        db.touch_hytera_seen.assert_called_once_with(235287, '203.0.113.9')
 
     def test_reregistration_resets_stale_service_and_voice_state(self):
         master = object.__new__(HyteraMasterMixin)

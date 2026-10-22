@@ -275,6 +275,25 @@ class SelfcareDB:
         except Exception as err:
             raise RuntimeError(f'touch_ipsc_seen error: {err}') from err
 
+    @inlineCallbacks
+    def touch_hytera_seen(self, int_id, host=None):
+        """Keep a live Hytera repeater online after the hotspot proxy clears logins."""
+        try:
+            if host:
+                yield self.dbpool.runOperation(
+                    'UPDATE Clients SET logged_in = 1, last_seen = UNIX_TIMESTAMP(), '
+                    'host = %s WHERE int_id = %s AND mode = %s',
+                    (host, int_id, HYTERA_CLIENT_MODE),
+                )
+            else:
+                yield self.dbpool.runOperation(
+                    'UPDATE Clients SET logged_in = 1, last_seen = UNIX_TIMESTAMP() '
+                    'WHERE int_id = %s AND mode = %s',
+                    (int_id, HYTERA_CLIENT_MODE),
+                )
+        except Exception as err:
+            raise RuntimeError(f'touch_hytera_seen error: {err}') from err
+
     def select_hotspot_disc_pending(self):
         """Hotspot rows waiting for DISC=1 disconnect (selfcare button)."""
         return self.dbpool.runQuery(
