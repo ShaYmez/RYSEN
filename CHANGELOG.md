@@ -19,9 +19,13 @@ the next version bump.
 - Anytone GPS to D-APRS `9059` reached APRS-IS.
 - Unknown non-72-byte media is dumped to `CAPTURE_FILE`. 103-byte packets
   stay rejected.
-- Outbound voice caps at 480 ms and no longer dumps the queue when
-  OpenBridge changes stream ID. ChatterBox 2350 on RD985 is usable.
-  TRACE does not hex-dump voice. DEBUG no longer logs every idle bridge.
+- Hytera downlink pacing on a fixed 60 ms grid with minimum burst spacing,
+  180 ms startup buffer, 50 ms catch-up while buffered, and one-shot shed
+  only above 480 ms. Stops steady voice drops under normal OpenBridge
+  jitter; occasional holes remain on reactor stalls. GB7NR on busy static
+  TG 326 field-validated (~20 min capture). ChatterBox 2350 on RD985 stays
+  usable. OpenBridge stream-ID changes no longer dump the queue. TRACE
+  does not hex-dump voice. DEBUG no longer logs every idle bridge.
 
 ### YSFPEER
 

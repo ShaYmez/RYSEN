@@ -24,6 +24,7 @@ Sample config: [HYTERA-SAMPLE.cfg](../HYTERA-SAMPLE.cfg). Selfcare:
 | P2P / DMR / RDAC registration, redirects and keepalives | OK |
 | Inbound and outbound group voice | OK |
 | ChatterBox 2350 downlink on GB7NR (no stacked delay / mid-over holes) | OK |
+| GB7NR busy static TG downlink (326 TS1, OpenBridge jitter without steady dropouts) | OK |
 | Dial-a-TG private activation and TG9 group announcement | OK |
 | Group and private/unit parrot on `9990` | OK |
 | Private SMS both ways, including confirmed read (MD380 ↔ hotspot via RD985) | OK |
