@@ -29,6 +29,7 @@ Sample config: [HYTERA-SAMPLE.cfg](../HYTERA-SAMPLE.cfg). Selfcare:
 | Group and private/unit parrot on `9990` | OK |
 | Private SMS both ways, including confirmed read (MD380 ↔ hotspot via RD985) | OK |
 | Anytone H-SMS ↔ Z3DMR beta both ways, including UK ↔ Europe (1/2-rate, 2348831 ↔ 2345875) | OK |
+| PD685G H-SMS ↔ Z3DMR beta both ways (GB7NR 2348831 ↔ UK 2345875; PD confirmed SAP 3 / 3/4-rate, Z3DMR 1.9.9) | OK |
 | Same-repeater private SMS both ways (MD380 ↔ Anytone 868, 1/2-rate, same slot) | OK |
 | Anytone GPS to D-APRS `9059` (1/2-rate unit data via RD985 → APRS-IS) | OK |
 | PD685G H-SMS 3/4-rate blocks (`6666`) inbound to Homebrew | OK |

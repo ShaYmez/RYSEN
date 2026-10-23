@@ -15,7 +15,10 @@ the next version bump.
   texts are hairpinned; the RD985 does not repeat unit SMS itself.
 - Group SMS stays off voice and fans out on the talkgroup, including
   Homebrew `vcsbk` CSBKs.
-- PD685G radio 3/4-rate `6666` in and out. Anytone H-SMS is still 1/2-rate only.
+- PD685G radio 3/4-rate `6666` in and out. PD685G ↔ Z3DMR beta both ways on
+  GB7NR and UK (2348831 ↔ 2345875) field-validated with Z3DMR 1.9.9
+  (20261023); RYSEN passes Hytera confirmed SAP 3 / 3/4-rate unchanged.
+  Anytone H-SMS is still 1/2-rate only.
 - Anytone GPS to D-APRS `9059` reached APRS-IS.
 - Unknown non-72-byte media is dumped to `CAPTURE_FILE`. 103-byte packets
   stay rejected.
