@@ -7,6 +7,10 @@ the next version bump.
 
 ### Native Hytera
 
+- **Feature-complete for 1.6.x** (October 2026). Native Hytera IP Multi-site
+  Connect on RD985 is production-ready: voice, SMS, parrot, selfcare,
+  proxy, live RSSI, and OpenBridge interconnect. Further Hytera work is
+  maintenance only; see [doc/hytera.md](doc/hytera.md) limits and out-of-scope.
 - Private SMS both ways on 1/2-rate (`3333`/`4444`/`5555`). MD380 ↔ hotspot
   including confirmed read, same-repeater MD380 ↔ Anytone on the same slot,
   and Anytone H-SMS ↔ Z3DMR beta (2345875 ↔ 2348831) on one master and

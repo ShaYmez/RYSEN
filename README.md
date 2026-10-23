@@ -19,8 +19,9 @@ Must be run as **root** on Debian 10+, Pi OS, or recent Ubuntu. See [doc/install
 - **Bridges** — Talkgroup routing, dial-a-tg reflectors, static TGs
 - **Hotspot proxy** — Single UDP port for many hotspots
 - **Motorola IPSC** — IP Site Connect repeaters (v1.5.0)
-- **Native Hytera** — Field-validated RD985 group/private voice, late entry,
-  A8 and A9 firmware, RDAC metadata, live RSSI and multi-repeater proxy (v1.6.0)
+- **Native Hytera** — Feature-complete RD985 IP Multi-site (voice, SMS,
+  parrot, selfcare, OpenBridge); A8/A9 firmware, RDAC metadata, live RSSI,
+  multi-repeater proxy (v1.6.0+). See [doc/hytera.md](doc/hytera.md).
 - **Unit routing** — Local private calls, plus an optional discovery path `UNIT_SUB_MAP_URL` is set (v1.6.0)
 - **Selfcare** — Dashboard-driven static TG and settings via MariaDB
 - **Reporting** — TCP feed for [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR)

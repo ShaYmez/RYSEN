@@ -1,9 +1,16 @@
 # Native Hytera IP Multi-site Connect
 
-Native Hytera support shipped in **1.6.0**. SMS, GPS and downlink pacing
-were field-validated on GB7NR after that release. It is a separate protocol
-stack from Motorola IPSC, field-validated on RD985 repeaters running
-firmware `A9.02.03.009` and `A8.00.09.001`.
+**Status (October 2026):** Feature-complete for RYSEN **1.6.x**. No further
+native Hytera functionality is planned; later work is maintenance, fixtures,
+and operator tooling only.
+
+Native Hytera support shipped in **1.6.0** and was brought to production
+quality on GB7NR through **1.6.0** patch releases on `master`: private and
+group SMS (including cross-server OpenBridge), stable downlink pacing on busy
+static talkgroups, selfcare, and cross-client SMS with hotspots and Z3DMR
+(where the client decodes the radio dialect). It is a separate protocol stack
+from Motorola IPSC, field-validated on RD985 repeaters running firmware
+`A9.02.03.009` and `A8.00.09.001`.
 
 This is an independent interoperability implementation. It is not affiliated
 with, endorsed by, or derived from Hytera source code. Hytera's published
@@ -27,6 +34,7 @@ Sample config: [HYTERA-SAMPLE.cfg](../HYTERA-SAMPLE.cfg). Selfcare:
 | GB7NR busy static TG downlink (326 TS1, OpenBridge jitter without steady dropouts) | OK |
 | Dial-a-TG private activation and TG9 group announcement | OK |
 | Group and private/unit parrot on `9990` | OK |
+| Private voice both ways, including UK ↔ Europe via OpenBridge | OK |
 | Private SMS both ways, including confirmed read (MD380 ↔ hotspot via RD985) | OK |
 | Anytone H-SMS ↔ Z3DMR beta both ways, including UK ↔ Europe (1/2-rate, 2348831 ↔ 2345875) | OK |
 | PD685G H-SMS ↔ Z3DMR beta both ways (GB7NR 2348831 ↔ UK 2345875; PD confirmed SAP 3 / 3/4-rate, Z3DMR 1.9.9) | OK |
@@ -67,8 +75,19 @@ timer used to log every inactive bridge each tick and that delayed the
   does not locally repeat unit data when IP multi-site is linked; the
   master hairpins it.
 - Anytone H-SMS RX is 1/2-rate only. PD685G 3/4-rate (`6666`) is mapped
-  correctly but will not inbox on an Anytone. There is no transcoder.
+  correctly but will not inbox on an Anytone. There is no SMS dialect
+  transcoder; each client must decode what the radio sends (for example
+  Z3DMR for PD685G confirmed SAP 3).
+- PD685G / Hytera GPS location reports are not decoded into D-APRS. Only
+  the Anytone 1/2-rate unit-data path to `9059` is supported today.
 - Motorola IPSC SMS/GPS remains deferred. See [ipsc-roadmap.md](ipsc-roadmap.md).
+
+## Out of scope (not planned)
+
+- SNMP repeater management, Hytera RCP/RNDIS handheld programming, or a
+  general Hytera data gateway (TMS-style services).
+- Transcoding SMS between Hytera 3/4-rate SAP 3 and other vendors' formats.
+- Enabling Hytera's paid IP Multi-site feature in CPS (operator responsibility).
 
 ## CPS programming
 
@@ -136,14 +155,18 @@ Inbound 72-byte media is translated to Homebrew DMRD and enters the same
 bridge path as other masters. Hytera-only sync packets are ignored.
 Duplicate wire sequences are suppressed.
 
-Outbound voice is paced at 60 ms. A three-burst jitter buffer is used at
-call start. Oldest voice is dropped past eight bursts (480 ms) so a busy
-reactor cannot stack seconds of delay. A replacement OpenBridge stream ID
-or extra VHEAD does not dump that queue while RF playout is already
-active. Late entry waits for the repeater's activation headers, then
-joins the running stream without synthesizing a new call start. After
-playout has started, a missing burst stays missing instead of re-buffering
-the call.
+Outbound voice follows ETSI one-burst-per-60 ms slot cadence on a fixed
+schedule grid with minimum spacing between RF bursts (no back-to-back
+catch-up). A three-burst (180 ms) jitter buffer is used at call start,
+aligned with Hytera's documented 60 ms IP jitter-buffer steps. When
+depth exceeds three frames, the scheduler shortens steps to 50 ms until
+the buffer recovers. If depth exceeds eight frames (480 ms), oldest voice
+is shed once down to three frames so a reactor stall cannot stack seconds
+of delay. A replacement OpenBridge stream ID or extra VHEAD does not dump
+that queue while RF playout is already active. Late entry waits for the
+repeater's activation headers, then joins the running stream without
+synthesizing a new call start. After playout has started, a missing burst
+stays missing instead of re-buffering the call.
 
 Private calls use the Hytera private marker and the existing Dial-a-TG path:
 private-call a reflector ID to link, `4000` to disconnect, and `5000` for
