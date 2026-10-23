@@ -554,6 +554,51 @@ class TestHyteraOutboundVoice(unittest.TestCase):
         clock.advance(0.001)
         self.assertEqual(sent, [b'a', b'b'])
 
+    def test_pacer_never_sends_voice_bursts_back_to_back(self):
+        clock = Clock()
+        sent = []
+        times = []
+
+        def voice(tag):
+            packet = bytearray(72)
+            packet[18:20] = b'\x77\x77'
+            packet[26] = tag
+            return bytes(packet)
+
+        def record(packet):
+            sent.append(packet)
+            times.append(clock.seconds())
+
+        pacer = HyteraOutboundPacer(record, clock=clock, max_queue=12)
+        for tag in range(1, 13):
+            pacer.enqueue(1, voice(tag))
+        clock.advance(0.180)
+        while len(sent) < 12:
+            clock.advance(0.001)
+        for earlier, later in zip(times, times[1:]):
+            self.assertGreater(later - earlier, 0.049)
+
+    def test_pacer_keeps_grid_under_slow_reactor_without_dropping(self):
+        clock = Clock()
+        sent = []
+
+        def voice(tag):
+            packet = bytearray(72)
+            packet[18:20] = b'\x77\x77'
+            packet[26] = tag
+            return bytes(packet)
+
+        pacer = HyteraOutboundPacer(sent.append, clock=clock)
+        for tag in range(1, 11):
+            pacer.enqueue(1, voice(tag))
+            if tag == 1:
+                clock.advance(0.180)
+            else:
+                clock.advance(0.061)
+        while len(sent) < 10:
+            clock.advance(0.061)
+        self.assertEqual([packet[26] for packet in sent], list(range(1, 11)))
+
     def test_pacer_drops_oldest_when_queue_exceeds_cap(self):
         clock = Clock()
         sent = []

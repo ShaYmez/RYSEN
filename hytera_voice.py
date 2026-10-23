@@ -60,13 +60,20 @@ OUTBOUND_SLOT_TYPE = {
     4: SLOT_VOICE_E,
     5: SLOT_VOICE_F,
 }
+# ETSI DMR: one occupied timeslot is 30 ms; voice on a slot repeats every
+# 60 ms (one burst per 60 ms frame). Hytera IP Multi-site docs describe a
+# repeater "Jitter Buffer Length" in 60 ms steps (default 1, up to 8) for
+# poor IP paths — extra length trades delay for continuity.
 OUTBOUND_INTERVAL = 0.060
-# OpenBridge ingress can arrive in short bursts.  Three queued bursts provide
-# 180 ms of playout cover while preserving a prompt normal call start.
+# Three frames (~180 ms) at call start: between Hytera's default 1×60 ms
+# buffer and a deep 3×60 ms IP jitter setting, without living at max delay.
 OUTBOUND_JITTER_DEPTH = 3
-# Hard cap so a slow reactor cannot grow seconds of delay. Eight bursts is
-# 480 ms; older voice frames are dropped so the downlink stays near live
-# audio. SMS/data is not trimmed — a bunched preamble can exceed eight.
+# When depth exceeds the jitter target, schedule slightly faster than 60 ms
+# but never faster than this minimum spacing from the last RF burst sent.
+OUTBOUND_CATCHUP_INTERVAL = 0.050
+# Stall recovery only (matches Hytera's 8×60 ms upper jitter-buffer setting).
+# Shed down to OUTBOUND_JITTER_DEPTH in one step; do not trim every arrival.
+# SMS/data is not trimmed — a bunched preamble can exceed eight.
 OUTBOUND_MAX_QUEUE = 8
 _DATA_SLOT_TYPES = frozenset({
     SLOT_DATA_CSBK,
@@ -146,9 +153,11 @@ class HyteraOutboundPacer:
         self._clock = clock or reactor
         self._interval = interval
         self._jitter_depth = jitter_depth
+        self._catchup_interval = OUTBOUND_CATCHUP_INTERVAL
         self._max_queue = max(1, int(max_queue))
         self._queues = {1: deque(), 2: deque()}
         self._timers = {1: None, 2: None}
+        self._grid = {1: 0.0, 2: 0.0}
         self._next = {1: 0.0, 2: 0.0}
         self._last_sent = {1: None, 2: None}
         self._active = {1: False, 2: False}
@@ -163,6 +172,7 @@ class HyteraOutboundPacer:
             timer.cancel()
         self._queues[ts].clear()
         self._timers[ts] = None
+        self._grid[ts] = 0.0
         self._next[ts] = 0.0
         self._last_sent[ts] = None
         self._active[ts] = False
@@ -180,6 +190,33 @@ class HyteraOutboundPacer:
     def is_active(self, ts):
         return bool(self._active.get(ts))
 
+    def _step_for_depth(self, ts):
+        if len(self._queues[ts]) > self._jitter_depth:
+            return self._catchup_interval
+        return self._interval
+
+    def _plan_next_fire(self, ts, terminated=False):
+        """Schedule the next burst without sub-interval back-to-back delivery."""
+        now = self._clock.seconds()
+        if terminated:
+            self._active[ts] = False
+            self._grid[ts] = 0.0
+            if not self._queues[ts]:
+                self._next[ts] = 0.0
+                return
+            self._grid[ts] = now + self._jitter_depth * self._interval
+            self._next[ts] = self._grid[ts]
+            return
+        step = self._step_for_depth(ts)
+        if self._grid[ts] <= 0.0:
+            self._grid[ts] = now
+        self._grid[ts] += step
+        floor = (self._last_sent[ts] or now) + step
+        scheduled = max(self._grid[ts], floor)
+        if scheduled < now:
+            scheduled = now if floor <= now else floor
+        self._next[ts] = scheduled
+
     @staticmethod
     def _is_voice_media(packet):
         if len(packet) < 20:
@@ -193,9 +230,8 @@ class HyteraOutboundPacer:
         queue = self._queues[ts]
         queue.append(packet)
         if self._is_voice_media(packet):
-            overflow = len(queue) - self._max_queue
-            if overflow > 0:
-                for _ in range(overflow):
+            if len(queue) > self._max_queue:
+                while len(queue) > self._jitter_depth:
                     queue.popleft()
         if self._timers[ts] is None:
             now = self._clock.seconds()
@@ -204,15 +240,15 @@ class HyteraOutboundPacer:
             # delay in the middle of the call. IPSC2 forwards the next
             # available burst immediately after such a gap.
             if self._active[ts]:
-                depth = 0
-                self._next[ts] = max(
-                    now, (self._last_sent[ts] or now) + self._interval)
+                step = self._interval
+                self._grid[ts] = (self._last_sent[ts] or now) + step
+                self._next[ts] = self._grid[ts] if self._grid[ts] >= now else now
             else:
                 depth = self._jitter_depth
-                self._next[ts] = now + depth * self._interval
-            if jitter_depth is not None and not self._active[ts]:
-                depth = max(0, jitter_depth)
-                self._next[ts] = now + depth * self._interval
+                if jitter_depth is not None:
+                    depth = max(0, jitter_depth)
+                self._grid[ts] = now + depth * self._interval
+                self._next[ts] = self._grid[ts]
             self._arm(ts)
         return True
 
@@ -233,18 +269,14 @@ class HyteraOutboundPacer:
             len(packet) >= 20
             and packet[18:20]
             == SLOT_VOICE_LC_TERMINATOR.to_bytes(2, 'big'))
-        if terminated:
-            self._active[ts] = False
         if self._queues[ts]:
-            now = self._clock.seconds()
-            if terminated:
-                self._next[ts] = now + self._jitter_depth * self._interval
-            else:
-                self._next[ts] = max(
-                    self._next[ts] + self._interval, now + self._interval)
+            self._plan_next_fire(ts, terminated=terminated)
             self._arm(ts)
         else:
+            self._grid[ts] = 0.0
             self._next[ts] = 0.0
+            if terminated:
+                self._active[ts] = False
 
 
 class HyteraVoiceTranslator:
