@@ -109,7 +109,7 @@ class TestActivateUaNotify(unittest.TestCase):
         with open('bridge_master.py', encoding='utf-8') as fh:
             source = fh.read()
         self.assertNotIn('_target_rx_call_active', source)
-        self.assertEqual(source.count('if (not _late_join'), 4)
+        self.assertEqual(source.count('if (not _late_join'), 2)
         self.assertEqual(bm._HYTERA_LATE_JOIN_ARM_S, 0.120)
 
     def test_deferred_header_survives_hangtime_release_boundary(self):

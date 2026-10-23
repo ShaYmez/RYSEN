@@ -1,11 +1,12 @@
 # RYSEN Features
 
-Version history and feature reference for RYSEN DMRMaster+ (SystemX). Current release: **1.6.0** on `master`.
+Version history and feature reference for RYSEN DMRMaster+ (SystemX). Current release: **1.6.1** on `master`.
 
 Maintained by **Shane Daley M0VUB** (aka **ShaYmez**) — primary RYSEN / SystemX development since v1.3.9. Lineage: HBlink3 (N0MJS) → FreeDMR (G7RZU) → RYSEN.
 
 | Version | Date | Summary |
 |---------|------|---------|
+| 1.6.1 | 2026-10-23 | Hytera production, YSF/NXDN peer, parrot 9990, unit-routing hardening |
 | 1.6.0 | 2026-10-06 | Topology-aware unit routing, native Hytera, OpenBridge stream ownership |
 | 1.5.4 | 2026-09-22 | Reactor stall/idle hygiene, STAT OBP hairpin, hub device control, parrot UA KeyError |
 | 1.5.3 | 2026-08-07 | Built-in version traceability, status page live version, monitor footer |
@@ -175,13 +176,27 @@ Field-hardened on the FreeSTAR fleet after USA Homebrew RPTPING stalls and STAT 
 
 ---
 
+## v1.6.1 — Hytera production, YSF/NXDN peer, parrot
+
+Field-validated on GB7NR (Europe) and FreeSTAR UK/Europe fleet traffic.
+
+| Feature | Detail |
+|---------|--------|
+| Native Hytera | Feature-complete in 1.6.1: SMS both ways, PD685G 3/4-rate, downlink pacer on busy static TGs, cross-client SMS/GPS, OpenBridge private voice; selfcare Online after proxy wipe |
+| YSFPEER | Talkgroup to pYSF reflector without MMDVM_CM; whitened callsign CRC; DN survives other mode teardown |
+| NXDNPEER | Talkgroup to NXDN room; RadioID `nxdn.csv` ID map; paced 80 ms NXDN / 60 ms DMR |
+| Parrot 9990 | Group bypass like private; long TX survives hotspot stream-ID churn |
+| Unit routing | Home evidence matches transit; hub CSV reload; failed alias reload no longer wipes registrations |
+
+---
+
 ## v1.6.0 — Unit routing, Hytera, OpenBridge ownership
 
 ### Topology-aware unit routing
 
 Local subscriber private calls (hotspot, IPSC, and Hytera on the same server) are placed from `SUB_MAP` or a connected hotspot ESSID. Hotspot delivery uses TS2. A repeater callee uses the slot they were last heard on. Dial-a-tg (`4000`, `5000`, link TGs) and parrot `9990` stay on their own paths. A busy target slot drops the private call.
 
-The optional global topology stays off unless `[ALIASES] UNIT_SUB_MAP_URL` is set; the existing bearer-token file remains the credential. Participating masters publish secret-free enhanced-OBP health immediately at startup and then at jittered intervals, with fleet membership taken from the downloaded server registry. Route replies carry the home, one next hop, a validated loop-free path, topology version and expiry. Voice is forwarded only along that validated next hop. A short bounded buffer permits a fresh lookup when the chosen hop fails. DMRE v5 origin server/repeater identity and hop count survive transit. A local callee always wins, and inbound or transit calls do not create local caller hears. Unit data, SMS and GPS are unchanged. A master whose local server ID disagrees with the fleet registry cannot publish topology. See [unit-call.md](unit-call.md).
+The optional global topology stays off unless `[ALIASES] UNIT_SUB_MAP_URL` is set; the existing bearer-token file remains the credential. Participating masters publish secret-free enhanced-OBP health immediately at startup and then at jittered intervals, with fleet membership taken from the downloaded server registry. Route replies carry the home, one next hop, a validated loop-free path, topology version and expiry. Voice is forwarded only along that validated next hop. A short bounded buffer permits a fresh lookup when the chosen hop fails. DMRE v5 origin server/repeater identity and hop count survive transit. In 1.6.0 any local callee won; **1.6.1** delivers locally on a recent RF hear and does not steal a learned or hub home from a login-only presence on a mid-path master. Inbound and transit calls do not create local caller hears. Unit data, SMS and GPS are unchanged. A master whose local server ID disagrees with the fleet registry cannot publish topology. See [unit-call.md](unit-call.md).
 
 ### OpenBridge stream ownership
 
@@ -195,7 +210,7 @@ The optional global topology stays off unless `[ALIASES] UNIT_SUB_MAP_URL` is se
 ### Native Hytera
 
 Field-validated on RD985 repeaters running firmware `A9.02.03.009` and
-`A8.00.09.001`. **Feature-complete for 1.6.x** as of October 2026 (see
+`A8.00.09.001`. **Feature-complete as of 1.6.1** (see
 [hytera.md](hytera.md) for the full matrix, limits, and out-of-scope list).
 
 | Feature | Detail |

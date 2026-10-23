@@ -1,11 +1,11 @@
 # Native Hytera IP Multi-site Connect
 
-**Status (October 2026):** Feature-complete for RYSEN **1.6.x**. No further
-native Hytera functionality is planned; later work is maintenance, fixtures,
-and operator tooling only.
+**Status (1.6.1, October 2026):** Feature-complete. No further native Hytera
+functionality is planned; later work is maintenance, fixtures, and operator
+tooling only.
 
 Native Hytera support shipped in **1.6.0** and was brought to production
-quality on GB7NR through **1.6.0** patch releases on `master`: private and
+quality on GB7NR in **1.6.1**: private and
 group SMS (including cross-server OpenBridge), stable downlink pacing on busy
 static talkgroups, selfcare, and cross-client SMS with hotspots and Z3DMR
 (where the client decodes the radio dialect). It is a separate protocol stack
@@ -143,7 +143,7 @@ DMR/RDAC endpoints before renegotiation.
 Run the proxy with `python3 hytera_proxy.py -c hytera-proxy.cfg`, using
 [hytera-proxy-SAMPLE.cfg](../hytera-proxy-SAMPLE.cfg). From a source checkout,
 `docker compose --profile hytera -f docker-configs/docker-compose-stack.yml`
-builds the local image `rysen-hytera-proxy:1.6.0`. That image is not on
+builds the local image `rysen-hytera-proxy:1.6.1`. That image is not on
 Docker Hub.
 
 Generated backends set `PROXY_CONTROL: True` and `PROXY_CONTROL_IP` to the

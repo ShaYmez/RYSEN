@@ -1,6 +1,6 @@
 # RYSEN DMRMaster+
 
-RYSEN DMR Master+ (A FreeSTAR SystemX DMR Master Server). One Twisted process routes Homebrew, OpenBridge, Motorola IP Site Connect, and Hytera IP Multi-site Connect, with talkgroup bridges, private unit calls, and local dashboard selfcare. **Version 1.6.0** on `master`.
+RYSEN DMR Master+ (A FreeSTAR SystemX DMR Master Server). One Twisted process routes Homebrew, OpenBridge, Motorola IP Site Connect, and Hytera IP Multi-site Connect, with talkgroup bridges, private unit calls, and local dashboard selfcare. **Version 1.6.1** on `master`.
 
 ## Quick start
 
@@ -22,7 +22,7 @@ Must be run as **root** on Debian 10+, Pi OS, or recent Ubuntu. See [doc/install
 - **Native Hytera** — Feature-complete RD985 IP Multi-site (voice, SMS,
   parrot, selfcare, OpenBridge); A8/A9 firmware, RDAC metadata, live RSSI,
   multi-repeater proxy (v1.6.0+). See [doc/hytera.md](doc/hytera.md).
-- **Unit routing** — Local private calls, plus an optional discovery path `UNIT_SUB_MAP_URL` is set (v1.6.0)
+- **Unit routing** — Local private calls, plus an optional fleet hop when `UNIT_SUB_MAP_URL` is set (v1.6.0). **1.6.1** keeps a mid-path login from replacing the learned home.
 - **Selfcare** — Dashboard-driven static TG and settings via MariaDB
 - **Reporting** — TCP feed for [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR)
 
@@ -56,7 +56,7 @@ Sample configs: [RYSEN-SAMPLE-commented.cfg](RYSEN-SAMPLE-commented.cfg), [docke
 
 ## Docker image
 
-CI builds and publishes `shaymez/rysen:1.6.0` and `shaymez/rysen:latest` from the root [Dockerfile](Dockerfile) on push to `master`.
+CI builds and publishes `shaymez/rysen:1.6.1` and `shaymez/rysen:latest` from the root [Dockerfile](Dockerfile) on push to `master`.
 
 ## Credits
 

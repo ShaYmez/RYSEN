@@ -45,7 +45,7 @@ place the rysen.cfg file in this directory.
 
 For IPSC, the docker install starts **rysen** and **ipsc-proxy** (public UDP **56002** CPS Master port; backends `IPSC-0`…`IPSC-199` on `56003`–`56202`). Enable IPSC auth in CPS and match `AUTH_KEY` in `rysen.cfg`. IPSC repeater selfcare and the dashboard require [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR) (v1.5.0+) and MariaDB — see [selfcare.md](selfcare.md); minimal compose here is RYSEN + proxy only. See [ipsc.md](ipsc.md), [ipsc-roadmap.md](ipsc-roadmap.md), [IPSC-SAMPLE.cfg](../docker-configs/config/IPSC-SAMPLE.cfg), and [ipsc-proxy-SAMPLE.cfg](../docker-configs/config/ipsc-proxy-SAMPLE.cfg).
 
-Hytera uses the same master image. The proxy is not published to Docker Hub. From a source checkout, build it with `docker compose --profile hytera -f docker-configs/docker-compose-stack.yml` (the build context is the repo root). Public ports are `50000`/`50001`/`50002`. See [hytera.md](hytera.md) and [hytera-proxy-SAMPLE.cfg](../hytera-proxy-SAMPLE.cfg).
+Hytera uses the same master image. The proxy is not published to Docker Hub. From a source checkout at this release, build it with `docker compose --profile hytera -f docker-configs/docker-compose-stack.yml` (the build context is the repo root). That produces the local image `rysen-hytera-proxy:1.6.1`; rebuild after upgrading so the running proxy matches the master. Public ports are `50000`/`50001`/`50002`. See [hytera.md](hytera.md) and [hytera-proxy-SAMPLE.cfg](../hytera-proxy-SAMPLE.cfg).
 
 ## Make rules file
 

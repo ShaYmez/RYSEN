@@ -2,7 +2,9 @@
 
 A unit call is a private voice transmission from one subscriber to another.
 It shipped in **1.6.0**. Delivery on this master is always available. A call
-leaves the server only when fleet routing is configured.
+leaves the server only when fleet routing is configured. **1.6.1** keeps a
+transit call on the learned or hub home when the callee is only logged in
+on a mid-path master.
 
 Dial-a-tg, parrot, SMS, and GPS are separate paths. See
 [ipsc-roadmap.md](ipsc-roadmap.md) for the data phases that are still deferred.
@@ -144,7 +146,7 @@ before enabling the fleet hop.
 
 | Doc | Purpose |
 |-----|---------|
-| [features.md](features.md) | 1.6.0 summary |
+| [features.md](features.md) | 1.6.1 hardening and 1.6.0 topology summary |
 | [ipsc-roadmap.md](ipsc-roadmap.md) | Phase 4 status and later data phases |
 | [ipsc.md](ipsc.md) | Motorola private-voice wire path |
 | [hytera.md](hytera.md) | Hytera private calls on this master |

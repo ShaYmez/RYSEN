@@ -2,12 +2,18 @@
 
 ## Unreleased
 
-Work on `master` since **1.6.0**. Image tags stay `1.6.0` / `:latest` until
-the next version bump.
+Work on `master` since **1.6.1**.
+
+## Version 1.6.1 (2026-10-23)
+
+Hytera production release, native YSF/NXDN peer legs, parrot hardening, and
+fleet unit-routing fixes.
+
+Released on **`master`** — `shaymez/rysen:1.6.1` and `:latest`.
 
 ### Native Hytera
 
-- **Feature-complete for 1.6.x** (October 2026). Native Hytera IP Multi-site
+- **Feature-complete in 1.6.1** (October 2026). Native Hytera IP Multi-site
   Connect on RD985 is production-ready: voice, SMS, parrot, selfcare,
   proxy, live RSSI, and OpenBridge interconnect. Further Hytera work is
   maintenance only; see [doc/hytera.md](doc/hytera.md) limits and out-of-scope.
@@ -26,6 +32,9 @@ the next version bump.
 - Anytone GPS to D-APRS `9059` reached APRS-IS.
 - Unknown non-72-byte media is dumped to `CAPTURE_FILE`. 103-byte packets
   stay rejected.
+- Selfcare keeps a Hytera repeater **Online** after the hotspot proxy starts
+  (`touch_hytera_seen` on RDAC poll) instead of waiting for a fresh
+  registration.
 - Hytera downlink pacing on a fixed 60 ms grid with minimum burst spacing,
   180 ms startup buffer, 50 ms catch-up while buffered, and one-shot shed
   only above 480 ms. Stops steady voice drops under normal OpenBridge

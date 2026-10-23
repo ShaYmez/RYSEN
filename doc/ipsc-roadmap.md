@@ -8,13 +8,13 @@ Protocol research: [node-dmr-lib](https://github.com/rick51231/node-dmr-lib). OP
 
 | Phase | Goal | Status |
 |-------|------|--------|
-| **4** | Unit-to-unit private voice routing | **Shipped in 1.6.0.** Local delivery, plus optional global hop (off unless configured) |
+| **4** | Unit-to-unit private voice routing | **Shipped in 1.6.0.** Local delivery, plus optional global hop (off unless configured). **1.6.1** keeps transit on the learned or hub home |
 | **5** | SMS / GPS / UDT data | Deferred |
 | **6** | TMS / LRRP / ARS / wireline | Post-merge |
 | **7** | Ops polish | Ongoing |
 
 ```
-master @ 1.6.0 (released)
+master @ 1.6.1 (released)
   ├── Phase 4 local unit voice + optional global hop (shipped)
   └── Phase 5 SMS / GPS (deferred)
 ```
@@ -57,7 +57,7 @@ ipsc_proxy (56002) · repeaters · hotspots
 
 ## Phase 4 — Unit-to-unit private voice
 
-**Local delivery shipped in 1.6.0** (first landed in `da29797`, `579d9ed`). Operator reference: [unit-call.md](unit-call.md). A private call to a 7-digit radio is delivered on this master from `SUB_MAP`, then from a connected hotspot ESSID. Hotspot delivery uses TS2. A repeater callee uses the slot they were last heard on. Dial-a-tg (`4000`, `5000`, link TGs) and parrot `9990` stay on their own paths. A busy target slot drops the private call.
+**Local delivery shipped in 1.6.0** (first landed in `da29797`, `579d9ed`). **1.6.1** stops a login on a mid-path master from replacing the learned or hub home. Operator reference: [unit-call.md](unit-call.md). A private call to a 7-digit radio is delivered on this master from `SUB_MAP`, then from a connected hotspot ESSID. Hotspot delivery uses TS2. A repeater callee uses the slot they were last heard on. Dial-a-tg (`4000`, `5000`, link TGs) and parrot `9990` stay on their own paths. A busy target slot drops the private call.
 
 **Optional global topology.** With an empty `[ALIASES] UNIT_SUB_MAP_URL` the master keeps its exact local-only behaviour: no topology HTTP and no OBP unit relay. A participating master uses the existing token file, reports a live secret-free snapshot of its configured proto-v5 enhanced-OBP links off the reactor, and accepts only masters found in the downloaded server registry. The hub route names the home, immediate next hop, complete path, topology version and expiry. RYSEN validates that path, forwards voice to exactly one healthy next hop, never sends back to ingress, and never floods or falls back through a third-party stanza. A failed next hop gets a bounded buffer and limited re-lookup. The destination master tries its own `SUB_MAP`/peer placement first; only a local miss may transit again. DMRE v5 `source_server`, `source_rptr`, and the existing hop counter remain end to end, with the protocol's existing maximum of 10. Unit data, SMS, and GPS keep their existing path.
 
