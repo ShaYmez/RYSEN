@@ -543,6 +543,8 @@ def build_config(_config_file):
                         'OVERRIDE_IDENT_TG': config.get(section, 'OVERRIDE_IDENT_TG'),
                         'HYTERA_REPEATER_ID': config.getint(
                             section, 'HYTERA_REPEATER_ID', fallback=0),
+                        'HMTP_MODE': config.getboolean(
+                            section, 'HMTP_MODE', fallback=False),
                         'RDAC_DISCOVERY': config.getboolean(
                             section, 'RDAC_DISCOVERY', fallback=False),
                         'KEEPALIVE_WATCHDOG': config.getint(

@@ -105,6 +105,27 @@ class TestHyteraP2P(unittest.TestCase):
         self.assertFalse(is_expected_service_followup_registration(
             True, ('203.0.113.9', 50000), '203.0.113.9', 100.0, 111.0))
 
+    def test_configured_hmtp_uses_and_refreshes_registration_endpoint(self):
+        master = object.__new__(HyteraMasterMixin)
+        master._system = 'HYTERA'
+        master._config = {
+            'HYTERA_REPEATER_ID': 1000,
+            'HMTP_MODE': True,
+            'PROXY_CONTROL': False,
+        }
+        master._CONFIG = {'GLOBAL': {}}
+        master._peers = {}
+        master._report = None
+        master.init_hytera()
+
+        master._register_hytera_peer(
+            '203.0.113.9', 50000, reset_session=True)
+        self.assertEqual(master._hytera_hmtp_addr, ('203.0.113.9', 50000))
+
+        master._register_hytera_peer(
+            '203.0.113.9', 51000, reset_session=False)
+        self.assertEqual(master._hytera_hmtp_addr, ('203.0.113.9', 51000))
+
     def test_service_negotiation_replies_to_registered_p2p_port(self):
         class Transport:
             def __init__(self):

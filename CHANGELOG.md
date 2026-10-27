@@ -18,7 +18,8 @@ Work on `master` since **1.6.1**.
   returns media in the plain `HMTP` envelope to the learned endpoint.
   Inbound group/private voice on both slots is capture-validated; downlink
   still needs a controlled RF validation. RDAC-less units require a direct
-  stanza with `HYTERA_REPEATER_ID` and `RDAC_DISCOVERY: False`.
+  stanza with `HYTERA_REPEATER_ID`, `HMTP_MODE: True`, and
+  `RDAC_DISCOVERY: False`.
 
 ## Version 1.6.1 (2026-10-23)
 

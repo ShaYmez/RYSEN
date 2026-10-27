@@ -107,9 +107,11 @@ Data and RDAC.
 
 An HR1065 without RDAC should use a direct (no proxy) `[HYTERA]` stanza with
 `HYTERA_REPEATER_ID` set to the repeater's configured identity and
-`RDAC_DISCOVERY: False`. The captured test unit used ID `1000`. Do not use
-the dynamic proxy for an RDAC-less unit because P2P registration does not
-carry an identity.
+`HMTP_MODE: True` so network-originated traffic can use the registered P2P
+endpoint before the repeater transmits, plus `RDAC_DISCOVERY: False`. The
+captured test unit used ID `1000`. Keep `HMTP_MODE: False` for RD625/RD985.
+Do not use the dynamic proxy for an RDAC-less unit because P2P registration
+does not carry an identity.
 
 Every repeater uses the same public ports:
 
