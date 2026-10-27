@@ -126,6 +126,13 @@ class TestHyteraP2P(unittest.TestCase):
             '203.0.113.9', 51000, reset_session=False)
         self.assertEqual(master._hytera_hmtp_addr, ('203.0.113.9', 51000))
 
+        master._hytera_hmtp_learned = True
+        master._hytera_hmtp_addr = ('203.0.113.9', 62000)
+        master._register_hytera_peer(
+            '203.0.113.9', 52000, reset_session=False)
+        self.assertEqual(master._hytera_addr, ('203.0.113.9', 52000))
+        self.assertEqual(master._hytera_hmtp_addr, ('203.0.113.9', 62000))
+
     def test_service_negotiation_replies_to_registered_p2p_port(self):
         class Transport:
             def __init__(self):
@@ -197,6 +204,7 @@ class TestHyteraP2P(unittest.TestCase):
         master._hytera_outbound = HyteraOutboundPacer(lambda _packet: None)
         master._hytera_dmr_addr = ('203.0.113.9', 50001)
         master._hytera_hmtp_addr = ('203.0.113.9', 51000)
+        master._hytera_hmtp_learned = True
         master._hytera_rdac_addr = ('203.0.113.9', 50002)
         master._hytera_rdac_step = 9
         master._hytera_rdac_meta = {'firmware': 'stale'}
@@ -208,6 +216,7 @@ class TestHyteraP2P(unittest.TestCase):
 
         self.assertIsNone(master._hytera_dmr_addr)
         self.assertIsNone(master._hytera_hmtp_addr)
+        self.assertFalse(master._hytera_hmtp_learned)
         self.assertIsNone(master._hytera_rdac_addr)
         self.assertEqual(master._hytera_rdac_step, 0)
         self.assertEqual(master._hytera_rdac_meta, {})

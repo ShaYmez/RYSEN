@@ -183,6 +183,7 @@ class HyteraMasterMixin:
         self._hytera_hmtp_addr = None
         self._hytera_hmtp_configured = self._config.get('HMTP_MODE', False)
         self._hytera_hmtp_mode = self._hytera_hmtp_configured
+        self._hytera_hmtp_learned = False
         self._hytera_rdac_addr = None
         self._hytera_peer_id = int(
             self._config.get('HYTERA_REPEATER_ID', 0)).to_bytes(4, 'big')
@@ -272,6 +273,7 @@ class HyteraMasterMixin:
             self._hytera_hmtp_addr = None
             self._hytera_hmtp_mode = getattr(
                 self, '_hytera_hmtp_configured', False)
+            self._hytera_hmtp_learned = False
             self._hytera_rdac_addr = None
             self._hytera_rdac_step = 0
             self._hytera_rdac_meta = {}
@@ -282,7 +284,8 @@ class HyteraMasterMixin:
                 self._peers.pop(old_peer_id, None)
         self._hytera_registered = True
         self._hytera_addr = (host, port)
-        if getattr(self, '_hytera_hmtp_mode', False):
+        if (getattr(self, '_hytera_hmtp_mode', False)
+                and not getattr(self, '_hytera_hmtp_learned', False)):
             self._hytera_hmtp_addr = (host, port)
         self._hytera_last_seen = now
         if int_id(self._hytera_peer_id):
@@ -331,6 +334,7 @@ class HyteraMasterMixin:
         self._hytera_hmtp_addr = None
         self._hytera_hmtp_mode = getattr(
             self, '_hytera_hmtp_configured', False)
+        self._hytera_hmtp_learned = False
         self._hytera_rdac_addr = None
         self._hytera_proxy_info = None
         self._hytera_rdac_step = 0
@@ -434,6 +438,7 @@ class HyteraMasterMixin:
                     self._system, host)
                 return
             self._hytera_hmtp_mode = True
+            self._hytera_hmtp_learned = True
             self._hytera_hmtp_addr = addr
             self._hytera_media_received(media, addr, hmtp=True)
             return

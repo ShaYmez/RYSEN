@@ -1141,6 +1141,7 @@ class TestHr1065HmtpDispatch(unittest.TestCase):
         self.assertEqual(
             master._hytera_hmtp_addr, ('198.51.100.7', 62000))
         self.assertTrue(master._hytera_hmtp_mode)
+        self.assertTrue(master._hytera_hmtp_learned)
         master._touch_hytera_peer.assert_called_once_with(
             ('198.51.100.7', 62000), update_p2p_addr=True)
         dmrd = master._dispatch_hytera_dmrd.call_args.args[0]
