@@ -60,7 +60,7 @@ class HyteraProxy:
 
     def __init__(self, master, p2p_port, public_slot_start, backend_slot_start,
                  slots, timeout, debug=False, black_list=None,
-                 ip_black_list=None, clock=None):
+                 ip_black_list=None, isolate_ips=None, clock=None):
         self.master = master
         self.p2p_port = p2p_port
         self.public_slot_start = public_slot_start
@@ -69,6 +69,10 @@ class HyteraProxy:
         self.debug = debug
         self.black_list = set(black_list or [])
         self.ip_black_list = dict(ip_black_list or {})
+        self.isolate_networks = tuple(
+            ipaddress.ip_network(value, strict=False)
+            for value in (isolate_ips or []))
+        self._isolate_logged = set()
         self.clock = clock or reactor
         self.transports = {}
         self.sessions = {}
@@ -85,6 +89,20 @@ class HyteraProxy:
 
     def set_transport(self, port, transport):
         self.transports[port] = transport
+
+    def _isolated(self, host):
+        """Keep a non-ham repeater registered without bridging its voice."""
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError:
+            return False
+        if not any(address in network for network in self.isolate_networks):
+            return False
+        if host not in self._isolate_logged:
+            self._isolate_logged.add(host)
+            logging.warning(
+                'Hytera repeater %s is isolated: voice is not bridged', host)
+        return True
 
     def _write(self, source_port, data, address):
         transport = self.transports.get(source_port)
@@ -243,6 +261,8 @@ class HyteraProxy:
             self._touch(session)
             if command == P2P_REGISTRATION:
                 self._notify(session)
+        if self._isolated(host) and data.startswith(b'HMTP'):
+            return
         self._write(
             session.p2p_public_port, data,
             (self.master, session.backend_base))
@@ -255,6 +275,8 @@ class HyteraProxy:
             return
         offset = local_port - session.public_base
         service = 'dmr' if offset == 1 else 'rdac'
+        if service == 'dmr' and self._isolated(address[0]):
+            return
         session.endpoints[service] = address
         self._touch(session)
         if service == 'rdac':
@@ -279,6 +301,9 @@ class HyteraProxy:
             return
         offset = local_port - session.public_base
         service = 'dmr' if offset == 1 else 'rdac'
+        p2p = session.endpoints.get('p2p')
+        if service == 'dmr' and p2p and self._isolated(p2p[0]):
+            return
         endpoint = session.endpoints.get(service)
         if endpoint is None:
             return
@@ -332,6 +357,8 @@ def _load_config(config_file):
             'debug': config.getboolean(section, 'DEBUG'),
             'black_list': json.loads(config.get(section, 'BLACKLIST')),
             'ip_black_list': json.loads(config.get(section, 'IPBLACKLIST')),
+            'isolate_ips': json.loads(
+                config.get(section, 'ISOLATE_IPS', fallback='[]')),
         }
     except (configparser.Error, json.JSONDecodeError, ValueError) as err:
         raise SystemExit(f'Error processing configuration file -- {err}') from err

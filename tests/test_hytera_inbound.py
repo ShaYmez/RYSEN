@@ -18,6 +18,7 @@ from hytera_const import (
     SLOT_DATA_BLOCK_34,
     SLOT_DATA_CSBK,
     SLOT_DATA_HEADER,
+    unwrap_hmtp_media,
 )
 from hytera_master import HyteraMasterMixin, unknown_hytera_media_record
 from hytera_rdac_meta import (
@@ -96,6 +97,10 @@ def wire_fixture(name):
         for line in (FIXTURE_DIR / name).read_text().splitlines()
         if line and not line.startswith('#')
     ]
+
+
+def hmtp_fixture():
+    return wire_fixture('hr1065_hmtp.hex')
 
 
 def dmrd(flags, payload, stream=b'\x10\x20\x30\x40',
@@ -1109,6 +1114,60 @@ class TestHyteraProxyControl(unittest.TestCase):
             235287, self.master._hytera_rdac_meta)
 
 
+class TestHr1065HmtpDispatch(unittest.TestCase):
+
+    def test_p2p_hmtp_header_enters_the_existing_media_translator(self):
+        packets = hmtp_fixture()
+        master = object.__new__(HyteraMasterMixin)
+        master._system = 'HYTERA'
+        master._hytera_registered = True
+        master._hytera_addr = ('198.51.100.7', 50000)
+        master._hytera_hmtp_addr = None
+        master._hytera_peer_id = (1000).to_bytes(4, 'big')
+        master._peers = {}
+        master._hytera_trace = False
+        master._hytera_proxy_enabled = False
+        master._hytera_voice = HyteraVoiceTranslator(
+            peer_id=1000, stream_factory=lambda: b'\x01\x02\x03\x04')
+        master._touch_hytera_peer = MagicMock()
+        master._poll_hytera_rssi = MagicMock()
+        master._stamp_hytera_rssi = lambda packet: packet
+        master._dispatch_hytera_dmrd = MagicMock()
+
+        master.hytera_p2p_received(
+            packets[0], ('198.51.100.7', 62000))
+
+        self.assertEqual(
+            master._hytera_hmtp_addr, ('198.51.100.7', 62000))
+        master._touch_hytera_peer.assert_called_once_with(
+            ('198.51.100.7', 62000), update_p2p_addr=True)
+        dmrd = master._dispatch_hytera_dmrd.call_args.args[0]
+        self.assertEqual(int.from_bytes(dmrd[5:8], 'big'), 21)
+        self.assertEqual(int.from_bytes(dmrd[8:11], 'big'), 1030)
+        self.assertEqual(dmrd[15] & 0x80, 0)
+
+    def test_unregistered_hmtp_source_is_rejected(self):
+        master = object.__new__(HyteraMasterMixin)
+        master._system = 'HYTERA'
+        master._hytera_registered = True
+        master._hytera_addr = ('198.51.100.8', 50000)
+        master._hytera_hmtp_addr = None
+        master._hytera_trace = False
+        master._hytera_media_received = MagicMock()
+
+        master.hytera_p2p_received(
+            hmtp_fixture()[0], ('198.51.100.7', 62000))
+
+        self.assertIsNone(master._hytera_hmtp_addr)
+        master._hytera_media_received.assert_not_called()
+
+    def test_p2p1_routed_envelope_carries_standard_media(self):
+        body = unwrap_hmtp_media(hmtp_fixture()[-2])
+        self.assertEqual(len(body), 72)
+        self.assertEqual(body[16:18], b'\x22\x22')
+        self.assertEqual(body[18:20], b'\xaa\xaa')
+
+
 class TestHyteraOutboundDispatch(unittest.TestCase):
 
     def setUp(self):
@@ -1129,7 +1188,9 @@ class TestHyteraOutboundDispatch(unittest.TestCase):
         self.master._config = {'REPEAT': True}
         self.master._hytera_registered = True
         self.master._hytera_dmr_addr = ('203.0.113.9', 50001)
+        self.master._hytera_hmtp_addr = None
         self.master._hytera_services = {'dmr': Protocol()}
+        self.master.transport = Transport()
         self.master._hytera_trace = False
         self.master._hytera_voice = HyteraVoiceTranslator(peer_id=235287)
         self.master._hytera_outbound = HyteraOutboundPacer(
@@ -1154,6 +1215,22 @@ class TestHyteraOutboundDispatch(unittest.TestCase):
         self.clock.advance(0.001)
         self.assertEqual(len(writes), 2)
         self.assertEqual(writes[1][0][8], 0x01)
+
+    def test_hr1065_outbound_uses_plain_hmtp_on_the_p2p_endpoint(self):
+        self.master._hytera_dmr_addr = None
+        self.master._hytera_hmtp_addr = ('203.0.113.9', 62000)
+        stream = b'\x10\x20\x30\x40'
+
+        self.assertTrue(self.master.hytera_send_system(
+            dmrd(0x21, self.payload, stream)))
+
+        writes = self.master.transport.writes
+        self.assertEqual(len(writes), 1)
+        self.assertEqual(writes[0][1], ('203.0.113.9', 62000))
+        self.assertEqual(len(writes[0][0]), 76)
+        self.assertTrue(writes[0][0].startswith(b'HMTP'))
+        self.assertEqual(unwrap_hmtp_media(writes[0][0])[18:20], b'\x11\x11')
+        self.assertEqual(self.master._hytera_services['dmr'].transport.writes, [])
 
     def test_private_sms_csbk_is_sent_to_repeater(self):
         self.assertTrue(self.master.hytera_send_system(

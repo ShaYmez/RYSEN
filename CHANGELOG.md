@@ -4,6 +4,22 @@
 
 Work on `master` since **1.6.1**.
 
+### Native Hytera
+
+- RD625 firmware `A8.05.07.001` is field-validated. Repeater 262326
+  (DO1KBL) registered on Europe, completed RDAC, and passed group voice
+  both ways on TG 91 TS1 with subscriber 2623266 at about 16.7 packets/s
+  and 0% loss. It uses the same 72-byte path as the RD985. See
+  [doc/hytera.md](doc/hytera.md).
+- An isolated Hytera address may register, but its DMR voice is not
+  forwarded in either direction. `ISOLATE_IPS` in the Hytera proxy config.
+- HR1065 direct support unwraps captured 76-byte `HMTP` and 86-byte
+  `HMTPP2P1` P2P media into the existing 72-byte Hytera translator, and
+  returns media in the plain `HMTP` envelope to the learned endpoint.
+  Inbound group/private voice on both slots is capture-validated; downlink
+  still needs a controlled RF validation. RDAC-less units require a direct
+  stanza with `HYTERA_REPEATER_ID` and `RDAC_DISCOVERY: False`.
+
 ## Version 1.6.1 (2026-10-23)
 
 Hytera production release, native YSF/NXDN peer legs, parrot hardening, and

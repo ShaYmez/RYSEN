@@ -10,7 +10,8 @@ group SMS (including cross-server OpenBridge), stable downlink pacing on busy
 static talkgroups, selfcare, and cross-client SMS with hotspots and Z3DMR
 (where the client decodes the radio dialect). It is a separate protocol stack
 from Motorola IPSC, field-validated on RD985 repeaters running firmware
-`A9.02.03.009` and `A8.00.09.001`.
+`A9.02.03.009` and `A8.00.09.001`, and on an RD625 running
+`A8.05.07.001`.
 
 This is an independent interoperability implementation. It is not affiliated
 with, endorsed by, or derived from Hytera source code. Hytera's published
@@ -47,9 +48,19 @@ Sample config: [HYTERA-SAMPLE.cfg](../HYTERA-SAMPLE.cfg). Selfcare:
 | Delayed static admission keeps the original Voice LC Header | OK |
 | NAT-aware multi-repeater proxy | OK |
 | Two physical RD985s on one master (A8 and A9) | OK |
+| RD625 group voice both ways (Europe, 26 Oct 2026, TG 91 TS1, 0% loss) | OK |
 | Live RSSI on Linked Systems | OK |
 | Repeater selfcare (claim, statics, disconnect) | OK |
 | Read-only RDAC firmware, model, serial, callsign, TX/RX | OK |
+
+## Tested repeaters
+
+| Repeater | Firmware | Result |
+|----------|----------|--------|
+| RD985 | `A9.02.03.009` | OK. GB7NR: voice, SMS, GPS, parrot, selfcare, OpenBridge |
+| RD985 | `A8.00.09.001` | OK. Registered beside an A9 repeater and passed voice |
+| RD625 | `A8.05.07.001` | OK. Europe, 26 Oct 2026. Repeater 262326, callsign DO1KBL, hardware `RD625-00000000-001000-U1-0-B`. RDAC identity, then group voice both ways on TG 91 TS1 with subscriber 2623266. Same 72-byte media as the RD985, about 16.7 packets/s, 0% loss. SMS and GPS were not part of this contact |
+| HR1065 | — | Native HMTP support implemented from a Europe packet capture on 26 Oct 2026. Registration and inbound group/private voice on both timeslots are capture-validated. Downlink is implemented but still needs one controlled RF validation. The company unit under test has no RDAC |
 
 One RF timeslot carries one call. Other subscribed statics stay linked but
 are blocked for that call and its hangtime. They are not queued.
@@ -93,6 +104,12 @@ timer used to log every inactive bridge each tick and that delayed the
 
 Repeater type is `Slave`. Network Authentication is blank. Enable Voice and
 Data and RDAC.
+
+An HR1065 without RDAC should use a direct (no proxy) `[HYTERA]` stanza with
+`HYTERA_REPEATER_ID` set to the repeater's configured identity and
+`RDAC_DISCOVERY: False`. The captured test unit used ID `1000`. Do not use
+the dynamic proxy for an RDAC-less unit because P2P registration does not
+carry an identity.
 
 Every repeater uses the same public ports:
 
@@ -151,9 +168,12 @@ sidecar's trusted address. Control from any other source is ignored.
 
 ## Voice
 
-Inbound 72-byte media is translated to Homebrew DMRD and enters the same
-bridge path as other masters. Hytera-only sync packets are ignored.
-Duplicate wire sequences are suppressed.
+RD985 and RD625 carry the native 72-byte media on the redirected DMR service
+socket. HR1065 carries that same body on the P2P socket, either as a 76-byte
+`HMTP` frame or an 86-byte `HMTPP2P1` routed frame. RYSEN unwraps both
+inbound forms into the shared translator; outbound HR1065 media uses the
+plain `HMTP` envelope and the learned P2P endpoint. Hytera-only sync packets
+are ignored. Duplicate wire sequences are suppressed.
 
 Outbound voice follows ETSI one-burst-per-60 ms slot cadence on a fixed
 schedule grid with minimum spacing between RF bursts (no back-to-back

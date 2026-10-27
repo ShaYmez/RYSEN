@@ -11,6 +11,8 @@ from hytera_const import (
     media_radio_ids,
     media_timeslot,
     p2p_command_type,
+    unwrap_hmtp_media,
+    wrap_hmtp_media,
 )
 from hytera_master import (
     HyteraMasterMixin,
@@ -173,6 +175,7 @@ class TestHyteraP2P(unittest.TestCase):
         master._hytera_voice = HyteraVoiceTranslator(peer_id=235287)
         master._hytera_outbound = HyteraOutboundPacer(lambda _packet: None)
         master._hytera_dmr_addr = ('203.0.113.9', 50001)
+        master._hytera_hmtp_addr = ('203.0.113.9', 51000)
         master._hytera_rdac_addr = ('203.0.113.9', 50002)
         master._hytera_rdac_step = 9
         master._hytera_rdac_meta = {'firmware': 'stale'}
@@ -183,6 +186,7 @@ class TestHyteraP2P(unittest.TestCase):
             '203.0.113.9', 51000, reset_session=True)
 
         self.assertIsNone(master._hytera_dmr_addr)
+        self.assertIsNone(master._hytera_hmtp_addr)
         self.assertIsNone(master._hytera_rdac_addr)
         self.assertEqual(master._hytera_rdac_step, 0)
         self.assertEqual(master._hytera_rdac_meta, {})
@@ -253,6 +257,28 @@ class TestHyteraMediaLayout(unittest.TestCase):
     def test_short_media_packet_is_rejected(self):
         self.assertIsNone(media_timeslot(b'\x00' * 20))
         self.assertIsNone(media_radio_ids(b'\x00' * 20))
+
+    def test_hr1065_hmtp_envelopes_carry_the_standard_media_body(self):
+        plain = bytes.fromhex(
+            '484d5450bebebebe52000000a100050101000000111111115555000040985304'
+            '3e000802e813e00c01d45d9457ff5dd7d8f5305560063042a01e80140607000'
+            'cb0f301000604000015000000')
+        routed = bytes.fromhex(
+            '484d545050325031a16151d850c3bebebebef2020000a1000501020000002222'
+            'aaaa555500004098c81cf871417d29203afd71bca52d30607102a5b633707d41'
+            'bf5a0307dc5d582c00d7a0f40100100400001e000000')
+
+        plain_body = unwrap_hmtp_media(plain)
+        routed_body = unwrap_hmtp_media(routed)
+        self.assertEqual(len(plain_body), 72)
+        self.assertEqual(media_timeslot(plain_body), 1)
+        self.assertEqual(media_radio_ids(plain_body), (21, 1030))
+        self.assertEqual(len(routed_body), 72)
+        self.assertEqual(media_timeslot(routed_body), 2)
+        self.assertEqual(media_radio_ids(routed_body), (30, 1040))
+        self.assertEqual(wrap_hmtp_media(routed_body), b'HMTP' + routed_body)
+        self.assertIsNone(unwrap_hmtp_media(b'HMTP' + b'\x00' * 71))
+        self.assertIsNone(wrap_hmtp_media(b'\x00' * 71))
 
 
 if __name__ == '__main__':

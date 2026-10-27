@@ -32,6 +32,14 @@ P2P_COMMAND_TYPE_OFFSET = 20
 P2P_REDIRECT_ID = 0x0B
 P2P_REDIRECT_SUFFIX = b'\xff\x01'
 
+# HR106x repeaters carry the same 72-byte media body on the P2P socket.
+# Most packets have a four-byte HMTP prefix. A routed variant observed on an
+# HR1065 adds "P2P1", the destination IPv4 address and a big-endian port.
+HMTP_PREFIX = b'HMTP'
+HMTP_ROUTED_PREFIX = b'HMTPP2P1'
+HMTP_HEADER_LEN = 4
+HMTP_ROUTED_HEADER_LEN = 14
+
 # DMR media packet layout observed on RD6xx/RD9xx IP Multi-site links.
 MEDIA_MIN_LEN = 72
 MEDIA_SOURCE_PORT_OFFSET = 0
@@ -142,6 +150,26 @@ def is_p2p_ping(data):
 
 def is_p2p_ack(data):
     return len(data) >= 9 and data[4:9] == P2P_ACK_MARKER
+
+
+def unwrap_hmtp_media(data):
+    """Return the 72-byte HR106x media body, or None for another packet."""
+    if data.startswith(HMTP_ROUTED_PREFIX):
+        if len(data) != HMTP_ROUTED_HEADER_LEN + MEDIA_MIN_LEN:
+            return None
+        return data[HMTP_ROUTED_HEADER_LEN:]
+    if data.startswith(HMTP_PREFIX):
+        if len(data) != HMTP_HEADER_LEN + MEDIA_MIN_LEN:
+            return None
+        return data[HMTP_HEADER_LEN:]
+    return None
+
+
+def wrap_hmtp_media(data):
+    """Wrap one standard Hytera media body for direct HR106x delivery."""
+    if len(data) != MEDIA_MIN_LEN:
+        return None
+    return HMTP_PREFIX + data
 
 
 def media_timeslot(data):
