@@ -1,11 +1,12 @@
 # RYSEN Features
 
-Version history and feature reference for RYSEN DMRMaster+ (SystemX). Current release: **1.6.1** on `master`.
+Version history and feature reference for RYSEN DMRMaster+ (SystemX). Current release: **1.6.2** on `master`.
 
 Maintained by **Shane Daley M0VUB** (aka **ShaYmez**) — primary RYSEN / SystemX development since v1.3.9. Lineage: HBlink3 (N0MJS) → FreeDMR (G7RZU) → RYSEN.
 
 | Version | Date | Summary |
 |---------|------|---------|
+| 1.6.2 | 2026-10-27 | HR1065 HMTP voice/SMS, RD625 validation, Hytera pacing under jitter |
 | 1.6.1 | 2026-10-23 | Hytera production, YSF/NXDN peer, parrot 9990, unit-routing hardening |
 | 1.6.0 | 2026-10-06 | Topology-aware unit routing, native Hytera, OpenBridge stream ownership |
 | 1.5.4 | 2026-09-22 | Reactor stall/idle hygiene, STAT OBP hairpin, hub device control, parrot UA KeyError |
@@ -173,6 +174,17 @@ Field-hardened on the FreeSTAR fleet after USA Homebrew RPTPING stalls and STAT 
 | STAT OBP hairpin | Originated outbound stubs; drop own-server echo; no BCSQ for own SRC on MAX HOPS |
 | Hub device control | Owner `/device/*` isolated from ops; per-peer statics, drop-dynamic, drop-call |
 | PARROT UA KeyError | PEER parrot echo no longer requires `DEFAULT_UA_TIMER`; TG 9990 is not recorded as a dynamic UA |
+
+---
+
+## v1.6.2 — HR1065 HMTP, RD625, Hytera pacing
+
+| Feature | Detail |
+|---------|--------|
+| HR1065 | Firmware `A3.0.20.010`, radio data `D3.2.01.002`: bidirectional TG91 group voice, private voice and SMS over LTE |
+| HMTP | Direct 76-byte `HMTP` and routed 86-byte `HMTPP2P1` inbound media; plain `HMTP` outbound |
+| RD625 | Firmware `A8.05.07.001`: RDAC and bidirectional TG91 TS1 group voice, 0% loss |
+| Pacing | Overflow trims only above the eight-frame ceiling |
 
 ---
 

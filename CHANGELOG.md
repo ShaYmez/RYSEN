@@ -1,8 +1,11 @@
 # RYSEN DMRMaster+ Changelog
 
-## Unreleased
+## Version 1.6.2 (2026-10-27)
 
-Work on `master` since **1.6.1**.
+HR1065 native HMTP support, RD625 field validation, and Hytera downlink
+pacing under jitter.
+
+Released on **`master`** — `shaymez/rysen:1.6.2` and `:latest`.
 
 ### Native Hytera
 

@@ -1,8 +1,8 @@
 # Native Hytera IP Multi-site Connect
 
-**Status (1.6.1, October 2026):** Feature-complete. No further native Hytera
-functionality is planned; later work is maintenance, fixtures, and operator
-tooling only.
+**Status (1.6.2, October 2026):** RD985 and RD625 support remains
+production-ready. HR1065 firmware `A3.0.20.010` adds field-validated HMTP
+group voice, private voice, and SMS.
 
 Native Hytera support shipped in **1.6.0** and was brought to production
 quality on GB7NR in **1.6.1**: private and
@@ -162,7 +162,7 @@ DMR/RDAC endpoints before renegotiation.
 Run the proxy with `python3 hytera_proxy.py -c hytera-proxy.cfg`, using
 [hytera-proxy-SAMPLE.cfg](../hytera-proxy-SAMPLE.cfg). From a source checkout,
 `docker compose --profile hytera -f docker-configs/docker-compose-stack.yml`
-builds the local image `rysen-hytera-proxy:1.6.1`. That image is not on
+builds the local image `rysen-hytera-proxy:1.6.2`. That image is not on
 Docker Hub.
 
 Generated backends set `PROXY_CONTROL: True` and `PROXY_CONTROL_IP` to the
