@@ -60,7 +60,7 @@ Sample config: [HYTERA-SAMPLE.cfg](../HYTERA-SAMPLE.cfg). Selfcare:
 | RD985 | `A9.02.03.009` | OK. GB7NR: voice, SMS, GPS, parrot, selfcare, OpenBridge |
 | RD985 | `A8.00.09.001` | OK. Registered beside an A9 repeater and passed voice |
 | RD625 | `A8.05.07.001` | OK. Europe, 26 Oct 2026. Repeater 262326, callsign DO1KBL, hardware `RD625-00000000-001000-U1-0-B`. RDAC identity, then group voice both ways on TG 91 TS1 with subscriber 2623266. Same 72-byte media as the RD985, about 16.7 packets/s, 0% loss. SMS and GPS were not part of this contact |
-| HR1065 | — | Native HMTP support implemented from a Europe packet capture on 26 Oct 2026. Registration and inbound group/private voice on both timeslots are capture-validated. Downlink is implemented but still needs one controlled RF validation. The company unit under test has no RDAC |
+| HR1065 | — | OK. Europe, 27 Oct 2026: bidirectional TG91 group voice, private voice and SMS over LTE using HMTP on the P2P socket. Inbound group/private voice on both timeslots was also capture-validated on 26 Oct. The company unit under test has no RDAC |
 
 One RF timeslot carries one call. Other subscribed statics stay linked but
 are blocked for that call and its hangtime. They are not queued.
@@ -183,9 +183,10 @@ catch-up). A three-burst (180 ms) jitter buffer is used at call start,
 aligned with Hytera's documented 60 ms IP jitter-buffer steps. When
 depth exceeds three frames, the scheduler shortens steps to 50 ms until
 the buffer recovers. If depth exceeds eight frames (480 ms), oldest voice
-is shed once down to three frames so a reactor stall cannot stack seconds
-of delay. A replacement OpenBridge stream ID or extra VHEAD does not dump
-that queue while RF playout is already active. Late entry waits for the
+is trimmed only enough to retain that eight-frame ceiling. This prevents a
+single transient overflow from manufacturing a six-burst audio hole while
+still bounding delay. A replacement OpenBridge stream ID or extra VHEAD does
+not dump that queue while RF playout is already active. Late entry waits for the
 repeater's activation headers, then joins the running stream without
 synthesizing a new call start. After playout has started, a missing burst
 stays missing instead of re-buffering the call.

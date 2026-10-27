@@ -604,7 +604,7 @@ class TestHyteraOutboundVoice(unittest.TestCase):
             clock.advance(0.061)
         self.assertEqual([packet[26] for packet in sent], list(range(1, 11)))
 
-    def test_pacer_drops_oldest_when_queue_exceeds_cap(self):
+    def test_pacer_drops_only_overflow_when_queue_exceeds_cap(self):
         clock = Clock()
         sent = []
         pacer = HyteraOutboundPacer(
@@ -616,17 +616,17 @@ class TestHyteraOutboundVoice(unittest.TestCase):
             packet[26] = tag
             return bytes(packet)
 
-        for packet in (voice(1), voice(2), voice(3), voice(4), voice(5), voice(6)):
+        for packet in (voice(1), voice(2), voice(3), voice(4), voice(5)):
             self.assertTrue(pacer.enqueue(1, packet))
 
         clock.advance(0.180)
-        self.assertEqual([packet[26] for packet in sent], [3])
+        self.assertEqual([packet[26] for packet in sent], [2])
         clock.advance(0.060)
-        self.assertEqual([packet[26] for packet in sent], [3, 4])
+        self.assertEqual([packet[26] for packet in sent], [2, 3])
         clock.advance(0.060)
-        self.assertEqual([packet[26] for packet in sent], [3, 4, 5])
+        self.assertEqual([packet[26] for packet in sent], [2, 3, 4])
         clock.advance(0.060)
-        self.assertEqual([packet[26] for packet in sent], [3, 4, 5, 6])
+        self.assertEqual([packet[26] for packet in sent], [2, 3, 4, 5])
 
     def test_pacer_does_not_trim_sms_data_bursts(self):
         clock = Clock()

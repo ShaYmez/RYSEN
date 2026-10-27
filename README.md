@@ -21,9 +21,8 @@ Must be run as **root** on Debian 10+, Pi OS, or recent Ubuntu. See [doc/install
 - **Motorola IPSC** — IP Site Connect repeaters (v1.5.0)
 - **Native Hytera** — Feature-complete IP Multi-site. RD985: voice, SMS,
   parrot, selfcare, OpenBridge. RD625 `A8.05.07.001`: group voice and RDAC.
-  HR1065: direct HMTP transport implemented from field captures, pending
-  controlled downlink validation. A8/A9 firmware, RDAC metadata, live RSSI,
-  multi-repeater proxy (v1.6.0+).
+  HR1065: field-validated HMTP group/private voice and SMS. A8/A9 firmware,
+  RDAC metadata, live RSSI, multi-repeater proxy (v1.6.0+).
   See [doc/hytera.md](doc/hytera.md).
 - **Unit routing** — Local private calls, plus an optional fleet hop when `UNIT_SUB_MAP_URL` is set (v1.6.0). **1.6.1** keeps a mid-path login from replacing the learned home.
 - **Selfcare** — Dashboard-driven static TG and settings via MariaDB
