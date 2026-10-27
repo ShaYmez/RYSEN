@@ -60,7 +60,7 @@ Sample config: [HYTERA-SAMPLE.cfg](../HYTERA-SAMPLE.cfg). Selfcare:
 | RD985 | `A9.02.03.009` | OK. GB7NR: voice, SMS, GPS, parrot, selfcare, OpenBridge |
 | RD985 | `A8.00.09.001` | OK. Registered beside an A9 repeater and passed voice |
 | RD625 | `A8.05.07.001` | OK. Europe, 26 Oct 2026. Repeater 262326, callsign DO1KBL, hardware `RD625-00000000-001000-U1-0-B`. RDAC identity, then group voice both ways on TG 91 TS1 with subscriber 2623266. Same 72-byte media as the RD985, about 16.7 packets/s, 0% loss. SMS and GPS were not part of this contact |
-| HR1065 | — | OK. Europe, 27 Oct 2026: bidirectional TG91 group voice, private voice and SMS over LTE using HMTP on the P2P socket. Inbound group/private voice on both timeslots was also capture-validated on 26 Oct. The company unit under test has no RDAC |
+| HR1065 | `A3.0.20.010` | OK. Radio data `D3.2.01.002`, model `HRA65-00000000-0000DC-U1-0-A`, 400–470 MHz. Europe, 27 Oct 2026: bidirectional TG91 group voice, private voice and SMS over LTE using HMTP on the P2P socket. Inbound group/private voice on both timeslots was also capture-validated on 26 Oct. The company unit under test has no RDAC |
 
 One RF timeslot carries one call. Other subscribed statics stay linked but
 are blocked for that call and its hangtime. They are not queued.

@@ -16,10 +16,10 @@ Work on `master` since **1.6.1**.
 - HR1065 direct support unwraps captured 76-byte `HMTP` and 86-byte
   `HMTPP2P1` P2P media into the existing 72-byte Hytera translator, and
   returns media in the plain `HMTP` envelope to the learned endpoint.
-  Europe field testing on 27 Oct 2026 confirmed bidirectional TG91 group
-  voice, private voice and SMS over LTE. RDAC-less units require a direct
-  stanza with `HYTERA_REPEATER_ID`, `HMTP_MODE: True`, and
-  `RDAC_DISCOVERY: False`.
+  Europe field testing of firmware `A3.0.20.010` / radio data
+  `D3.2.01.002` on 27 Oct 2026 confirmed bidirectional TG91 group voice,
+  private voice and SMS over LTE. RDAC-less units require a direct stanza
+  with `HYTERA_REPEATER_ID`, `HMTP_MODE: True`, and `RDAC_DISCOVERY: False`.
 - A transient outbound queue overflow now drops only the frames above the
   eight-frame ceiling. The field-test capture showed that the previous
   drop-to-three policy manufactured six-burst audio holes from each overflow.
