@@ -225,6 +225,8 @@ Field-validated on RD985 repeaters running firmware `A9.02.03.009` and
 | Monitor/selfcare | Hytera peer reporting, repeater ownership/statics and read-only RDAC metadata |
 | Live RSSI | Homebrew byte 54 on call start and a throttled in-call update; Hytera reads it from the RDAC call-state poll |
 | A8 firmware | RD985 `A8.00.09.001` registered beside an A9 repeater and passed voice |
+| RD625 | `A8.05.07.001` on Europe, 26 Oct 2026: repeater 262326, RDAC, group voice both ways on TG 91 TS1, 72-byte media, 0% loss |
+| HR1065 | Firmware `A3.0.20.010`, radio data `D3.2.01.002`; `HMTP`/`HMTPP2P1` P2P media; field-validated on Europe 27 Oct 2026 with bidirectional TG91 group voice, private voice and SMS over LTE |
 | Cross-client SMS | Anytone and PD685G via RD985 to Homebrew/Z3DMR (client decodes radio dialect) |
 
 Operator setup: [hytera.md](hytera.md). The proxy is a local compose profile (`--profile hytera`); it is not a Docker Hub image.

@@ -72,7 +72,8 @@ OUTBOUND_JITTER_DEPTH = 3
 # but never faster than this minimum spacing from the last RF burst sent.
 OUTBOUND_CATCHUP_INTERVAL = 0.050
 # Stall recovery only (matches Hytera's 8×60 ms upper jitter-buffer setting).
-# Shed down to OUTBOUND_JITTER_DEPTH in one step; do not trim every arrival.
+# Keep the newest OUTBOUND_MAX_QUEUE voice bursts. Dropping all the way back
+# to the jitter target turned one transient overflow into a six-burst hole.
 # SMS/data is not trimmed — a bunched preamble can exceed eight.
 OUTBOUND_MAX_QUEUE = 8
 _DATA_SLOT_TYPES = frozenset({
@@ -230,9 +231,8 @@ class HyteraOutboundPacer:
         queue = self._queues[ts]
         queue.append(packet)
         if self._is_voice_media(packet):
-            if len(queue) > self._max_queue:
-                while len(queue) > self._jitter_depth:
-                    queue.popleft()
+            while len(queue) > self._max_queue:
+                queue.popleft()
         if self._timers[ts] is None:
             now = self._clock.seconds()
             # Buffer only at call acquisition. Once RF playout is active, a

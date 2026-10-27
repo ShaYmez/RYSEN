@@ -55,6 +55,8 @@ from hytera_const import (
     media_slot_type,
     media_timeslot,
     p2p_command_type,
+    unwrap_hmtp_media,
+    wrap_hmtp_media,
 )
 from hytera_rdac_meta import (
     HYTERA_RSSI_POLL_INTERVAL,
@@ -178,6 +180,10 @@ class HyteraMasterMixin:
         self._hytera_listeners = []
         self._hytera_services = {}
         self._hytera_dmr_addr = None
+        self._hytera_hmtp_addr = None
+        self._hytera_hmtp_configured = self._config.get('HMTP_MODE', False)
+        self._hytera_hmtp_mode = self._hytera_hmtp_configured
+        self._hytera_hmtp_learned = False
         self._hytera_rdac_addr = None
         self._hytera_peer_id = int(
             self._config.get('HYTERA_REPEATER_ID', 0)).to_bytes(4, 'big')
@@ -264,6 +270,10 @@ class HyteraMasterMixin:
             self._hytera_voice.reset()
             self._hytera_outbound.reset()
             self._hytera_dmr_addr = None
+            self._hytera_hmtp_addr = None
+            self._hytera_hmtp_mode = getattr(
+                self, '_hytera_hmtp_configured', False)
+            self._hytera_hmtp_learned = False
             self._hytera_rdac_addr = None
             self._hytera_rdac_step = 0
             self._hytera_rdac_meta = {}
@@ -274,6 +284,9 @@ class HyteraMasterMixin:
                 self._peers.pop(old_peer_id, None)
         self._hytera_registered = True
         self._hytera_addr = (host, port)
+        if (getattr(self, '_hytera_hmtp_mode', False)
+                and not getattr(self, '_hytera_hmtp_learned', False)):
+            self._hytera_hmtp_addr = (host, port)
         self._hytera_last_seen = now
         if int_id(self._hytera_peer_id):
             existing = self._peers.get(self._hytera_peer_id)
@@ -318,6 +331,10 @@ class HyteraMasterMixin:
         self._hytera_voice.reset()
         self._hytera_outbound.reset()
         self._hytera_dmr_addr = None
+        self._hytera_hmtp_addr = None
+        self._hytera_hmtp_mode = getattr(
+            self, '_hytera_hmtp_configured', False)
+        self._hytera_hmtp_learned = False
         self._hytera_rdac_addr = None
         self._hytera_proxy_info = None
         self._hytera_rdac_step = 0
@@ -411,6 +428,20 @@ class HyteraMasterMixin:
 
         if self._proxy_control_received(data, addr):
             return
+        media = unwrap_hmtp_media(data)
+        if media is not None:
+            if not self._hytera_registered:
+                return
+            if not self._hytera_addr or host != self._hytera_addr[0]:
+                logger.warning(
+                    '(%s) Hytera HMTP media rejected from unregistered IP %s',
+                    self._system, host)
+                return
+            self._hytera_hmtp_mode = True
+            self._hytera_hmtp_learned = True
+            self._hytera_hmtp_addr = addr
+            self._hytera_media_received(media, addr, hmtp=True)
+            return
         command = p2p_command_type(data)
         if command == P2P_REGISTRATION:
             if not self._registration_allowed(host):
@@ -463,13 +494,16 @@ class HyteraMasterMixin:
                      self._system, host, port, len(data), data.hex())
 
     def hytera_dmr_received(self, data, addr):
+        self._hytera_media_received(data, addr)
+
+    def _hytera_media_received(self, data, addr, hmtp=False):
         if not self._hytera_registered:
             return
         if not self._hytera_addr or addr[0] != self._hytera_addr[0]:
             logger.warning('(%s) Hytera DMR packet rejected from unregistered IP %s',
                            self._system, addr[0])
             return
-        if data == b'\x00':
+        if not hmtp and data == b'\x00':
             self._hytera_dmr_addr = addr
             self._touch_hytera_peer(addr)
             return
@@ -485,8 +519,12 @@ class HyteraMasterMixin:
                 return
             self._record_unknown_hytera_media(data, addr)
             return
-        self._hytera_dmr_addr = addr
-        self._touch_hytera_peer(addr)
+        if hmtp:
+            self._hytera_hmtp_addr = addr
+            self._touch_hytera_peer(addr, update_p2p_addr=True)
+        else:
+            self._hytera_dmr_addr = addr
+            self._touch_hytera_peer(addr)
         if self._hytera_trace and hytera_trace_interesting_media(data):
             ids = media_radio_ids(data)
             logger.debug(
@@ -861,6 +899,17 @@ class HyteraMasterMixin:
         )
 
     def _send_hytera_media(self, packet):
+        if getattr(self, '_hytera_hmtp_addr', None) is not None:
+            wrapped = wrap_hmtp_media(packet)
+            if wrapped is None:
+                return False
+            self.transport.write(wrapped, self._hytera_hmtp_addr)
+            if self._hytera_trace and hytera_trace_interesting_media(packet):
+                logger.debug(
+                    '(%s) Hytera HMTP TX %s:%s len=%s data=%s',
+                    self._system, self._hytera_hmtp_addr[0],
+                    self._hytera_hmtp_addr[1], len(wrapped), wrapped.hex())
+            return True
         protocol = self._hytera_services.get('dmr')
         if (protocol is None or not hasattr(protocol, 'transport')
                 or self._hytera_dmr_addr is None):
@@ -882,7 +931,8 @@ class HyteraMasterMixin:
             reason = 'repeater output disabled'
         elif not self._hytera_registered:
             reason = 'repeater is not registered'
-        elif self._hytera_dmr_addr is None:
+        elif (self._hytera_dmr_addr is None
+              and getattr(self, '_hytera_hmtp_addr', None) is None):
             reason = 'DMR service endpoint has not been negotiated'
         else:
             reason = None

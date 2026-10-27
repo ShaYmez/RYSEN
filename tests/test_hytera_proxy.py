@@ -116,6 +116,30 @@ class TestHyteraProxy(unittest.TestCase):
         self.assertIs(self.proxy.by_repeater_id[235287], session)
         self.assertNotIn(919, self.proxy.by_repeater_id)
 
+    def test_isolated_repeater_keeps_p2p_but_not_voice(self):
+        proxy = HyteraProxy(
+            master=self.MASTER, p2p_port=50000,
+            public_slot_start=50003, backend_slot_start=61000,
+            slots=1, timeout=60, clock=self.clock,
+            isolate_ips=['198.51.0.0/16'])
+        p2p_transport = Transport()
+        dmr = Transport()
+        proxy.set_transport(50000, p2p_transport)
+        proxy.set_transport(50004, dmr)
+        proxy.datagram_received(50000, p2p(P2P_REGISTRATION), self.REPEATER)
+        forwarded = len(p2p_transport.writes)
+        proxy.datagram_received(
+            50000, b'HMTP' + b'\x00' * 72, self.REPEATER)
+        dmr_endpoint = ('198.51.100.7', 62006)
+        proxy.datagram_received(50004, b'media', dmr_endpoint)
+        proxy.datagram_received(50004, b'return', (self.MASTER, 61001))
+
+        self.assertTrue(any(
+            item == (p2p(P2P_REGISTRATION), (self.MASTER, 61000))
+            for item in p2p_transport.writes))
+        self.assertEqual(len(p2p_transport.writes), forwarded)
+        self.assertEqual(dmr.writes, [])
+
     def test_non_registration_cannot_allocate_a_slot(self):
         self.proxy.datagram_received(
             50000, p2p(P2P_DMR_STARTUP), self.REPEATER)
