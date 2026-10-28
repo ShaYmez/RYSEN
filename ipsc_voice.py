@@ -225,6 +225,7 @@ class IpscVoiceTranslator:
             self._del_private[ts] = False
             self._del_stream_id[ts] = 0
             self._del_rtp_ts[ts] = 0
+            self._ta_tx[ts] = None
 
     def set_send_callback(self, callback):
         """Register callback(bytes) for paced outbound IPSC voice delivery."""
@@ -694,6 +695,7 @@ class IpscVoiceTranslator:
                 return None
             self._del_hbp_stream[ts] = hbp_stream
             lc = _decode_lc_from_dmrd(payload)
+            self._bind_ta(self._ta_tx, ts, src_sub)
             self._del_stream_ctr = (self._del_stream_ctr + 1) & 0xFF
             self._del_stream_id[ts] = self._del_stream_ctr
             self._del_private[ts] = private_call

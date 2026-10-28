@@ -106,6 +106,25 @@ class TalkerAliasEncodeTests(unittest.TestCase):
         self.assertEqual(seen, 'DO1KBL')
         self.assertEqual(ta.resolve(2623266), 'DO1KBL')
 
+    def test_new_superframe_discards_partial_embedded(self):
+        src = (2623266).to_bytes(3, 'big')
+        torn = ta.encode_emblc(ta.encode_lc_blocks('DO1KBL')[0])
+        whole = ta.encode_emblc(ta.encode_lc_blocks('M0VUB')[0])
+        for vseq in (2, 3, 4):
+            self.assertEqual(
+                ta.note_embedded(src, HBPF_VOICE, vseq, _voice_payload(torn[vseq])),
+                '')
+        self.assertEqual(set(ta._assemblers[2623266].frags), {2, 3, 4})
+        self.assertEqual(
+            ta.note_embedded(src, HBPF_VOICE, 1, _voice_payload(whole[1])),
+            '')
+        self.assertEqual(set(ta._assemblers[2623266].frags), {1})
+        seen = ''
+        for vseq in (2, 3, 4):
+            seen = ta.note_embedded(src, HBPF_VOICE, vseq, _voice_payload(whole[vseq]))
+        self.assertEqual(seen, 'M0VUB')
+        self.assertEqual(ta.resolve(2623266), 'M0VUB')
+
     def test_data_sync_is_not_alias(self):
         self.assertEqual(
             ta.note_embedded(b'\x00\x01\x02', HBPF_DATA_SYNC, 3, b'\x00' * 33),

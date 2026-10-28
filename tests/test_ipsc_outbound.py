@@ -374,6 +374,39 @@ class TestIpscOutbound(unittest.TestCase):
         self.assertEqual(out1[6:9], bytes_3(5000))
         self.assertEqual(out1[9:12], caller)
 
+    def test_reflector_session_drops_stale_talker_alias(self):
+        import talker_alias
+        tr = IpscVoiceTranslator(master_id=self.MASTER_ID)
+        tr._ta_tx[1] = talker_alias.AliasSchedule(111)
+        tr._ta_tx[2] = talker_alias.AliasSchedule(222)
+        tr.begin_reflector_encode_session()
+        self.assertIsNone(tr._ta_tx[1])
+        self.assertIsNone(tr._ta_tx[2])
+
+        talker_alias.set_tables({2348831: 'M0VUB', 2623266: 'DO1KBL'})
+        try:
+            first_head = next(pkt_gen(
+                bytes_3(2348831), bytes_3(91), b'\x00\x03\x96\x77', 1,
+                [words['silence']]))
+            self.assertIsNotNone(tr.encode(first_head))
+            ts = 2 if (first_head[15] & 0x80) else 1
+            sched = tr._ta_tx[ts]
+            self.assertEqual(sched.src, 2348831)
+            sched._index = 4
+            self.assertIsNone(tr.encode(first_head))
+            self.assertIs(tr._ta_tx[ts], sched)
+            self.assertEqual(sched._index, 4)
+
+            second_head = next(pkt_gen(
+                bytes_3(2623266), bytes_3(91), b'\x00\x03\x96\x77', 1,
+                [words['silence']]))
+            self.assertIsNotNone(tr.encode(second_head))
+            self.assertEqual(tr._ta_tx[ts].src, 2623266)
+            self.assertIsNot(tr._ta_tx[ts], sched)
+        finally:
+            talker_alias.set_enabled(True)
+            talker_alias.set_tables()
+
     def test_begin_reflector_encode_session_keeps_call_seq(self):
         tr = IpscVoiceTranslator(master_id=self.MASTER_ID)
         tr._del_stream_ctr = 5

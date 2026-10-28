@@ -26,6 +26,10 @@ Talker Alias on bridged voice.
   cadence. Voice that arrives before the header is repeated unchanged.
   A repeat schedule with no terminator is dropped after a few seconds of
   silence.
+- A dial-a-TG prompt starts a fresh alias schedule. An incomplete embedded
+  superframe is discarded when the next one begins, so a torn burst is not
+  learned as the callsign. Hytera forwards the bridged DMR burst, which
+  already carries that alias.
 
 ## Version 1.6.2 (2026-10-27)
 

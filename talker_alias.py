@@ -273,7 +273,9 @@ def note_embedded(src, frame_type, vseq, payload):
         return ''
     box = _assembler_for(src)
     frags = getattr(box, 'frags', None)
-    if frags is None:
+    # Burst B opens a superframe. Leftover fragments from a torn one must not
+    # be decoded together with the new burst.
+    if frags is None or vseq == 1:
         box.frags = {}
         frags = box.frags
     frags[vseq] = bits[116:148]
