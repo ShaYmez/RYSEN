@@ -1,16 +1,40 @@
 #!/usr/bin/env python3
 """Talker Alias encode, DMRA ingest, and embedded-LC rotation."""
+import os
+import tempfile
+import time
 import unittest
 
 from bitarray import bitarray
 from dmr_utils3 import bptc
 
 import talker_alias as ta
-from const import DMRA, HBPF_DATA_SYNC, HBPF_SLT_VHEAD, HBPF_VOICE
+from const import DMRA, HBPF_DATA_SYNC, HBPF_SLT_VHEAD, HBPF_SLT_VTERM, HBPF_VOICE
+from ipsc_const import VOICE_HEAD
+from ipsc_voice import IpscVoiceTranslator
 
 
 def _decode_emb(emb):
     return bptc.decode_emblc(emb[1] + emb[2] + emb[3] + emb[4])
+
+
+def _repeat_packet(stream, frame_type, vseq, src=2623266, dst=91):
+    raw = bytearray(55)
+    raw[0:4] = b'DMRD'
+    raw[5:8] = int(src).to_bytes(3, 'big')
+    raw[8:11] = int(dst).to_bytes(3, 'big')
+    raw[15] = (frame_type << 4) | vseq
+    raw[16:20] = stream
+    return bytes(raw)
+
+
+def _ipsc_head(seq, src=2623266):
+    data = bytearray(31)
+    data[1:5] = b'\x00\x00\x00\x01'
+    data[5] = seq
+    data[6:9] = int(src).to_bytes(3, 'big')
+    data[9:12] = (91).to_bytes(3, 'big')
+    return bytes(data)
 
 
 def _voice_payload(frag):
@@ -167,6 +191,121 @@ class TalkerAliasEncodeTests(unittest.TestCase):
             frags.append(bits[116:148])
         lc = bptc.decode_emblc(frags[0] + frags[1] + frags[2] + frags[3])
         self.assertEqual(lc[0] & 0x3F, 0x04)
+
+    def test_duplicate_header_does_not_restart_repeat(self):
+        ta.set_tables({2623266: 'DO1KBL'})
+        stream = b'\x11\x22\x33\x44'
+        head = _repeat_packet(stream, HBPF_DATA_SYNC, HBPF_SLT_VHEAD)
+        ta.embed_repeat(head, 2623266, HBPF_DATA_SYNC, HBPF_SLT_VHEAD, stream)
+        for vseq in (1, 2, 3, 4):
+            original = _repeat_packet(stream, HBPF_VOICE, vseq)
+            self.assertEqual(
+                ta.embed_repeat(original, 2623266, HBPF_VOICE, vseq, stream),
+                original)
+        started = _repeat_packet(stream, HBPF_VOICE, 1)
+        self.assertNotEqual(
+            ta.embed_repeat(started, 2623266, HBPF_VOICE, 1, stream),
+            started)
+        sched = ta._repeat[stream]
+        self.assertEqual(
+            ta.embed_repeat(head, 2623266, HBPF_DATA_SYNC, HBPF_SLT_VHEAD, stream),
+            head)
+        self.assertIs(ta._repeat[stream], sched)
+        self.assertGreater(sched._index, 0)
+        continued = _repeat_packet(stream, HBPF_VOICE, 2)
+        self.assertNotEqual(
+            ta.embed_repeat(continued, 2623266, HBPF_VOICE, 2, stream),
+            continued)
+
+    def test_header_from_another_source_starts_a_new_schedule(self):
+        ta.set_tables({2623266: 'DO1KBL', 100: 'M0VUB'})
+        stream = b'\x11\x22\x33\x44'
+        head = _repeat_packet(stream, HBPF_DATA_SYNC, HBPF_SLT_VHEAD)
+        ta.embed_repeat(head, 2623266, HBPF_DATA_SYNC, HBPF_SLT_VHEAD, stream)
+        for vseq in (1, 2, 3, 4, 1):
+            original = _repeat_packet(stream, HBPF_VOICE, vseq)
+            ta.embed_repeat(original, 2623266, HBPF_VOICE, vseq, stream)
+        other = _repeat_packet(stream, HBPF_DATA_SYNC, HBPF_SLT_VHEAD, src=100)
+        ta.embed_repeat(other, 100, HBPF_DATA_SYNC, HBPF_SLT_VHEAD, stream)
+        self.assertEqual(ta._repeat[stream].src, 100)
+        for vseq in (2, 3, 4):
+            original = _repeat_packet(stream, HBPF_VOICE, vseq, src=100)
+            self.assertEqual(
+                ta.embed_repeat(original, 100, HBPF_VOICE, vseq, stream),
+                original)
+
+    def test_voice_before_header_is_not_rewritten(self):
+        ta.set_tables({2623266: 'DO1KBL'})
+        stream = b'\xaa\xbb\xcc\xdd'
+        for vseq in (1, 2, 3, 4):
+            original = _repeat_packet(stream, HBPF_VOICE, vseq)
+            self.assertEqual(
+                ta.embed_repeat(original, 2623266, HBPF_VOICE, vseq, stream),
+                original)
+        self.assertNotIn(stream, ta._repeat)
+        head = _repeat_packet(stream, HBPF_DATA_SYNC, HBPF_SLT_VHEAD)
+        ta.embed_repeat(head, 2623266, HBPF_DATA_SYNC, HBPF_SLT_VHEAD, stream)
+        for vseq in (1, 2, 3, 4):
+            original = _repeat_packet(stream, HBPF_VOICE, vseq)
+            self.assertEqual(
+                ta.embed_repeat(original, 2623266, HBPF_VOICE, vseq, stream),
+                original)
+        alias = _repeat_packet(stream, HBPF_VOICE, 1)
+        self.assertNotEqual(
+            ta.embed_repeat(alias, 2623266, HBPF_VOICE, 1, stream),
+            alias)
+
+    def test_missing_terminator_expires(self):
+        ta.set_tables({2623266: 'DO1KBL'})
+        stream = b'\x11\x22\x33\x44'
+        other = b'\x55\x66\x77\x88'
+        head = _repeat_packet(stream, HBPF_DATA_SYNC, HBPF_SLT_VHEAD)
+        ta.embed_repeat(head, 2623266, HBPF_DATA_SYNC, HBPF_SLT_VHEAD, stream)
+        self.assertIn(stream, ta._repeat)
+        ta._repeat[stream].seen = time.monotonic() - (ta._REPEAT_IDLE + 1)
+        other_head = _repeat_packet(other, HBPF_DATA_SYNC, HBPF_SLT_VHEAD)
+        ta.embed_repeat(other_head, 2623266, HBPF_DATA_SYNC, HBPF_SLT_VHEAD, other)
+        self.assertNotIn(stream, ta._repeat)
+        self.assertIn(other, ta._repeat)
+        term = _repeat_packet(other, HBPF_DATA_SYNC, HBPF_SLT_VTERM)
+        ta.embed_repeat(term, 2623266, HBPF_DATA_SYNC, HBPF_SLT_VTERM, other)
+        self.assertNotIn(other, ta._repeat)
+
+    def test_config_file_toggles_without_restart(self):
+        handle, path = tempfile.mkstemp(suffix='.cfg')
+        try:
+            os.write(handle, b'[GLOBAL]\nTALKER_ALIAS: False\n')
+            os.close(handle)
+            self.assertIs(ta.refresh_from_file(path), False)
+            self.assertFalse(ta.enabled())
+            with open(path, 'w', encoding='utf-8') as fh:
+                fh.write('[GLOBAL]\nTALKER_ALIAS: True\n')
+            self.assertIs(ta.refresh_from_file(path), True)
+            self.assertTrue(ta.enabled())
+            self.assertIsNone(ta.refresh_from_file(path + '.missing'))
+            self.assertTrue(ta.enabled())
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
+
+    def test_ipsc_duplicate_head_keeps_schedule(self):
+        translator = IpscVoiceTranslator()
+        self.assertIsNotNone(translator.translate(_ipsc_head(7), 1, VOICE_HEAD))
+        sched = translator._ta_rx[1]
+        sched._sent_voice = True
+        sched._index = 2
+        sched._open_pos = 3
+        self.assertIsNotNone(translator.translate(_ipsc_head(7), 1, VOICE_HEAD))
+        self.assertIs(translator._ta_rx[1], sched)
+        self.assertTrue(sched._sent_voice)
+        self.assertEqual(sched._index, 2)
+        self.assertEqual(sched._open_pos, 3)
+        self.assertIsNotNone(translator.translate(_ipsc_head(8), 1, VOICE_HEAD))
+        self.assertIsNot(translator._ta_rx[1], sched)
+        kept = translator._ta_rx[1]
+        self.assertIsNotNone(translator.translate(_ipsc_head(8, src=100), 1, VOICE_HEAD))
+        self.assertIsNot(translator._ta_rx[1], kept)
+        self.assertEqual(translator._ta_rx[1].src, 100)
 
 
 if __name__ == '__main__':

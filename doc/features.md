@@ -255,7 +255,7 @@ Outbound voice carries the transmitting station's talker alias in ETSI embedded 
 | Subscriber list | Callsign from `subscriber_ids` / `local_subscriber_ids` |
 | Neither | No alias; embedded LC stays the talkgroup |
 
-`[GLOBAL] TALKER_ALIAS` defaults to `True`. `False` leaves every embedded burst as talkgroup LC. Homebrew repeat, OpenBridge, Hytera, and IPSC voice all use this path. On a master, voice superframes repeated to other peers stay as received; alias superframes replace only the embedded link control. Voice audio is unchanged.
+`[GLOBAL] TALKER_ALIAS` defaults to `True`. `False` leaves every embedded burst as talkgroup LC. The process re-reads that flag about every 26 seconds and when subscriber aliases reload, so an edit applies without a restart. Homebrew repeat, OpenBridge, Hytera, and IPSC voice all use this path. On a master, voice superframes repeated to other peers stay as received; alias superframes replace only the embedded link control. A second voice header for the same over keeps the cadence already in progress. Voice that arrives before the header is repeated as received. Voice audio is unchanged.
 
 ---
 

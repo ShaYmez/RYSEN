@@ -1957,6 +1957,20 @@ def threadAlias():
     logger.debug('(ALIAS) starting alias thread')
     reactor.callInThread(aliasb)
 
+def _refresh_talker_alias_flag():
+    """Apply [GLOBAL] TALKER_ALIAS from the config file the process was started with."""
+    path = CONFIG.get('_CONFIG_FILE')
+    if not path:
+        return
+    flag = talker_alias.refresh_from_file(path)
+    if flag is None or 'GLOBAL' not in CONFIG:
+        return
+    previous = CONFIG['GLOBAL'].get('TALKER_ALIAS', True)
+    CONFIG['GLOBAL']['TALKER_ALIAS'] = flag
+    if flag != previous:
+        logger.info('(GLOBAL) TALKER_ALIAS is %s', 'enabled' if flag else 'disabled')
+
+
 def setAlias(_peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids):
     global peer_ids, subscriber_ids, talkgroup_ids, local_subscriber_ids, server_ids
     peer_ids = coalesce_alias_dict(_peer_ids, CONFIG.get('_PEER_IDS'), 'peer_ids')
@@ -1982,6 +1996,7 @@ def setAlias(_peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids, 
     from nxdn_aliases import attach_callsign_index
     attach_callsign_index(CONFIG)
     talker_alias.set_tables(local_subscriber_ids, subscriber_ids)
+    _refresh_talker_alias_flag()
     
 def aliasb():
     _peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids = mk_aliases(CONFIG)
@@ -2072,6 +2087,9 @@ def ident():
                         break
 
 def options_config():
+    # TALKER_ALIAS is a file flag, not peer OPTIONS. Re-read it on every tick
+    # so an edit applies without a restart, including when OPTIONS are clean.
+    _refresh_talker_alias_flag()
     # RPTO/selfcare/disconnect paths mark this dirty. Keep the 26-second timer
     # for coalescing, but never rebuild unchanged bridge state on the reactor.
     if not CONFIG.get('_OPTIONS_DIRTY', True):
@@ -6521,6 +6539,7 @@ if __name__ == '__main__':
     #else:
     
     CONFIG = config.build_config(cli_args.CONFIG_FILE)
+    CONFIG['_CONFIG_FILE'] = cli_args.CONFIG_FILE
     talker_alias.set_enabled(CONFIG['GLOBAL'].get('TALKER_ALIAS', True))
 
     _ipsc_enabled = any(

@@ -19,7 +19,13 @@ Talker Alias on bridged voice.
   id. The radio's alias replaces the database callsign for that DMR ID.
 - `[GLOBAL] TALKER_ALIAS` defaults to on. Set it `False` to leave embedded
   signalling as talkgroup LC only. Existing configs pick up the default
-  without an edit.
+  without an edit. The running process re-reads that flag on the options
+  timer and when subscriber aliases reload, so the change does not wait
+  for a restart.
+- A repeated voice header for the same over does not restart the alias
+  cadence. Voice that arrives before the header is repeated unchanged.
+  A repeat schedule with no terminator is dropped after a few seconds of
+  silence.
 
 ## Version 1.6.2 (2026-10-27)
 

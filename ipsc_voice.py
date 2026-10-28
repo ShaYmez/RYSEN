@@ -274,7 +274,8 @@ class IpscVoiceTranslator:
                     and (self._out_ipsc_stream_id[ts] != ipsc_stream_id
                          or self._out_ipsc_peer_id[ts] != peer_id_b)):
                 self._clear_ts(ts)
-            if self._out_stream_id[ts] is None:
+            new_stream = self._out_stream_id[ts] is None
+            if new_stream:
                 self._out_stream_id[ts] = os.urandom(4)
                 self._out_ipsc_stream_id[ts] = ipsc_stream_id
                 self._out_ipsc_peer_id[ts] = peer_id_b
@@ -282,7 +283,11 @@ class IpscVoiceTranslator:
             lc = LC_OPT + dst_group + src_sub
             self._out_lc[ts] = lc
             self._out_emb_lc[ts] = bptc.encode_emblc(lc)
-            self._bind_ta(self._ta_rx, ts, src_sub)
+            # A repeated header for the same stream must not restart alias rotation.
+            sched = self._ta_rx.get(ts)
+            src_id = talker_alias._as_int(src_sub)
+            if new_stream or sched is None or sched.src != src_id:
+                self._bind_ta(self._ta_rx, ts, src_sub)
             full_lc = bptc.encode_header_lc(lc)
             frame_bits = (
                 full_lc[0:98]

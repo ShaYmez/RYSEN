@@ -19,6 +19,7 @@ embedded LC so the destination still has a group voice LC on the first
 superframe and on a regular cadence after that.
 """
 
+import configparser
 import logging
 import time
 
@@ -26,7 +27,7 @@ from bitarray import bitarray
 from dmr_utils3 import bptc, crc, hamming
 from dmr_utils3.utils import int_id
 
-from const import HBPF_DATA_SYNC, HBPF_SLT_VHEAD, HBPF_SLT_VTERM, HBPF_VOICE, LC_OPT
+from const import HBPF_DATA_SYNC, HBPF_SLT_VHEAD, HBPF_SLT_VTERM, HBPF_VOICE
 
 logger = logging.getLogger('RYSEN.talker_alias')
 
@@ -38,6 +39,9 @@ _TA_FLCOS = (FLCO_HEADER, FLCO_BLOCK1, FLCO_BLOCK2, FLCO_BLOCK3)
 
 _HEARD_TTL = 600.0
 _MAX_CHARS = 31
+# A missing voice terminator must not pin a repeat schedule until the cache
+# overflows. Silence longer than this means the over has ended.
+_REPEAT_IDLE = 3.0
 _repeat = {}
 
 _enabled = True
@@ -60,6 +64,24 @@ def set_tables(*tables):
 
 def enabled():
     return _enabled
+
+
+def refresh_from_file(path):
+    """Re-read ``[GLOBAL] TALKER_ALIAS`` and apply it. None if the file is unreadable."""
+    if not path:
+        return None
+    parser = configparser.ConfigParser()
+    try:
+        if not parser.read(path):
+            return None
+        if not parser.has_section('GLOBAL'):
+            return None
+        flag = parser.getboolean('GLOBAL', 'TALKER_ALIAS', fallback=True)
+    except Exception:
+        logger.debug('Talker Alias config refresh failed', exc_info=True)
+        return None
+    set_enabled(flag)
+    return flag
 
 
 def _as_int(src):
@@ -386,6 +408,8 @@ class AliasSchedule:
         self._open_pos = None
         self._sent_voice = False
         self.voice_emb = None
+        self.header_seen = False
+        self.seen = time.monotonic()
 
     def set_text(self, text):
         text = text or ''
@@ -471,14 +495,50 @@ def _trim_repeat():
         _repeat.pop(key, None)
 
 
+def _expire_repeat():
+    now = time.monotonic()
+    stale = [
+        key for key, sched in _repeat.items()
+        if now - sched.seen > _REPEAT_IDLE
+    ]
+    for key in stale:
+        _repeat.pop(key, None)
+
+
+def _bind_repeat_header(stream_id, src, payload):
+    """Keep an in-progress cadence when the same subscriber repeats a header.
+
+    A new source starts a new schedule. The decoded header LC is the voice
+    superframe identity. If the header cannot be decoded, an empty dict is
+    only that identity: repeat leaves those bursts unchanged and never writes
+    a guessed group LC.
+    """
+    src_id = _as_int(src)
+    voice = _voice_emb_from_header(payload)
+    if voice is None:
+        voice = {}
+    sched = _repeat.get(stream_id)
+    if sched is None or sched.src != src_id:
+        sched = AliasSchedule(src)
+        _repeat[stream_id] = sched
+        _trim_repeat()
+    elif sched.voice_emb is not None and sched._current is sched.voice_emb:
+        sched._current = voice
+    sched.voice_emb = voice
+    sched.header_seen = True
+    sched.seen = time.monotonic()
+
+
 def embed_repeat(packet, src, frame_type, vseq, stream_id):
     """Splice talker alias into a locally repeated DMRD frame.
 
     Voice superframes are left as received. Alias superframes replace only
     the embedded-LC bits, so hotspots on this master see the callsign too.
+    Bursts that arrive before the voice header are not rewritten.
     """
     if not _enabled or not packet or len(packet) < 53 or not stream_id:
         return packet
+    _expire_repeat()
     payload = packet[20:53]
     try:
         note_embedded(src, frame_type, vseq, payload)
@@ -488,19 +548,15 @@ def embed_repeat(packet, src, frame_type, vseq, stream_id):
         _repeat.pop(stream_id, None)
         return packet
     if frame_type == HBPF_DATA_SYNC and vseq == HBPF_SLT_VHEAD:
-        sched = AliasSchedule(src)
-        sched.voice_emb = _voice_emb_from_header(payload)
-        _repeat[stream_id] = sched
-        _trim_repeat()
-        return packet
-    if frame_type != HBPF_VOICE or vseq not in (1, 2, 3, 4):
+        _bind_repeat_header(stream_id, src, payload)
         return packet
     sched = _repeat.get(stream_id)
-    if sched is None:
-        sched = AliasSchedule(src)
-        _repeat[stream_id] = sched
-    if sched.voice_emb is None:
-        sched.voice_emb = bptc.encode_emblc(LC_OPT + packet[8:11] + packet[5:8])
+    if sched is not None:
+        sched.seen = time.monotonic()
+    if frame_type != HBPF_VOICE or vseq not in (1, 2, 3, 4):
+        return packet
+    if sched is None or not sched.header_seen or sched.voice_emb is None:
+        return packet
     frag = sched.repeat_fragment(frame_type, vseq, sched.voice_emb)
     if frag is None:
         return packet
