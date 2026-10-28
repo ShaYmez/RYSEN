@@ -232,7 +232,18 @@ class Proxy(DatagramProtocol):
                     return
                 _peer_id = data[11:15]
             elif _command == DMRA:              # DMRAlias -- Talker Alias information
-                _peer_id = data[4:8]
+                # 19-byte DMRA carries the repeater id. Current MMDVMHost sends
+                # 15 bytes with the radio id only, so match the logged-in socket.
+                if len(data) >= 19:
+                    _peer_id = data[4:8]
+                else:
+                    _peer_id = None
+                    for pid, peer in self.peerTrack.items():
+                        if peer.get('shost') == host and peer.get('sport') == port:
+                            _peer_id = pid
+                            break
+                    if not _peer_id:
+                        return
             elif _command == RPTL:              # RPTLogin -- a repeater wants to login
                 _peer_id = data[4:8]
             elif _command == RPTK:              # Repeater has answered our login challenge

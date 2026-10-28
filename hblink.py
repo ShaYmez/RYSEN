@@ -54,6 +54,7 @@ from bridge_helpers import (
     dest_peer_rx_blocked, release_dropped_stream, forget_peer_rx_state,
     stream_is_dropped, obp_talkgroup_acl_applies,
 )
+import talker_alias
 
 # Imports for the reporting server
 import pickle
@@ -1201,7 +1202,13 @@ class HBSYSTEM(DatagramProtocol):
                             and _dtype_vseq == HBPF_SLT_VTERM):
                         release_dropped_stream(
                             self._system, _stream_id, slot=_slot)
-                    pkt = [_data[:11], '', _data[15:]]
+                    try:
+                        _tx = talker_alias.embed_repeat(
+                            _data, _rf_src, _frame_type, _dtype_vseq, _stream_id)
+                    except Exception:
+                        logger.debug('(%s) Talker Alias repeat failed', self._system, exc_info=True)
+                        _tx = _data
+                    pkt = [_tx[:11], '', _tx[15:]]
                     for _peer in self._peers:
                         if _peer != _peer_id:
                             if dest_peer_rx_blocked(
@@ -1442,8 +1449,22 @@ class HBSYSTEM(DatagramProtocol):
                     logger.info('(%s) Ping from Radio ID that is not logged in (no reply): %s', self._system, int_id(_peer_id))
         
         elif _command == DMRA:
-                _peer_id = _data[4:8]
-                logger.debug('(%s) Peer has sent Talker Alias packet %s', self._system, _data)
+                _peer_id = _data[4:8] if len(_data) >= 19 else None
+                if _peer_id is None:
+                    for pid, peer in self._peers.items():
+                        if (peer.get('CONNECTION') == 'YES'
+                                and peer.get('SOCKADDR') == _sockaddr):
+                            _peer_id = pid
+                            break
+                _peer = self._peers.get(_peer_id) if _peer_id else None
+                if (_peer and _peer.get('CONNECTION') == 'YES'
+                        and _peer.get('SOCKADDR') == _sockaddr):
+                    try:
+                        talker_alias.note_dmra(_data)
+                    except Exception:
+                        logger.debug('(%s) Talker Alias packet ignored', self._system, exc_info=True)
+                else:
+                    logger.debug('(%s) Talker Alias from a radio that is not logged in', self._system)
                 
         elif _command == PRIN:
                 logger.info('(%s) *ProxyInfo* Connection from IP:Port: %s', self._system, _data.decode('utf8')[4:])
@@ -1617,6 +1638,12 @@ class HBSYSTEM(DatagramProtocol):
                 if self._config['LOOSE'] or _peer_id == self._config['RADIO_ID']: # Validate the Radio_ID unless using loose validation
                     self._stats['CONNECTION'] = 'NO'
                     logger.info('(%s) MSTCL Recieved', self._system)
+
+            elif _command == DMRA:
+                try:
+                    talker_alias.note_dmra(_data)
+                except Exception:
+                    logger.debug('(%s) Talker Alias packet ignored', self._system, exc_info=True)
 
             else:
                 logger.error('(%s) Received an invalid command in packet: %s', self._system, ahex(_data))

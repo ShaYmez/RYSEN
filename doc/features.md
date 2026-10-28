@@ -245,6 +245,20 @@ Operator setup: [hytera.md](hytera.md). The proxy is a local compose profile (`-
 
 ---
 
+## Talker Alias
+
+Outbound voice carries the transmitting station's talker alias in ETSI embedded link control (FLCO `0x04`–`0x07`, 7-bit). The voice header and the first superframe stay group or unit LC. Later superframes alternate the alias with voice LC, so late entry still learns the talkgroup and the receiving radio can show the callsign.
+
+| Source | What is shown |
+|--------|----------------|
+| Radio `DMRA` or embedded alias | The text the radio sent |
+| Subscriber list | Callsign from `subscriber_ids` / `local_subscriber_ids` |
+| Neither | No alias; embedded LC stays the talkgroup |
+
+`[GLOBAL] TALKER_ALIAS` defaults to `True`. `False` leaves every embedded burst as talkgroup LC. Homebrew repeat, OpenBridge, Hytera, and IPSC voice all use this path. On a master, voice superframes repeated to other peers stay as received; alias superframes replace only the embedded link control. Voice audio is unchanged.
+
+---
+
 ## Related documentation
 
 - [architecture.md](architecture.md) — stack overview
