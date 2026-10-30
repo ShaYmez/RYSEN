@@ -42,6 +42,9 @@ class TestHyteraConfig(unittest.TestCase):
         self.assertFalse(parsed['SYSTEMS']['HYTERA']['SINGLE_MODE'])
         self.assertFalse(parsed['SYSTEMS']['IPSC']['SINGLE_MODE'])
         self.assertTrue(parsed['SYSTEMS']['SYSTEM']['SINGLE_MODE'])
+        self.assertNotIn('ALIAS', parsed['SYSTEMS']['IPSC'])
+        self.assertNotIn('ALIAS', parsed['SYSTEMS']['HYTERA'])
+        self.assertNotIn('ALIAS', parsed['SYSTEMS']['SYSTEM'])
 
 
 if __name__ == '__main__':

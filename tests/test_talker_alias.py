@@ -362,6 +362,18 @@ class TalkerAliasEncodeTests(unittest.TestCase):
         ta.set_enabled(False)
         self.assertFalse(ta.destination_enabled(
             {'MODE': 'HYTERA', 'OPTIONS': 'ALIAS=1'}))
+        ta.set_enabled(True)
+        self.assertFalse(ta.destination_enabled(
+            {'MODE': 'IPSC', 'ALIAS': False}))
+        self.assertFalse(ta.destination_enabled(
+            {'MODE': 'HYTERA', 'ALIAS': False}))
+        self.assertFalse(ta.destination_enabled(
+            {'MODE': 'MASTER', 'ALIAS': False}))
+        self.assertTrue(ta.destination_enabled(
+            {'MODE': 'MASTER', 'ALIAS': False},
+            {'OPTIONS': 'ALIAS=1'}))
+        self.assertFalse(ta.destination_enabled(
+            {'MODE': 'IPSC', 'ALIAS': False, 'OPTIONS': 'TS2=2350;'}))
 
     def test_strip_embedded_alias_restores_voice_lc(self):
         voice = ta.encode_emblc(b'\x00' * 9)

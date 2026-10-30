@@ -99,56 +99,55 @@ flowchart TD
   peer -->|0| plain[Talkgroup LC to this radio]
   peer -->|1| send[Alias to this radio]
   peer -->|Omitted| kind{What is this destination?}
-  kind -->|MMDVM peer| master{Master cfg OPTIONS has ALIAS=?}
-  kind -->|Hytera or IPSC| system{Repeater OPTIONS has ALIAS=?}
+  kind -->|Homebrew, Hytera, or IPSC| stanza{This stanza ALIAS?}
   kind -->|OpenBridge| trunk[Alias stays in the trunk]
-  master -->|0| plain
-  master -->|1 or omitted| send
-  system -->|0| plain
-  system -->|1 or omitted| send
+  stanza -->|False| plain
+  stanza -->|True or omitted| send
   trunk --> far[The next master decides per radio]
 ```
 
-`[GLOBAL] TALKER_ALIAS` is the process kill. One RYSEN process serves every
-master, Hytera, IPSC slot, and the OpenBridge trunk. A key on one master
-stanza cannot do that. The code default is on when the key is absent. The
-sample configs ship with `False`, so a new install does not send an alias
-until someone turns it on.
+`[GLOBAL] TALKER_ALIAS` is the process kill. `False` stops every master
+and the OpenBridge trunk. The code default is on when the key is absent.
+The sample configs ship with `False`, so a new install does not send an
+alias until someone turns it on.
 
 ```ini
 [GLOBAL]
 TALKER_ALIAS: True
 ```
 
-The master stanza default is the existing OPTIONS line, not a second
-`TALKER_ALIAS` key. Peers that do not send their own `ALIAS=` follow it.
-The live OPTIONS string on a shared master is whichever peer wrote last, so
-the default is read from the configured line only.
+Each Homebrew, Hytera, and IPSC stanza has its own switch. Leave it out
+and that master follows the global flag. `False` sends talkgroup link
+control to that master. A generated slot copies the value from its
+template. OpenBridge is not affected: the trunk still carries the alias
+while the global flag is on, and the next master decides.
 
 ```ini
-[MASTER-1]
+[SYSTEM]
 MODE: MASTER
-OPTIONS: ALIAS=0;
+ALIAS: False
+
+[HYTERA]
+MODE: HYTERA
+ALIAS: False
+
+[IPSC]
+MODE: IPSC
+ALIAS: False
 ```
 
-A hotspot sends the same token in its own options. That string wins.
+A hotspot can still override its master. `ALIAS=1` in that peer's own
+options turns the alias on for that radio only. `ALIAS=0` turns it off
+when the master is on.
 
 ```ini
 TS2=2350;ALIAS=0;
 ```
 
-Hytera and IPSC are one repeater, so the flag is the repeater's system
-OPTIONS. Selfcare writes that string.
-
-```ini
-[HYTERA-0]
-MODE: HYTERA
-OPTIONS: TS1=235;TS2=2350;ALIAS=0;
-
-[IPSC-1]
-MODE: IPSC
-OPTIONS: TS2=2350;ALIAS=1;
-```
+A direct Motorola or Hytera does not send options. The stanza key is what
+stops the alias for that repeater. Selfcare can still put `ALIAS=0` or
+`ALIAS=1` in the repeater's options string, and that explicit value wins
+over the stanza while it is present.
 
 `0`, `1`, `true`, `false`, `yes`, and `no` are accepted. An unrecognised
 value is ignored. The choice is read from the OPTIONS string at send time,

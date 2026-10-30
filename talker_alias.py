@@ -92,9 +92,9 @@ def destination_enabled(system_cfg=None, peer=None):
     """Whether this hotspot or repeater should be sent a talker alias.
 
     Global TALKER_ALIAS off disables every destination. A peer's own
-    ``ALIAS=`` wins. An IPSC or Hytera repeater uses its system OPTIONS.
-    A Homebrew master uses ``ALIAS=`` from the configured default OPTIONS
-    when the peer itself does not set one. Anything omitted stays on.
+    ``ALIAS=`` wins, as does an explicit ``ALIAS=`` in an IPSC or Hytera
+    repeater's live options. Otherwise the stanza ``ALIAS:`` boolean is
+    the master switch. Anything omitted stays on.
     """
     if not _enabled:
         return False
@@ -109,6 +109,8 @@ def destination_enabled(system_cfg=None, peer=None):
         flag = parse_alias_option(system_cfg.get('OPTIONS'))
         if flag is not None:
             return flag
+    if mode in ('MASTER', 'IPSC', 'HYTERA') and 'ALIAS' in system_cfg:
+        return bool(system_cfg['ALIAS'])
     if mode == 'MASTER':
         flag = parse_alias_option(system_cfg.get('_default_options'))
         if flag is not None:

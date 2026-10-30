@@ -17,6 +17,10 @@ Talker Alias on bridged voice.
   the 15-byte form (radio id, no repeater id); the hotspot proxy routes
   that by the logged-in socket. The 19-byte form still carries the repeater
   id. The radio's alias replaces the database callsign for that DMR ID.
+- `ALIAS: False` on a `MASTER`, `HYTERA`, or `IPSC` stanza stops talker
+  alias for that master. Omitted follows `[GLOBAL] TALKER_ALIAS`. A
+  hotspot's own `ALIAS=` still overrides its master. OpenBridge is
+  unchanged.
 - `ALIAS=0` or `ALIAS=1` in a hotspot or repeater OPTIONS string turns
   talker alias off or on for that destination. MMDVM peers use their own
   RPTO string. Hytera and IPSC use the repeater's system OPTIONS. Omitted

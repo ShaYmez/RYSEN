@@ -154,6 +154,16 @@ def _parse_ipsc_version(hexstr):
     except ValueError:
         return IPSC_VER
 
+def _set_stanza_alias(config, section, system):
+    """Record ALIAS only when this stanza sets it.
+
+    Omitted means the master follows ``[GLOBAL] TALKER_ALIAS``. A hotspot
+    can still override with ``ALIAS=`` in its own options.
+    """
+    if config.has_option(section, 'ALIAS'):
+        system['ALIAS'] = config.getboolean(section, 'ALIAS')
+
+
 def build_config(_config_file):
     config = configparser.ConfigParser()
 
@@ -464,7 +474,8 @@ def build_config(_config_file):
                         'OVERRIDE_IDENT_TG': config.get(section, 'OVERRIDE_IDENT_TG')
                     }})
                     CONFIG['SYSTEMS'][section].update({'PEERS': {}})
-                    
+                    _set_stanza_alias(config, section, CONFIG['SYSTEMS'][section])
+
                 elif config.get(section, 'MODE') == 'IPSC':
                     CONFIG['SYSTEMS'].update({section: {
                         'MODE': config.get(section, 'MODE'),
@@ -505,6 +516,7 @@ def build_config(_config_file):
                         'ALLOWED_PEER_IPS': _parse_csv_strings(config.get(section, 'ALLOWED_PEER_IPS', fallback='')),
                     }})
                     CONFIG['SYSTEMS'][section].update({'PEERS': {}})
+                    _set_stanza_alias(config, section, CONFIG['SYSTEMS'][section])
 
                 elif config.get(section, 'MODE') == 'HYTERA':
                     p2p_port = config.getint(section, 'PORT')
@@ -561,6 +573,7 @@ def build_config(_config_file):
                             config.get(section, 'ALLOWED_PEER_IPS', fallback='')),
                     }})
                     CONFIG['SYSTEMS'][section].update({'PEERS': {}})
+                    _set_stanza_alias(config, section, CONFIG['SYSTEMS'][section])
 
                 elif config.get(section, 'MODE') == 'OPENBRIDGE':
                     CONFIG['SYSTEMS'].update({section: {
