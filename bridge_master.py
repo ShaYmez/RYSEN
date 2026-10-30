@@ -2863,6 +2863,9 @@ class routerOBP(OPENBRIDGE):
                         _target_status[_target['TS']]['TX_T_LC'] = bptc.encode_terminator_lc(dst_lc)
                         _target_status[_target['TS']]['TX_EMB_LC'] = bptc.encode_emblc(dst_lc)
                         _target_status[_target['TS']]['TX_TA'] = talker_alias.AliasSchedule(_rf_src)
+                        talker_alias.remember_voice(
+                            _target['SYSTEM'], _stream_id,
+                            _target_status[_target['TS']]['TX_EMB_LC'])
                         logger.debug('(%s) Generating TX FULL and EMB LCs for HomeBrew destination: System: %s, TS: %s, TGID: %s', self._system, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                         logger.debug('(%s) Conference Bridge: %s, Call Bridged to HBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                         if CONFIG['REPORTS']['REPORT']:
@@ -4010,6 +4013,9 @@ class routerHBP(HBSYSTEM):
                                 _target_status[_target['TS']]['TX_T_LC'] = bptc.encode_terminator_lc(dst_lc)
                                 _target_status[_target['TS']]['TX_EMB_LC'] = bptc.encode_emblc(dst_lc)
                                 _target_status[_target['TS']]['TX_TA'] = talker_alias.AliasSchedule(_rf_src)
+                                talker_alias.remember_voice(
+                                    _target['SYSTEM'], _stream_id,
+                                    _target_status[_target['TS']]['TX_EMB_LC'])
                                 logger.debug('(%s) Generating TX FULL and EMB LCs for HomeBrew destination: System: %s, TS: %s, TGID: %s', self._system, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                                 logger.debug('(%s) Conference Bridge: %s, Call Bridged to HBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                                 if CONFIG['REPORTS']['REPORT']:

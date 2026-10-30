@@ -42,7 +42,11 @@ _MAX_CHARS = 31
 # A missing voice terminator must not pin a repeat schedule until the cache
 # overflows. Silence longer than this means the over has ended.
 _REPEAT_IDLE = 3.0
+_VOICE_LC_IDLE = 30.0
 _repeat = {}
+# Voice LC for a stream, so an ALIAS=0 peer can be restored after the
+# slot's TX state has moved on or was never set for this packet.
+_voice_lc = {}
 
 _enabled = True
 _tables = []
@@ -110,6 +114,53 @@ def destination_enabled(system_cfg=None, peer=None):
         if flag is not None:
             return flag
     return True
+
+
+def _voice_key(system, stream_id):
+    if not stream_id:
+        return None
+    return (system or '', bytes(stream_id))
+
+
+def remember_voice(system, stream_id, voice_emb):
+    """Keep this stream's talkgroup LC for a later ALIAS=0 restore."""
+    key = _voice_key(system, stream_id)
+    if key is None or not isinstance(voice_emb, dict) or voice_emb.get(1) is None:
+        return
+    _voice_lc[key] = (time.monotonic(), voice_emb)
+    if len(_voice_lc) <= 512:
+        return
+    oldest = sorted(_voice_lc, key=lambda item: _voice_lc[item][0])
+    for item in oldest[:256]:
+        _voice_lc.pop(item, None)
+
+
+def voice_for(system, stream_id):
+    """Talkgroup LC last remembered for this master and stream, if still fresh."""
+    key = _voice_key(system, stream_id)
+    if key is None:
+        return None
+    item = _voice_lc.get(key)
+    if item is None:
+        return None
+    seen, voice = item
+    now = time.monotonic()
+    if now - seen > _VOICE_LC_IDLE:
+        _voice_lc.pop(key, None)
+        return None
+    _voice_lc[key] = (now, voice)
+    return voice
+
+
+def forget_voice(system, stream_id):
+    key = _voice_key(system, stream_id)
+    if key is not None:
+        _voice_lc.pop(key, None)
+
+
+def voice_from_header(payload):
+    """Embedded talkgroup LC decoded from a voice header, or None."""
+    return _voice_emb_from_header(payload)
 
 
 def strip_embedded_alias(packet, voice_emb):
@@ -588,22 +639,27 @@ def _expire_repeat():
         _repeat.pop(key, None)
 
 
-def _bind_repeat_header(stream_id, src, payload):
+def _repeat_key(system, stream_id):
+    """One schedule per master. Stream IDs are only 4 bytes and are reused."""
+    return (system or '', bytes(stream_id) if stream_id else b'')
+
+
+def _bind_repeat_header(system, stream_id, src, payload):
     """Keep an in-progress cadence when the same subscriber repeats a header.
 
     A new source starts a new schedule. The decoded header LC is the voice
-    superframe identity. If the header cannot be decoded, an empty dict is
-    only that identity: repeat leaves those bursts unchanged and never writes
-    a guessed group LC.
+    superframe identity. A header that cannot be decoded does not get an
+    inserted alias: there is no group LC to put back on the other superframes.
     """
     src_id = _as_int(src)
     voice = _voice_emb_from_header(payload)
     if voice is None:
         voice = {}
-    sched = _repeat.get(stream_id)
+    key = _repeat_key(system, stream_id)
+    sched = _repeat.get(key)
     if sched is None or sched.src != src_id:
         sched = AliasSchedule(src)
-        _repeat[stream_id] = sched
+        _repeat[key] = sched
         _trim_repeat()
     elif sched.voice_emb is not None and sched._current is sched.voice_emb:
         sched._current = voice
@@ -612,12 +668,13 @@ def _bind_repeat_header(stream_id, src, payload):
     sched.seen = time.monotonic()
 
 
-def embed_repeat(packet, src, frame_type, vseq, stream_id):
+def embed_repeat(packet, src, frame_type, vseq, stream_id, system=None):
     """Splice talker alias into a locally repeated DMRD frame.
 
     Voice superframes are left as received. Alias superframes replace only
     the embedded-LC bits, so hotspots on this master see the callsign too.
-    Bursts that arrive before the voice header are not rewritten.
+    Bursts that arrive before the voice header are not rewritten. Two masters
+    in one process do not share a schedule just because the stream ID matches.
     """
     if not _enabled or not packet or len(packet) < 53 or not stream_id:
         return packet
@@ -627,18 +684,20 @@ def embed_repeat(packet, src, frame_type, vseq, stream_id):
         note_embedded(src, frame_type, vseq, payload)
     except Exception:
         logger.debug('Talker Alias ingest failed', exc_info=True)
+    key = _repeat_key(system, stream_id)
     if frame_type == HBPF_DATA_SYNC and vseq == HBPF_SLT_VTERM:
-        _repeat.pop(stream_id, None)
+        _repeat.pop(key, None)
         return packet
     if frame_type == HBPF_DATA_SYNC and vseq == HBPF_SLT_VHEAD:
-        _bind_repeat_header(stream_id, src, payload)
+        _bind_repeat_header(system, stream_id, src, payload)
         return packet
-    sched = _repeat.get(stream_id)
+    sched = _repeat.get(key)
     if sched is not None:
         sched.seen = time.monotonic()
     if frame_type != HBPF_VOICE or vseq not in (1, 2, 3, 4):
         return packet
-    if sched is None or not sched.header_seen or sched.voice_emb is None:
+    # An empty map means the header did not decode. Leave the burst alone.
+    if sched is None or not sched.header_seen or not sched.voice_emb:
         return packet
     frag = sched.repeat_fragment(frame_type, vseq, sched.voice_emb)
     if frag is None:

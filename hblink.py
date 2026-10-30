@@ -967,6 +967,16 @@ class HBSYSTEM(DatagramProtocol):
                     and (_bits & 0xF) == HBPF_SLT_VTERM and _stream_id):
                 release_dropped_stream(
                     self._system, _stream_id, slot=_slot)
+        if _is_dmrd and _stream_id is not None and len(_packet) >= 53:
+            _learn_bits = _packet[15]
+            _learn_type = (_learn_bits & 0x30) >> 4
+            _learn_vseq = _learn_bits & 0x0F
+            if _learn_type == HBPF_DATA_SYNC and _learn_vseq == HBPF_SLT_VHEAD:
+                _learned = talker_alias.voice_from_header(_packet[20:53])
+                if _learned:
+                    talker_alias.remember_voice(self._system, _stream_id, _learned)
+            elif _learn_type == HBPF_DATA_SYNC and _learn_vseq == HBPF_SLT_VTERM:
+                talker_alias.forget_voice(self._system, _stream_id)
         for _peer in self._peers:
             if (_source_rptr != b'\x00\x00\x00\x00' and _peer == _source_rptr):
                 continue
@@ -981,11 +991,18 @@ class HBSYSTEM(DatagramProtocol):
             _tx_pkt = _packet
             if (_is_dmrd and _stream_id is not None and _slot is not None
                     and not talker_alias.destination_enabled(
-                        self._config, self._peers.get(_peer))):
+                        getattr(self, '_config', None), self._peers.get(_peer))):
                 _slot_status = (getattr(self, 'STATUS', None) or {}).get(_slot) or {}
+                _voice = None
                 if _slot_status.get('TX_STREAM_ID') == _stream_id:
-                    _tx_pkt = talker_alias.strip_embedded_alias(
-                        _packet, _slot_status.get('TX_EMB_LC'))
+                    _voice = _slot_status.get('TX_EMB_LC')
+                    if _voice:
+                        talker_alias.remember_voice(
+                            self._system, _stream_id, _voice)
+                if not _voice:
+                    _voice = talker_alias.voice_for(self._system, _stream_id)
+                if _voice:
+                    _tx_pkt = talker_alias.strip_embedded_alias(_packet, _voice)
             if len(_tx_pkt) < 54:
                 _tx_pkt = b''.join([_tx_pkt, _ber, _rssi])
             self.send_peer(_peer, _tx_pkt)
@@ -1211,7 +1228,8 @@ class HBSYSTEM(DatagramProtocol):
                             self._system, _stream_id, slot=_slot)
                     try:
                         _tx = talker_alias.embed_repeat(
-                            _data, _rf_src, _frame_type, _dtype_vseq, _stream_id)
+                            _data, _rf_src, _frame_type, _dtype_vseq, _stream_id,
+                            self._system)
                     except Exception:
                         logger.debug('(%s) Talker Alias repeat failed', self._system, exc_info=True)
                         _tx = _data

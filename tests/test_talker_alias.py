@@ -10,12 +10,23 @@ from dmr_utils3 import bptc
 
 import talker_alias as ta
 from const import DMRA, HBPF_DATA_SYNC, HBPF_SLT_VHEAD, HBPF_SLT_VTERM, HBPF_VOICE
+from hblink import HBSYSTEM
 from ipsc_const import VOICE_HEAD
 from ipsc_voice import IpscVoiceTranslator
 
 
 def _decode_emb(emb):
     return bptc.decode_emblc(emb[1] + emb[2] + emb[3] + emb[4])
+
+
+def _header_payload(src=2623266, dst=91):
+    lc = bytes([0x00, 0x00, 0x00]) + int(dst).to_bytes(3, 'big') + int(src).to_bytes(3, 'big')
+    header = bptc.encode_header_lc(lc)
+    bits = bitarray(264, endian='big')
+    bits.setall(0)
+    bits[0:98] = header[0:98]
+    bits[166:264] = header[98:197]
+    return bits.tobytes()
 
 
 def _repeat_packet(stream, frame_type, vseq, src=2623266, dst=91):
@@ -25,6 +36,8 @@ def _repeat_packet(stream, frame_type, vseq, src=2623266, dst=91):
     raw[8:11] = int(dst).to_bytes(3, 'big')
     raw[15] = (frame_type << 4) | vseq
     raw[16:20] = stream
+    if frame_type == HBPF_DATA_SYNC and vseq == HBPF_SLT_VHEAD:
+        raw[20:53] = _header_payload(src, dst)
     return bytes(raw)
 
 
@@ -52,6 +65,7 @@ class TalkerAliasEncodeTests(unittest.TestCase):
         ta._assemblers.clear()
         ta._announced.clear()
         ta._repeat.clear()
+        ta._voice_lc.clear()
 
     def tearDown(self):
         self.setUp()
@@ -191,7 +205,9 @@ class TalkerAliasEncodeTests(unittest.TestCase):
             raw[16:20] = stream
             return bytes(raw)
 
-        head = packet(HBPF_DATA_SYNC, HBPF_SLT_VHEAD)
+        head = bytearray(packet(HBPF_DATA_SYNC, HBPF_SLT_VHEAD))
+        head[20:53] = _header_payload()
+        head = bytes(head)
         self.assertEqual(ta.embed_repeat(head, 2623266, HBPF_DATA_SYNC, HBPF_SLT_VHEAD, stream), head)
         for vseq in (1, 2, 3, 4):
             original = packet(HBPF_VOICE, vseq)
@@ -225,11 +241,11 @@ class TalkerAliasEncodeTests(unittest.TestCase):
         self.assertNotEqual(
             ta.embed_repeat(started, 2623266, HBPF_VOICE, 1, stream),
             started)
-        sched = ta._repeat[stream]
+        sched = ta._repeat[('', stream)]
         self.assertEqual(
             ta.embed_repeat(head, 2623266, HBPF_DATA_SYNC, HBPF_SLT_VHEAD, stream),
             head)
-        self.assertIs(ta._repeat[stream], sched)
+        self.assertIs(ta._repeat[('', stream)], sched)
         self.assertGreater(sched._index, 0)
         continued = _repeat_packet(stream, HBPF_VOICE, 2)
         self.assertNotEqual(
@@ -246,7 +262,7 @@ class TalkerAliasEncodeTests(unittest.TestCase):
             ta.embed_repeat(original, 2623266, HBPF_VOICE, vseq, stream)
         other = _repeat_packet(stream, HBPF_DATA_SYNC, HBPF_SLT_VHEAD, src=100)
         ta.embed_repeat(other, 100, HBPF_DATA_SYNC, HBPF_SLT_VHEAD, stream)
-        self.assertEqual(ta._repeat[stream].src, 100)
+        self.assertEqual(ta._repeat[('', stream)].src, 100)
         for vseq in (2, 3, 4):
             original = _repeat_packet(stream, HBPF_VOICE, vseq, src=100)
             self.assertEqual(
@@ -261,7 +277,7 @@ class TalkerAliasEncodeTests(unittest.TestCase):
             self.assertEqual(
                 ta.embed_repeat(original, 2623266, HBPF_VOICE, vseq, stream),
                 original)
-        self.assertNotIn(stream, ta._repeat)
+        self.assertNotIn(('', stream), ta._repeat)
         head = _repeat_packet(stream, HBPF_DATA_SYNC, HBPF_SLT_VHEAD)
         ta.embed_repeat(head, 2623266, HBPF_DATA_SYNC, HBPF_SLT_VHEAD, stream)
         for vseq in (1, 2, 3, 4):
@@ -280,15 +296,15 @@ class TalkerAliasEncodeTests(unittest.TestCase):
         other = b'\x55\x66\x77\x88'
         head = _repeat_packet(stream, HBPF_DATA_SYNC, HBPF_SLT_VHEAD)
         ta.embed_repeat(head, 2623266, HBPF_DATA_SYNC, HBPF_SLT_VHEAD, stream)
-        self.assertIn(stream, ta._repeat)
-        ta._repeat[stream].seen = time.monotonic() - (ta._REPEAT_IDLE + 1)
+        self.assertIn(('', stream), ta._repeat)
+        ta._repeat[('', stream)].seen = time.monotonic() - (ta._REPEAT_IDLE + 1)
         other_head = _repeat_packet(other, HBPF_DATA_SYNC, HBPF_SLT_VHEAD)
         ta.embed_repeat(other_head, 2623266, HBPF_DATA_SYNC, HBPF_SLT_VHEAD, other)
-        self.assertNotIn(stream, ta._repeat)
-        self.assertIn(other, ta._repeat)
+        self.assertNotIn(('', stream), ta._repeat)
+        self.assertIn(('', other), ta._repeat)
         term = _repeat_packet(other, HBPF_DATA_SYNC, HBPF_SLT_VTERM)
         ta.embed_repeat(term, 2623266, HBPF_DATA_SYNC, HBPF_SLT_VTERM, other)
-        self.assertNotIn(other, ta._repeat)
+        self.assertNotIn(('', other), ta._repeat)
 
     def test_config_file_toggles_without_restart(self):
         handle, path = tempfile.mkstemp(suffix='.cfg')
@@ -359,6 +375,53 @@ class TalkerAliasEncodeTests(unittest.TestCase):
         bits.frombytes(plain[20:53])
         self.assertEqual(bits[116:148], voice[1])
         self.assertEqual(ta.strip_embedded_alias(packet[:20], voice), packet[:20])
+
+    def test_repeat_schedules_stay_on_their_own_master(self):
+        stream = b'\x11\x22\x33\x44'
+        one = _repeat_packet(stream, HBPF_DATA_SYNC, HBPF_SLT_VHEAD, src=2623266)
+        two = _repeat_packet(stream, HBPF_DATA_SYNC, HBPF_SLT_VHEAD, src=100)
+        ta.embed_repeat(one, 2623266, HBPF_DATA_SYNC, HBPF_SLT_VHEAD, stream, 'MASTER-1')
+        ta.embed_repeat(two, 100, HBPF_DATA_SYNC, HBPF_SLT_VHEAD, stream, 'MASTER-2')
+        self.assertEqual(ta._repeat[('MASTER-1', stream)].src, 2623266)
+        self.assertEqual(ta._repeat[('MASTER-2', stream)].src, 100)
+
+    def test_missing_voice_lc_is_not_rewritten(self):
+        ta.set_tables({2623266: 'DO1KBL'})
+        stream = b'\x11\x22\x33\x44'
+        head = _repeat_packet(stream, HBPF_DATA_SYNC, HBPF_SLT_VHEAD)
+        ta.embed_repeat(head, 2623266, HBPF_DATA_SYNC, HBPF_SLT_VHEAD, stream)
+        ta._repeat[('', stream)].voice_emb = {}
+        for _ in range(2):
+            for vseq in (1, 2, 3, 4):
+                original = _repeat_packet(stream, HBPF_VOICE, vseq)
+                self.assertEqual(
+                    ta.embed_repeat(original, 2623266, HBPF_VOICE, vseq, stream),
+                    original)
+
+    def test_alias_off_peer_is_stripped_without_slot_tx_state(self):
+        from types import SimpleNamespace
+        voice = ta.encode_emblc(b'\x00' * 9)
+        alias = ta.encode_emblc(bytes([0x04, 0x00, 0x47]) + b'\x00' * 6)
+        payload = bitarray(264, endian='big')
+        payload.setall(0)
+        payload[116:148] = alias[1]
+        stream = b'\x11\x22\x33\x44'
+        packet = b'DMRD' + bytes(11) + bytes([0x01]) + stream + payload.tobytes()
+        ta.remember_voice('MASTER', stream, voice)
+        peer = b'\x00\x00\x00\x01'
+        sent = []
+        master = SimpleNamespace(
+            _system='MASTER',
+            _config={'MODE': 'MASTER'},
+            _peers={peer: {'OPTIONS': 'ALIAS=0', 'SOCKADDR': ('10.0.0.8', 50001)}},
+            transport=SimpleNamespace(write=lambda pkt, addr: sent.append(pkt)),
+            STATUS={1: {'TX_STREAM_ID': b'\x99\x99\x99\x99', 'TX_EMB_LC': voice}},
+        )
+        master.send_peer = lambda peer_id, pkt: HBSYSTEM.send_peer(master, peer_id, pkt)
+        HBSYSTEM.send_peers(master, packet)
+        bits = bitarray(endian='big')
+        bits.frombytes(sent[0][20:53])
+        self.assertEqual(bits[116:148], voice[1])
 
 
 if __name__ == '__main__':
