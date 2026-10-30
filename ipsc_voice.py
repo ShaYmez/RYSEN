@@ -690,8 +690,9 @@ class IpscVoiceTranslator:
         payload = dmrd[20:53]
 
         if frame_type == HBPF_DATA_SYNC and dtype_vseq == HBPF_SLT_VHEAD:
+            # call_seq 0 is a real assignment after the counter wraps.
             if (self._del_hbp_stream.get(ts) == hbp_stream
-                    and self._del_stream_id[ts]):
+                    and self._del_stream_id[ts] is not None):
                 return None
             self._del_hbp_stream[ts] = hbp_stream
             lc = _decode_lc_from_dmrd(payload)
@@ -728,7 +729,9 @@ class IpscVoiceTranslator:
             pos = _dmrd_voice_position(flags)
             emb_lc = self._ta_emb(
                 self._ta_tx, ts, src_sub, pos, bptc.encode_emblc(lc))
-            if self._del_stream_id[ts] == 0:
+            # A header that wrapped onto call_seq 0 has already set the stream.
+            # Only a burst that arrives before any header still needs a seq.
+            if self._del_hbp_stream[ts] is None and self._del_stream_id[ts] == 0:
                 self._del_stream_ctr = (self._del_stream_ctr + 1) & 0xFF
                 self._del_stream_id[ts] = self._del_stream_ctr
             if private_call:

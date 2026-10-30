@@ -10,7 +10,7 @@ from voice_lib import words
 from ipsc_const import (
     GROUP_VOICE, PRIVATE_VOICE, VOICE_HEAD, VOICE_TERM, SLOT2_VOICE, TS_CALL_MSK,
     HBPF_UNIT_CALL,
-    GV_BURST_TYPE_OFF, GV_HEAD_LEN, GV_VOICE_LEN,
+    GV_BURST_TYPE_OFF, GV_CALL_SEQ_OFF, GV_HEAD_LEN, GV_VOICE_LEN,
 )
 from ipsc_voice import IpscVoiceTranslator, _paced_next_deadline
 
@@ -403,6 +403,36 @@ class TestIpscOutbound(unittest.TestCase):
             self.assertIsNotNone(tr.encode(second_head))
             self.assertEqual(tr._ta_tx[ts].src, 2623266)
             self.assertIsNot(tr._ta_tx[ts], sched)
+        finally:
+            talker_alias.set_enabled(True)
+            talker_alias.set_tables()
+
+    def test_encode_keeps_wrapped_call_seq_zero(self):
+        """call_seq 0 is assigned, not empty, so a repeated head must not rebind."""
+        import talker_alias
+        tr = IpscVoiceTranslator(master_id=self.MASTER_ID)
+        tr._del_stream_ctr = 255
+        talker_alias.set_tables({2348831: 'M0VUB'})
+        try:
+            head = next(pkt_gen(
+                bytes_3(2348831), bytes_3(91), b'\x00\x03\x96\x77', 1,
+                [words['silence']]))
+            ts = 2 if (head[15] & 0x80) else 1
+            head_pkt = tr.encode(head)
+            self.assertIsNotNone(head_pkt)
+            self.assertEqual(head_pkt[GV_CALL_SEQ_OFF], 0)
+            sched = tr._ta_tx[ts]
+            sched._index = 4
+            self.assertIsNone(tr.encode(head))
+            self.assertIs(tr._ta_tx[ts], sched)
+            self.assertEqual(sched._index, 4)
+
+            voice = bytearray(head)
+            voice[15] = (voice[15] & 0x80) | 0x01
+            voice_pkt = tr.encode(bytes(voice))
+            self.assertIsNotNone(voice_pkt)
+            self.assertEqual(voice_pkt[GV_CALL_SEQ_OFF], 0)
+            self.assertIs(tr._ta_tx[ts], sched)
         finally:
             talker_alias.set_enabled(True)
             talker_alias.set_tables()
