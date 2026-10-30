@@ -17,6 +17,11 @@ Talker Alias on bridged voice.
   the 15-byte form (radio id, no repeater id); the hotspot proxy routes
   that by the logged-in socket. The 19-byte form still carries the repeater
   id. The radio's alias replaces the database callsign for that DMR ID.
+- `ALIAS=0` or `ALIAS=1` in a hotspot or repeater OPTIONS string turns
+  talker alias off or on for that destination. MMDVM peers use their own
+  RPTO string. Hytera and IPSC use the repeater's system OPTIONS. Omitted
+  follows `[GLOBAL] TALKER_ALIAS`. A radio that cannot display an alias
+  keeps talkgroup LC and still receives the over.
 - `[GLOBAL] TALKER_ALIAS` defaults to on. Set it `False` to leave embedded
   signalling as talkgroup LC only. Existing configs pick up the default
   without an edit. The running process re-reads that flag on the options

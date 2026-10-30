@@ -2160,8 +2160,21 @@ def options_config():
                                             else:
                                                 logger.warning('(OPTIONS) %s - Peer %s invalid LINK_IPSC "%s", ignoring',
                                                              _system, int_id(_peer_id), _link_slot)
+                                        elif k == 'ALIAS' and v.lower() not in (
+                                                '0', '1', 'true', 'false', 'yes', 'no'):
+                                            logger.warning('(OPTIONS) %s - Peer %s invalid ALIAS value "%s", ignoring',
+                                                           _system, int_id(_peer_id), v)
                                     except (ValueError, KeyError):
                                         continue
+                                _alias_now = talker_alias.parse_alias_option(_peer_options_str)
+                                _alias_label = (
+                                    '1' if _alias_now else '0' if _alias_now is False else 'default')
+                                if _peer.get('_ALIAS_LOG') != _alias_label:
+                                    _alias_prev = _peer.get('_ALIAS_LOG')
+                                    _peer['_ALIAS_LOG'] = _alias_label
+                                    if _alias_now is not None or _alias_prev not in (None, 'default'):
+                                        logger.info('(OPTIONS) %s - Peer %s ALIAS=%s',
+                                                    _system, int_id(_peer_id), _alias_label)
                             except Exception as e:
                                 logger.debug('(OPTIONS) %s - Error parsing peer %s OPTIONS: %s', _system, int_id(_peer_id), e)
                 
@@ -2271,6 +2284,21 @@ def options_config():
 
                     if 'UserLink' in _options:
                         _options.pop('UserLink')
+
+                    if _mode in ('IPSC', 'HYTERA'):
+                        _alias_now = talker_alias.parse_alias_option(
+                            CONFIG['SYSTEMS'][_system].get('OPTIONS'))
+                        _alias_label = (
+                            '1' if _alias_now else '0' if _alias_now is False else 'default')
+                        if CONFIG['SYSTEMS'][_system].get('_ALIAS_LOG') != _alias_label:
+                            _alias_prev = CONFIG['SYSTEMS'][_system].get('_ALIAS_LOG')
+                            CONFIG['SYSTEMS'][_system]['_ALIAS_LOG'] = _alias_label
+                            if _alias_now is not None or _alias_prev not in (None, 'default'):
+                                logger.info('(OPTIONS) %s ALIAS=%s', _system, _alias_label)
+                        if 'ALIAS' in _options and _options['ALIAS'].lower() not in (
+                                '0', '1', 'true', 'false', 'yes', 'no'):
+                            logger.warning('(OPTIONS) %s - invalid ALIAS value "%s", ignoring',
+                                           _system, _options['ALIAS'])
                     
                     if 'TS1_STATIC' not in _options:
                         _options['TS1_STATIC'] = False
@@ -2592,6 +2620,19 @@ def _ta_fragment(schedule, frame_type, vseq, voice_emb):
         return voice_emb[vseq]
 
 
+def _emb_for_target(schedule, frame_type, vseq, voice_emb, system_cfg):
+    """Alias block, or talkgroup LC when this repeater has ALIAS=0.
+
+    Homebrew masters keep the alias in the packet. send_peers strips it
+    for an individual hotspot that opted out. Hytera and IPSC are one
+    repeater, so the choice is made here.
+    """
+    mode = (system_cfg or {}).get('MODE')
+    if mode in ('HYTERA', 'IPSC') and not talker_alias.destination_enabled(system_cfg):
+        return voice_emb[vseq]
+    return _ta_fragment(schedule, frame_type, vseq, voice_emb)
+
+
 class routerOBP(OPENBRIDGE):
 
     def __init__(self, _name, _config, _report):
@@ -2859,7 +2900,7 @@ class routerOBP(OPENBRIDGE):
                             systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
                     # Create a Burst B-E packet (Embedded LC)
                     elif _dtype_vseq in [1,2,3,4]:
-                        dmrbits = dmrbits[0:116] + _ta_fragment(_target_status[_target['TS']].get('TX_TA'), _frame_type, _dtype_vseq, _target_status[_target['TS']]['TX_EMB_LC']) + dmrbits[148:264]
+                        dmrbits = dmrbits[0:116] + _emb_for_target(_target_status[_target['TS']].get('TX_TA'), _frame_type, _dtype_vseq, _target_status[_target['TS']]['TX_EMB_LC'], _target_system) + dmrbits[148:264]
                     _tx_dmrpkt = dmrbits.tobytes()
                     #_tmp_data = b''.join([_tmp_data, _tx_dmrpkt, b'\x00\x00']) # Add two bytes of nothing since OBP doesn't include BER & RSSI bytes #_data[53:55]
                     _tmp_data = b''.join([_tmp_data, _tx_dmrpkt])
@@ -4006,7 +4047,7 @@ class routerHBP(HBSYSTEM):
                                 systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
                         # Create a Burst B-E packet (Embedded LC)
                         elif _dtype_vseq in [1,2,3,4]:
-                            dmrbits = dmrbits[0:116] + _ta_fragment(_target_status[_target['TS']].get('TX_TA'), _frame_type, _dtype_vseq, _target_status[_target['TS']]['TX_EMB_LC']) + dmrbits[148:264]
+                            dmrbits = dmrbits[0:116] + _emb_for_target(_target_status[_target['TS']].get('TX_TA'), _frame_type, _dtype_vseq, _target_status[_target['TS']]['TX_EMB_LC'], _target_system) + dmrbits[148:264]
                         try:
                             _tx_dmrpkt = dmrbits.tobytes()
                         except AttributeError:

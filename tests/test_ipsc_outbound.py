@@ -437,6 +437,14 @@ class TestIpscOutbound(unittest.TestCase):
             talker_alias.set_enabled(True)
             talker_alias.set_tables()
 
+    def test_encode_skips_alias_when_repeater_opts_out(self):
+        tr = IpscVoiceTranslator(master_id=self.MASTER_ID)
+        tr._send_alias = False
+        voice = {1: object()}
+        self.assertIs(
+            tr._ta_emb(tr._ta_tx, 1, b'\x00\x00\x01', 1, voice), voice)
+        tr._send_alias = True
+
     def test_begin_reflector_encode_session_keeps_call_seq(self):
         tr = IpscVoiceTranslator(master_id=self.MASTER_ID)
         tr._del_stream_ctr = 5

@@ -22,6 +22,7 @@ from twisted.internet import reactor
 from dmr_utils3.utils import int_id
 
 from hblink import HBSYSTEM, logger, acl_check, build_peer_record
+import talker_alias
 from bridge_helpers import dest_peer_rx_blocked, release_dropped_stream
 from const import DMRD
 from ipsc_const import (
@@ -537,6 +538,7 @@ class IpscMasterMixin:
         if not self._ipsc_peers:
             return
 
+        self._voice._send_alias = talker_alias.destination_enabled(self._config)
         ipsc_pkt = self._voice.handle_outbound(_packet)
         if ipsc_pkt is not None:
             frame_type = (_bits & 0x30) >> 4
@@ -561,6 +563,8 @@ class IpscMasterMixin:
         _bits = dmrd[15]
         if (_bits & 0x23) == 0x23:
             return False
+        self._reflector_voice._send_alias = talker_alias.destination_enabled(
+            self._config)
         ipsc_pkt = self._reflector_voice.encode(dmrd)
         if ipsc_pkt is None:
             return False

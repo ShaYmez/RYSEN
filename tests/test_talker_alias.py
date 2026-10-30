@@ -326,6 +326,40 @@ class TalkerAliasEncodeTests(unittest.TestCase):
         self.assertIsNot(translator._ta_rx[1], kept)
         self.assertEqual(translator._ta_rx[1].src, 100)
 
+    def test_alias_option_selects_the_destination(self):
+        self.assertIsNone(ta.parse_alias_option('TS2=2350;'))
+        self.assertIs(ta.parse_alias_option('TS2=2350;ALIAS=0;'), False)
+        self.assertIs(ta.parse_alias_option(b'ALIAS=1;STICKY=1'), True)
+        self.assertIsNone(ta.parse_alias_option('ALIAS=banana'))
+        self.assertTrue(ta.destination_enabled({'MODE': 'MASTER'}))
+        self.assertFalse(ta.destination_enabled(
+            {'MODE': 'MASTER'}, {'OPTIONS': 'ALIAS=0'}))
+        self.assertTrue(ta.destination_enabled(
+            {'MODE': 'MASTER', '_default_options': 'ALIAS=0'},
+            {'OPTIONS': 'TS2=2350;ALIAS=1'}))
+        self.assertFalse(ta.destination_enabled(
+            {'MODE': 'HYTERA', 'OPTIONS': 'TS2=2350;ALIAS=0;'}))
+        self.assertFalse(ta.destination_enabled(
+            {'MODE': 'IPSC', 'OPTIONS': 'ALIAS=0'}))
+        self.assertTrue(ta.destination_enabled(
+            {'MODE': 'OPENBRIDGE', 'OPTIONS': 'ALIAS=0'}))
+        ta.set_enabled(False)
+        self.assertFalse(ta.destination_enabled(
+            {'MODE': 'HYTERA', 'OPTIONS': 'ALIAS=1'}))
+
+    def test_strip_embedded_alias_restores_voice_lc(self):
+        voice = ta.encode_emblc(b'\x00' * 9)
+        alias = ta.encode_emblc(bytes([0x04, 0x00, 0x47]) + b'\x00' * 6)
+        payload = bitarray(264, endian='big')
+        payload.setall(0)
+        payload[116:148] = alias[1]
+        packet = b'DMRD' + bytes(11) + bytes([0x01]) + b'\x11\x22\x33\x44' + payload.tobytes()
+        plain = ta.strip_embedded_alias(packet, voice)
+        bits = bitarray(endian='big')
+        bits.frombytes(plain[20:53])
+        self.assertEqual(bits[116:148], voice[1])
+        self.assertEqual(ta.strip_embedded_alias(packet[:20], voice), packet[:20])
+
 
 if __name__ == '__main__':
     unittest.main()

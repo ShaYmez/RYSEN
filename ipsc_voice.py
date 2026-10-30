@@ -185,6 +185,8 @@ class IpscVoiceTranslator:
         self._out_lc = {1: None, 2: None}
         self._out_emb_lc = {1: None, 2: None}
         self._ta_rx = {1: None, 2: None}
+        # Cleared when this IPSC repeater's OPTIONS say ALIAS=0.
+        self._send_alias = True
         self._init_outbound_delivery_state()
 
     def _init_outbound_delivery_state(self):
@@ -373,6 +375,8 @@ class IpscVoiceTranslator:
         return store[ts]
 
     def _ta_emb(self, store, ts, src, pos, voice_emb):
+        if store is self._ta_tx and not self._send_alias:
+            return voice_emb
         if not voice_emb:
             return voice_emb
         sched = store.get(ts)

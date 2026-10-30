@@ -979,6 +979,13 @@ class HBSYSTEM(DatagramProtocol):
                         dtype_vseq=_bits & 0xF)):
                 continue
             _tx_pkt = _packet
+            if (_is_dmrd and _stream_id is not None and _slot is not None
+                    and not talker_alias.destination_enabled(
+                        self._config, self._peers.get(_peer))):
+                _slot_status = (getattr(self, 'STATUS', None) or {}).get(_slot) or {}
+                if _slot_status.get('TX_STREAM_ID') == _stream_id:
+                    _tx_pkt = talker_alias.strip_embedded_alias(
+                        _packet, _slot_status.get('TX_EMB_LC'))
             if len(_tx_pkt) < 54:
                 _tx_pkt = b''.join([_tx_pkt, _ber, _rssi])
             self.send_peer(_peer, _tx_pkt)
@@ -1208,7 +1215,6 @@ class HBSYSTEM(DatagramProtocol):
                     except Exception:
                         logger.debug('(%s) Talker Alias repeat failed', self._system, exc_info=True)
                         _tx = _data
-                    pkt = [_tx[:11], '', _tx[15:]]
                     for _peer in self._peers:
                         if _peer != _peer_id:
                             if dest_peer_rx_blocked(
@@ -1216,8 +1222,13 @@ class HBSYSTEM(DatagramProtocol):
                                     int_id(_dst_id), frame_type=_frame_type,
                                     dtype_vseq=_dtype_vseq):
                                 continue
-                            pkt[1] = _peer
-                            self.transport.write(b''.join(pkt), self._peers[_peer]['SOCKADDR'])
+                            # ALIAS=0 keeps the burst that arrived. The alias
+                            # splice is only for peers that still want it.
+                            _out = _tx if talker_alias.destination_enabled(
+                                self._config, self._peers.get(_peer)) else _data
+                            self.transport.write(
+                                b''.join([_out[:11], _peer, _out[15:]]),
+                                self._peers[_peer]['SOCKADDR'])
                             #logger.debug('(%s) Packet on TS%s from %s (%s) for destination ID %s repeated to peer: %s (%s) [Stream ID: %s]', self._system, _slot, self._peers[_peer_id]['CALLSIGN'], int_id(_peer_id), int_id(_dst_id), self._peers[_peer]['CALLSIGN'], int_id(_peer), int_id(_stream_id))
                 if (_repeat_enabled and _repeat_ok
                         and _frame_type == HBPF_DATA_SYNC

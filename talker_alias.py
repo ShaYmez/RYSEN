@@ -56,6 +56,87 @@ def set_enabled(flag):
     _enabled = bool(flag)
 
 
+def parse_alias_option(options):
+    """Return True for ALIAS=1, False for ALIAS=0, or None when the key is absent.
+
+    The last well-formed ALIAS= in the string wins. ``true``/``yes`` and
+    ``false``/``no`` are accepted. An unrecognised value is ignored.
+    """
+    if options is None:
+        return None
+    if isinstance(options, (bytes, bytearray)):
+        text = bytes(options).decode('ascii', 'ignore')
+    else:
+        text = str(options)
+    text = text.replace(' ', '').replace('\x00', '')
+    found = None
+    for part in text.split(';'):
+        if not part or '=' not in part:
+            continue
+        key, value = part.split('=', 1)
+        if key.upper() != 'ALIAS':
+            continue
+        value = value.lower()
+        if value in ('1', 'true', 'yes'):
+            found = True
+        elif value in ('0', 'false', 'no'):
+            found = False
+    return found
+
+
+def destination_enabled(system_cfg=None, peer=None):
+    """Whether this hotspot or repeater should be sent a talker alias.
+
+    Global TALKER_ALIAS off disables every destination. A peer's own
+    ``ALIAS=`` wins. An IPSC or Hytera repeater uses its system OPTIONS.
+    A Homebrew master uses ``ALIAS=`` from the configured default OPTIONS
+    when the peer itself does not set one. Anything omitted stays on.
+    """
+    if not _enabled:
+        return False
+    if isinstance(peer, dict):
+        flag = parse_alias_option(peer.get('OPTIONS'))
+        if flag is not None:
+            return flag
+    if not isinstance(system_cfg, dict):
+        return True
+    mode = system_cfg.get('MODE')
+    if mode in ('IPSC', 'HYTERA'):
+        flag = parse_alias_option(system_cfg.get('OPTIONS'))
+        if flag is not None:
+            return flag
+    if mode == 'MASTER':
+        flag = parse_alias_option(system_cfg.get('_default_options'))
+        if flag is not None:
+            return flag
+    return True
+
+
+def strip_embedded_alias(packet, voice_emb):
+    """Put talkgroup or unit LC back into voice bursts B-E.
+
+    Used when a destination has ``ALIAS=0`` and the bridged packet already
+    carries an alias. Other frame types are returned unchanged.
+    """
+    if (not packet or len(packet) < 53 or packet[:4] != b'DMRD'
+            or not isinstance(voice_emb, dict)):
+        return packet
+    flags = packet[15]
+    frame_type = (flags & 0x30) >> 4
+    vseq = flags & 0x0F
+    if frame_type != HBPF_VOICE or vseq not in (1, 2, 3, 4):
+        return packet
+    frag = voice_emb.get(vseq)
+    if frag is None or len(frag) != 32:
+        return packet
+    bits = bitarray(endian='big')
+    bits.frombytes(packet[20:53])
+    if len(bits) < 264:
+        return packet
+    restored = (bits[0:116] + frag + bits[148:264]).tobytes()
+    return packet[:20] + restored + packet[53:]
+
+
 def set_tables(*tables):
     """Subscriber alias maps, first match wins. Keys are integer DMR IDs."""
     global _tables
