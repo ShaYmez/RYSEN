@@ -255,7 +255,7 @@ Outbound voice carries the transmitting station's talker alias in ETSI embedded 
 | Subscriber list | Callsign from `subscriber_ids` / `local_subscriber_ids` |
 | Neither | No alias; embedded LC stays the talkgroup |
 
-`[GLOBAL] TALKER_ALIAS` defaults to `True`. `False` leaves every embedded burst as talkgroup LC. The process re-reads that flag about every 26 seconds and when subscriber aliases reload, so an edit applies without a restart. A hotspot or repeater can override that for itself with `ALIAS=0` or `ALIAS=1` in its OPTIONS string. On a Homebrew master the peer's own string wins, and `ALIAS=` in the master's configured OPTIONS applies to peers that do not set it. Hytera and IPSC use the repeater's system OPTIONS. OpenBridge still carries the alias so the next master can decide per radio. Homebrew repeat, OpenBridge, and IPSC embed the alias on this path. Hytera does not build its own alias blocks: it forwards the bridged DMR burst, so the alias is already in the embedded link control. On a master, voice superframes repeated to other peers stay as received; alias superframes replace only the embedded link control. A second voice header for the same over keeps the cadence already in progress. Voice that arrives before the header is repeated as received. Voice audio is unchanged.
+`[GLOBAL] TALKER_ALIAS` defaults to `True`. `False` leaves every embedded burst as talkgroup LC. A hotspot or repeater opts out with `ALIAS=0` in its OPTIONS string. Full air-interface, Brandmeister comparison, and the send path: [talker-alias.md](talker-alias.md).
 
 ---
 
@@ -265,6 +265,7 @@ Outbound voice carries the transmitting station's talker alias in ETSI embedded 
 - [hytera.md](hytera.md) — native Hytera setup and supported behaviour
 - [unit-call.md](unit-call.md) — private unit calls, local and optional fleet hop
 - [options.md](options.md) — OPTIONS string syntax
+- [talker-alias.md](talker-alias.md) — talker alias air interface, switches, and comparison
 - [install.md](install.md) — Docker install
 - [selfcare.md](selfcare.md) — MariaDB selfcare
 - [hotspot-proxy-v2.md](hotspot-proxy-v2.md) — hotspot proxy setup

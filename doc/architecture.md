@@ -85,7 +85,7 @@ Develop proxy code in this repo; satellite repos publish Docker images — [sate
 
 ## OPTIONS and selfcare
 
-Runtime settings arrive as `KEY=value;` strings — [options.md](options.md).
+Runtime settings arrive as `KEY=value;` strings — [options.md](options.md). Talker alias on the voice path: [talker-alias.md](talker-alias.md).
 
 - Hotspots send OPTIONS via HBP RPTO
 - Dashboard writes OPTIONS to MariaDB; RYSEN polls and applies
