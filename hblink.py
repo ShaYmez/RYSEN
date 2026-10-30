@@ -54,6 +54,7 @@ from bridge_helpers import (
     dest_peer_rx_blocked, release_dropped_stream, forget_peer_rx_state,
     stream_is_dropped, obp_talkgroup_acl_applies,
 )
+import talker_alias
 
 # Imports for the reporting server
 import pickle
@@ -966,6 +967,16 @@ class HBSYSTEM(DatagramProtocol):
                     and (_bits & 0xF) == HBPF_SLT_VTERM and _stream_id):
                 release_dropped_stream(
                     self._system, _stream_id, slot=_slot)
+        if _is_dmrd and _stream_id is not None and len(_packet) >= 53:
+            _learn_bits = _packet[15]
+            _learn_type = (_learn_bits & 0x30) >> 4
+            _learn_vseq = _learn_bits & 0x0F
+            if _learn_type == HBPF_DATA_SYNC and _learn_vseq == HBPF_SLT_VHEAD:
+                _learned = talker_alias.voice_from_header(_packet[20:53])
+                if _learned:
+                    talker_alias.remember_voice(self._system, _stream_id, _learned)
+            elif _learn_type == HBPF_DATA_SYNC and _learn_vseq == HBPF_SLT_VTERM:
+                talker_alias.forget_voice(self._system, _stream_id)
         for _peer in self._peers:
             if (_source_rptr != b'\x00\x00\x00\x00' and _peer == _source_rptr):
                 continue
@@ -978,6 +989,20 @@ class HBSYSTEM(DatagramProtocol):
                         dtype_vseq=_bits & 0xF)):
                 continue
             _tx_pkt = _packet
+            if (_is_dmrd and _stream_id is not None and _slot is not None
+                    and not talker_alias.destination_enabled(
+                        getattr(self, '_config', None), self._peers.get(_peer))):
+                _slot_status = (getattr(self, 'STATUS', None) or {}).get(_slot) or {}
+                _voice = None
+                if _slot_status.get('TX_STREAM_ID') == _stream_id:
+                    _voice = _slot_status.get('TX_EMB_LC')
+                    if _voice:
+                        talker_alias.remember_voice(
+                            self._system, _stream_id, _voice)
+                if not _voice:
+                    _voice = talker_alias.voice_for(self._system, _stream_id)
+                if _voice:
+                    _tx_pkt = talker_alias.strip_embedded_alias(_packet, _voice)
             if len(_tx_pkt) < 54:
                 _tx_pkt = b''.join([_tx_pkt, _ber, _rssi])
             self.send_peer(_peer, _tx_pkt)
@@ -1201,7 +1226,13 @@ class HBSYSTEM(DatagramProtocol):
                             and _dtype_vseq == HBPF_SLT_VTERM):
                         release_dropped_stream(
                             self._system, _stream_id, slot=_slot)
-                    pkt = [_data[:11], '', _data[15:]]
+                    try:
+                        _tx = talker_alias.embed_repeat(
+                            _data, _rf_src, _frame_type, _dtype_vseq, _stream_id,
+                            self._system)
+                    except Exception:
+                        logger.debug('(%s) Talker Alias repeat failed', self._system, exc_info=True)
+                        _tx = _data
                     for _peer in self._peers:
                         if _peer != _peer_id:
                             if dest_peer_rx_blocked(
@@ -1209,8 +1240,13 @@ class HBSYSTEM(DatagramProtocol):
                                     int_id(_dst_id), frame_type=_frame_type,
                                     dtype_vseq=_dtype_vseq):
                                 continue
-                            pkt[1] = _peer
-                            self.transport.write(b''.join(pkt), self._peers[_peer]['SOCKADDR'])
+                            # ALIAS=0 keeps the burst that arrived. The alias
+                            # splice is only for peers that still want it.
+                            _out = _tx if talker_alias.destination_enabled(
+                                self._config, self._peers.get(_peer)) else _data
+                            self.transport.write(
+                                b''.join([_out[:11], _peer, _out[15:]]),
+                                self._peers[_peer]['SOCKADDR'])
                             #logger.debug('(%s) Packet on TS%s from %s (%s) for destination ID %s repeated to peer: %s (%s) [Stream ID: %s]', self._system, _slot, self._peers[_peer_id]['CALLSIGN'], int_id(_peer_id), int_id(_dst_id), self._peers[_peer]['CALLSIGN'], int_id(_peer), int_id(_stream_id))
                 if (_repeat_enabled and _repeat_ok
                         and _frame_type == HBPF_DATA_SYNC
@@ -1442,8 +1478,22 @@ class HBSYSTEM(DatagramProtocol):
                     logger.info('(%s) Ping from Radio ID that is not logged in (no reply): %s', self._system, int_id(_peer_id))
         
         elif _command == DMRA:
-                _peer_id = _data[4:8]
-                logger.debug('(%s) Peer has sent Talker Alias packet %s', self._system, _data)
+                _peer_id = _data[4:8] if len(_data) >= 19 else None
+                if _peer_id is None:
+                    for pid, peer in self._peers.items():
+                        if (peer.get('CONNECTION') == 'YES'
+                                and peer.get('SOCKADDR') == _sockaddr):
+                            _peer_id = pid
+                            break
+                _peer = self._peers.get(_peer_id) if _peer_id else None
+                if (_peer and _peer.get('CONNECTION') == 'YES'
+                        and _peer.get('SOCKADDR') == _sockaddr):
+                    try:
+                        talker_alias.note_dmra(_data)
+                    except Exception:
+                        logger.debug('(%s) Talker Alias packet ignored', self._system, exc_info=True)
+                else:
+                    logger.debug('(%s) Talker Alias from a radio that is not logged in', self._system)
                 
         elif _command == PRIN:
                 logger.info('(%s) *ProxyInfo* Connection from IP:Port: %s', self._system, _data.decode('utf8')[4:])
@@ -1617,6 +1667,12 @@ class HBSYSTEM(DatagramProtocol):
                 if self._config['LOOSE'] or _peer_id == self._config['RADIO_ID']: # Validate the Radio_ID unless using loose validation
                     self._stats['CONNECTION'] = 'NO'
                     logger.info('(%s) MSTCL Recieved', self._system)
+
+            elif _command == DMRA:
+                try:
+                    talker_alias.note_dmra(_data)
+                except Exception:
+                    logger.debug('(%s) Talker Alias packet ignored', self._system, exc_info=True)
 
             else:
                 logger.error('(%s) Received an invalid command in packet: %s', self._system, ahex(_data))

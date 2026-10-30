@@ -23,6 +23,7 @@ from dmr_utils3.ambe_utils import convert49BitTo72BitAMBE, convert72BitTo49BitAM
 from dmr_utils3.const import EMB, SLOT_TYPE, BS_VOICE_SYNC, BS_DATA_SYNC
 
 from const import DMRD, LC_OPT, HBPF_SLT_VHEAD, HBPF_SLT_VTERM, HBPF_VOICE, HBPF_VOICE_SYNC, HBPF_DATA_SYNC
+import talker_alias
 from ipsc_const import (
     GROUP_VOICE, PRIVATE_VOICE, VOICE_HEAD, VOICE_TERM, SLOT1_VOICE, SLOT2_VOICE,
     TS_CALL_MSK, END_MSK,
@@ -183,11 +184,15 @@ class IpscVoiceTranslator:
         self._out_frame_pos = {1: 0, 2: 0}
         self._out_lc = {1: None, 2: None}
         self._out_emb_lc = {1: None, 2: None}
+        self._ta_rx = {1: None, 2: None}
+        # Cleared when this IPSC repeater's OPTIONS say ALIAS=0.
+        self._send_alias = True
         self._init_outbound_delivery_state()
 
     def _init_outbound_delivery_state(self):
         self._del_lc = {1: None, 2: None}
         self._del_emb_lc = {1: None, 2: None}
+        self._ta_tx = {1: None, 2: None}
         self._del_stream_id = {1: 0, 2: 0}
         self._del_hbp_stream = {1: None, 2: None}
         # Ordered queues preserve superframe generations. A dict keyed only by
@@ -222,6 +227,7 @@ class IpscVoiceTranslator:
             self._del_private[ts] = False
             self._del_stream_id[ts] = 0
             self._del_rtp_ts[ts] = 0
+            self._ta_tx[ts] = None
 
     def set_send_callback(self, callback):
         """Register callback(bytes) for paced outbound IPSC voice delivery."""
@@ -245,6 +251,7 @@ class IpscVoiceTranslator:
             self._out_ipsc_peer_id[ts] = None
             self._out_lc[ts] = None
             self._out_emb_lc[ts] = None
+            self._ta_rx[ts] = None
             self._out_frame_pos[ts] = 0
         self._out_seq = 0
         self._init_outbound_delivery_state()
@@ -270,7 +277,8 @@ class IpscVoiceTranslator:
                     and (self._out_ipsc_stream_id[ts] != ipsc_stream_id
                          or self._out_ipsc_peer_id[ts] != peer_id_b)):
                 self._clear_ts(ts)
-            if self._out_stream_id[ts] is None:
+            new_stream = self._out_stream_id[ts] is None
+            if new_stream:
                 self._out_stream_id[ts] = os.urandom(4)
                 self._out_ipsc_stream_id[ts] = ipsc_stream_id
                 self._out_ipsc_peer_id[ts] = peer_id_b
@@ -278,6 +286,11 @@ class IpscVoiceTranslator:
             lc = LC_OPT + dst_group + src_sub
             self._out_lc[ts] = lc
             self._out_emb_lc[ts] = bptc.encode_emblc(lc)
+            # A repeated header for the same stream must not restart alias rotation.
+            sched = self._ta_rx.get(ts)
+            src_id = talker_alias._as_int(src_sub)
+            if new_stream or sched is None or sched.src != src_id:
+                self._bind_ta(self._ta_rx, ts, src_sub)
             full_lc = bptc.encode_header_lc(lc)
             frame_bits = (
                 full_lc[0:98]
@@ -320,6 +333,7 @@ class IpscVoiceTranslator:
                 self._out_ipsc_peer_id[ts] = peer_id_b
                 self._out_lc[ts] = lc
                 self._out_emb_lc[ts] = bptc.encode_emblc(lc)
+                self._bind_ta(self._ta_rx, ts, src_sub)
                 self._out_frame_pos[ts] = 4
             if len(data) < 52:
                 return None
@@ -329,7 +343,7 @@ class IpscVoiceTranslator:
             a2_72 = _ambe49_to_72(raw_ba[50:99])
             a3_72 = _ambe49_to_72(raw_ba[100:149])
             pos = self._out_frame_pos[ts] % 6
-            embed = _build_embed(pos, self._out_emb_lc[ts])
+            embed = _build_embed(pos, self._ta_emb(self._ta_rx, ts, src_sub, pos, self._out_emb_lc[ts]))
             frame_bits = a1_72 + a2_72[:36] + embed + a2_72[36:] + a3_72
             payload_33 = frame_bits.tobytes()
             flags |= HBPF_FRAMETYPE_VOICESYNC if pos == 0 else (HBPF_FRAMETYPE_VOICE | pos)
@@ -356,12 +370,27 @@ class IpscVoiceTranslator:
 
         return dmrd
 
+    def _bind_ta(self, store, ts, src):
+        store[ts] = talker_alias.AliasSchedule(src)
+        return store[ts]
+
+    def _ta_emb(self, store, ts, src, pos, voice_emb):
+        if store is self._ta_tx and not self._send_alias:
+            return voice_emb
+        if not voice_emb:
+            return voice_emb
+        sched = store.get(ts)
+        if sched is None:
+            sched = self._bind_ta(store, ts, src)
+        return sched.emb_for_position(pos, voice_emb)
+
     def _clear_ts(self, ts):
         self._out_stream_id[ts] = None
         self._out_ipsc_stream_id[ts] = None
         self._out_ipsc_peer_id[ts] = None
         self._out_lc[ts] = None
         self._out_emb_lc[ts] = None
+        self._ta_rx[ts] = None
         self._out_frame_pos[ts] = 0
 
     def _build_voice(self, opcode, src_sub, dst_id, call_info, rtp_hdr, voice_payload,
@@ -447,7 +476,10 @@ class IpscVoiceTranslator:
         src_sub = lc[6:9]
         dst_id = lc[3:6]
         call_info = TS_CALL_MSK if ts == 2 else 0x00
-        gv_payload = _build_slot_voice_payload(ts, pos, ambe_19, self._del_emb_lc[ts], lc)
+        gv_payload = _build_slot_voice_payload(
+            ts, pos, ambe_19,
+            self._ta_emb(self._ta_tx, ts, src_sub, pos, self._del_emb_lc[ts]),
+            lc)
         self._del_rtp_ts[ts] = (self._del_rtp_ts[ts] + 480) & 0xFFFFFFFF
         rtp_hdr = self._next_rtp_hdr(ts, 0x5d)
         pkt = self._build_voice(
@@ -532,6 +564,7 @@ class IpscVoiceTranslator:
         self._del_hbp_stream[ts] = None
         self._del_lc[ts] = None
         self._del_emb_lc[ts] = None
+        self._ta_tx[ts] = None
         self._del_private[ts] = False
 
     def handle_outbound(self, dmrd):
@@ -569,6 +602,7 @@ class IpscVoiceTranslator:
             lc = _decode_lc_from_dmrd(payload)
             self._del_lc[ts] = lc
             self._del_emb_lc[ts] = bptc.encode_emblc(lc)
+            self._bind_ta(self._ta_tx, ts, src_sub)
             self._del_private[ts] = private_call
             if hbp_stream != self._del_hbp_stream.get(ts):
                 # New HBP stream — fresh IPSC call-seq; do not arm delivery clock here
@@ -621,6 +655,7 @@ class IpscVoiceTranslator:
                 lc = LC_OPT + dst_id + src_sub
                 self._del_lc[ts] = lc
                 self._del_emb_lc[ts] = bptc.encode_emblc(lc)
+                self._bind_ta(self._ta_tx, ts, src_sub)
                 self._del_private[ts] = private_call
                 self._del_hbp_stream[ts] = hbp_stream
                 self._del_stream_ctr = (self._del_stream_ctr + 1) & 0xFF
@@ -659,11 +694,13 @@ class IpscVoiceTranslator:
         payload = dmrd[20:53]
 
         if frame_type == HBPF_DATA_SYNC and dtype_vseq == HBPF_SLT_VHEAD:
+            # call_seq 0 is a real assignment after the counter wraps.
             if (self._del_hbp_stream.get(ts) == hbp_stream
-                    and self._del_stream_id[ts]):
+                    and self._del_stream_id[ts] is not None):
                 return None
             self._del_hbp_stream[ts] = hbp_stream
             lc = _decode_lc_from_dmrd(payload)
+            self._bind_ta(self._ta_tx, ts, src_sub)
             self._del_stream_ctr = (self._del_stream_ctr + 1) & 0xFF
             self._del_stream_id[ts] = self._del_stream_ctr
             self._del_private[ts] = private_call
@@ -693,13 +730,16 @@ class IpscVoiceTranslator:
         if (frame_type == HBPF_VOICE_SYNC and dtype_vseq == 0) or (
                 frame_type == HBPF_VOICE and dtype_vseq in (1, 2, 3, 4, 5)):
             lc = LC_OPT + dst_id + src_sub
-            emb_lc = bptc.encode_emblc(lc)
-            if self._del_stream_id[ts] == 0:
+            pos = _dmrd_voice_position(flags)
+            emb_lc = self._ta_emb(
+                self._ta_tx, ts, src_sub, pos, bptc.encode_emblc(lc))
+            # A header that wrapped onto call_seq 0 has already set the stream.
+            # Only a burst that arrives before any header still needs a seq.
+            if self._del_hbp_stream[ts] is None and self._del_stream_id[ts] == 0:
                 self._del_stream_ctr = (self._del_stream_ctr + 1) & 0xFF
                 self._del_stream_id[ts] = self._del_stream_ctr
             if private_call:
                 self._del_private[ts] = True
-            pos = _dmrd_voice_position(flags)
             ambe_19 = _extract_ambe_from_dmrd(payload)
             gv_payload = _build_slot_voice_payload(ts, pos, ambe_19, emb_lc, lc)
             call_info = TS_CALL_MSK if ts == 2 else 0x00

@@ -1,5 +1,41 @@
 # RYSEN DMRMaster+ Changelog
 
+## Unreleased
+
+Talker Alias on bridged voice.
+
+### Talker Alias
+
+- A bridged over, and a call repeated to other peers on the same master,
+  carries the transmitting subscriber's callsign in the embedded link
+  control. The first superframe stays group or unit voice LC so late entry
+  still learns the talkgroup; alias blocks follow. Receiving radios,
+  MMDVMHost, Hytera, and IPSC see that alias. A callsign from the subscriber
+  list is used until the radio sends its own. Same-master repeat leaves
+  voice superframes unchanged and rewrites only the alias superframes.
+- Homebrew `DMRA` is learned from a logged-in peer. Current MMDVMHost sends
+  the 15-byte form (radio id, no repeater id); the hotspot proxy routes
+  that by the logged-in socket. The 19-byte form still carries the repeater
+  id. The radio's alias replaces the database callsign for that DMR ID.
+- `ALIAS=0` or `ALIAS=1` in a hotspot or repeater OPTIONS string turns
+  talker alias off or on for that destination. MMDVM peers use their own
+  RPTO string. Hytera and IPSC use the repeater's system OPTIONS. Omitted
+  follows `[GLOBAL] TALKER_ALIAS`. A radio that cannot display an alias
+  keeps talkgroup LC and still receives the over.
+- `[GLOBAL] TALKER_ALIAS` defaults to on. Set it `False` to leave embedded
+  signalling as talkgroup LC only. Existing configs pick up the default
+  without an edit. The running process re-reads that flag on the options
+  timer and when subscriber aliases reload, so the change does not wait
+  for a restart.
+- A repeated voice header for the same over does not restart the alias
+  cadence. Voice that arrives before the header is repeated unchanged.
+  A repeat schedule with no terminator is dropped after a few seconds of
+  silence.
+- A dial-a-TG prompt starts a fresh alias schedule. An incomplete embedded
+  superframe is discarded when the next one begins, so a torn burst is not
+  learned as the callsign. Hytera forwards the bridged DMR burst, which
+  already carries that alias.
+
 ## Version 1.6.2 (2026-10-27)
 
 HR1065 native HMTP support, RD625 field validation, and Hytera downlink

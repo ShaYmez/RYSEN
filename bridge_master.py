@@ -82,6 +82,7 @@ from selfcare_db import (
     union_peer_static_lists,
 )
 from bridge_helpers import iter_routing_master_systems as _iter_routing_master_systems
+import talker_alias
 from unit_hub import (
     interpret_hub_lookup,
     schedule_off_reactor,
@@ -1956,6 +1957,20 @@ def threadAlias():
     logger.debug('(ALIAS) starting alias thread')
     reactor.callInThread(aliasb)
 
+def _refresh_talker_alias_flag():
+    """Apply [GLOBAL] TALKER_ALIAS from the config file the process was started with."""
+    path = CONFIG.get('_CONFIG_FILE')
+    if not path:
+        return
+    flag = talker_alias.refresh_from_file(path)
+    if flag is None or 'GLOBAL' not in CONFIG:
+        return
+    previous = CONFIG['GLOBAL'].get('TALKER_ALIAS', True)
+    CONFIG['GLOBAL']['TALKER_ALIAS'] = flag
+    if flag != previous:
+        logger.info('(GLOBAL) TALKER_ALIAS is %s', 'enabled' if flag else 'disabled')
+
+
 def setAlias(_peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids):
     global peer_ids, subscriber_ids, talkgroup_ids, local_subscriber_ids, server_ids
     peer_ids = coalesce_alias_dict(_peer_ids, CONFIG.get('_PEER_IDS'), 'peer_ids')
@@ -1980,6 +1995,8 @@ def setAlias(_peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids, 
         CONFIG['_SERVER_IDS'] = server_ids
     from nxdn_aliases import attach_callsign_index
     attach_callsign_index(CONFIG)
+    talker_alias.set_tables(local_subscriber_ids, subscriber_ids)
+    _refresh_talker_alias_flag()
     
 def aliasb():
     _peer_ids, _subscriber_ids, _talkgroup_ids, _local_subscriber_ids, _server_ids = mk_aliases(CONFIG)
@@ -2070,6 +2087,9 @@ def ident():
                         break
 
 def options_config():
+    # TALKER_ALIAS is a file flag, not peer OPTIONS. Re-read it on every tick
+    # so an edit applies without a restart, including when OPTIONS are clean.
+    _refresh_talker_alias_flag()
     # RPTO/selfcare/disconnect paths mark this dirty. Keep the 26-second timer
     # for coalescing, but never rebuild unchanged bridge state on the reactor.
     if not CONFIG.get('_OPTIONS_DIRTY', True):
@@ -2140,8 +2160,21 @@ def options_config():
                                             else:
                                                 logger.warning('(OPTIONS) %s - Peer %s invalid LINK_IPSC "%s", ignoring',
                                                              _system, int_id(_peer_id), _link_slot)
+                                        elif k == 'ALIAS' and v.lower() not in (
+                                                '0', '1', 'true', 'false', 'yes', 'no'):
+                                            logger.warning('(OPTIONS) %s - Peer %s invalid ALIAS value "%s", ignoring',
+                                                           _system, int_id(_peer_id), v)
                                     except (ValueError, KeyError):
                                         continue
+                                _alias_now = talker_alias.parse_alias_option(_peer_options_str)
+                                _alias_label = (
+                                    '1' if _alias_now else '0' if _alias_now is False else 'default')
+                                if _peer.get('_ALIAS_LOG') != _alias_label:
+                                    _alias_prev = _peer.get('_ALIAS_LOG')
+                                    _peer['_ALIAS_LOG'] = _alias_label
+                                    if _alias_now is not None or _alias_prev not in (None, 'default'):
+                                        logger.info('(OPTIONS) %s - Peer %s ALIAS=%s',
+                                                    _system, int_id(_peer_id), _alias_label)
                             except Exception as e:
                                 logger.debug('(OPTIONS) %s - Error parsing peer %s OPTIONS: %s', _system, int_id(_peer_id), e)
                 
@@ -2251,6 +2284,21 @@ def options_config():
 
                     if 'UserLink' in _options:
                         _options.pop('UserLink')
+
+                    if _mode in ('IPSC', 'HYTERA'):
+                        _alias_now = talker_alias.parse_alias_option(
+                            CONFIG['SYSTEMS'][_system].get('OPTIONS'))
+                        _alias_label = (
+                            '1' if _alias_now else '0' if _alias_now is False else 'default')
+                        if CONFIG['SYSTEMS'][_system].get('_ALIAS_LOG') != _alias_label:
+                            _alias_prev = CONFIG['SYSTEMS'][_system].get('_ALIAS_LOG')
+                            CONFIG['SYSTEMS'][_system]['_ALIAS_LOG'] = _alias_label
+                            if _alias_now is not None or _alias_prev not in (None, 'default'):
+                                logger.info('(OPTIONS) %s ALIAS=%s', _system, _alias_label)
+                        if 'ALIAS' in _options and _options['ALIAS'].lower() not in (
+                                '0', '1', 'true', 'false', 'yes', 'no'):
+                            logger.warning('(OPTIONS) %s - invalid ALIAS value "%s", ignoring',
+                                           _system, _options['ALIAS'])
                     
                     if 'TS1_STATIC' not in _options:
                         _options['TS1_STATIC'] = False
@@ -2561,6 +2609,30 @@ def hotspot_selfcare_disc_poll():
         logger.exception('(SELF SERVICE) hotspot disc poll error: %s', err)
 
 
+def _ta_fragment(schedule, frame_type, vseq, voice_emb):
+    """Voice LC, or a talker-alias block when this superframe carries one."""
+    if schedule is None:
+        return voice_emb[vseq]
+    try:
+        return schedule.fragment(frame_type, vseq, voice_emb)
+    except Exception:
+        logger.debug('Talker Alias embed failed', exc_info=True)
+        return voice_emb[vseq]
+
+
+def _emb_for_target(schedule, frame_type, vseq, voice_emb, system_cfg):
+    """Alias block, or talkgroup LC when this repeater has ALIAS=0.
+
+    Homebrew masters keep the alias in the packet. send_peers strips it
+    for an individual hotspot that opted out. Hytera and IPSC are one
+    repeater, so the choice is made here.
+    """
+    mode = (system_cfg or {}).get('MODE')
+    if mode in ('HYTERA', 'IPSC') and not talker_alias.destination_enabled(system_cfg):
+        return voice_emb[vseq]
+    return _ta_fragment(schedule, frame_type, vseq, voice_emb)
+
+
 class routerOBP(OPENBRIDGE):
 
     def __init__(self, _name, _config, _report):
@@ -2581,6 +2653,10 @@ class routerOBP(OPENBRIDGE):
                 
     def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,sysIgnore, _hops = b'', _source_server = b'\x00\x00\x00\x00', _ber = b'\x00', _rssi = b'\x00', _source_rptr = b'\x00\x00\x00\x00', _new_generation=False):
         _sysIgnore = sysIgnore
+        try:
+            talker_alias.note_embedded(_rf_src, _frame_type, _dtype_vseq, dmrpkt)
+        except Exception:
+            logger.debug('(%s) Talker Alias ingest failed', self._system, exc_info=True)
         for _target in BRIDGES[_bridge]:
             if (_target['SYSTEM'] != self._system) and (_target['ACTIVE']):
                 _target_status = systems[_target['SYSTEM']].STATUS
@@ -2668,6 +2744,7 @@ class routerOBP(OPENBRIDGE):
                             'H_LC': bptc.encode_header_lc(dst_lc),
                             'T_LC': bptc.encode_terminator_lc(dst_lc),
                             'EMB_LC': bptc.encode_emblc(dst_lc),
+                            'TA': talker_alias.AliasSchedule(_rf_src),
                         }
                         logger.debug('(%s) Conference Bridge: %s, Call Bridged to OBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                         if CONFIG['REPORTS']['REPORT']:
@@ -2709,7 +2786,7 @@ class routerOBP(OPENBRIDGE):
                     # Create a Burst B-E packet (Embedded LC)
                     elif _dtype_vseq in [1,2,3,4]:
                         try:
-                            dmrbits = dmrbits[0:116] + _target_lc['EMB_LC'][_dtype_vseq] + dmrbits[148:264]
+                            dmrbits = dmrbits[0:116] + _ta_fragment(_target_lc.get('TA'), _frame_type, _dtype_vseq, _target_lc['EMB_LC']) + dmrbits[148:264]
                         except KeyError:
                             logger.debug('(%s) KeyError - EMB_LC, skipping', self._system)
                             continue
@@ -2785,6 +2862,10 @@ class routerOBP(OPENBRIDGE):
                         _target_status[_target['TS']]['TX_H_LC'] = bptc.encode_header_lc(dst_lc)
                         _target_status[_target['TS']]['TX_T_LC'] = bptc.encode_terminator_lc(dst_lc)
                         _target_status[_target['TS']]['TX_EMB_LC'] = bptc.encode_emblc(dst_lc)
+                        _target_status[_target['TS']]['TX_TA'] = talker_alias.AliasSchedule(_rf_src)
+                        talker_alias.remember_voice(
+                            _target['SYSTEM'], _stream_id,
+                            _target_status[_target['TS']]['TX_EMB_LC'])
                         logger.debug('(%s) Generating TX FULL and EMB LCs for HomeBrew destination: System: %s, TS: %s, TGID: %s', self._system, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                         logger.debug('(%s) Conference Bridge: %s, Call Bridged to HBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                         if CONFIG['REPORTS']['REPORT']:
@@ -2822,7 +2903,7 @@ class routerOBP(OPENBRIDGE):
                             systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
                     # Create a Burst B-E packet (Embedded LC)
                     elif _dtype_vseq in [1,2,3,4]:
-                        dmrbits = dmrbits[0:116] + _target_status[_target['TS']]['TX_EMB_LC'][_dtype_vseq] + dmrbits[148:264]
+                        dmrbits = dmrbits[0:116] + _emb_for_target(_target_status[_target['TS']].get('TX_TA'), _frame_type, _dtype_vseq, _target_status[_target['TS']]['TX_EMB_LC'], _target_system) + dmrbits[148:264]
                     _tx_dmrpkt = dmrbits.tobytes()
                     #_tmp_data = b''.join([_tmp_data, _tx_dmrpkt, b'\x00\x00']) # Add two bytes of nothing since OBP doesn't include BER & RSSI bytes #_data[53:55]
                     _tmp_data = b''.join([_tmp_data, _tx_dmrpkt])
@@ -3732,6 +3813,10 @@ class routerHBP(HBSYSTEM):
 
     def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,sysIgnore,_source_server, _ber, _rssi, _source_rptr, _new_generation=False):
         _sysIgnore = sysIgnore
+        try:
+            talker_alias.note_embedded(_rf_src, _frame_type, _dtype_vseq, dmrpkt)
+        except Exception:
+            logger.debug('(%s) Talker Alias ingest failed', self._system, exc_info=True)
         for _target in BRIDGES[_bridge]:
             #if _target['SYSTEM'] != self._system or (_target['SYSTEM'] == self._system and _target['TS'] != _slot):
             if _target['SYSTEM'] != self._system and _target['ACTIVE']:
@@ -3819,6 +3904,7 @@ class routerHBP(HBSYSTEM):
                                 'H_LC': bptc.encode_header_lc(dst_lc),
                                 'T_LC': bptc.encode_terminator_lc(dst_lc),
                                 'EMB_LC': bptc.encode_emblc(dst_lc),
+                                'TA': talker_alias.AliasSchedule(_rf_src),
                             }
                             logger.debug('(%s) Conference Bridge: %s, Call Bridged to OBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                             if CONFIG['REPORTS']['REPORT']:
@@ -3852,7 +3938,7 @@ class routerHBP(HBSYSTEM):
                                 systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
                         # Create a Burst B-E packet (Embedded LC)
                         elif _dtype_vseq in [1,2,3,4]:
-                            dmrbits = dmrbits[0:116] + _target_lc['EMB_LC'][_dtype_vseq] + dmrbits[148:264]
+                            dmrbits = dmrbits[0:116] + _ta_fragment(_target_lc.get('TA'), _frame_type, _dtype_vseq, _target_lc['EMB_LC']) + dmrbits[148:264]
                         _tx_dmrpkt = dmrbits.tobytes()
                         _tmp_data = b''.join([_tmp_data, _tx_dmrpkt])
 
@@ -3926,6 +4012,10 @@ class routerHBP(HBSYSTEM):
                                 _target_status[_target['TS']]['TX_H_LC'] = bptc.encode_header_lc(dst_lc)
                                 _target_status[_target['TS']]['TX_T_LC'] = bptc.encode_terminator_lc(dst_lc)
                                 _target_status[_target['TS']]['TX_EMB_LC'] = bptc.encode_emblc(dst_lc)
+                                _target_status[_target['TS']]['TX_TA'] = talker_alias.AliasSchedule(_rf_src)
+                                talker_alias.remember_voice(
+                                    _target['SYSTEM'], _stream_id,
+                                    _target_status[_target['TS']]['TX_EMB_LC'])
                                 logger.debug('(%s) Generating TX FULL and EMB LCs for HomeBrew destination: System: %s, TS: %s, TGID: %s', self._system, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                                 logger.debug('(%s) Conference Bridge: %s, Call Bridged to HBP System: %s TS: %s, TGID: %s', self._system, _bridge, _target['SYSTEM'], _target['TS'], int_id(_target['TGID']))
                                 if CONFIG['REPORTS']['REPORT']:
@@ -3963,7 +4053,7 @@ class routerHBP(HBSYSTEM):
                                 systems[_target['SYSTEM']]._report.send_bridgeEvent('GROUP VOICE,END,TX,{},{},{},{},{},{},{:.2f}'.format(_target['SYSTEM'], int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _target['TS'], int_id(_target['TGID']), call_duration).encode(encoding='utf-8', errors='ignore'))
                         # Create a Burst B-E packet (Embedded LC)
                         elif _dtype_vseq in [1,2,3,4]:
-                            dmrbits = dmrbits[0:116] + _target_status[_target['TS']]['TX_EMB_LC'][_dtype_vseq] + dmrbits[148:264]
+                            dmrbits = dmrbits[0:116] + _emb_for_target(_target_status[_target['TS']].get('TX_TA'), _frame_type, _dtype_vseq, _target_status[_target['TS']]['TX_EMB_LC'], _target_system) + dmrbits[148:264]
                         try:
                             _tx_dmrpkt = dmrbits.tobytes()
                         except AttributeError:
@@ -6496,6 +6586,8 @@ if __name__ == '__main__':
     #else:
     
     CONFIG = config.build_config(cli_args.CONFIG_FILE)
+    CONFIG['_CONFIG_FILE'] = cli_args.CONFIG_FILE
+    talker_alias.set_enabled(CONFIG['GLOBAL'].get('TALKER_ALIAS', True))
 
     _ipsc_enabled = any(
         CONFIG['SYSTEMS'][s].get('ENABLED') and CONFIG['SYSTEMS'][s].get('MODE') == 'IPSC'

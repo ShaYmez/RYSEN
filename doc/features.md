@@ -245,12 +245,27 @@ Operator setup: [hytera.md](hytera.md). The proxy is a local compose profile (`-
 
 ---
 
+## Talker Alias
+
+Outbound voice carries the transmitting station's talker alias in ETSI embedded link control (FLCO `0x04`–`0x07`, 7-bit). The voice header and the first superframe stay group or unit LC. Later superframes alternate the alias with voice LC, so late entry still learns the talkgroup and the receiving radio can show the callsign.
+
+| Source | What is shown |
+|--------|----------------|
+| Radio `DMRA` or embedded alias | The text the radio sent |
+| Subscriber list | Callsign from `subscriber_ids` / `local_subscriber_ids` |
+| Neither | No alias; embedded LC stays the talkgroup |
+
+`[GLOBAL] TALKER_ALIAS` defaults to `True`. `False` leaves every embedded burst as talkgroup LC. A hotspot or repeater opts out with `ALIAS=0` in its OPTIONS string. Full air-interface, Brandmeister comparison, and the send path: [talker-alias.md](talker-alias.md).
+
+---
+
 ## Related documentation
 
 - [architecture.md](architecture.md) — stack overview
 - [hytera.md](hytera.md) — native Hytera setup and supported behaviour
 - [unit-call.md](unit-call.md) — private unit calls, local and optional fleet hop
 - [options.md](options.md) — OPTIONS string syntax
+- [talker-alias.md](talker-alias.md) — talker alias air interface, switches, and comparison
 - [install.md](install.md) — Docker install
 - [selfcare.md](selfcare.md) — MariaDB selfcare
 - [hotspot-proxy-v2.md](hotspot-proxy-v2.md) — hotspot proxy setup
