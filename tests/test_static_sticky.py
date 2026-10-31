@@ -106,6 +106,33 @@ class TestPeerStickyOnConfig(unittest.TestCase):
     def test_missing_peer_id_is_not_sticky(self):
         self.assertFalse(bm.peer_sticky_tg_enabled('SYSTEM-1', None))
 
+    def test_stanza_statics_without_snapshot_disable_sticky(self):
+        cfg = bm.CONFIG['SYSTEMS']['SYSTEM-1']
+        cfg['MODE'] = 'MASTER'
+        cfg['TS2_STATIC'] = '2350'
+        cfg['DEFAULT_UA_TIMER'] = 10
+        cfg.pop('_default_options', None)
+        cfg['PEERS'][self.peer]['OPTIONS'] = 'STICKY=1;'
+        cfg['PEERS'][self.peer]['STICKY'] = True
+        self.assertTrue(bm.peer_has_any_static_tgs('SYSTEM-1', self.peer))
+        self.assertFalse(bm.peer_sticky_tg_enabled('SYSTEM-1', self.peer))
+
+    def test_remember_uses_peer_timer(self):
+        reset_peer_rx_filters()
+        bm.CONFIG['SYSTEMS']['SYSTEM-1']['DEFAULT_UA_TIMER'] = 10
+        bm.CONFIG['SYSTEMS']['SYSTEM-1']['PEERS'][self.peer]['OPTIONS'] = (
+            'TIMER=5;STICKY=0;')
+        bm.CONFIG['SYSTEMS']['SYSTEM-1']['PEERS'][self.peer]['STICKY'] = False
+        self.assertEqual(bm.peer_ua_timer_minutes('SYSTEM-1', self.peer), 5)
+        bm._remember_source_dynamic_tg(
+            'SYSTEM-1', self.peer, 2, 91, pkt_time=100.0,
+            timeout_s=bm.peer_ua_timer_minutes('SYSTEM-1', self.peer) * 60)
+        stream = b'\x00\x00\x00\x0a'
+        self.assertFalse(dest_peer_rx_blocked(
+            'SYSTEM-1', self.peer, stream, 2, 91, now=350.0))
+        self.assertTrue(dest_peer_rx_blocked(
+            'SYSTEM-1', self.peer, stream, 2, 91, now=450.0))
+
 
 class TestStickyMembershipDoesNotMute(unittest.TestCase):
     def setUp(self):

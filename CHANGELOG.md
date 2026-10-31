@@ -14,7 +14,10 @@
   memberships instead of leaving them immortal. RPTO/selfcare apply that
   immediately (not only on the 26s options timer). RelinkTime follows the
   hotspot `TIMER=` / `RelinkTime=` when set. SUB_MAP rows without a peer
-  id no longer keep a shared-MASTER bridge sticky.
+  id no longer keep a shared-MASTER bridge sticky. Control API static add/
+  remove expires open sticky UA rows immediately. PTT membership uses the
+  same per-hotspot timer. Cfg default statics are read even before the
+  options snapshot exists.
 
 ## Version 1.6.3 (2026-10-31)
 

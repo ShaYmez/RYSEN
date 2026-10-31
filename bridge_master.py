@@ -1305,6 +1305,8 @@ def peer_has_any_static_tgs(system, peer_id):
     ts1, ts2 = ts_lists_from_options(peer_own_options(syscfg, peer_id))
     if ts1 or ts2:
         return True
+    if syscfg:
+        ensure_master_default_options(syscfg)
     d1, d2 = ts_lists_from_options(syscfg.get('_default_options'))
     return bool(d1 or d2)
 
@@ -6120,7 +6122,7 @@ class routerHBP(HBSYSTEM):
                     _remember_source_dynamic_tg(
                         self._system, _peer_id, _slot, _int_dst_id,
                         pkt_time,
-                        None if _ua_timer is None else _ua_timer * 60)
+                        peer_ua_timer_minutes(self._system, _peer_id) * 60)
                 
                 # Update SUB_MAP with the TG for this call
                 # This enables sticky TG functionality - subscriber is now associated with this TG
@@ -6352,7 +6354,8 @@ class routerHBP(HBSYSTEM):
                                         _remember_source_dynamic_tg(
                                             self._system, _peer_id, _slot,
                                             _int_dst_id, pkt_time,
-                                            _system.get('TIMEOUT'))
+                                            peer_ua_timer_minutes(
+                                                self._system, _peer_id) * 60)
                                     if _system['ACTIVE'] == False:
                                         _system['ACTIVE'] = True
                                         _system['TIMER'] = pkt_time + _system['TIMEOUT']

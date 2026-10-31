@@ -284,6 +284,11 @@ class TestRadioIdCore(unittest.TestCase):
         self.assertFalse(radio_ids_match(2340189, 2340190))
         self.assertFalse(radio_ids_match(2340189, 23401890))
 
+    def test_persist_statics_expires_sticky(self):
+        with open('control_api.py', encoding='utf-8') as fh:
+            source = fh.read()
+        self.assertIn('bm._apply_peer_sticky_from_options(system, peer_id, options)', source)
+
     def test_merge_options(self):
         out = merge_ts_into_options('VOICE=1;TS2=9;', '9,10', '2350')
         self.assertIn('VOICE=1', out)
