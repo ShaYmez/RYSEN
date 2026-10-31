@@ -7,6 +7,11 @@
 - Per-peer UA membership no longer expires or mutes after RelinkTime when
   sticky applies (system `STICKY_TG` or `STICKY=1`, and no TS1/TS2 statics).
 - Statics still disable sticky, so UA TGs time out and statics come back.
+- Sticky is decided from this hotspot's OPTIONS plus cfg defaults, not the
+  live union of every peer's statics on a shared MASTER.
+- Private call 4000 now clears per-peer UA membership as well as SUB_MAP.
+- OPTIONS that add statics or `STICKY=0` start RelinkTime on open sticky
+  memberships instead of leaving them immortal.
 
 ## Version 1.6.3 (2026-10-31)
 

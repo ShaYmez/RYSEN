@@ -906,6 +906,25 @@ def forget_peer_dynamic_tg(system, peer_id, slot, tgid):
         _PEER_DYNAMIC_TGS.pop(key, None)
 
 
+def expire_open_peer_dynamic_tgs(system, peer_id, expires_at):
+    """Give sticky (None) memberships a RelinkTime when sticky turns off.
+
+    Leaves rows that already have an expiry so a later OPTIONS tick does not
+    keep pushing the timer out.
+    """
+    if peer_id is None or not system or expires_at is None:
+        return 0
+    memberships = _PEER_DYNAMIC_TGS.get((system, peer_id))
+    if not memberships:
+        return 0
+    changed = 0
+    for item, current in memberships.items():
+        if current is None:
+            memberships[item] = expires_at
+            changed += 1
+    return changed
+
+
 def _live_peer_reflectors(system, peer_id, now=None):
     now = time.time() if now is None else now
     key = (system, peer_id)
