@@ -1,5 +1,13 @@
 # RYSEN DMRMaster+ Changelog
 
+## Unreleased
+
+### Sticky talkgroups
+
+- Per-peer UA membership no longer expires or mutes after RelinkTime when
+  sticky applies (system `STICKY_TG` or `STICKY=1`, and no TS1/TS2 statics).
+- Statics still disable sticky, so UA TGs time out and statics come back.
+
 ## Version 1.6.3 (2026-10-31)
 
 Talker Alias on bridged voice.

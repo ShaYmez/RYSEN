@@ -74,6 +74,8 @@ Parsed from each peer's RPTO OPTIONS, not the system stanza.
 
 Priority for sticky TGs: **static TGs** (`TS1_STATIC`/`TS2_STATIC`) > **peer STICKY** > **system `STICKY_TG`** > default timeout.
 
+When the hotspot has any `TS1`/`TS2` statics, sticky is off and user-activated TGs expire after `RelinkTime` / `TIMER`. Sticky is only the last keyed TG when the static lists are empty. In that case the membership does not expire or mute after the UA timer — it stays until the user keys another TG or 4000.
+
 ## Selfcare keys
 
 | Key | Meaning |

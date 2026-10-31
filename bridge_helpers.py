@@ -841,14 +841,42 @@ def should_remember_peer_dynamic_tg(system_cfg, tgid):
     return True
 
 
-def remember_peer_dynamic_tg(system, peer_id, slot, tgid, expires_at=None):
-    """Record that this hotspot joined a numbered UA. Clears a prior mute."""
+def sticky_tg_enabled(system_cfg, peer_cfg=None, has_static_tgs=False):
+    """True when Brandmeister last-TG stick applies to this hotspot.
+
+    Statics disable sticky. Explicit peer STICKY overrides system STICKY_TG.
+    """
+    if has_static_tgs:
+        return False
+    if peer_cfg is not None and 'STICKY' in peer_cfg:
+        return bool(peer_cfg['STICKY'])
+    return bool((system_cfg or {}).get('STICKY_TG', False))
+
+
+def remember_peer_dynamic_tg(system, peer_id, slot, tgid, expires_at=None,
+                             exclusive_slot=False):
+    """Record that this hotspot joined a numbered UA. Clears a prior mute.
+
+    exclusive_slot: drop (and mute) other dynamics on this slot so last-TG
+    sticky does not keep the previous group after the user moves on.
+    """
     if peer_id is None or not system:
         return
     item = _peer_tg_item(slot, tgid)
     if item is None:
         return
     key = (system, peer_id)
+    if exclusive_slot:
+        memberships = _PEER_DYNAMIC_TGS.get(key)
+        if memberships:
+            stale = [old for old in list(memberships) if old[0] == item[0] and old != item]
+            if stale:
+                muted = _PEER_MUTED_TGS.setdefault(key, set())
+                for old in stale:
+                    memberships.pop(old, None)
+                    muted.add(old)
+            if not memberships:
+                _PEER_DYNAMIC_TGS.pop(key, None)
     _PEER_DYNAMIC_TGS.setdefault(key, {})[item] = expires_at
     muted = _PEER_MUTED_TGS.get(key)
     if muted:
