@@ -1,5 +1,27 @@
 # RYSEN DMRMaster+ Changelog
 
+## Unreleased
+
+### Sticky talkgroups
+
+- Per-peer UA membership no longer expires or mutes after RelinkTime when
+  sticky applies (system `STICKY_TG` or `STICKY=1`, and no TS1/TS2 statics).
+- Statics still disable sticky, so UA TGs time out and statics come back.
+- Sticky is decided from this hotspot's OPTIONS plus cfg defaults, not the
+  live union of every peer's statics on a shared MASTER.
+- Private call 4000 now clears per-peer UA membership as well as SUB_MAP.
+- OPTIONS that add statics or `STICKY=0` start RelinkTime on open sticky
+  memberships instead of leaving them immortal. RPTO/selfcare apply that
+  immediately (not only on the 26s options timer). RelinkTime follows the
+  hotspot `TIMER=` / `RelinkTime=` when set. SUB_MAP rows without a peer
+  id no longer keep a shared-MASTER bridge sticky. Control API static add/
+  remove expires open sticky UA rows immediately. PTT membership uses the
+  same per-hotspot timer. Cfg default statics are read even before the
+  options snapshot exists.
+- CONFIG_SND now includes per-peer `UA` (slot, TG, expiry) so RYSEN-MONITOR
+  can show that hotspot's last unique TG and `Sticky` instead of painting
+  the shared MASTER bridge onto every peer.
+
 ## Version 1.6.3 (2026-10-31)
 
 Talker Alias on bridged voice.

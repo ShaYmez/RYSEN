@@ -841,14 +841,85 @@ def should_remember_peer_dynamic_tg(system_cfg, tgid):
     return True
 
 
-def remember_peer_dynamic_tg(system, peer_id, slot, tgid, expires_at=None):
-    """Record that this hotspot joined a numbered UA. Clears a prior mute."""
+def _options_pairs(options_value):
+    if not options_value:
+        return
+    if isinstance(options_value, bytes):
+        text = options_value.decode('utf-8', errors='ignore')
+    else:
+        text = str(options_value)
+    text = text.rstrip('\x00')
+    for part in text.split(';'):
+        part = part.strip().strip('\x00')
+        if not part or '=' not in part:
+            continue
+        key, value = part.split('=', 1)
+        yield key.strip(), value.strip()
+
+
+def sticky_flag_from_options(options_value):
+    """True/False if STICKY= is present and valid, else None."""
+    for key, value in _options_pairs(options_value):
+        if key.upper() != 'STICKY':
+            continue
+        low = value.lower()
+        if low in ('1', 'true', 'yes'):
+            return True
+        if low in ('0', 'false', 'no'):
+            return False
+        return None
+    return None
+
+
+def ua_timer_minutes_from_options(options_value):
+    """TIMER= / RelinkTime= / DEFAULT_UA_TIMER= minutes, or None if omitted."""
+    found = None
+    for key, value in _options_pairs(options_value):
+        if key.upper() not in ('TIMER', 'RELINKTIME', 'DEFAULT_UA_TIMER'):
+            continue
+        try:
+            found = int(value)
+        except (TypeError, ValueError):
+            continue
+    return found
+
+
+def sticky_tg_enabled(system_cfg, peer_cfg=None, has_static_tgs=False):
+    """True when Brandmeister last-TG stick applies to this hotspot.
+
+    Statics disable sticky. Explicit peer STICKY overrides system STICKY_TG.
+    """
+    if has_static_tgs:
+        return False
+    if peer_cfg is not None and 'STICKY' in peer_cfg:
+        return bool(peer_cfg['STICKY'])
+    return bool((system_cfg or {}).get('STICKY_TG', False))
+
+
+def remember_peer_dynamic_tg(system, peer_id, slot, tgid, expires_at=None,
+                             exclusive_slot=False):
+    """Record that this hotspot joined a numbered UA. Clears a prior mute.
+
+    exclusive_slot: drop (and mute) other dynamics on this slot so last-TG
+    sticky does not keep the previous group after the user moves on.
+    """
     if peer_id is None or not system:
         return
     item = _peer_tg_item(slot, tgid)
     if item is None:
         return
     key = (system, peer_id)
+    if exclusive_slot:
+        memberships = _PEER_DYNAMIC_TGS.get(key)
+        if memberships:
+            stale = [old for old in list(memberships) if old[0] == item[0] and old != item]
+            if stale:
+                muted = _PEER_MUTED_TGS.setdefault(key, set())
+                for old in stale:
+                    memberships.pop(old, None)
+                    muted.add(old)
+            if not memberships:
+                _PEER_DYNAMIC_TGS.pop(key, None)
     _PEER_DYNAMIC_TGS.setdefault(key, {})[item] = expires_at
     muted = _PEER_MUTED_TGS.get(key)
     if muted:
@@ -859,6 +930,34 @@ def remember_peer_dynamic_tg(system, peer_id, slot, tgid, expires_at=None):
 
 def peer_remembered_dynamic_tgs(system, peer_id):
     return set(_live_peer_dynamic_tgs(system, peer_id))
+
+
+def peer_ua_report(system, peer_id, now=None):
+    """Compact live UA membership for CONFIG_SND / RYSEN-MONITOR."""
+    report = {}
+    for (slot, tgid), expires_at in _live_peer_dynamic_tgs(
+            system, peer_id, now=now).items():
+        report[int(slot)] = {'TGID': int(tgid), 'EXPIRES': expires_at}
+    return report
+
+
+def overlay_peer_ua_for_report(systems, now=None):
+    """Write peer['UA'] onto every reported peer. Always present for PEERS.
+
+    Empty dict means this master publishes per-hotspot UA and this hotspot
+    has none. Missing UA (older RYSEN) lets the monitor fall back.
+    """
+    if not systems:
+        return systems
+    for name, syscfg in systems.items():
+        if not isinstance(syscfg, dict):
+            continue
+        peers = syscfg.get('PEERS') or {}
+        for peer_id, peer in peers.items():
+            if not isinstance(peer, dict):
+                continue
+            peer['UA'] = peer_ua_report(name, peer_id, now=now)
+    return systems
 
 
 def forget_peer_dynamic_tgs(system, peer_id):
@@ -876,6 +975,25 @@ def forget_peer_dynamic_tg(system, peer_id, slot, tgid):
     memberships.pop(item, None)
     if not memberships:
         _PEER_DYNAMIC_TGS.pop(key, None)
+
+
+def expire_open_peer_dynamic_tgs(system, peer_id, expires_at):
+    """Give sticky (None) memberships a RelinkTime when sticky turns off.
+
+    Leaves rows that already have an expiry so a later OPTIONS tick does not
+    keep pushing the timer out.
+    """
+    if peer_id is None or not system or expires_at is None:
+        return 0
+    memberships = _PEER_DYNAMIC_TGS.get((system, peer_id))
+    if not memberships:
+        return 0
+    changed = 0
+    for item, current in memberships.items():
+        if current is None:
+            memberships[item] = expires_at
+            changed += 1
+    return changed
 
 
 def _live_peer_reflectors(system, peer_id, now=None):

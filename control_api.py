@@ -374,6 +374,7 @@ def _wire_handlers():
     def _persist_statics(system, peer_id, ts1, ts2):
         options = merge_ts_into_options(_options_base(system, peer_id), ts1, ts2)
         _write_peer_options(system, peer_id, options)
+        bm._apply_peer_sticky_from_options(system, peer_id, options)
 
     def add_static(system, tgid, slot, peer_id):
         cfg = bm.CONFIG['SYSTEMS'][system]

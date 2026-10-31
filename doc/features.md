@@ -90,6 +90,8 @@ Brandmeister-style "last talkgroup" memory per subscriber.
 
 **Priority:** static TGs > peer STICKY > system STICKY_TG > normal timeout.
 
+Sticky runs only when that hotspot has **no** static TGs. With statics set, UA talkgroups follow `DEFAULT_UA_TIMER` / `RelinkTime` and then drop. With no statics, the last keyed TG stays (no 10-minute mute) until the user keys another TG or disconnects (4000).
+
 **Required:** every MASTER stanza must include `STICKY_TG: True` or `STICKY_TG: False`.
 
 See [options.md](options.md) and CHANGELOG 1.4.0.
