@@ -1,8 +1,10 @@
 # RYSEN DMRMaster+ Changelog
 
-## Unreleased
+## Version 1.6.3 (2026-10-31)
 
 Talker Alias on bridged voice.
+
+Released on **`master`** — `shaymez/rysen:1.6.3` and `:latest`.
 
 ### Talker Alias
 

@@ -14,7 +14,7 @@ Protocol research: [node-dmr-lib](https://github.com/rick51231/node-dmr-lib). OP
 | **7** | Ops polish | Ongoing |
 
 ```
-master @ 1.6.2 (released)
+master @ 1.6.3 (released)
   ├── Phase 4 local unit voice + optional global hop (shipped)
   └── Phase 5 SMS / GPS (deferred)
 ```

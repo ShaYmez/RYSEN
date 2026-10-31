@@ -1,11 +1,12 @@
 # RYSEN Features
 
-Version history and feature reference for RYSEN DMRMaster+ (SystemX). Current release: **1.6.2** on `master`.
+Version history and feature reference for RYSEN DMRMaster+ (SystemX). Current release: **1.6.3** on `master`.
 
 Maintained by **Shane Daley M0VUB** (aka **ShaYmez**) — primary RYSEN / SystemX development since v1.3.9. Lineage: HBlink3 (N0MJS) → FreeDMR (G7RZU) → RYSEN.
 
 | Version | Date | Summary |
 |---------|------|---------|
+| 1.6.3 | 2026-10-31 | Talker Alias on bridged voice, with per-master and per-hotspot switches |
 | 1.6.2 | 2026-10-27 | HR1065 HMTP voice/SMS, RD625 validation, Hytera pacing under jitter |
 | 1.6.1 | 2026-10-23 | Hytera production, YSF/NXDN peer, parrot 9990, unit-routing hardening |
 | 1.6.0 | 2026-10-06 | Topology-aware unit routing, native Hytera, OpenBridge stream ownership |
@@ -177,6 +178,23 @@ Field-hardened on the FreeSTAR fleet after USA Homebrew RPTPING stalls and STAT 
 
 ---
 
+## v1.6.3 — Talker Alias
+
+Stable ETSI talker alias on bridged and repeated voice. Field-checked on Europe with Homebrew, Hytera, and IPSC masters.
+
+| Feature | Detail |
+|---------|--------|
+| Air format | 7-bit embedded LC, FLCO `0x04`–`0x07`. First superframe stays group or unit LC |
+| Text source | Radio text wins. Subscriber-file callsign is the fallback. Digit-only text is ignored |
+| Whole server | `[GLOBAL] TALKER_ALIAS: False` sends talkgroup LC everywhere, including OpenBridge |
+| Per master | `ALIAS: True/False` on a `MASTER`, `HYTERA`, or `IPSC` stanza. A generator copies it onto every slot |
+| Per hotspot | `ALIAS=0` or `ALIAS=1` in that peer's OPTIONS overrides the master |
+| OpenBridge | The trunk keeps the alias while the global flag is on. The next master decides |
+
+Operator reference: [talker-alias.md](talker-alias.md).
+
+---
+
 ## v1.6.2 — HR1065 HMTP, RD625, Hytera pacing
 
 | Feature | Detail |
@@ -255,7 +273,7 @@ Outbound voice carries the transmitting station's talker alias in ETSI embedded 
 | Subscriber list | Callsign from `subscriber_ids` / `local_subscriber_ids` |
 | Neither | No alias; embedded LC stays the talkgroup |
 
-`[GLOBAL] TALKER_ALIAS` defaults to `True`. `False` leaves every embedded burst as talkgroup LC. A hotspot or repeater opts out with `ALIAS=0` in its OPTIONS string. Full air-interface, Brandmeister comparison, and the send path: [talker-alias.md](talker-alias.md).
+`[GLOBAL] TALKER_ALIAS` defaults to `True`. `False` leaves every embedded burst as talkgroup LC. A `MASTER`, `HYTERA`, or `IPSC` stanza sets `ALIAS: True` or `ALIAS: False` for that master and for every slot its generator creates. A hotspot overrides its own master with `ALIAS=0` or `ALIAS=1`. Full air-interface, Brandmeister comparison, and the send path: [talker-alias.md](talker-alias.md).
 
 ---
 

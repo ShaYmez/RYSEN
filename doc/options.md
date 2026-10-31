@@ -27,7 +27,7 @@ These are the internal names RYSEN stores on the system stanza.
 | `DEFAULT_REFLECTOR` | `DIAL`, `StartRef` | Startup reflector talkgroup | TG number; `0` = disabled |
 | `OVERRIDE_IDENT_TG` | `IDENTTG`, `VOICETG` | Talkgroup used for voice ID announcements | TG number |
 | `VOICE_IDENT` | `IDENT` | Enable voice ident announcements | `0` / `1` |
-| `ALIAS` | — | Send talker alias to this hotspot or repeater. Omitted follows `[GLOBAL] TALKER_ALIAS` (on). `0` leaves embedded signalling as talkgroup LC so a radio that cannot show an alias still receives the over. See [talker-alias.md](talker-alias.md). | `0` / `1` |
+| `ALIAS` | — | Stanza switch on `MASTER`, `HYTERA`, and `IPSC`: `True` or `False`. Omitted follows `[GLOBAL] TALKER_ALIAS`. A generator copies it onto every slot. A hotspot still overrides with `ALIAS=` in its own OPTIONS. See [talker-alias.md](talker-alias.md). | `True` / `False` |
 | `ANNOUNCEMENT_LANGUAGE` | `LANG` | Voice prompt language | e.g. `en_GB` (must match installed `Audio/` set) |
 | `SINGLE_MODE` | `SINGLE` | Last-TG-wins unsubscribe on that slot. Default **off** on IPSC/Hytera (statics stay linked; hangtime serialises RF). Default **on** for Homebrew MASTER hotspots. | `0` / `1` |
 | `LINK_IPSC` | `IPSC` | Link UA bridges to an IPSC slot | e.g. `IPSC-198` |
@@ -69,7 +69,7 @@ Parsed from each peer's RPTO OPTIONS, not the system stanza.
 | Key | Meaning | Values |
 |-----|---------|--------|
 | `STICKY` | Brandmeister-style sticky talkgroup per user | `1`/`0`, `true`/`false`, `yes`/`no` |
-| `ALIAS` | Send talker alias to this hotspot. Overrides a master-wide `ALIAS=` in `rysen.cfg`. | `0` / `1` |
+| `ALIAS` | Send talker alias to this hotspot. Overrides the master stanza `ALIAS`. | `0` / `1` |
 | `IPSC` / `LINK_IPSC` | Wake linked IPSC leg on UA bridge activation | Valid `IPSC-N` slot name, e.g. `IPSC-198` |
 
 Priority for sticky TGs: **static TGs** (`TS1_STATIC`/`TS2_STATIC`) > **peer STICKY** > **system `STICKY_TG`** > default timeout.

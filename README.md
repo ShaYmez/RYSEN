@@ -1,6 +1,6 @@
 # RYSEN DMRMaster+
 
-RYSEN DMR Master+ (A FreeSTAR SystemX DMR Master Server). One Twisted process routes Homebrew, OpenBridge, Motorola IP Site Connect, and Hytera IP Multi-site Connect, with talkgroup bridges, private unit calls, and local dashboard selfcare. **Version 1.6.2** on `master`.
+RYSEN DMR Master+ (A FreeSTAR SystemX DMR Master Server). One Twisted process routes Homebrew, OpenBridge, Motorola IP Site Connect, and Hytera IP Multi-site Connect, with talkgroup bridges, private unit calls, and local dashboard selfcare. **Version 1.6.3** on `master`.
 
 ## Quick start
 
@@ -25,6 +25,7 @@ Must be run as **root** on Debian 10+, Pi OS, or recent Ubuntu. See [doc/install
   RDAC metadata, live RSSI, multi-repeater proxy (v1.6.0+).
   See [doc/hytera.md](doc/hytera.md).
 - **Unit routing** — Local private calls, plus an optional fleet hop when `UNIT_SUB_MAP_URL` is set (v1.6.0). **1.6.1** keeps a mid-path login from replacing the learned home.
+- **Talker Alias** — Callsign in the voice bursts (v1.6.3). Radio text wins, the subscriber file is the fallback, and a master or hotspot can turn it off. See [doc/talker-alias.md](doc/talker-alias.md).
 - **Selfcare** — Dashboard-driven static TG and settings via MariaDB
 - **Reporting** — TCP feed for [RYSEN-MONITOR](https://github.com/ShaYmez/RYSEN-MONITOR)
 
@@ -36,6 +37,7 @@ Must be run as **root** on Debian 10+, Pi OS, or recent Ubuntu. See [doc/install
 | [doc/features.md](doc/features.md) | Versioned feature catalog |
 | [doc/architecture.md](doc/architecture.md) | Stack overview and components |
 | [doc/options.md](doc/options.md) | OPTIONS= syntax (TIMER, RelinkTime, DMR+ aliases) |
+| [doc/talker-alias.md](doc/talker-alias.md) | Talker alias air interface, switches, and comparison |
 | [doc/selfcare.md](doc/selfcare.md) | MariaDB selfcare for hotspots, IPSC and Hytera |
 | [doc/ipsc.md](doc/ipsc.md) | Motorola IPSC reference (CPS, config, field tests) |
 | [doc/ipsc-roadmap.md](doc/ipsc-roadmap.md) | IPSC future phases |
@@ -58,7 +60,7 @@ Sample configs: [RYSEN-SAMPLE-commented.cfg](RYSEN-SAMPLE-commented.cfg), [docke
 
 ## Docker image
 
-CI builds and publishes `shaymez/rysen:1.6.2` and `shaymez/rysen:latest` from the root [Dockerfile](Dockerfile) on push to `master`.
+CI builds and publishes `shaymez/rysen:1.6.3` and `shaymez/rysen:latest` from the root [Dockerfile](Dockerfile) on push to `master`.
 
 ## Credits
 

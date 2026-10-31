@@ -9,7 +9,9 @@ Brandmeister uses: the transmitting user cannot turn it off for everyone
 else, and a repeater or hotspot that cannot take the embedded data can
 refuse it for itself.
 
-OPTIONS syntax for the switch is in [options.md](options.md).
+Shipped as a stable release in **1.6.3**. OPTIONS syntax for the hotspot
+override is in [options.md](options.md). The master switch is `ALIAS:`
+on the stanza.
 
 ## What the radio receives
 
@@ -256,8 +258,8 @@ The gates are the last hop:
 |------|--------|-----------|
 | Bridged group call to a Homebrew master | `bridge_master.py` builds one packet, `hblink.py` `send_peers` restores talkgroup LC for the opted-out peer | Talkgroup LC |
 | Same-master repeat | `hblink.py` calls `embed_repeat` once, then sends the original burst to an opted-out peer | Our alias is not inserted. A radio-sent alias in the arrived burst is still forwarded |
-| Hytera | `bridge_master.py` chooses talkgroup LC before `hytera_send_system` | Talkgroup LC |
-| IPSC | `ipsc_master.py` sets `_send_alias` from the repeater OPTIONS. `ipsc_voice.py` embeds voice LC instead of the alias | Talkgroup LC |
+| Hytera | `bridge_master.py` chooses talkgroup LC before `hytera_send_system`. The stanza `ALIAS` is the switch when the repeater sends no options | Talkgroup LC |
+| IPSC | `ipsc_master.py` sets `_send_alias` from the stanza `ALIAS`, unless the live options string contains `ALIAS=`. `ipsc_voice.py` embeds voice LC instead of the alias | Talkgroup LC |
 | OpenBridge | Both routers keep the alias block | Unchanged while the global flag is on |
 
 Learning stays on when a destination has opted out. A radio that sends an
