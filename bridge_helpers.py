@@ -932,6 +932,34 @@ def peer_remembered_dynamic_tgs(system, peer_id):
     return set(_live_peer_dynamic_tgs(system, peer_id))
 
 
+def peer_ua_report(system, peer_id, now=None):
+    """Compact live UA membership for CONFIG_SND / RYSEN-MONITOR."""
+    report = {}
+    for (slot, tgid), expires_at in _live_peer_dynamic_tgs(
+            system, peer_id, now=now).items():
+        report[int(slot)] = {'TGID': int(tgid), 'EXPIRES': expires_at}
+    return report
+
+
+def overlay_peer_ua_for_report(systems, now=None):
+    """Write peer['UA'] onto every reported peer. Always present for PEERS.
+
+    Empty dict means this master publishes per-hotspot UA and this hotspot
+    has none. Missing UA (older RYSEN) lets the monitor fall back.
+    """
+    if not systems:
+        return systems
+    for name, syscfg in systems.items():
+        if not isinstance(syscfg, dict):
+            continue
+        peers = syscfg.get('PEERS') or {}
+        for peer_id, peer in peers.items():
+            if not isinstance(peer, dict):
+                continue
+            peer['UA'] = peer_ua_report(name, peer_id, now=now)
+    return systems
+
+
 def forget_peer_dynamic_tgs(system, peer_id):
     _PEER_DYNAMIC_TGS.pop((system, peer_id), None)
 

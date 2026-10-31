@@ -8,6 +8,7 @@ import bridge_master as bm
 from bridge_helpers import (
     dest_peer_rx_blocked,
     expire_open_peer_dynamic_tgs,
+    overlay_peer_ua_for_report,
     remember_peer_dynamic_tg,
     reset_peer_rx_filters,
     sticky_flag_from_options,
@@ -316,6 +317,48 @@ class Test4000ClearsStickyMembership(unittest.TestCase):
         self.assertFalse(bm.BRIDGES['91'][0]['ACTIVE'])
         self.assertTrue(dest_peer_rx_blocked(
             'SYSTEM-1', self.peer, self.stream, 2, 91))
+
+
+class TestPeerUaReport(unittest.TestCase):
+    def setUp(self):
+        reset_peer_rx_filters()
+        self.peer_a = b'\x00\x23\x42\x43'
+        self.peer_b = b'\x00\x23\x42\x44'
+
+    def tearDown(self):
+        reset_peer_rx_filters()
+
+    def test_overlay_publishes_per_peer_ua(self):
+        remember_peer_dynamic_tg(
+            'SYSTEM-1', self.peer_a, 2, 91, expires_at=None)
+        remember_peer_dynamic_tg(
+            'SYSTEM-1', self.peer_b, 2, 2350, expires_at=10000)
+        systems = {
+            'SYSTEM-1': {
+                'PEERS': {
+                    self.peer_a: {'OPTIONS': 'TS1=;TS2=;'},
+                    self.peer_b: {'OPTIONS': 'TS2=23516;'},
+                },
+            },
+        }
+        overlay_peer_ua_for_report(systems, now=9000)
+        self.assertEqual(
+            systems['SYSTEM-1']['PEERS'][self.peer_a]['UA'],
+            {2: {'TGID': 91, 'EXPIRES': None}})
+        self.assertEqual(
+            systems['SYSTEM-1']['PEERS'][self.peer_b]['UA'],
+            {2: {'TGID': 2350, 'EXPIRES': 10000}})
+
+    def test_overlay_always_sets_empty_ua(self):
+        systems = {'SYSTEM-1': {'PEERS': {self.peer_a: {}}}}
+        overlay_peer_ua_for_report(systems, now=1)
+        self.assertEqual(systems['SYSTEM-1']['PEERS'][self.peer_a]['UA'], {})
+
+    def test_send_config_overlays_ua(self):
+        with open('hblink.py', encoding='utf-8') as fh:
+            source = fh.read()
+        self.assertIn('overlay_peer_ua_for_report(self._config[\'SYSTEMS\'])',
+                      source)
 
 
 if __name__ == '__main__':

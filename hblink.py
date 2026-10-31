@@ -53,6 +53,7 @@ from bridge_helpers import (
     mark_options_dirty, dmr_seq_delta, reset_slot_voice_ident,
     dest_peer_rx_blocked, release_dropped_stream, forget_peer_rx_state,
     stream_is_dropped, obp_talkgroup_acl_applies,
+    overlay_peer_ua_for_report,
 )
 import talker_alias
 
@@ -1722,6 +1723,7 @@ class reportFactory(Factory):
             client.sendString(_message)
 
     def send_config(self):
+        overlay_peer_ua_for_report(self._config['SYSTEMS'])
         serialized = pickle.dumps(self._config['SYSTEMS'], protocol=2) #.decode('utf-8', errors='ignore') #pickle.HIGHEST_PROTOCOL)
         logger.debug('(REPORT) Send config')
         self.send_clients(b''.join([REPORT_OPCODES['CONFIG_SND'], serialized]))

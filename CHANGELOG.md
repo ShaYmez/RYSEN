@@ -18,6 +18,9 @@
   remove expires open sticky UA rows immediately. PTT membership uses the
   same per-hotspot timer. Cfg default statics are read even before the
   options snapshot exists.
+- CONFIG_SND now includes per-peer `UA` (slot, TG, expiry) so RYSEN-MONITOR
+  can show that hotspot's last unique TG and `Sticky` instead of painting
+  the shared MASTER bridge onto every peer.
 
 ## Version 1.6.3 (2026-10-31)
 
