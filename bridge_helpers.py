@@ -841,6 +841,49 @@ def should_remember_peer_dynamic_tg(system_cfg, tgid):
     return True
 
 
+def _options_pairs(options_value):
+    if not options_value:
+        return
+    if isinstance(options_value, bytes):
+        text = options_value.decode('utf-8', errors='ignore')
+    else:
+        text = str(options_value)
+    text = text.rstrip('\x00')
+    for part in text.split(';'):
+        part = part.strip().strip('\x00')
+        if not part or '=' not in part:
+            continue
+        key, value = part.split('=', 1)
+        yield key.strip(), value.strip()
+
+
+def sticky_flag_from_options(options_value):
+    """True/False if STICKY= is present and valid, else None."""
+    for key, value in _options_pairs(options_value):
+        if key.upper() != 'STICKY':
+            continue
+        low = value.lower()
+        if low in ('1', 'true', 'yes'):
+            return True
+        if low in ('0', 'false', 'no'):
+            return False
+        return None
+    return None
+
+
+def ua_timer_minutes_from_options(options_value):
+    """TIMER= / RelinkTime= / DEFAULT_UA_TIMER= minutes, or None if omitted."""
+    found = None
+    for key, value in _options_pairs(options_value):
+        if key.upper() not in ('TIMER', 'RELINKTIME', 'DEFAULT_UA_TIMER'):
+            continue
+        try:
+            found = int(value)
+        except (TypeError, ValueError):
+            continue
+    return found
+
+
 def sticky_tg_enabled(system_cfg, peer_cfg=None, has_static_tgs=False):
     """True when Brandmeister last-TG stick applies to this hotspot.
 

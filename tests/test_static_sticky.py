@@ -10,9 +10,23 @@ from bridge_helpers import (
     expire_open_peer_dynamic_tgs,
     remember_peer_dynamic_tg,
     reset_peer_rx_filters,
+    sticky_flag_from_options,
     sticky_tg_enabled,
+    ua_timer_minutes_from_options,
 )
 from dmr_utils3.utils import bytes_3
+class TestOptionsParsers(unittest.TestCase):
+    def test_sticky_flag_from_options(self):
+        self.assertTrue(sticky_flag_from_options('TS1=;STICKY=1;'))
+        self.assertFalse(sticky_flag_from_options(b'STICKY=0;'))
+        self.assertIsNone(sticky_flag_from_options('TS2=2350;'))
+
+    def test_ua_timer_from_options(self):
+        self.assertEqual(ua_timer_minutes_from_options('TIMER=5;'), 5)
+        self.assertEqual(ua_timer_minutes_from_options('RelinkTime=15;'), 15)
+        self.assertIsNone(ua_timer_minutes_from_options('TS2=2350;'))
+
+
 class TestStickyTgEnabled(unittest.TestCase):
     def test_statics_disable_sticky(self):
         self.assertFalse(sticky_tg_enabled(
@@ -82,6 +96,15 @@ class TestPeerStickyOnConfig(unittest.TestCase):
         bm.CONFIG['SYSTEMS']['SYSTEM-1']['PEERS'][self.peer]['STICKY'] = True
         self.assertTrue(bm.peer_has_any_static_tgs('SYSTEM-1', self.peer))
         self.assertFalse(bm.peer_sticky_tg_enabled('SYSTEM-1', self.peer))
+
+    def test_options_sticky_zero_overrides_stale_peer_flag(self):
+        bm.CONFIG['SYSTEMS']['SYSTEM-1']['PEERS'][self.peer]['OPTIONS'] = (
+            'TS1=;TS2=;STICKY=0;')
+        bm.CONFIG['SYSTEMS']['SYSTEM-1']['PEERS'][self.peer]['STICKY'] = True
+        self.assertFalse(bm.peer_sticky_tg_enabled('SYSTEM-1', self.peer))
+
+    def test_missing_peer_id_is_not_sticky(self):
+        self.assertFalse(bm.peer_sticky_tg_enabled('SYSTEM-1', None))
 
 
 class TestStickyMembershipDoesNotMute(unittest.TestCase):
@@ -184,6 +207,38 @@ class TestStickyMembershipDoesNotMute(unittest.TestCase):
                 'SYSTEM-1', peer, self.stream, 2, 91, now=before + 10))
             self.assertTrue(dest_peer_rx_blocked(
                 'SYSTEM-1', peer, self.stream, 2, 91, now=before + 700))
+        finally:
+            bm.CONFIG = prev
+
+    def test_selfcare_apply_expires_immediately_with_peer_timer(self):
+        prev = getattr(bm, 'CONFIG', None)
+        peer = self.peer
+        bm.CONFIG = {'SYSTEMS': {
+            'SYSTEM-1': {
+                'MODE': 'MASTER',
+                'STICKY_TG': True,
+                'DEFAULT_UA_TIMER': 10,
+                'TS1_STATIC': '',
+                'TS2_STATIC': '',
+                'PEERS': {peer: {'OPTIONS': 'TS1=;TS2=;STICKY=1;',
+                                 'STICKY': True}},
+            }
+        }, 'REPORTS': {'REPORT': False}}
+        try:
+            remember_peer_dynamic_tg(
+                'SYSTEM-1', peer, 2, 91, expires_at=None)
+            before = time.time()
+            remaining, had_disc = bm.apply_selfcare_options(
+                'SYSTEM-1', peer, 'TS2=2350;STICKY=0;TIMER=5;')
+            self.assertFalse(had_disc)
+            self.assertEqual(remaining, 'TS2=2350;STICKY=0;TIMER=5;')
+            self.assertFalse(
+                bm.CONFIG['SYSTEMS']['SYSTEM-1']['PEERS'][peer]['STICKY'])
+            self.assertEqual(bm.peer_ua_timer_minutes('SYSTEM-1', peer), 5)
+            self.assertFalse(dest_peer_rx_blocked(
+                'SYSTEM-1', peer, self.stream, 2, 91, now=before + 60))
+            self.assertTrue(dest_peer_rx_blocked(
+                'SYSTEM-1', peer, self.stream, 2, 91, now=before + 400))
         finally:
             bm.CONFIG = prev
 

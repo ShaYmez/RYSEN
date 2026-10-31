@@ -11,7 +11,10 @@
   live union of every peer's statics on a shared MASTER.
 - Private call 4000 now clears per-peer UA membership as well as SUB_MAP.
 - OPTIONS that add statics or `STICKY=0` start RelinkTime on open sticky
-  memberships instead of leaving them immortal.
+  memberships instead of leaving them immortal. RPTO/selfcare apply that
+  immediately (not only on the 26s options timer). RelinkTime follows the
+  hotspot `TIMER=` / `RelinkTime=` when set. SUB_MAP rows without a peer
+  id no longer keep a shared-MASTER bridge sticky.
 
 ## Version 1.6.3 (2026-10-31)
 
