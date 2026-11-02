@@ -23,8 +23,10 @@
   the shared MASTER bridge onto every peer.
 - Last sticky TG is kept by hotspot ID across reconnects (Pi-Star auto-update
   / generator-slot move), like Brandmeister auto-static and TGIF park.
-  Restore runs on WAITING_CONFIG → YES, then once more on the first OPTIONS
-  if sticky is only `STICKY=1` (not on later RPTO or drop-dynamic). 4000,
+  Restore runs on WAITING_CONFIG → YES, then on OPTIONS until sticky is
+  enabled (`STICKY=1` or system `STICKY_TG`) and restore succeeds or is
+  known not to apply (not on later RPTO or drop-dynamic). Partial OPTIONS
+  without `STICKY=` do not wipe last-TG persist. 4000,
   selfcare `DISC=1`, statics, and `STICKY=0` still clear it. The timer loop
   keeps a restored UA bridge up from per-peer membership even before the
   next PTT, including OPTIONS-only sticky. Turning sticky back on (statics

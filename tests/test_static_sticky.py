@@ -512,6 +512,38 @@ class TestStickyLastTgSurvivesReconnect(unittest.TestCase):
             '_complete_sticky_login_restore(self._system, _restore_peer)',
             source)
 
+    def test_split_options_retries_restore_when_sticky_arrives_later(self):
+        bm.CONFIG['SYSTEMS']['SYSTEM-46']['STICKY_TG'] = False
+        bm.CONFIG['SYSTEMS']['SYSTEM-46']['PEERS'][self.peer] = {
+            'OPTIONS': '', 'CONNECTION': 'YES',
+        }
+        bm._remember_source_dynamic_tg(
+            'SYSTEM-1', self.peer, 2, 91, pkt_time=100.0, timeout_s=600)
+        bm.selfcare_disconnect('SYSTEM-1', self.peer)
+        self.assertEqual(
+            bm._complete_sticky_login_restore('SYSTEM-46', self.peer), 0)
+        bm.apply_selfcare_options('SYSTEM-46', self.peer, 'TS1=;TS2=;')
+        self.assertTrue(
+            bm.CONFIG['SYSTEMS']['SYSTEM-46']['PEERS'][self.peer][
+                '_STICKY_RESTORE'])
+        self.assertEqual(sticky_last_tgs(self.peer), {2: 91})
+        self.assertFalse(peer_remembered_dynamic_tgs('SYSTEM-46', self.peer))
+        bm.apply_selfcare_options(
+            'SYSTEM-46', self.peer, 'TS1=;TS2=;STICKY=1;')
+        self.assertIn(
+            (2, 91), peer_remembered_dynamic_tgs('SYSTEM-46', self.peer))
+        self.assertFalse(
+            bm.CONFIG['SYSTEMS']['SYSTEM-46']['PEERS'][self.peer][
+                '_STICKY_RESTORE'])
+
+    def test_sticky_zero_clears_last_tg_persist(self):
+        bm._remember_source_dynamic_tg(
+            'SYSTEM-1', self.peer, 2, 91, pkt_time=100.0, timeout_s=600)
+        self.assertEqual(sticky_last_tgs(self.peer), {2: 91})
+        bm.apply_selfcare_options(
+            'SYSTEM-1', self.peer, 'TS1=;TS2=;STICKY=0;')
+        self.assertEqual(sticky_last_tgs(self.peer), {})
+
     def test_first_options_restores_when_sticky_is_options_only(self):
         bm.CONFIG['SYSTEMS']['SYSTEM-46']['STICKY_TG'] = False
         bm.CONFIG['SYSTEMS']['SYSTEM-46']['PEERS'][self.peer] = {

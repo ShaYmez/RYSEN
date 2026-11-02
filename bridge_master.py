@@ -1328,11 +1328,23 @@ def peer_ua_timer_minutes(system, peer_id):
     return minutes
 
 
+def _sticky_explicitly_disabled(system, peer_id):
+    """True when OPTIONS/statics turned sticky off, not merely omitted."""
+    if peer_has_any_static_tgs(system, peer_id):
+        return True
+    syscfg = CONFIG.get('SYSTEMS', {}).get(system, {})
+    if sticky_flag_from_options(peer_own_options(syscfg, peer_id)) is False:
+        return True
+    peer = (syscfg.get('PEERS') or {}).get(peer_id) if peer_id else None
+    return bool(peer is not None and peer.get('STICKY') is False)
+
+
 def _expire_sticky_membership_if_disabled(system, peer_id):
     """When sticky no longer applies, start RelinkTime on open UA memberships."""
     if peer_sticky_tg_enabled(system, peer_id):
         return
-    forget_sticky_last_tg(peer_id)
+    if _sticky_explicitly_disabled(system, peer_id):
+        forget_sticky_last_tg(peer_id)
     minutes = peer_ua_timer_minutes(system, peer_id)
     filled = expire_open_peer_dynamic_tgs(
         system, peer_id, time() + minutes * 60)
@@ -1480,8 +1492,11 @@ def apply_selfcare_options(source_system, peer_id, options_str):
         _apply_peer_sticky_from_options(source_system, peer_id, remaining)
         peer = _peer_record(source_system, peer_id)
         if peer is not None and peer.get('_STICKY_RESTORE') and not _had_disc:
-            restore_peer_sticky_last_tgs(source_system, peer_id)
-            peer['_STICKY_RESTORE'] = False
+            restored = restore_peer_sticky_last_tgs(source_system, peer_id)
+            if (restored > 0
+                    or peer_sticky_tg_enabled(source_system, peer_id)
+                    or not sticky_last_tgs(peer_id)):
+                peer['_STICKY_RESTORE'] = False
     return remaining, _had_disc
 
 
