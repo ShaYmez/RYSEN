@@ -173,5 +173,84 @@ class TestDial9SanitizeIsPerPeer(unittest.TestCase):
                 bm.SUB_MAP = prev
 
 
+class TestImportTwinConfig(unittest.TestCase):
+
+    def test_apply_binds_live_config_onto_import_twin(self):
+        import sys
+        import bridge_master as bm
+        peer = (234883102).to_bytes(4, 'big')
+        live = {
+            'SYSTEMS': {
+                'SYSTEM-1': {
+                    'MODE': 'MASTER',
+                    'STICKY_TG': True,
+                    'DEFAULT_UA_TIMER': 10,
+                    'TS1_STATIC': '',
+                    'TS2_STATIC': '',
+                    'PEERS': {peer: {'OPTIONS': '', 'CONNECTION': 'YES'}},
+                }
+            },
+            'REPORTS': {'REPORT': False},
+        }
+        main = sys.modules['__main__']
+        prev_main = getattr(main, 'CONFIG', None)
+        prev_bm = bm.__dict__.get('CONFIG', None)
+        had_bm = 'CONFIG' in bm.__dict__
+        main.CONFIG = live
+        try:
+            if had_bm:
+                del bm.CONFIG
+            remaining, had_disc = bm.apply_selfcare_options(
+                'SYSTEM-1', peer, 'TS1=;TS2=;STICKY=1;')
+            self.assertFalse(had_disc)
+            self.assertIs(bm.CONFIG, live)
+            self.assertEqual(
+                live['SYSTEMS']['SYSTEM-1']['PEERS'][peer].get('OPTIONS'),
+                remaining)
+        finally:
+            if prev_main is None:
+                delattr(main, 'CONFIG')
+            else:
+                main.CONFIG = prev_main
+            if had_bm:
+                bm.CONFIG = prev_bm
+            elif 'CONFIG' in bm.__dict__:
+                del bm.CONFIG
+
+    def test_peer_record_does_not_nameerror_without_module_config(self):
+        import sys
+        import bridge_master as bm
+        peer = (234883102).to_bytes(4, 'big')
+        live = {'SYSTEMS': {'SYSTEM-1': {'PEERS': {peer: {'STICKY': True}}}}}
+        main = sys.modules['__main__']
+        prev_main = getattr(main, 'CONFIG', None)
+        had_bm = 'CONFIG' in bm.__dict__
+        prev_bm = bm.__dict__.get('CONFIG', None)
+        main.CONFIG = live
+        try:
+            if had_bm:
+                del bm.CONFIG
+            rec = bm._peer_record('SYSTEM-1', peer)
+            self.assertEqual(rec.get('STICKY'), True)
+        finally:
+            if prev_main is None:
+                delattr(main, 'CONFIG')
+            else:
+                main.CONFIG = prev_main
+            if had_bm:
+                bm.CONFIG = prev_bm
+            elif 'CONFIG' in bm.__dict__:
+                del bm.CONFIG
+
+    def test_hblink_rpto_uses_live_process_module(self):
+        with open('hblink.py', encoding='utf-8') as fh:
+            source = fh.read()
+        rpto = source[source.index('elif _command == RPTO:'):
+                      source.index('elif _command == RPTP:')]
+        self.assertIn('runtime_bridge_module()', rpto)
+        self.assertNotIn(
+            'from bridge_master import apply_selfcare_options\n', rpto)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -53,7 +53,7 @@ from bridge_helpers import (
     mark_options_dirty, dmr_seq_delta, reset_slot_voice_ident,
     dest_peer_rx_blocked, release_dropped_stream, forget_peer_rx_state,
     stream_is_dropped, obp_talkgroup_acl_applies,
-    overlay_peer_ua_for_report,
+    overlay_peer_ua_for_report, runtime_bridge_module,
 )
 import talker_alias
 
@@ -1433,9 +1433,12 @@ class HBSYSTEM(DatagramProtocol):
                             else str(_this_peer['OPTIONS']))
                 logger.info('(%s) Peer %s has sent options %s', self._system, _this_peer['CALLSIGN'], _this_peer['OPTIONS'])
                 try:
-                    from bridge_master import apply_selfcare_options
                     from selfcare_db import store_peer_options
-                    _remaining, _had_disc = apply_selfcare_options(
+                    _mod = runtime_bridge_module()
+                    _apply = getattr(_mod, 'apply_selfcare_options', None)
+                    if _apply is None:
+                        from bridge_master import apply_selfcare_options as _apply
+                    _remaining, _had_disc = _apply(
                         self._system, _peer_id, _opt_str)
                     _stored = _remaining if _had_disc else _opt_str
                     store_peer_options(

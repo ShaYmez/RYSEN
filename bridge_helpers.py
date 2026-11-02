@@ -3,6 +3,7 @@
 
 import os
 import re
+import sys
 import time
 from collections import OrderedDict
 
@@ -17,6 +18,34 @@ _SERVICE_TG_RANGE = range(9991, 10000)
 
 
 RSSI_REPORT_INTERVAL = 1.0
+_RUNTIME_SHARED_NAMES = (
+    'CONFIG', 'BRIDGES', 'BRIDGE_IDX', 'SUB_MAP', 'systems',
+    'report_server', '_selfcare_db',
+)
+
+
+def runtime_bridge_module():
+    """Live process module. `python bridge_master.py` is __main__, not the import twin."""
+    main = sys.modules.get('__main__')
+    if main is not None and getattr(main, 'CONFIG', None) is not None:
+        return main
+    return sys.modules.get('bridge_master') or main
+
+
+def bind_runtime_globals(target=None, source=None):
+    """Copy CONFIG/BRIDGES from the live process onto an import twin."""
+    if source is None:
+        source = runtime_bridge_module()
+    if target is None:
+        target = sys.modules.get('bridge_master')
+    if source is None or target is None or source is target:
+        return False
+    bound = False
+    for name in _RUNTIME_SHARED_NAMES:
+        if hasattr(source, name):
+            setattr(target, name, getattr(source, name))
+            bound = True
+    return bound
 
 
 def rssi_byte(rssi):

@@ -11,7 +11,6 @@ import json
 import hmac
 import logging
 import os
-import sys
 from typing import Callable, Dict, List, Optional, Tuple
 
 log = logging.getLogger(__name__)
@@ -272,9 +271,10 @@ def _http_response(code: int, body: dict) -> bytes:
 def _runtime_bridge():
     """Use the running process module. bridge_master.py is started as __main__,
     so `import bridge_master` is a second copy without CONFIG/BRIDGES."""
-    main = sys.modules.get('__main__')
-    if main is not None and getattr(main, 'CONFIG', None) is not None:
-        return main
+    from bridge_helpers import runtime_bridge_module
+    mod = runtime_bridge_module()
+    if mod is not None:
+        return mod
     import bridge_master as bm
     return bm
 

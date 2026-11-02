@@ -122,6 +122,8 @@ from bridge_helpers import (
     unexpire_peer_dynamic_tgs,
     collapse_peer_dynamic_tgs_to_last_slot,
     sticky_ua_holds_bridge,
+    runtime_bridge_module,
+    bind_runtime_globals,
     sticky_tg_enabled,
     sticky_flag_from_options,
     ua_timer_minutes_from_options,
@@ -1508,8 +1510,23 @@ def restore_peer_sticky_last_tgs(system, peer_id):
     return restored
 
 
+def _ensure_runtime_globals():
+    """Import twin (`import bridge_master`) has no CONFIG; bind the live process."""
+    bind_runtime_globals(target=sys.modules[__name__])
+
+
+def _runtime_config():
+    _ensure_runtime_globals()
+    cfg = globals().get('CONFIG')
+    if isinstance(cfg, dict):
+        return cfg
+    live = runtime_bridge_module()
+    cfg = getattr(live, 'CONFIG', None) if live is not None else None
+    return cfg if isinstance(cfg, dict) else {}
+
+
 def _peer_record(system, peer_id):
-    syscfg = CONFIG.get('SYSTEMS', {}).get(system) or {}
+    syscfg = _runtime_config().get('SYSTEMS', {}).get(system) or {}
     return (syscfg.get('PEERS') or {}).get(peer_id) if peer_id else None
 
 
@@ -1525,6 +1542,7 @@ def _complete_sticky_login_restore(system, peer_id):
 
 def apply_selfcare_options(source_system, peer_id, options_str):
     """Process DISC=1 immediately; return remaining OPTIONS text (without DISC)."""
+    _ensure_runtime_globals()
     _had_disc = selfcare_disconnect_requested(options_str)
     peer = _peer_record(source_system, peer_id)
     if _had_disc:
@@ -1538,7 +1556,7 @@ def apply_selfcare_options(source_system, peer_id, options_str):
         for tgid in groups:
             forget_peer_dynamic_tg(source_system, peer_id, slot, tgid)
             unmute_peer_tg(source_system, peer_id, slot, tgid)
-    syscfg = CONFIG.get('SYSTEMS', {}).get(source_system, {})
+    syscfg = _runtime_config().get('SYSTEMS', {}).get(source_system, {})
     if peer_id:
         store_peer_options(syscfg, peer_id, remaining)
         _apply_peer_sticky_from_options(source_system, peer_id, remaining)
@@ -7201,5 +7219,6 @@ if __name__ == '__main__':
     from rysen_trace import persist_runtime_version, schedule_version_ping
     persist_runtime_version(_log_dir)
     schedule_version_ping(reactor, _log_dir)
-    
+    bind_runtime_globals()
+
     reactor.run()

@@ -1,5 +1,11 @@
 # RYSEN DMRMaster+ Changelog
 
+## Unreleased
+
+- RPTO/selfcare OPTIONS apply uses the live `python bridge_master.py`
+  process (`__main__`), not the import twin that has no `CONFIG`. Missing
+  runtime globals are copied onto that twin so apply cannot `NameError`.
+
 ## Version 1.6.4 (2026-11-02)
 
 Per-peer sticky last-TG, persisted across Pi-Star reconnect.
