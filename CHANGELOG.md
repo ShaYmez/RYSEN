@@ -28,10 +28,11 @@
   known not to apply (not on later RPTO or drop-dynamic). Partial OPTIONS
   without `STICKY=` and PTT before the first `STICKY=1` OPTIONS do not
   wipe last-TG persist. 4000,
-  selfcare `DISC=1`, statics, and `STICKY=0` still clear it. The timer loop
+  selfcare `DISC=1`, statics, and `STICKY=0` still clear it.   The timer loop
   keeps a restored UA bridge up from per-peer membership even before the
   next PTT, including OPTIONS-only sticky. Turning sticky back on (statics
-  removed / `STICKY=1`) clears RelinkTime on those rows.
+  removed / `STICKY=1`) restores last-TG if still pending, holds only that
+  TG per slot, and clears RelinkTime on those rows.
 - SINGLE_MODE no longer knocks always-on static (`TO_TYPE=OFF`) or parked
   sticky UA bridges offline at the end of a different talkgroup. The timer
   loop turns those sticky legs back on if they were already down.

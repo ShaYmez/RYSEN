@@ -120,6 +120,7 @@ from bridge_helpers import (
     sticky_last_tgs,
     expire_open_peer_dynamic_tgs,
     unexpire_peer_dynamic_tgs,
+    collapse_peer_dynamic_tgs_to_last_slot,
     sticky_ua_holds_bridge,
     sticky_tg_enabled,
     sticky_flag_from_options,
@@ -1397,13 +1398,20 @@ def _expire_sticky_membership_if_disabled(system, peer_id):
 def _sync_peer_sticky_membership(system, peer_id):
     """Expire or unexpire live UA rows to match whether sticky applies now."""
     if peer_sticky_tg_enabled(system, peer_id):
-        cleared = unexpire_peer_dynamic_tgs(system, peer_id)
-        for slot, tgid in peer_remembered_dynamic_tgs(system, peer_id):
-            remember_sticky_last_tg(peer_id, slot, tgid)
-        if cleared:
-            logger.info(
-                '(OPTIONS) %s - Peer %s sticky on; %s UA TG(s) no longer expire',
-                system, int_id(peer_id), cleared)
+        peer = _peer_record(system, peer_id)
+        if peer is not None and peer.get('_STICKY_RESTORE'):
+            restored = restore_peer_sticky_last_tgs(system, peer_id)
+            if restored > 0 or not sticky_last_tgs(peer_id):
+                peer['_STICKY_RESTORE'] = False
+        last = sticky_last_tgs(peer_id)
+        kept = collapse_peer_dynamic_tgs_to_last_slot(system, peer_id, last)
+        if not last:
+            for slot, tgid in peer_remembered_dynamic_tgs(system, peer_id):
+                remember_sticky_last_tg(peer_id, slot, tgid)
+        if kept:
+            logger.debug(
+                '(OPTIONS) %s - Peer %s sticky on; last-TG slot(s) held',
+                system, int_id(peer_id))
         return
     _expire_sticky_membership_if_disabled(system, peer_id)
 

@@ -1027,6 +1027,26 @@ def unexpire_peer_dynamic_tgs(system, peer_id):
     return changed
 
 
+def collapse_peer_dynamic_tgs_to_last_slot(system, peer_id, last=None):
+    """Keep one live UA per slot (persisted last-TG, else the latest row)."""
+    if peer_id is None or not system:
+        return 0
+    memberships = _PEER_DYNAMIC_TGS.get((system, peer_id)) or {}
+    if not memberships:
+        return 0
+    keep = dict(last or {})
+    if not keep:
+        for slot, tgid in memberships:
+            keep[int(slot)] = int(tgid)
+    if not keep:
+        return 0
+    for slot, tgid in keep.items():
+        remember_peer_dynamic_tg(
+            system, peer_id, slot, tgid,
+            expires_at=None, exclusive_slot=True)
+    return len(keep)
+
+
 def sticky_ua_holds_bridge(system, slot, tgid, now=None, sticky_ok=None):
     """True if a hotspot still has this UA with no RelinkTime (restored last-TG)."""
     item = _peer_tg_item(slot, tgid if isinstance(tgid, int) else _tg_int(tgid))
