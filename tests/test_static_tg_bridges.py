@@ -42,6 +42,8 @@ class TestMakeStaticTg(unittest.TestCase):
             bm.static_tg_survives_single_mode_vterm('#2350', static))
         ua = {'TO_TYPE': 'ON', 'ACTIVE': True, 'TGID': bytes_3(91)}
         self.assertFalse(bm.static_tg_survives_single_mode_vterm('91', ua))
+        self.assertIn(
+            'if sticky_ua_survives_single_mode_vterm(', source)
 
     def test_timer_change_updates_live_bridge_timeout(self):
         prev = getattr(bm, 'BRIDGES', None)

@@ -947,6 +947,17 @@ def static_tg_survives_single_mode_vterm(bridge, entry):
     return entry.get('TO_TYPE') == 'OFF' and entry.get('ACTIVE') is True
 
 
+def sticky_ua_survives_single_mode_vterm(bridge, system, entry, now=None):
+    """Parked sticky last-TG stays up when another hotspot keys a different group."""
+    if not bridge or str(bridge)[:1] == '#':
+        return False
+    if entry.get('TO_TYPE') != 'ON':
+        return False
+    return sticky_ua_holds_bridge(
+        system, entry.get('TS'), entry.get('TGID'), now=now,
+        sticky_ok=lambda pid, sys=system: peer_sticky_tg_enabled(sys, pid))
+
+
 def update_system_bridge_timeouts(system, tmout_minutes):
     """Point this system's ON/OFF legs at a new RelinkTime without GEN_STAT rebuild."""
     try:
@@ -1691,64 +1702,67 @@ def rule_timer_loop():
         _bridge_used = False
         for _system in BRIDGES[_bridge]:
             if _system['TO_TYPE'] == 'ON':
-                if _system['ACTIVE'] == True:
-                    _bridge_used = True
-                    
-                    # STICKY_TG LOGIC: Check if this bridge should remain active due to sticky TG
-                    # PRODUCTION SAFETY: Feature flag check - only apply sticky logic if enabled
-                    # Priority: Peer STICKY > System STICKY_TG > Default (False)
-                    # Dial-a-tg reflector bridges (#...) must not use sticky TG — they share TGID 9
-                    # and would all stay active while the user is on TG 9.
-                    _sticky_active = False
-                    # Optimisation: only scan SUB_MAP for systems that actually have
-                    # sticky TG enabled (pre-computed above).  Avoids O(N_subscribers)
-                    # scan for every active bridge entry on non-sticky systems.
-                    if (_bridge[0:1] != '#' and
-                            is_routing_master(CONFIG['SYSTEMS'][_system['SYSTEM']]['MODE'])):
-                        _sys_name = _system['SYSTEM']
-                        if sticky_ua_holds_bridge(
-                                _sys_name, _system['TS'], _system['TGID'],
-                                now=_now,
-                                sticky_ok=lambda pid, sys=_sys_name: (
-                                    peer_sticky_tg_enabled(sys, pid))):
-                            _sticky_active = True
-                        elif _sys_name in _sticky_enabled_systems:
-                            for _subscriber in SUB_MAP:
-                                try:
-                                    _sub_peer_id = None
-                                    if len(SUB_MAP[_subscriber]) == 5:
-                                        _sub_system, _sub_ts, _sub_tg, _sub_time, _sub_peer_id = SUB_MAP[_subscriber]
-                                    elif len(SUB_MAP[_subscriber]) == 4:
-                                        _sub_system, _sub_ts, _sub_tg, _sub_time = SUB_MAP[_subscriber]
-                                    else:
-                                        continue  # Old 3-element format doesn't support sticky TG
+                # STICKY_TG LOGIC: Check if this bridge should remain active due to sticky TG
+                # PRODUCTION SAFETY: Feature flag check - only apply sticky logic if enabled
+                # Priority: Peer STICKY > System STICKY_TG > Default (False)
+                # Dial-a-tg reflector bridges (#...) must not use sticky TG — they share TGID 9
+                # and would all stay active while the user is on TG 9.
+                _sticky_active = False
+                # Optimisation: only scan SUB_MAP for systems that actually have
+                # sticky TG enabled (pre-computed above).  Avoids O(N_subscribers)
+                # scan for every active bridge entry on non-sticky systems.
+                if (_bridge[0:1] != '#' and
+                        is_routing_master(CONFIG['SYSTEMS'][_system['SYSTEM']]['MODE'])):
+                    _sys_name = _system['SYSTEM']
+                    if sticky_ua_holds_bridge(
+                            _sys_name, _system['TS'], _system['TGID'],
+                            now=_now,
+                            sticky_ok=lambda pid, sys=_sys_name: (
+                                peer_sticky_tg_enabled(sys, pid))):
+                        _sticky_active = True
+                    elif (_system['ACTIVE'] == True
+                            and _sys_name in _sticky_enabled_systems):
+                        for _subscriber in SUB_MAP:
+                            try:
+                                _sub_peer_id = None
+                                if len(SUB_MAP[_subscriber]) == 5:
+                                    _sub_system, _sub_ts, _sub_tg, _sub_time, _sub_peer_id = SUB_MAP[_subscriber]
+                                elif len(SUB_MAP[_subscriber]) == 4:
+                                    _sub_system, _sub_ts, _sub_tg, _sub_time = SUB_MAP[_subscriber]
+                                else:
+                                    continue  # Old 3-element format doesn't support sticky TG
 
-                                    if (_sub_system == _system['SYSTEM'] and
-                                            _sub_ts == _system['TS'] and
-                                            _sub_tg == _system['TGID'] and
-                                            _sub_tg is not None and
-                                            _sub_peer_id is not None):
-                                        if peer_sticky_tg_enabled(
-                                                _system['SYSTEM'], _sub_peer_id):
-                                            _sticky_active = True
-                                            logger.debug(
-                                                '(%s) STICKY_TG: Bridge %s kept active for subscriber %s on TG %s',
-                                                _system['SYSTEM'], _bridge,
-                                                int_id(_subscriber),
-                                                int_id(_sub_tg))
-                                            break
-                                except (TypeError, ValueError, IndexError):
-                                    pass
-                    
-                    if _sticky_active:
-                        # Keep bridge active due to sticky TG - don't timeout
-                        _bridge_used = True
-                        _timeout_s = _system.get('TIMEOUT') or 0
-                        if _timeout_s:
-                            _system['TIMER'] = _now + _timeout_s
-                        logger.debug('(ROUTER) Conference Bridge ACTIVE (STICKY_TG): System: %s Bridge: %s, TS: %s, TGID: %s', 
-                                   _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
-                    elif _system['TIMER'] < _now:
+                                if (_sub_system == _system['SYSTEM'] and
+                                        _sub_ts == _system['TS'] and
+                                        _sub_tg == _system['TGID'] and
+                                        _sub_tg is not None and
+                                        _sub_peer_id is not None):
+                                    if peer_sticky_tg_enabled(
+                                            _system['SYSTEM'], _sub_peer_id):
+                                        _sticky_active = True
+                                        logger.debug(
+                                            '(%s) STICKY_TG: Bridge %s kept active for subscriber %s on TG %s',
+                                            _system['SYSTEM'], _bridge,
+                                            int_id(_subscriber),
+                                            int_id(_sub_tg))
+                                        break
+                            except (TypeError, ValueError, IndexError):
+                                pass
+
+                if _sticky_active:
+                    # Keep (or restore) the bridge due to sticky TG - don't timeout
+                    if _system['ACTIVE'] != True:
+                        _system['ACTIVE'] = True
+                        _changed = True
+                    _bridge_used = True
+                    _timeout_s = _system.get('TIMEOUT') or 0
+                    if _timeout_s:
+                        _system['TIMER'] = _now + _timeout_s
+                    logger.debug('(ROUTER) Conference Bridge ACTIVE (STICKY_TG): System: %s Bridge: %s, TS: %s, TGID: %s',
+                               _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
+                elif _system['ACTIVE'] == True:
+                    _bridge_used = True
+                    if _system['TIMER'] < _now:
                         # Normal timeout behavior when sticky TG not active
                         _system['ACTIVE'] = False
                         _changed = True
@@ -6539,6 +6553,10 @@ class routerHBP(HBSYSTEM):
                             # dial-a-tg PTT on TG 9 would otherwise deactivate bridge 9990 (9 != 9990).
                             if (is_routing_master(CONFIG['SYSTEMS'][self._system]['MODE']) and CONFIG['SYSTEMS'][self._system]['SINGLE_MODE']) == True and _system['TO_TYPE'] != 'NONE':
                                 if static_tg_survives_single_mode_vterm(_bridge, _system):
+                                    continue
+                                if sticky_ua_survives_single_mode_vterm(
+                                        _bridge, self._system, _system,
+                                        now=pkt_time):
                                     continue
                                 if (_dst_id in _system['OFF'] or _dst_id in _system['RESET']
                                         or reflector_single_mode_wrong_tg(

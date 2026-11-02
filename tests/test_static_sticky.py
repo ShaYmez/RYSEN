@@ -504,6 +504,24 @@ class TestStickyLastTgSurvivesReconnect(unittest.TestCase):
         self.assertTrue(kept[0]['ACTIVE'])
         self.assertGreater(kept[0]['TIMER'], 0)
 
+    def test_timer_loop_reactivates_inactive_sticky(self):
+        remember_peer_dynamic_tg(
+            'SYSTEM-46', self.peer, 2, 91, expires_at=None)
+        bm.BRIDGES['91'].append({
+            'SYSTEM': 'SYSTEM-46', 'TS': 2, 'TGID': bytes_3(91),
+            'ACTIVE': False, 'TO_TYPE': 'ON', 'TIMEOUT': 600, 'TIMER': 0,
+            'ON': [bytes_3(91)], 'OFF': [], 'RESET': [],
+        })
+        bm.SUB_MAP = {}
+        bm.rule_timer_loop()
+        kept = [
+            e for e in bm.BRIDGES['91']
+            if e['SYSTEM'] == 'SYSTEM-46' and e['TS'] == 2]
+        self.assertTrue(kept[0]['ACTIVE'])
+        self.assertGreater(kept[0]['TIMER'], 0)
+        self.assertTrue(bm.sticky_ua_survives_single_mode_vterm(
+            '91', 'SYSTEM-46', kept[0]))
+
     def test_login_hook_restores_only_after_waiting_config(self):
         with open('bridge_master.py', encoding='utf-8') as fh:
             source = fh.read()

@@ -31,10 +31,11 @@
   keeps a restored UA bridge up from per-peer membership even before the
   next PTT, including OPTIONS-only sticky. Turning sticky back on (statics
   removed / `STICKY=1`) clears RelinkTime on those rows.
-- SINGLE_MODE no longer knocks always-on static (`TO_TYPE=OFF`) bridges
-  offline at the end of a different talkgroup. `DEFAULT_UA_TIMER` /
-  RelinkTime changes now update live ON/OFF bridge `TIMEOUT` values
-  without rebuilding GEN_STAT.
+- SINGLE_MODE no longer knocks always-on static (`TO_TYPE=OFF`) or parked
+  sticky UA bridges offline at the end of a different talkgroup. The timer
+  loop turns those sticky legs back on if they were already down.
+  `DEFAULT_UA_TIMER` / RelinkTime changes now update live ON/OFF bridge
+  `TIMEOUT` values without rebuilding GEN_STAT.
 
 ## Version 1.6.3 (2026-10-31)
 
