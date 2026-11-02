@@ -47,6 +47,7 @@ class TestOptionsParserGuard(unittest.TestCase):
         ]
         self.assertNotIn('remove_bridge_system(_system)', timer_block)
         self.assertNotIn('rebuild_bridge_index()', timer_block)
+        self.assertIn('update_system_bridge_timeouts(', timer_block)
 
     def test_sticky_and_link_ipsc_info_only_on_change(self):
         options_block = self.bridge_source[

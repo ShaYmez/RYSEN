@@ -114,7 +114,14 @@ from bridge_helpers import (
     other_peer_has_dynamic_tg,
     forget_peer_dynamic_tg,
     remember_peer_dynamic_tg,
+    peer_remembered_dynamic_tgs,
+    remember_sticky_last_tg,
+    forget_sticky_last_tg,
+    sticky_last_tgs,
     expire_open_peer_dynamic_tgs,
+    unexpire_peer_dynamic_tgs,
+    collapse_peer_dynamic_tgs_to_last_slot,
+    sticky_ua_holds_bridge,
     sticky_tg_enabled,
     sticky_flag_from_options,
     ua_timer_minutes_from_options,
@@ -934,6 +941,46 @@ def make_default_reflector(reflector,_tmout,system):
         BRIDGES[bridge] = bridgetemp
     _idx_replace_bridge(bridge)
 
+def static_tg_survives_single_mode_vterm(bridge, entry):
+    """Always-on static TGs stay up when SINGLE_MODE sees a different group."""
+    if not bridge or str(bridge)[:1] == '#':
+        return False
+    return entry.get('TO_TYPE') == 'OFF' and entry.get('ACTIVE') is True
+
+
+def sticky_ua_survives_single_mode_vterm(bridge, system, entry, now=None):
+    """Parked sticky last-TG stays up when another hotspot keys a different group."""
+    if not bridge or str(bridge)[:1] == '#':
+        return False
+    if entry.get('TO_TYPE') != 'ON':
+        return False
+    return sticky_ua_holds_bridge(
+        system, entry.get('TS'), entry.get('TGID'), now=now,
+        sticky_ok=lambda pid, sys=system: peer_sticky_tg_enabled(sys, pid))
+
+
+def update_system_bridge_timeouts(system, tmout_minutes):
+    """Point this system's ON/OFF legs at a new RelinkTime without GEN_STAT rebuild."""
+    try:
+        timeout_s = int(tmout_minutes) * 60
+    except (TypeError, ValueError):
+        return 0
+    if timeout_s < 0:
+        return 0
+    updated = 0
+    for entries in BRIDGES.values():
+        for entry in entries:
+            if entry.get('SYSTEM') != system:
+                continue
+            if entry.get('TO_TYPE') not in ('ON', 'OFF'):
+                continue
+            if entry.get('TIMEOUT') == timeout_s:
+                continue
+            entry['TIMEOUT'] = timeout_s
+            updated += 1
+    return updated
+
+
 def make_static_tg(tg, ts, _tmout, system):
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
     tg_s = str(tg)
@@ -1322,10 +1369,23 @@ def peer_ua_timer_minutes(system, peer_id):
     return minutes
 
 
+def _sticky_explicitly_disabled(system, peer_id):
+    """True when OPTIONS/statics turned sticky off, not merely omitted."""
+    if peer_has_any_static_tgs(system, peer_id):
+        return True
+    syscfg = CONFIG.get('SYSTEMS', {}).get(system, {})
+    if sticky_flag_from_options(peer_own_options(syscfg, peer_id)) is False:
+        return True
+    peer = (syscfg.get('PEERS') or {}).get(peer_id) if peer_id else None
+    return bool(peer is not None and peer.get('STICKY') is False)
+
+
 def _expire_sticky_membership_if_disabled(system, peer_id):
     """When sticky no longer applies, start RelinkTime on open UA memberships."""
     if peer_sticky_tg_enabled(system, peer_id):
         return
+    if _sticky_explicitly_disabled(system, peer_id):
+        forget_sticky_last_tg(peer_id)
     minutes = peer_ua_timer_minutes(system, peer_id)
     filled = expire_open_peer_dynamic_tgs(
         system, peer_id, time() + minutes * 60)
@@ -1333,6 +1393,27 @@ def _expire_sticky_membership_if_disabled(system, peer_id):
         logger.info(
             '(OPTIONS) %s - Peer %s sticky off; %s UA TG(s) now use RelinkTime',
             system, int_id(peer_id), filled)
+
+
+def _sync_peer_sticky_membership(system, peer_id):
+    """Expire or unexpire live UA rows to match whether sticky applies now."""
+    if peer_sticky_tg_enabled(system, peer_id):
+        peer = _peer_record(system, peer_id)
+        if peer is not None and peer.get('_STICKY_RESTORE'):
+            restored = restore_peer_sticky_last_tgs(system, peer_id)
+            if restored > 0 or not sticky_last_tgs(peer_id):
+                peer['_STICKY_RESTORE'] = False
+        last = sticky_last_tgs(peer_id)
+        kept = collapse_peer_dynamic_tgs_to_last_slot(system, peer_id, last)
+        if not last:
+            for slot, tgid in peer_remembered_dynamic_tgs(system, peer_id):
+                remember_sticky_last_tg(peer_id, slot, tgid)
+        if kept:
+            logger.debug(
+                '(OPTIONS) %s - Peer %s sticky on; last-TG slot(s) held',
+                system, int_id(peer_id))
+        return
+    _expire_sticky_membership_if_disabled(system, peer_id)
 
 
 def _apply_peer_sticky_from_options(system, peer_id, options_str):
@@ -1345,7 +1426,7 @@ def _apply_peer_sticky_from_options(system, peer_id, options_str):
             peer.pop('STICKY', None)
         else:
             peer['STICKY'] = flag
-    _expire_sticky_membership_if_disabled(system, peer_id)
+    _sync_peer_sticky_membership(system, peer_id)
 
 
 def peer_sticky_tg_enabled(system, peer_id):
@@ -1376,12 +1457,80 @@ def _remember_source_dynamic_tg(system, peer_id, slot, tgid, pkt_time, timeout_s
     remember_peer_dynamic_tg(
         system, peer_id, slot, tgid,
         expires_at=expires_at, exclusive_slot=sticky)
+    if sticky:
+        remember_sticky_last_tg(peer_id, slot, tgid)
+    elif _sticky_explicitly_disabled(system, peer_id):
+        forget_sticky_last_tg(peer_id, slot)
+    else:
+        peer = _peer_record(system, peer_id)
+        if peer is not None and peer.get('_STICKY_RESTORE'):
+            remember_sticky_last_tg(peer_id, slot, tgid)
+
+
+def restore_peer_sticky_last_tgs(system, peer_id):
+    """Re-park this hotspot on its last sticky TG after a Pi-Star reconnect.
+
+    Last-TG is keyed by hotspot ID, not SYSTEM-N, so a generator-slot move
+    still comes back on the same talkgroup. 4000 / DISC / statics skip this.
+    """
+    if peer_id is None or not system:
+        return 0
+    if not peer_sticky_tg_enabled(system, peer_id):
+        return 0
+    last = sticky_last_tgs(peer_id)
+    if not last:
+        return 0
+    syscfg = CONFIG.get('SYSTEMS', {}).get(system) or {}
+    restored = 0
+    timeout = peer_ua_timer_minutes(system, peer_id)
+    for slot, tgid in last.items():
+        item = (int(slot), int(tgid))
+        if peer_has_static_tg(system, peer_id, slot, tgid):
+            continue
+        if not should_remember_peer_dynamic_tg(syscfg, tgid):
+            continue
+        name = str(item[1])
+        tgid_b = bytes_3(item[1])
+        if name not in BRIDGES:
+            make_single_bridge(tgid_b, system, item[0], timeout)
+        else:
+            activate_ua_bridge_source(
+                name, system, item[0], tmout=timeout, peer_id=peer_id)
+        remember_peer_dynamic_tg(
+            system, peer_id, item[0], item[1],
+            expires_at=None, exclusive_slot=True)
+        restored += 1
+    if restored:
+        logger.info(
+            '(STICKY_TG) Restored %s last TG(s) for peer %s on %s',
+            restored, int_id(peer_id), system)
+        notify_bridge_table_updated()
+    return restored
+
+
+def _peer_record(system, peer_id):
+    syscfg = CONFIG.get('SYSTEMS', {}).get(system) or {}
+    return (syscfg.get('PEERS') or {}).get(peer_id) if peer_id else None
+
+
+def _complete_sticky_login_restore(system, peer_id):
+    """Restore now if sticky is already known; else wait for the first OPTIONS."""
+    restored = restore_peer_sticky_last_tgs(system, peer_id)
+    peer = _peer_record(system, peer_id)
+    if peer is None:
+        return restored
+    peer['_STICKY_RESTORE'] = restored == 0 and bool(sticky_last_tgs(peer_id))
+    return restored
 
 
 def apply_selfcare_options(source_system, peer_id, options_str):
     """Process DISC=1 immediately; return remaining OPTIONS text (without DISC)."""
     _had_disc = selfcare_disconnect_requested(options_str)
+    peer = _peer_record(source_system, peer_id)
     if _had_disc:
+        if peer is not None:
+            peer.pop('_STICKY_RESTORE', None)
+        forget_sticky_last_tg(peer_id)
         selfcare_disconnect(source_system, peer_id)
     remaining = strip_disc_from_options(options_str) if _had_disc else options_str
     ts1, ts2 = ts_lists_from_options(remaining)
@@ -1393,6 +1542,13 @@ def apply_selfcare_options(source_system, peer_id, options_str):
     if peer_id:
         store_peer_options(syscfg, peer_id, remaining)
         _apply_peer_sticky_from_options(source_system, peer_id, remaining)
+        peer = _peer_record(source_system, peer_id)
+        if peer is not None and peer.get('_STICKY_RESTORE') and not _had_disc:
+            restored = restore_peer_sticky_last_tgs(source_system, peer_id)
+            if (restored > 0
+                    or peer_sticky_tg_enabled(source_system, peer_id)
+                    or not sticky_last_tgs(peer_id)):
+                peer['_STICKY_RESTORE'] = False
     return remaining, _had_disc
 
 
@@ -1490,6 +1646,7 @@ def clear_sub_map_for_peer(peer_id):
 
 def clear_subscriber_on_disconnect(system, subscriber_id, peer_id):
     """Drop sticky-TG state when the user dials disconnect (4000)."""
+    forget_sticky_last_tg(peer_id)
     if peer_id:
         changed, dropped = deactivate_peer_dynamic_bridges(
             BRIDGES, SUB_MAP, system, peer_id)
@@ -1547,7 +1704,9 @@ def rule_timer_loop():
             _sticky_enabled_systems.add(_sys)
         elif 'PEERS' in CONFIG['SYSTEMS'][_sys]:
             for _pid in CONFIG['SYSTEMS'][_sys]['PEERS']:
-                if CONFIG['SYSTEMS'][_sys]['PEERS'][_pid].get('STICKY', False):
+                _peer = CONFIG['SYSTEMS'][_sys]['PEERS'][_pid]
+                if (_peer.get('STICKY')
+                        or sticky_flag_from_options(_peer.get('OPTIONS'))):
                     _sticky_enabled_systems.add(_sys)
                     break
 
@@ -1555,22 +1714,26 @@ def rule_timer_loop():
         _bridge_used = False
         for _system in BRIDGES[_bridge]:
             if _system['TO_TYPE'] == 'ON':
-                if _system['ACTIVE'] == True:
-                    _bridge_used = True
-                    
-                    # STICKY_TG LOGIC: Check if this bridge should remain active due to sticky TG
-                    # PRODUCTION SAFETY: Feature flag check - only apply sticky logic if enabled
-                    # Priority: Peer STICKY > System STICKY_TG > Default (False)
-                    # Dial-a-tg reflector bridges (#...) must not use sticky TG — they share TGID 9
-                    # and would all stay active while the user is on TG 9.
-                    _sticky_active = False
-                    # Optimisation: only scan SUB_MAP for systems that actually have
-                    # sticky TG enabled (pre-computed above).  Avoids O(N_subscribers)
-                    # scan for every active bridge entry on non-sticky systems.
-                    if (_bridge[0:1] != '#' and
-                            is_routing_master(CONFIG['SYSTEMS'][_system['SYSTEM']]['MODE']) and
-                            _system['SYSTEM'] in _sticky_enabled_systems):
-                        # Check if any subscriber has this TG as their sticky TG
+                # STICKY_TG LOGIC: Check if this bridge should remain active due to sticky TG
+                # PRODUCTION SAFETY: Feature flag check - only apply sticky logic if enabled
+                # Priority: Peer STICKY > System STICKY_TG > Default (False)
+                # Dial-a-tg reflector bridges (#...) must not use sticky TG — they share TGID 9
+                # and would all stay active while the user is on TG 9.
+                _sticky_active = False
+                # Optimisation: only scan SUB_MAP for systems that actually have
+                # sticky TG enabled (pre-computed above).  Avoids O(N_subscribers)
+                # scan for every active bridge entry on non-sticky systems.
+                if (_bridge[0:1] != '#' and
+                        is_routing_master(CONFIG['SYSTEMS'][_system['SYSTEM']]['MODE'])):
+                    _sys_name = _system['SYSTEM']
+                    if sticky_ua_holds_bridge(
+                            _sys_name, _system['TS'], _system['TGID'],
+                            now=_now,
+                            sticky_ok=lambda pid, sys=_sys_name: (
+                                peer_sticky_tg_enabled(sys, pid))):
+                        _sticky_active = True
+                    elif (_system['ACTIVE'] == True
+                            and _sys_name in _sticky_enabled_systems):
                         for _subscriber in SUB_MAP:
                             try:
                                 _sub_peer_id = None
@@ -1580,30 +1743,38 @@ def rule_timer_loop():
                                     _sub_system, _sub_ts, _sub_tg, _sub_time = SUB_MAP[_subscriber]
                                 else:
                                     continue  # Old 3-element format doesn't support sticky TG
-                                
-                                # Check if subscriber is on this system and has this TG as sticky
-                                if (_sub_system == _system['SYSTEM'] and 
-                                    _sub_ts == _system['TS'] and 
-                                    _sub_tg == _system['TGID'] and
-                                    _sub_tg is not None and
-                                    _sub_peer_id is not None):
-                                    if peer_sticky_tg_enabled(_system['SYSTEM'], _sub_peer_id):
+
+                                if (_sub_system == _system['SYSTEM'] and
+                                        _sub_ts == _system['TS'] and
+                                        _sub_tg == _system['TGID'] and
+                                        _sub_tg is not None and
+                                        _sub_peer_id is not None):
+                                    if peer_sticky_tg_enabled(
+                                            _system['SYSTEM'], _sub_peer_id):
                                         _sticky_active = True
-                                        logger.debug('(%s) STICKY_TG: Bridge %s kept active for subscriber %s on TG %s', 
-                                                   _system['SYSTEM'], _bridge, int_id(_subscriber), int_id(_sub_tg))
+                                        logger.debug(
+                                            '(%s) STICKY_TG: Bridge %s kept active for subscriber %s on TG %s',
+                                            _system['SYSTEM'], _bridge,
+                                            int_id(_subscriber),
+                                            int_id(_sub_tg))
                                         break
                             except (TypeError, ValueError, IndexError):
                                 pass
-                    
-                    if _sticky_active:
-                        # Keep bridge active due to sticky TG - don't timeout
-                        _bridge_used = True
-                        _timeout_s = _system.get('TIMEOUT') or 0
-                        if _timeout_s:
-                            _system['TIMER'] = _now + _timeout_s
-                        logger.debug('(ROUTER) Conference Bridge ACTIVE (STICKY_TG): System: %s Bridge: %s, TS: %s, TGID: %s', 
-                                   _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
-                    elif _system['TIMER'] < _now:
+
+                if _sticky_active:
+                    # Keep (or restore) the bridge due to sticky TG - don't timeout
+                    if _system['ACTIVE'] != True:
+                        _system['ACTIVE'] = True
+                        _changed = True
+                    _bridge_used = True
+                    _timeout_s = _system.get('TIMEOUT') or 0
+                    if _timeout_s:
+                        _system['TIMER'] = _now + _timeout_s
+                    logger.debug('(ROUTER) Conference Bridge ACTIVE (STICKY_TG): System: %s Bridge: %s, TS: %s, TGID: %s',
+                               _system['SYSTEM'], _bridge, _system['TS'], int_id(_system['TGID']))
+                elif _system['ACTIVE'] == True:
+                    _bridge_used = True
+                    if _system['TIMER'] < _now:
                         # Normal timeout behavior when sticky TG not active
                         _system['ACTIVE'] = False
                         _changed = True
@@ -2265,7 +2436,7 @@ def options_config():
                                                     _system, int_id(_peer_id), _alias_label)
                             except Exception as e:
                                 logger.debug('(OPTIONS) %s - Error parsing peer %s OPTIONS: %s', _system, int_id(_peer_id), e)
-                        _expire_sticky_membership_if_disabled(_system, _peer_id)
+                        _sync_peer_sticky_membership(_system, _peer_id)
                 
                 if _mode == 'MASTER':
                     # Preserve full legacy RPTO policy on a dedicated hotspot
@@ -2485,11 +2656,14 @@ def options_config():
                     if int(_options['DEFAULT_UA_TIMER']) != CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']:
                         # Assign happens below. Do not remove_bridge_system + rebuild_bridge_index
                         # here: that walked every GEN_STAT leg and stalled USA ~2.8s every 26s.
+                        # Existing ON/OFF legs keep the old TIMEOUT unless we patch them here.
                         logger.debug(
                             '(OPTIONS) %s DEFAULT_UA_TIMER %s -> %s',
                             _system,
                             CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER'],
                             int(_options['DEFAULT_UA_TIMER']))
+                        update_system_bridge_timeouts(
+                            _system, int(_options['DEFAULT_UA_TIMER']))
              
                     if int(_options['DEFAULT_REFLECTOR']) != CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR']:
                         if int(_options['DEFAULT_REFLECTOR']) > 0:
@@ -3898,7 +4072,17 @@ class routerHBP(HBSYSTEM):
                     _block_peer_active_streams(self._system, _peer_id)
                     forget_peer_rx_state(self._system, _peer_id)
                     mark_options_dirty(CONFIG)
+        _restore_peer = None
+        if (_command == RPTC and len(_data) >= 8 and _data[:5] != RPTCL):
+            _peer_id = _data[4:8]
+            _peer = self._peers.get(_peer_id)
+            if _peer and _peer.get('CONNECTION') == 'WAITING_CONFIG':
+                _restore_peer = _peer_id
         HBSYSTEM.master_datagramReceived(self, _data, _sockaddr)
+        if _restore_peer:
+            _peer = self._peers.get(_restore_peer)
+            if _peer and _peer.get('CONNECTION') == 'YES':
+                _complete_sticky_login_restore(self._system, _restore_peer)
 
     def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,sysIgnore,_source_server, _ber, _rssi, _source_rptr, _new_generation=False):
         _sysIgnore = sysIgnore
@@ -6380,6 +6564,12 @@ class routerHBP(HBSYSTEM):
                             # TO_TYPE NONE bridges (e.g. parrot rules) must not be cleared here —
                             # dial-a-tg PTT on TG 9 would otherwise deactivate bridge 9990 (9 != 9990).
                             if (is_routing_master(CONFIG['SYSTEMS'][self._system]['MODE']) and CONFIG['SYSTEMS'][self._system]['SINGLE_MODE']) == True and _system['TO_TYPE'] != 'NONE':
+                                if static_tg_survives_single_mode_vterm(_bridge, _system):
+                                    continue
+                                if sticky_ua_survives_single_mode_vterm(
+                                        _bridge, self._system, _system,
+                                        now=pkt_time):
+                                    continue
                                 if (_dst_id in _system['OFF'] or _dst_id in _system['RESET']
                                         or reflector_single_mode_wrong_tg(
                                             _int_dst_id, _dst_id, _bridge, _system)) and _slot == _system['TS']:

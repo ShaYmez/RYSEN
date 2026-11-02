@@ -774,6 +774,8 @@ _PEER_DYNAMIC_TGS = {}
 _PEER_REFLECTORS = {}
 _PEER_MUTED_TGS = {}
 _DROPPED_STREAMS = {}
+# Last sticky TG by hotspot ID (not SYSTEM-N). Survives Pi-Star reconnect.
+_STICKY_LAST_TG = {}
 _DROPPED_STREAM_GAP_S = 1.0
 _DROPPED_STREAM_MAX_S = 120.0
 
@@ -791,6 +793,7 @@ def reset_peer_rx_filters():
     _PEER_REFLECTORS.clear()
     _PEER_MUTED_TGS.clear()
     _DROPPED_STREAMS.clear()
+    _STICKY_LAST_TG.clear()
 
 
 def _live_peer_dynamic_tgs(system, peer_id, now=None):
@@ -932,6 +935,38 @@ def peer_remembered_dynamic_tgs(system, peer_id):
     return set(_live_peer_dynamic_tgs(system, peer_id))
 
 
+def remember_sticky_last_tg(peer_id, slot, tgid):
+    """Keep Brandmeister/TGIF last-TG for this hotspot across reconnects."""
+    item = _peer_tg_item(slot, tgid)
+    if peer_id is None or item is None:
+        return
+    _STICKY_LAST_TG.setdefault(peer_id, {})[item[0]] = item[1]
+
+
+def forget_sticky_last_tg(peer_id, slot=None):
+    """Drop persisted last-TG (4000, DISC, statics, or STICKY=0)."""
+    if peer_id is None:
+        return
+    if slot is None:
+        _STICKY_LAST_TG.pop(peer_id, None)
+        return
+    slots = _STICKY_LAST_TG.get(peer_id)
+    if not slots:
+        return
+    try:
+        slots.pop(int(slot), None)
+    except (TypeError, ValueError):
+        return
+    if not slots:
+        _STICKY_LAST_TG.pop(peer_id, None)
+
+
+def sticky_last_tgs(peer_id):
+    """Copy of {slot: tgid} for this hotspot, or empty."""
+    slots = _STICKY_LAST_TG.get(peer_id)
+    return dict(slots) if slots else {}
+
+
 def peer_ua_report(system, peer_id, now=None):
     """Compact live UA membership for CONFIG_SND / RYSEN-MONITOR."""
     report = {}
@@ -975,6 +1010,58 @@ def forget_peer_dynamic_tg(system, peer_id, slot, tgid):
     memberships.pop(item, None)
     if not memberships:
         _PEER_DYNAMIC_TGS.pop(key, None)
+
+
+def unexpire_peer_dynamic_tgs(system, peer_id):
+    """Clear RelinkTime on live rows when sticky applies again."""
+    if peer_id is None or not system:
+        return 0
+    memberships = _PEER_DYNAMIC_TGS.get((system, peer_id))
+    if not memberships:
+        return 0
+    changed = 0
+    for item, current in memberships.items():
+        if current is not None:
+            memberships[item] = None
+            changed += 1
+    return changed
+
+
+def collapse_peer_dynamic_tgs_to_last_slot(system, peer_id, last=None):
+    """Keep one live UA per slot (persisted last-TG, else the latest row)."""
+    if peer_id is None or not system:
+        return 0
+    memberships = _PEER_DYNAMIC_TGS.get((system, peer_id)) or {}
+    if not memberships:
+        return 0
+    keep = dict(last or {})
+    if not keep:
+        for slot, tgid in memberships:
+            keep[int(slot)] = int(tgid)
+    if not keep:
+        return 0
+    for slot, tgid in keep.items():
+        remember_peer_dynamic_tg(
+            system, peer_id, slot, tgid,
+            expires_at=None, exclusive_slot=True)
+    return len(keep)
+
+
+def sticky_ua_holds_bridge(system, slot, tgid, now=None, sticky_ok=None):
+    """True if a hotspot still has this UA with no RelinkTime (restored last-TG)."""
+    item = _peer_tg_item(slot, tgid if isinstance(tgid, int) else _tg_int(tgid))
+    if item is None or not system:
+        return False
+    for sys, pid in list(_PEER_DYNAMIC_TGS):
+        if sys != system:
+            continue
+        live = _live_peer_dynamic_tgs(sys, pid, now=now)
+        if item not in live or live[item] is not None:
+            continue
+        if sticky_ok is not None and not sticky_ok(pid):
+            continue
+        return True
+    return False
 
 
 def expire_open_peer_dynamic_tgs(system, peer_id, expires_at):
