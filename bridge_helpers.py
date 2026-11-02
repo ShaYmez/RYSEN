@@ -1012,6 +1012,38 @@ def forget_peer_dynamic_tg(system, peer_id, slot, tgid):
         _PEER_DYNAMIC_TGS.pop(key, None)
 
 
+def unexpire_peer_dynamic_tgs(system, peer_id):
+    """Clear RelinkTime on live rows when sticky applies again."""
+    if peer_id is None or not system:
+        return 0
+    memberships = _PEER_DYNAMIC_TGS.get((system, peer_id))
+    if not memberships:
+        return 0
+    changed = 0
+    for item, current in memberships.items():
+        if current is not None:
+            memberships[item] = None
+            changed += 1
+    return changed
+
+
+def sticky_ua_holds_bridge(system, slot, tgid, now=None, sticky_ok=None):
+    """True if a hotspot still has this UA with no RelinkTime (restored last-TG)."""
+    item = _peer_tg_item(slot, tgid if isinstance(tgid, int) else _tg_int(tgid))
+    if item is None or not system:
+        return False
+    for sys, pid in list(_PEER_DYNAMIC_TGS):
+        if sys != system:
+            continue
+        live = _live_peer_dynamic_tgs(sys, pid, now=now)
+        if item not in live or live[item] is not None:
+            continue
+        if sticky_ok is not None and not sticky_ok(pid):
+            continue
+        return True
+    return False
+
+
 def expire_open_peer_dynamic_tgs(system, peer_id, expires_at):
     """Give sticky (None) memberships a RelinkTime when sticky turns off.
 

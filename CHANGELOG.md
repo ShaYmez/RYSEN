@@ -23,7 +23,11 @@
   the shared MASTER bridge onto every peer.
 - Last sticky TG is kept by hotspot ID across reconnects (Pi-Star auto-update
   / generator-slot move), like Brandmeister auto-static and TGIF park.
-  4000, selfcare `DISC=1`, statics, and `STICKY=0` still clear it.
+  Restore runs only on the WAITING_CONFIG → YES login, not on RPTO or a
+  duplicate RPTC. 4000, selfcare `DISC=1`, statics, and `STICKY=0` still
+  clear it. The timer loop keeps a restored UA bridge up from per-peer
+  membership even before the next PTT. Turning sticky back on (statics
+  removed / `STICKY=1`) clears RelinkTime on those rows.
 
 ## Version 1.6.3 (2026-10-31)
 

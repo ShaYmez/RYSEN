@@ -119,6 +119,8 @@ from bridge_helpers import (
     forget_sticky_last_tg,
     sticky_last_tgs,
     expire_open_peer_dynamic_tgs,
+    unexpire_peer_dynamic_tgs,
+    sticky_ua_holds_bridge,
     sticky_tg_enabled,
     sticky_flag_from_options,
     ua_timer_minutes_from_options,
@@ -1340,6 +1342,20 @@ def _expire_sticky_membership_if_disabled(system, peer_id):
             system, int_id(peer_id), filled)
 
 
+def _sync_peer_sticky_membership(system, peer_id):
+    """Expire or unexpire live UA rows to match whether sticky applies now."""
+    if peer_sticky_tg_enabled(system, peer_id):
+        cleared = unexpire_peer_dynamic_tgs(system, peer_id)
+        for slot, tgid in peer_remembered_dynamic_tgs(system, peer_id):
+            remember_sticky_last_tg(peer_id, slot, tgid)
+        if cleared:
+            logger.info(
+                '(OPTIONS) %s - Peer %s sticky on; %s UA TG(s) no longer expire',
+                system, int_id(peer_id), cleared)
+        return
+    _expire_sticky_membership_if_disabled(system, peer_id)
+
+
 def _apply_peer_sticky_from_options(system, peer_id, options_str):
     """Parse STICKY= onto the peer now and expire UA rows if sticky is off."""
     syscfg = CONFIG.get('SYSTEMS', {}).get(system, {})
@@ -1350,7 +1366,7 @@ def _apply_peer_sticky_from_options(system, peer_id, options_str):
             peer.pop('STICKY', None)
         else:
             peer['STICKY'] = flag
-    _expire_sticky_membership_if_disabled(system, peer_id)
+    _sync_peer_sticky_membership(system, peer_id)
 
 
 def peer_sticky_tg_enabled(system, peer_id):
@@ -1447,8 +1463,6 @@ def apply_selfcare_options(source_system, peer_id, options_str):
     if peer_id:
         store_peer_options(syscfg, peer_id, remaining)
         _apply_peer_sticky_from_options(source_system, peer_id, remaining)
-        if not _had_disc:
-            restore_peer_sticky_last_tgs(source_system, peer_id)
     return remaining, _had_disc
 
 
@@ -1627,30 +1641,40 @@ def rule_timer_loop():
                     if (_bridge[0:1] != '#' and
                             is_routing_master(CONFIG['SYSTEMS'][_system['SYSTEM']]['MODE']) and
                             _system['SYSTEM'] in _sticky_enabled_systems):
-                        # Check if any subscriber has this TG as their sticky TG
-                        for _subscriber in SUB_MAP:
-                            try:
-                                _sub_peer_id = None
-                                if len(SUB_MAP[_subscriber]) == 5:
-                                    _sub_system, _sub_ts, _sub_tg, _sub_time, _sub_peer_id = SUB_MAP[_subscriber]
-                                elif len(SUB_MAP[_subscriber]) == 4:
-                                    _sub_system, _sub_ts, _sub_tg, _sub_time = SUB_MAP[_subscriber]
-                                else:
-                                    continue  # Old 3-element format doesn't support sticky TG
-                                
-                                # Check if subscriber is on this system and has this TG as sticky
-                                if (_sub_system == _system['SYSTEM'] and 
-                                    _sub_ts == _system['TS'] and 
-                                    _sub_tg == _system['TGID'] and
-                                    _sub_tg is not None and
-                                    _sub_peer_id is not None):
-                                    if peer_sticky_tg_enabled(_system['SYSTEM'], _sub_peer_id):
-                                        _sticky_active = True
-                                        logger.debug('(%s) STICKY_TG: Bridge %s kept active for subscriber %s on TG %s', 
-                                                   _system['SYSTEM'], _bridge, int_id(_subscriber), int_id(_sub_tg))
-                                        break
-                            except (TypeError, ValueError, IndexError):
-                                pass
+                        _sys_name = _system['SYSTEM']
+                        if sticky_ua_holds_bridge(
+                                _sys_name, _system['TS'], _system['TGID'],
+                                now=_now,
+                                sticky_ok=lambda pid, sys=_sys_name: (
+                                    peer_sticky_tg_enabled(sys, pid))):
+                            _sticky_active = True
+                        else:
+                            for _subscriber in SUB_MAP:
+                                try:
+                                    _sub_peer_id = None
+                                    if len(SUB_MAP[_subscriber]) == 5:
+                                        _sub_system, _sub_ts, _sub_tg, _sub_time, _sub_peer_id = SUB_MAP[_subscriber]
+                                    elif len(SUB_MAP[_subscriber]) == 4:
+                                        _sub_system, _sub_ts, _sub_tg, _sub_time = SUB_MAP[_subscriber]
+                                    else:
+                                        continue  # Old 3-element format doesn't support sticky TG
+
+                                    if (_sub_system == _system['SYSTEM'] and
+                                            _sub_ts == _system['TS'] and
+                                            _sub_tg == _system['TGID'] and
+                                            _sub_tg is not None and
+                                            _sub_peer_id is not None):
+                                        if peer_sticky_tg_enabled(
+                                                _system['SYSTEM'], _sub_peer_id):
+                                            _sticky_active = True
+                                            logger.debug(
+                                                '(%s) STICKY_TG: Bridge %s kept active for subscriber %s on TG %s',
+                                                _system['SYSTEM'], _bridge,
+                                                int_id(_subscriber),
+                                                int_id(_sub_tg))
+                                            break
+                                except (TypeError, ValueError, IndexError):
+                                    pass
                     
                     if _sticky_active:
                         # Keep bridge active due to sticky TG - don't timeout
@@ -2322,7 +2346,7 @@ def options_config():
                                                     _system, int_id(_peer_id), _alias_label)
                             except Exception as e:
                                 logger.debug('(OPTIONS) %s - Error parsing peer %s OPTIONS: %s', _system, int_id(_peer_id), e)
-                        _expire_sticky_membership_if_disabled(_system, _peer_id)
+                        _sync_peer_sticky_membership(_system, _peer_id)
                 
                 if _mode == 'MASTER':
                     # Preserve full legacy RPTO policy on a dedicated hotspot
@@ -3955,12 +3979,17 @@ class routerHBP(HBSYSTEM):
                     _block_peer_active_streams(self._system, _peer_id)
                     forget_peer_rx_state(self._system, _peer_id)
                     mark_options_dirty(CONFIG)
-        HBSYSTEM.master_datagramReceived(self, _data, _sockaddr)
+        _restore_peer = None
         if (_command == RPTC and len(_data) >= 8 and _data[:5] != RPTCL):
             _peer_id = _data[4:8]
             _peer = self._peers.get(_peer_id)
+            if _peer and _peer.get('CONNECTION') == 'WAITING_CONFIG':
+                _restore_peer = _peer_id
+        HBSYSTEM.master_datagramReceived(self, _data, _sockaddr)
+        if _restore_peer:
+            _peer = self._peers.get(_restore_peer)
             if _peer and _peer.get('CONNECTION') == 'YES':
-                restore_peer_sticky_last_tgs(self._system, _peer_id)
+                restore_peer_sticky_last_tgs(self._system, _restore_peer)
 
     def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,sysIgnore,_source_server, _ber, _rssi, _source_rptr, _new_generation=False):
         _sysIgnore = sysIgnore
