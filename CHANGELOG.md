@@ -1,6 +1,10 @@
 # RYSEN DMRMaster+ Changelog
 
-## Unreleased
+## Version 1.6.4 (2026-11-02)
+
+Per-peer sticky last-TG, persisted across Pi-Star reconnect.
+
+Released on **`master`** — `shaymez/rysen:1.6.4` and `:latest`.
 
 ### Sticky talkgroups
 
@@ -28,7 +32,7 @@
   known not to apply (not on later RPTO or drop-dynamic). Partial OPTIONS
   without `STICKY=` and PTT before the first `STICKY=1` OPTIONS do not
   wipe last-TG persist. 4000,
-  selfcare `DISC=1`, statics, and `STICKY=0` still clear it.   The timer loop
+  selfcare `DISC=1`, statics, and `STICKY=0` still clear it. The timer loop
   keeps a restored UA bridge up from per-peer membership even before the
   next PTT, including OPTIONS-only sticky. Turning sticky back on (statics
   removed / `STICKY=1`) restores last-TG if still pending, holds only that

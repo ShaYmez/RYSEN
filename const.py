@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# RYSEN DMRMaster+ Version 1.6.3
+# RYSEN DMRMaster+ Version 1.6.4
 ###############################################################################
 #   Copyright (C) 2016-2018  Cortney T. Buffington, N0MJS <n0mjs@me.com>
 #

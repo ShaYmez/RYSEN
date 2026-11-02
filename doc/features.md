@@ -1,11 +1,12 @@
 # RYSEN Features
 
-Version history and feature reference for RYSEN DMRMaster+ (SystemX). Current release: **1.6.3** on `master`.
+Version history and feature reference for RYSEN DMRMaster+ (SystemX). Current release: **1.6.4** on `master`.
 
 Maintained by **Shane Daley M0VUB** (aka **ShaYmez**) — primary RYSEN / SystemX development since v1.3.9. Lineage: HBlink3 (N0MJS) → FreeDMR (G7RZU) → RYSEN.
 
 | Version | Date | Summary |
 |---------|------|---------|
+| 1.6.4 | 2026-11-02 | Per-peer sticky last-TG, persisted across Pi-Star reconnect |
 | 1.6.3 | 2026-10-31 | Talker Alias on bridged voice, with per-master and per-hotspot switches |
 | 1.6.2 | 2026-10-27 | HR1065 HMTP voice/SMS, RD625 validation, Hytera pacing under jitter |
 | 1.6.1 | 2026-10-23 | Hytera production, YSF/NXDN peer, parrot 9990, unit-routing hardening |
@@ -90,7 +91,7 @@ Brandmeister-style "last talkgroup" memory per subscriber.
 
 **Priority:** static TGs > peer STICKY > system STICKY_TG > normal timeout.
 
-Sticky runs only when that hotspot has **no** static TGs. With statics set, UA talkgroups follow `DEFAULT_UA_TIMER` / `RelinkTime` and then drop. With no statics, the last keyed TG stays (no 10-minute mute) until the user keys another TG or disconnects (4000).
+Sticky runs only when that hotspot has **no** static TGs. With statics set, UA talkgroups follow `DEFAULT_UA_TIMER` / `RelinkTime` and then drop. With no statics, the last keyed TG stays (no 10-minute mute) until the user keys another TG or disconnects (4000). **1.6.4** keeps that last TG across Pi-Star reconnect and generator-slot move.
 
 **Required:** every MASTER stanza must include `STICKY_TG: True` or `STICKY_TG: False`.
 
@@ -177,6 +178,20 @@ Field-hardened on the FreeSTAR fleet after USA Homebrew RPTPING stalls and STAT 
 | STAT OBP hairpin | Originated outbound stubs; drop own-server echo; no BCSQ for own SRC on MAX HOPS |
 | Hub device control | Owner `/device/*` isolated from ops; per-peer statics, drop-dynamic, drop-call |
 | PARROT UA KeyError | PEER parrot echo no longer requires `DEFAULT_UA_TIMER`; TG 9990 is not recorded as a dynamic UA |
+
+---
+
+## v1.6.4 — Sticky last-TG persist
+
+Per-peer sticky membership, last-TG kept by hotspot ID across reconnect, and monitor Unique TG from that peer's own UA.
+
+| Feature | Detail |
+|---------|--------|
+| Per hotspot | Statics on this OPTIONS string disable sticky. Another radio's statics on the same MASTER do not |
+| Persist | Last TG is stored by hotspot ID. Pi-Star auto-update and generator-slot move restore it on login / first `STICKY=1` |
+| Clear | `4000`, selfcare `DISC=1`, statics, and `STICKY=0` drop persist |
+| Monitor | CONFIG_SND `UA` is per-peer so Unique TG / Sticky T/O is this hotspot, not the shared bridge |
+| SINGLE_MODE | Always-on statics and parked sticky UA stay up when another talkgroup ends |
 
 ---
 
