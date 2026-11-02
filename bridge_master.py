@@ -1451,8 +1451,12 @@ def _remember_source_dynamic_tg(system, peer_id, slot, tgid, pkt_time, timeout_s
         expires_at=expires_at, exclusive_slot=sticky)
     if sticky:
         remember_sticky_last_tg(peer_id, slot, tgid)
-    else:
+    elif _sticky_explicitly_disabled(system, peer_id):
         forget_sticky_last_tg(peer_id, slot)
+    else:
+        peer = _peer_record(system, peer_id)
+        if peer is not None and peer.get('_STICKY_RESTORE'):
+            remember_sticky_last_tg(peer_id, slot, tgid)
 
 
 def restore_peer_sticky_last_tgs(system, peer_id):
