@@ -940,6 +940,35 @@ def make_default_reflector(reflector,_tmout,system):
         BRIDGES[bridge] = bridgetemp
     _idx_replace_bridge(bridge)
 
+def static_tg_survives_single_mode_vterm(bridge, entry):
+    """Always-on static TGs stay up when SINGLE_MODE sees a different group."""
+    if not bridge or str(bridge)[:1] == '#':
+        return False
+    return entry.get('TO_TYPE') == 'OFF' and entry.get('ACTIVE') is True
+
+
+def update_system_bridge_timeouts(system, tmout_minutes):
+    """Point this system's ON/OFF legs at a new RelinkTime without GEN_STAT rebuild."""
+    try:
+        timeout_s = int(tmout_minutes) * 60
+    except (TypeError, ValueError):
+        return 0
+    if timeout_s < 0:
+        return 0
+    updated = 0
+    for entries in BRIDGES.values():
+        for entry in entries:
+            if entry.get('SYSTEM') != system:
+                continue
+            if entry.get('TO_TYPE') not in ('ON', 'OFF'):
+                continue
+            if entry.get('TIMEOUT') == timeout_s:
+                continue
+            entry['TIMEOUT'] = timeout_s
+            updated += 1
+    return updated
+
+
 def make_static_tg(tg, ts, _tmout, system):
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
     tg_s = str(tg)
@@ -2601,11 +2630,14 @@ def options_config():
                     if int(_options['DEFAULT_UA_TIMER']) != CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER']:
                         # Assign happens below. Do not remove_bridge_system + rebuild_bridge_index
                         # here: that walked every GEN_STAT leg and stalled USA ~2.8s every 26s.
+                        # Existing ON/OFF legs keep the old TIMEOUT unless we patch them here.
                         logger.debug(
                             '(OPTIONS) %s DEFAULT_UA_TIMER %s -> %s',
                             _system,
                             CONFIG['SYSTEMS'][_system]['DEFAULT_UA_TIMER'],
                             int(_options['DEFAULT_UA_TIMER']))
+                        update_system_bridge_timeouts(
+                            _system, int(_options['DEFAULT_UA_TIMER']))
              
                     if int(_options['DEFAULT_REFLECTOR']) != CONFIG['SYSTEMS'][_system]['DEFAULT_REFLECTOR']:
                         if int(_options['DEFAULT_REFLECTOR']) > 0:
@@ -6506,6 +6538,8 @@ class routerHBP(HBSYSTEM):
                             # TO_TYPE NONE bridges (e.g. parrot rules) must not be cleared here —
                             # dial-a-tg PTT on TG 9 would otherwise deactivate bridge 9990 (9 != 9990).
                             if (is_routing_master(CONFIG['SYSTEMS'][self._system]['MODE']) and CONFIG['SYSTEMS'][self._system]['SINGLE_MODE']) == True and _system['TO_TYPE'] != 'NONE':
+                                if static_tg_survives_single_mode_vterm(_bridge, _system):
+                                    continue
                                 if (_dst_id in _system['OFF'] or _dst_id in _system['RESET']
                                         or reflector_single_mode_wrong_tg(
                                             _int_dst_id, _dst_id, _bridge, _system)) and _slot == _system['TS']:
