@@ -1417,13 +1417,10 @@ def restore_peer_sticky_last_tgs(system, peer_id):
     if not last:
         return 0
     syscfg = CONFIG.get('SYSTEMS', {}).get(system) or {}
-    live = peer_remembered_dynamic_tgs(system, peer_id)
     restored = 0
     timeout = peer_ua_timer_minutes(system, peer_id)
     for slot, tgid in last.items():
         item = (int(slot), int(tgid))
-        if item in live:
-            continue
         if peer_has_static_tg(system, peer_id, slot, tgid):
             continue
         if not should_remember_peer_dynamic_tg(syscfg, tgid):
@@ -1447,10 +1444,28 @@ def restore_peer_sticky_last_tgs(system, peer_id):
     return restored
 
 
+def _peer_record(system, peer_id):
+    syscfg = CONFIG.get('SYSTEMS', {}).get(system) or {}
+    return (syscfg.get('PEERS') or {}).get(peer_id) if peer_id else None
+
+
+def _complete_sticky_login_restore(system, peer_id):
+    """Restore now if sticky is already known; else wait for the first OPTIONS."""
+    restored = restore_peer_sticky_last_tgs(system, peer_id)
+    peer = _peer_record(system, peer_id)
+    if peer is None:
+        return restored
+    peer['_STICKY_RESTORE'] = restored == 0 and bool(sticky_last_tgs(peer_id))
+    return restored
+
+
 def apply_selfcare_options(source_system, peer_id, options_str):
     """Process DISC=1 immediately; return remaining OPTIONS text (without DISC)."""
     _had_disc = selfcare_disconnect_requested(options_str)
+    peer = _peer_record(source_system, peer_id)
     if _had_disc:
+        if peer is not None:
+            peer.pop('_STICKY_RESTORE', None)
         forget_sticky_last_tg(peer_id)
         selfcare_disconnect(source_system, peer_id)
     remaining = strip_disc_from_options(options_str) if _had_disc else options_str
@@ -1463,6 +1478,10 @@ def apply_selfcare_options(source_system, peer_id, options_str):
     if peer_id:
         store_peer_options(syscfg, peer_id, remaining)
         _apply_peer_sticky_from_options(source_system, peer_id, remaining)
+        peer = _peer_record(source_system, peer_id)
+        if peer is not None and peer.get('_STICKY_RESTORE') and not _had_disc:
+            restore_peer_sticky_last_tgs(source_system, peer_id)
+            peer['_STICKY_RESTORE'] = False
     return remaining, _had_disc
 
 
@@ -1618,7 +1637,9 @@ def rule_timer_loop():
             _sticky_enabled_systems.add(_sys)
         elif 'PEERS' in CONFIG['SYSTEMS'][_sys]:
             for _pid in CONFIG['SYSTEMS'][_sys]['PEERS']:
-                if CONFIG['SYSTEMS'][_sys]['PEERS'][_pid].get('STICKY', False):
+                _peer = CONFIG['SYSTEMS'][_sys]['PEERS'][_pid]
+                if (_peer.get('STICKY')
+                        or sticky_flag_from_options(_peer.get('OPTIONS'))):
                     _sticky_enabled_systems.add(_sys)
                     break
 
@@ -1639,8 +1660,7 @@ def rule_timer_loop():
                     # sticky TG enabled (pre-computed above).  Avoids O(N_subscribers)
                     # scan for every active bridge entry on non-sticky systems.
                     if (_bridge[0:1] != '#' and
-                            is_routing_master(CONFIG['SYSTEMS'][_system['SYSTEM']]['MODE']) and
-                            _system['SYSTEM'] in _sticky_enabled_systems):
+                            is_routing_master(CONFIG['SYSTEMS'][_system['SYSTEM']]['MODE'])):
                         _sys_name = _system['SYSTEM']
                         if sticky_ua_holds_bridge(
                                 _sys_name, _system['TS'], _system['TGID'],
@@ -1648,7 +1668,7 @@ def rule_timer_loop():
                                 sticky_ok=lambda pid, sys=_sys_name: (
                                     peer_sticky_tg_enabled(sys, pid))):
                             _sticky_active = True
-                        else:
+                        elif _sys_name in _sticky_enabled_systems:
                             for _subscriber in SUB_MAP:
                                 try:
                                     _sub_peer_id = None
@@ -3989,7 +4009,7 @@ class routerHBP(HBSYSTEM):
         if _restore_peer:
             _peer = self._peers.get(_restore_peer)
             if _peer and _peer.get('CONNECTION') == 'YES':
-                restore_peer_sticky_last_tgs(self._system, _restore_peer)
+                _complete_sticky_login_restore(self._system, _restore_peer)
 
     def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,sysIgnore,_source_server, _ber, _rssi, _source_rptr, _new_generation=False):
         _sysIgnore = sysIgnore

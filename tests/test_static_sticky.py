@@ -509,10 +509,62 @@ class TestStickyLastTgSurvivesReconnect(unittest.TestCase):
             source = fh.read()
         self.assertIn("== 'WAITING_CONFIG'", source)
         self.assertIn(
-            'restore_peer_sticky_last_tgs(self._system, _restore_peer)', source)
-        self.assertNotIn(
-            "if not _had_disc:\n            restore_peer_sticky_last_tgs",
+            '_complete_sticky_login_restore(self._system, _restore_peer)',
             source)
+
+    def test_first_options_restores_when_sticky_is_options_only(self):
+        bm.CONFIG['SYSTEMS']['SYSTEM-46']['STICKY_TG'] = False
+        bm.CONFIG['SYSTEMS']['SYSTEM-46']['PEERS'][self.peer] = {
+            'OPTIONS': '', 'CONNECTION': 'YES',
+        }
+        bm._remember_source_dynamic_tg(
+            'SYSTEM-1', self.peer, 2, 91, pkt_time=100.0, timeout_s=600)
+        bm.selfcare_disconnect('SYSTEM-1', self.peer)
+        self.assertEqual(
+            bm._complete_sticky_login_restore('SYSTEM-46', self.peer), 0)
+        self.assertTrue(
+            bm.CONFIG['SYSTEMS']['SYSTEM-46']['PEERS'][self.peer][
+                '_STICKY_RESTORE'])
+        bm.apply_selfcare_options(
+            'SYSTEM-46', self.peer, 'TS1=;TS2=;STICKY=1;')
+        self.assertIn(
+            (2, 91), peer_remembered_dynamic_tgs('SYSTEM-46', self.peer))
+        self.assertFalse(
+            bm.CONFIG['SYSTEMS']['SYSTEM-46']['PEERS'][self.peer][
+                '_STICKY_RESTORE'])
+        bm.selfcare_disconnect('SYSTEM-46', self.peer)
+        bm.apply_selfcare_options(
+            'SYSTEM-46', self.peer, 'TS1=;TS2=;STICKY=1;')
+        self.assertFalse(peer_remembered_dynamic_tgs('SYSTEM-46', self.peer))
+
+    def test_restore_unexpires_live_row(self):
+        remember_peer_dynamic_tg(
+            'SYSTEM-46', self.peer, 2, 91, expires_at=50.0)
+        remember_sticky_last_tg(self.peer, 2, 91)
+        restored = bm.restore_peer_sticky_last_tgs('SYSTEM-46', self.peer)
+        self.assertEqual(restored, 1)
+        self.assertFalse(dest_peer_rx_blocked(
+            'SYSTEM-46', self.peer, self.stream, 2, 91, now=10_000.0))
+
+    def test_timer_loop_options_only_sticky(self):
+        bm.CONFIG['SYSTEMS']['SYSTEM-46']['STICKY_TG'] = False
+        bm.CONFIG['SYSTEMS']['SYSTEM-46']['PEERS'][self.peer]['OPTIONS'] = (
+            'STICKY=1;')
+        bm.CONFIG['SYSTEMS']['SYSTEM-46']['PEERS'][self.peer].pop('STICKY', None)
+        remember_peer_dynamic_tg(
+            'SYSTEM-46', self.peer, 2, 91, expires_at=None)
+        bm.BRIDGES['91'].append({
+            'SYSTEM': 'SYSTEM-46', 'TS': 2, 'TGID': bytes_3(91),
+            'ACTIVE': True, 'TO_TYPE': 'ON', 'TIMEOUT': 600, 'TIMER': 0,
+            'ON': [bytes_3(91)], 'OFF': [], 'RESET': [],
+        })
+        bm.SUB_MAP = {}
+        bm.rule_timer_loop()
+        kept = [
+            e for e in bm.BRIDGES['91']
+            if e['SYSTEM'] == 'SYSTEM-46' and e['TS'] == 2]
+        self.assertTrue(kept[0]['ACTIVE'])
+        self.assertGreater(kept[0]['TIMER'], 0)
 
 
 def copy_sys(syscfg):
