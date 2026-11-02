@@ -1,13 +1,5 @@
 # RYSEN DMRMaster+ Changelog
 
-## Unreleased
-
-- RPTO/selfcare OPTIONS apply uses the live `python bridge_master.py`
-  process (`__main__`), not the import twin that has no `CONFIG`. Missing
-  runtime globals are copied onto that twin so apply cannot `NameError`.
-  A later DISC selfcare save failure does not write `DISC=1` back onto
-  the peer after apply already stripped it.
-
 ## Version 1.6.4 (2026-11-02)
 
 Per-peer sticky last-TG, persisted across Pi-Star reconnect.
@@ -50,6 +42,14 @@ Released on **`master`** — `shaymez/rysen:1.6.4` and `:latest`.
   loop turns those sticky legs back on if they were already down.
   `DEFAULT_UA_TIMER` / RelinkTime changes now update live ON/OFF bridge
   `TIMEOUT` values without rebuilding GEN_STAT.
+
+### OPTIONS apply
+
+- RPTO/selfcare OPTIONS apply uses the live `python bridge_master.py`
+  process (`__main__`), not the import twin that has no `CONFIG`. Missing
+  runtime globals are copied onto that twin so apply cannot `NameError`.
+  A later DISC selfcare save failure does not write `DISC=1` back onto
+  the peer after apply already stripped it.
 
 ## Version 1.6.3 (2026-10-31)
 

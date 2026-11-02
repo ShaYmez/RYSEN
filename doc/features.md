@@ -192,6 +192,7 @@ Per-peer sticky membership, last-TG kept by hotspot ID across reconnect, and mon
 | Clear | `4000`, selfcare `DISC=1`, statics, and `STICKY=0` drop persist |
 | Monitor | CONFIG_SND `UA` is per-peer so Unique TG / Sticky T/O is this hotspot, not the shared bridge |
 | SINGLE_MODE | Always-on statics and parked sticky UA stay up when another talkgroup ends |
+| OPTIONS apply | RPTO uses the live process so `CONFIG` is defined; a failed DISC save does not put `DISC=1` back on the peer |
 
 ---
 
