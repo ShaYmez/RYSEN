@@ -1432,6 +1432,7 @@ class HBSYSTEM(DatagramProtocol):
                             if isinstance(_this_peer['OPTIONS'], bytes)
                             else str(_this_peer['OPTIONS']))
                 logger.info('(%s) Peer %s has sent options %s', self._system, _this_peer['CALLSIGN'], _this_peer['OPTIONS'])
+                _applied = None
                 try:
                     from selfcare_db import store_peer_options
                     _mod = runtime_bridge_module()
@@ -1440,27 +1441,34 @@ class HBSYSTEM(DatagramProtocol):
                         from bridge_master import apply_selfcare_options as _apply
                     _remaining, _had_disc = _apply(
                         self._system, _peer_id, _opt_str)
-                    _stored = _remaining if _had_disc else _opt_str
+                    _applied = _remaining if _had_disc else _opt_str
                     store_peer_options(
-                        self._CONFIG['SYSTEMS'][self._system], _peer_id, _stored)
-                    if _had_disc:
-                        _db = self._CONFIG.get('_SELF_SERVICE_DB')
-                        if _db is not None:
-                            _rid = int(int_id(_peer_id))
-                            _save = _db.save_client_options(_rid, _remaining)
-                            _save.addErrback(
-                                lambda f, _rid=_rid: logger.error(
-                                    '(%s) Selfcare DISC options save failed for %s: %s',
-                                    self._system, _rid, f.getErrorMessage()))
+                        self._CONFIG['SYSTEMS'][self._system], _peer_id, _applied)
                 except Exception as exc:
                     logger.exception('(%s) Selfcare options apply failed for peer %s: %s',
                                      self._system, int_id(_peer_id), exc)
-                    try:
-                        from selfcare_db import store_peer_options as _store_peer_options
-                        _store_peer_options(
-                            self._CONFIG['SYSTEMS'][self._system], _peer_id, _opt_str)
-                    except Exception:
-                        pass
+                    if _applied is None:
+                        try:
+                            from selfcare_db import store_peer_options as _store_peer_options
+                            _store_peer_options(
+                                self._CONFIG['SYSTEMS'][self._system], _peer_id, _opt_str)
+                        except Exception:
+                            pass
+                else:
+                    if _had_disc:
+                        _db = self._CONFIG.get('_SELF_SERVICE_DB')
+                        if _db is not None:
+                            try:
+                                _rid = int(int_id(_peer_id))
+                                _save = _db.save_client_options(_rid, _remaining)
+                                _save.addErrback(
+                                    lambda f, _rid=_rid: logger.error(
+                                        '(%s) Selfcare DISC options save failed for %s: %s',
+                                        self._system, _rid, f.getErrorMessage()))
+                            except Exception as exc:
+                                logger.exception(
+                                    '(%s) Selfcare DISC options save failed for %s: %s',
+                                    self._system, int_id(_peer_id), exc)
             else:
                 self.transport.write(b''.join([MSTNAK, _peer_id]), _sockaddr)
                 logger.info('(%s) Options from Radio ID that is not logged: %s', self._system, int_id(_peer_id))

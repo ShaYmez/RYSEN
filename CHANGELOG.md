@@ -5,6 +5,8 @@
 - RPTO/selfcare OPTIONS apply uses the live `python bridge_master.py`
   process (`__main__`), not the import twin that has no `CONFIG`. Missing
   runtime globals are copied onto that twin so apply cannot `NameError`.
+  A later DISC selfcare save failure does not write `DISC=1` back onto
+  the peer after apply already stripped it.
 
 ## Version 1.6.4 (2026-11-02)
 

@@ -250,6 +250,8 @@ class TestImportTwinConfig(unittest.TestCase):
         self.assertIn('runtime_bridge_module()', rpto)
         self.assertNotIn(
             'from bridge_master import apply_selfcare_options\n', rpto)
+        self.assertIn('if _applied is None:', rpto)
+        self.assertIn('Selfcare DISC options save failed', rpto)
 
 
 if __name__ == '__main__':
