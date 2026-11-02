@@ -9,9 +9,12 @@ from bridge_helpers import (
     dest_peer_rx_blocked,
     expire_open_peer_dynamic_tgs,
     overlay_peer_ua_for_report,
+    peer_remembered_dynamic_tgs,
     remember_peer_dynamic_tg,
+    remember_sticky_last_tg,
     reset_peer_rx_filters,
     sticky_flag_from_options,
+    sticky_last_tgs,
     sticky_tg_enabled,
     ua_timer_minutes_from_options,
 )
@@ -311,12 +314,14 @@ class Test4000ClearsStickyMembership(unittest.TestCase):
     def test_4000_mutes_and_clears_sticky_ua(self):
         remember_peer_dynamic_tg(
             'SYSTEM-1', self.peer, 2, 91, expires_at=None)
+        remember_sticky_last_tg(self.peer, 2, 91)
         bm.clear_subscriber_on_disconnect(
             'SYSTEM-1', self.radio, self.peer)
         self.assertNotIn(self.radio, bm.SUB_MAP)
         self.assertFalse(bm.BRIDGES['91'][0]['ACTIVE'])
         self.assertTrue(dest_peer_rx_blocked(
             'SYSTEM-1', self.peer, self.stream, 2, 91))
+        self.assertEqual(sticky_last_tgs(self.peer), {})
 
 
 class TestPeerUaReport(unittest.TestCase):
@@ -359,6 +364,105 @@ class TestPeerUaReport(unittest.TestCase):
             source = fh.read()
         self.assertIn('overlay_peer_ua_for_report(self._config[\'SYSTEMS\'])',
                       source)
+
+
+class TestStickyLastTgSurvivesReconnect(unittest.TestCase):
+    def setUp(self):
+        reset_peer_rx_filters()
+        self.prev_config = getattr(bm, 'CONFIG', None)
+        self.prev_bridges = getattr(bm, 'BRIDGES', None)
+        self.prev_idx = getattr(bm, 'BRIDGE_IDX', None)
+        self.prev_sub = getattr(bm, 'SUB_MAP', None)
+        self.peer = b'\x00\x23\xc5\x93'
+        self.stream = b'\x00\x00\x00\x0a'
+        self.sys = {
+            'MODE': 'MASTER',
+            'ENABLED': True,
+            'STICKY_TG': True,
+            'DEFAULT_UA_TIMER': 10,
+            'TS1_STATIC': '',
+            'TS2_STATIC': '',
+            'PEERS': {self.peer: {'OPTIONS': 'TS1=;TS2=;', 'STICKY': True,
+                                  'CONNECTION': 'YES'}},
+        }
+        bm.CONFIG = {
+            'SYSTEMS': {
+                'SYSTEM-1': copy_sys(self.sys),
+                'SYSTEM-46': copy_sys(self.sys),
+            },
+            'REPORTS': {'REPORT': False},
+        }
+        bm.BRIDGES = {'91': [{
+            'SYSTEM': 'SYSTEM-1', 'TS': 2, 'TGID': bytes_3(91),
+            'ACTIVE': True, 'TO_TYPE': 'ON', 'TIMEOUT': 600, 'TIMER': 0,
+            'ON': [bytes_3(91)], 'OFF': [], 'RESET': [],
+        }]}
+        bm.SUB_MAP = {}
+        bm.BRIDGE_IDX = {}
+
+    def tearDown(self):
+        reset_peer_rx_filters()
+        bm.CONFIG = self.prev_config
+        bm.BRIDGES = {} if self.prev_bridges is None else self.prev_bridges
+        bm.SUB_MAP = {} if self.prev_sub is None else self.prev_sub
+        if self.prev_idx is not None:
+            bm.BRIDGE_IDX = self.prev_idx
+
+    def test_remember_persists_last_tg(self):
+        bm._remember_source_dynamic_tg(
+            'SYSTEM-1', self.peer, 2, 91, pkt_time=100.0, timeout_s=600)
+        self.assertEqual(sticky_last_tgs(self.peer), {2: 91})
+
+    def test_close_does_not_forget_last_tg(self):
+        bm._remember_source_dynamic_tg(
+            'SYSTEM-1', self.peer, 2, 91, pkt_time=100.0, timeout_s=600)
+        bm.selfcare_disconnect('SYSTEM-1', self.peer)
+        self.assertEqual(sticky_last_tgs(self.peer), {2: 91})
+        self.assertFalse(peer_remembered_dynamic_tgs('SYSTEM-1', self.peer))
+
+    def test_restore_on_other_generator_slot(self):
+        bm._remember_source_dynamic_tg(
+            'SYSTEM-1', self.peer, 2, 91, pkt_time=100.0, timeout_s=600)
+        bm.selfcare_disconnect('SYSTEM-1', self.peer)
+        restored = bm.restore_peer_sticky_last_tgs('SYSTEM-46', self.peer)
+        self.assertEqual(restored, 1)
+        self.assertIn((2, 91), peer_remembered_dynamic_tgs('SYSTEM-46', self.peer))
+        self.assertFalse(dest_peer_rx_blocked(
+            'SYSTEM-46', self.peer, self.stream, 2, 91, now=10_000.0))
+
+    def test_statics_skip_restore(self):
+        bm._remember_source_dynamic_tg(
+            'SYSTEM-1', self.peer, 2, 91, pkt_time=100.0, timeout_s=600)
+        bm.CONFIG['SYSTEMS']['SYSTEM-46']['PEERS'][self.peer]['OPTIONS'] = (
+            'TS2=2350;')
+        restored = bm.restore_peer_sticky_last_tgs('SYSTEM-46', self.peer)
+        self.assertEqual(restored, 0)
+        self.assertFalse(peer_remembered_dynamic_tgs('SYSTEM-46', self.peer))
+
+    def test_disc_clears_last_tg(self):
+        bm._remember_source_dynamic_tg(
+            'SYSTEM-1', self.peer, 2, 91, pkt_time=100.0, timeout_s=600)
+        bm.apply_selfcare_options('SYSTEM-1', self.peer, 'DISC=1;')
+        self.assertEqual(sticky_last_tgs(self.peer), {})
+
+    def test_login_hook_restores(self):
+        with open('bridge_master.py', encoding='utf-8') as fh:
+            source = fh.read()
+        self.assertIn(
+            'restore_peer_sticky_last_tgs(self._system, _peer_id)', source)
+
+
+def copy_sys(syscfg):
+    peer = next(iter(syscfg['PEERS']))
+    return {
+        'MODE': syscfg['MODE'],
+        'ENABLED': True,
+        'STICKY_TG': True,
+        'DEFAULT_UA_TIMER': 10,
+        'TS1_STATIC': '',
+        'TS2_STATIC': '',
+        'PEERS': {peer: dict(syscfg['PEERS'][peer])},
+    }
 
 
 if __name__ == '__main__':

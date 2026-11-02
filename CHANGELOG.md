@@ -21,6 +21,9 @@
 - CONFIG_SND now includes per-peer `UA` (slot, TG, expiry) so RYSEN-MONITOR
   can show that hotspot's last unique TG and `Sticky` instead of painting
   the shared MASTER bridge onto every peer.
+- Last sticky TG is kept by hotspot ID across reconnects (Pi-Star auto-update
+  / generator-slot move), like Brandmeister auto-static and TGIF park.
+  4000, selfcare `DISC=1`, statics, and `STICKY=0` still clear it.
 
 ## Version 1.6.3 (2026-10-31)
 

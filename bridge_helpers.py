@@ -774,6 +774,8 @@ _PEER_DYNAMIC_TGS = {}
 _PEER_REFLECTORS = {}
 _PEER_MUTED_TGS = {}
 _DROPPED_STREAMS = {}
+# Last sticky TG by hotspot ID (not SYSTEM-N). Survives Pi-Star reconnect.
+_STICKY_LAST_TG = {}
 _DROPPED_STREAM_GAP_S = 1.0
 _DROPPED_STREAM_MAX_S = 120.0
 
@@ -791,6 +793,7 @@ def reset_peer_rx_filters():
     _PEER_REFLECTORS.clear()
     _PEER_MUTED_TGS.clear()
     _DROPPED_STREAMS.clear()
+    _STICKY_LAST_TG.clear()
 
 
 def _live_peer_dynamic_tgs(system, peer_id, now=None):
@@ -930,6 +933,38 @@ def remember_peer_dynamic_tg(system, peer_id, slot, tgid, expires_at=None,
 
 def peer_remembered_dynamic_tgs(system, peer_id):
     return set(_live_peer_dynamic_tgs(system, peer_id))
+
+
+def remember_sticky_last_tg(peer_id, slot, tgid):
+    """Keep Brandmeister/TGIF last-TG for this hotspot across reconnects."""
+    item = _peer_tg_item(slot, tgid)
+    if peer_id is None or item is None:
+        return
+    _STICKY_LAST_TG.setdefault(peer_id, {})[item[0]] = item[1]
+
+
+def forget_sticky_last_tg(peer_id, slot=None):
+    """Drop persisted last-TG (4000, DISC, statics, or STICKY=0)."""
+    if peer_id is None:
+        return
+    if slot is None:
+        _STICKY_LAST_TG.pop(peer_id, None)
+        return
+    slots = _STICKY_LAST_TG.get(peer_id)
+    if not slots:
+        return
+    try:
+        slots.pop(int(slot), None)
+    except (TypeError, ValueError):
+        return
+    if not slots:
+        _STICKY_LAST_TG.pop(peer_id, None)
+
+
+def sticky_last_tgs(peer_id):
+    """Copy of {slot: tgid} for this hotspot, or empty."""
+    slots = _STICKY_LAST_TG.get(peer_id)
+    return dict(slots) if slots else {}
 
 
 def peer_ua_report(system, peer_id, now=None):

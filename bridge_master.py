@@ -114,6 +114,10 @@ from bridge_helpers import (
     other_peer_has_dynamic_tg,
     forget_peer_dynamic_tg,
     remember_peer_dynamic_tg,
+    peer_remembered_dynamic_tgs,
+    remember_sticky_last_tg,
+    forget_sticky_last_tg,
+    sticky_last_tgs,
     expire_open_peer_dynamic_tgs,
     sticky_tg_enabled,
     sticky_flag_from_options,
@@ -1326,6 +1330,7 @@ def _expire_sticky_membership_if_disabled(system, peer_id):
     """When sticky no longer applies, start RelinkTime on open UA memberships."""
     if peer_sticky_tg_enabled(system, peer_id):
         return
+    forget_sticky_last_tg(peer_id)
     minutes = peer_ua_timer_minutes(system, peer_id)
     filled = expire_open_peer_dynamic_tgs(
         system, peer_id, time() + minutes * 60)
@@ -1376,12 +1381,61 @@ def _remember_source_dynamic_tg(system, peer_id, slot, tgid, pkt_time, timeout_s
     remember_peer_dynamic_tg(
         system, peer_id, slot, tgid,
         expires_at=expires_at, exclusive_slot=sticky)
+    if sticky:
+        remember_sticky_last_tg(peer_id, slot, tgid)
+    else:
+        forget_sticky_last_tg(peer_id, slot)
+
+
+def restore_peer_sticky_last_tgs(system, peer_id):
+    """Re-park this hotspot on its last sticky TG after a Pi-Star reconnect.
+
+    Last-TG is keyed by hotspot ID, not SYSTEM-N, so a generator-slot move
+    still comes back on the same talkgroup. 4000 / DISC / statics skip this.
+    """
+    if peer_id is None or not system:
+        return 0
+    if not peer_sticky_tg_enabled(system, peer_id):
+        return 0
+    last = sticky_last_tgs(peer_id)
+    if not last:
+        return 0
+    syscfg = CONFIG.get('SYSTEMS', {}).get(system) or {}
+    live = peer_remembered_dynamic_tgs(system, peer_id)
+    restored = 0
+    timeout = peer_ua_timer_minutes(system, peer_id)
+    for slot, tgid in last.items():
+        item = (int(slot), int(tgid))
+        if item in live:
+            continue
+        if peer_has_static_tg(system, peer_id, slot, tgid):
+            continue
+        if not should_remember_peer_dynamic_tg(syscfg, tgid):
+            continue
+        name = str(item[1])
+        tgid_b = bytes_3(item[1])
+        if name not in BRIDGES:
+            make_single_bridge(tgid_b, system, item[0], timeout)
+        else:
+            activate_ua_bridge_source(
+                name, system, item[0], tmout=timeout, peer_id=peer_id)
+        remember_peer_dynamic_tg(
+            system, peer_id, item[0], item[1],
+            expires_at=None, exclusive_slot=True)
+        restored += 1
+    if restored:
+        logger.info(
+            '(STICKY_TG) Restored %s last TG(s) for peer %s on %s',
+            restored, int_id(peer_id), system)
+        notify_bridge_table_updated()
+    return restored
 
 
 def apply_selfcare_options(source_system, peer_id, options_str):
     """Process DISC=1 immediately; return remaining OPTIONS text (without DISC)."""
     _had_disc = selfcare_disconnect_requested(options_str)
     if _had_disc:
+        forget_sticky_last_tg(peer_id)
         selfcare_disconnect(source_system, peer_id)
     remaining = strip_disc_from_options(options_str) if _had_disc else options_str
     ts1, ts2 = ts_lists_from_options(remaining)
@@ -1393,6 +1447,8 @@ def apply_selfcare_options(source_system, peer_id, options_str):
     if peer_id:
         store_peer_options(syscfg, peer_id, remaining)
         _apply_peer_sticky_from_options(source_system, peer_id, remaining)
+        if not _had_disc:
+            restore_peer_sticky_last_tgs(source_system, peer_id)
     return remaining, _had_disc
 
 
@@ -1490,6 +1546,7 @@ def clear_sub_map_for_peer(peer_id):
 
 def clear_subscriber_on_disconnect(system, subscriber_id, peer_id):
     """Drop sticky-TG state when the user dials disconnect (4000)."""
+    forget_sticky_last_tg(peer_id)
     if peer_id:
         changed, dropped = deactivate_peer_dynamic_bridges(
             BRIDGES, SUB_MAP, system, peer_id)
@@ -3899,6 +3956,11 @@ class routerHBP(HBSYSTEM):
                     forget_peer_rx_state(self._system, _peer_id)
                     mark_options_dirty(CONFIG)
         HBSYSTEM.master_datagramReceived(self, _data, _sockaddr)
+        if (_command == RPTC and len(_data) >= 8 and _data[:5] != RPTCL):
+            _peer_id = _data[4:8]
+            _peer = self._peers.get(_peer_id)
+            if _peer and _peer.get('CONNECTION') == 'YES':
+                restore_peer_sticky_last_tgs(self._system, _peer_id)
 
     def to_target(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data, pkt_time, dmrpkt, _bits,_bridge,_system,_noOBP,sysIgnore,_source_server, _ber, _rssi, _source_rptr, _new_generation=False):
         _sysIgnore = sysIgnore
