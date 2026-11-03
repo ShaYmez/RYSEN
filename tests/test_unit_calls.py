@@ -485,6 +485,23 @@ class TestSubscriberPrivateCallSkipsReflector(UnitCallFixture):
         router._forward_parrot_unit_voice.assert_called()
         router._forward_unit_voice.assert_not_called()
 
+    def test_private_4000_reused_stream_id_still_disconnects(self):
+        self._system('SYSTEM-A', 'MASTER')
+        router = self._router('SYSTEM-A')
+        reused = b'\x00\x00\x00\x32'
+        router.STATUS[2]['RX_STREAM_ID'] = reused
+        router.STATUS[2]['RX_TYPE'] = HBPF_SLT_VTERM
+        router._cancel_reflector_timers = MagicMock()
+
+        with patch.object(bm, 'disconnect_dial_reflectors') as disc, \
+                patch.object(bm, 'clear_subscriber_on_disconnect') as clear:
+            self._receive(
+                router, 4000, reused, 0, HBPF_SLT_VHEAD)
+
+        disc.assert_called_once_with('SYSTEM-A')
+        clear.assert_called_once_with(
+            'SYSTEM-A', bytes_3(CALLER), PEER)
+
     def test_group_call_4000_permanently_clears_sticky_membership(self):
         self._system(
             'SYSTEM-A', 'MASTER',

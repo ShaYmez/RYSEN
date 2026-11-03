@@ -6020,7 +6020,11 @@ class routerHBP(HBSYSTEM):
             # radios send PC 4000 while AllStar mode is active; it must still
             # clear every UA/sticky state owned by this hotspot.
             if (_int_dst_id == 4000
-                    and _stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
+                    and (_stream_id != self.STATUS[_slot]['RX_STREAM_ID']
+                         or (_frame_type == HBPF_DATA_SYNC
+                             and _dtype_vseq == HBPF_SLT_VHEAD
+                             and self.STATUS[_slot]['RX_TYPE']
+                             == HBPF_SLT_VTERM))):
                 disconnect_dial_reflectors(self._system)
                 clear_subscriber_on_disconnect(
                     self._system, _rf_src, _peer_id)
