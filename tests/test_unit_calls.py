@@ -4,6 +4,13 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import bridge_master as bm
+from bridge_helpers import (
+    peer_remembered_dynamic_tgs,
+    remember_peer_dynamic_tg,
+    remember_sticky_last_tg,
+    reset_peer_rx_filters,
+    sticky_last_tgs,
+)
 from const import HBPF_DATA_SYNC, HBPF_SLT_VHEAD, HBPF_SLT_VTERM, HBPF_VOICE
 from dmr_utils3.utils import bytes_3, int_id
 from hblink import HBSYSTEM
@@ -78,6 +85,7 @@ class UnitCallFixture(unittest.TestCase):
     def setUp(self):
         self._systems = dict(bm.systems)
         bm.systems.clear()
+        reset_peer_rx_filters()
         self._config = getattr(bm, 'CONFIG', None)
         self._sub_map = getattr(bm, 'SUB_MAP', None)
         self._bridges = getattr(bm, 'BRIDGES', None)
@@ -101,6 +109,7 @@ class UnitCallFixture(unittest.TestCase):
         }
 
     def tearDown(self):
+        reset_peer_rx_filters()
         bm.systems.clear()
         bm.systems.update(self._systems)
         if self._config is None:
@@ -475,6 +484,88 @@ class TestSubscriberPrivateCallSkipsReflector(UnitCallFixture):
             self._receive(router, 9990, b'\x00\x00\x00\x33', 0, HBPF_SLT_VHEAD)
         router._forward_parrot_unit_voice.assert_called()
         router._forward_unit_voice.assert_not_called()
+
+    def test_group_call_4000_permanently_clears_sticky_membership(self):
+        self._system(
+            'SYSTEM-A', 'MASTER',
+            peers={PEER: {'CONNECTION': 'YES'}})
+        bm.CONFIG['SYSTEMS']['SYSTEM-A']['STICKY_TG'] = True
+        router = self._router('SYSTEM-A')
+        radio = bytes_3(CALLER)
+        tg = 2347
+        bm.BRIDGES = {
+            str(tg): [{
+                'SYSTEM': 'SYSTEM-A',
+                'TS': 2,
+                'TGID': bytes_3(tg),
+                'TO_TYPE': 'ON',
+                'ACTIVE': True,
+                'TIMER': 0,
+                'TIMEOUT': 900,
+                'OFF': [bytes_3(4000)],
+                'RESET': [],
+                'ON': [bytes_3(tg)],
+            }],
+            '2350': [{
+                'SYSTEM': 'SYSTEM-A',
+                'TS': 2,
+                'TGID': bytes_3(2350),
+                'TO_TYPE': 'ON',
+                'ACTIVE': False,
+                'TIMER': 0,
+                'TIMEOUT': 900,
+                'OFF': [bytes_3(4000)],
+                'RESET': [],
+                'ON': [bytes_3(2350)],
+            }],
+        }
+        bm.SUB_MAP[radio] = (
+            'SYSTEM-A', 2, bytes_3(tg), 1.0, PEER)
+        remember_peer_dynamic_tg(
+            'SYSTEM-A', PEER, 2, tg, expires_at=None)
+        remember_sticky_last_tg(PEER, 2, tg)
+        peer = bm.CONFIG['SYSTEMS']['SYSTEM-A']['PEERS'][PEER]
+        peer['_STICKY_RESTORE'] = True
+
+        packet = bytearray(
+            _voice_packet(
+                CALLER, 4000, b'\x00\x00\x00\x32', 2, 0,
+                HBPF_SLT_VHEAD))
+        packet[15] &= ~0x40
+        with patch.object(bm, 'subscriber_ids', {}, create=True), \
+                patch.object(bm, 'peer_ids', {}, create=True), \
+                patch.object(bm, 'talkgroup_ids', {}, create=True):
+            router.dmrd_received(
+                PEER, radio, bytes_3(4000), 0, 2, 'group',
+                HBPF_DATA_SYNC, HBPF_SLT_VHEAD,
+                b'\x00\x00\x00\x32', bytes(packet))
+
+        self.assertNotIn(radio, bm.SUB_MAP)
+        self.assertFalse(bm.BRIDGES[str(tg)][0]['ACTIVE'])
+        self.assertFalse(peer_remembered_dynamic_tgs(
+            'SYSTEM-A', PEER))
+        self.assertEqual(sticky_last_tgs(PEER), {})
+        self.assertFalse(peer['_STICKY_RESTORE'])
+        self.assertEqual(
+            bm.restore_peer_sticky_last_tgs('SYSTEM-A', PEER), 0)
+
+        # An ordinary TG PTT starts a fresh sticky park after the disconnect.
+        next_packet = bytearray(
+            _voice_packet(
+                CALLER, 2350, b'\x00\x00\x00\x33', 2, 1,
+                HBPF_SLT_VHEAD))
+        next_packet[15] &= ~0x40
+        with patch.object(bm, 'subscriber_ids', {}, create=True), \
+                patch.object(bm, 'peer_ids', {}, create=True), \
+                patch.object(bm, 'talkgroup_ids', {}, create=True):
+            router.dmrd_received(
+                PEER, radio, bytes_3(2350), 1, 2, 'group',
+                HBPF_DATA_SYNC, HBPF_SLT_VHEAD,
+                b'\x00\x00\x00\x33', bytes(next_packet))
+        self.assertEqual(sticky_last_tgs(PEER), {2: 2350})
+        self.assertIn(
+            (2, 2350),
+            peer_remembered_dynamic_tgs('SYSTEM-A', PEER))
 
     def _group_9990(self, dst, stream, seq, dtype):
         packet = bytearray(_voice_packet(CALLER, dst, stream, 2, seq, dtype))

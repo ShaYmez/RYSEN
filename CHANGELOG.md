@@ -13,7 +13,10 @@ Released on **`master`** — `shaymez/rysen:1.6.4` and `:latest`.
 - Statics still disable sticky, so UA TGs time out and statics come back.
 - Sticky is decided from this hotspot's OPTIONS plus cfg defaults, not the
   live union of every peer's statics on a shared MASTER.
-- Private call 4000 now clears per-peer UA membership as well as SUB_MAP.
+- TG 4000 (private or group call) clears per-peer UA membership, SUB_MAP,
+  reconnect restore state, and remembered last-TG. Service destinations never
+  become a hotspot's sticky TG, so timer/OPTIONS rebuilds cannot bring the
+  disconnected TG back; the next ordinary TG PTT starts a new sticky park.
 - OPTIONS that add statics or `STICKY=0` start RelinkTime on open sticky
   memberships instead of leaving them immortal. RPTO/selfcare apply that
   immediately (not only on the 26s options timer). RelinkTime follows the

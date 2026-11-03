@@ -1665,6 +1665,10 @@ def clear_sub_map_for_peer(peer_id):
 def clear_subscriber_on_disconnect(system, subscriber_id, peer_id):
     """Drop sticky-TG state when the user dials disconnect (4000)."""
     forget_sticky_last_tg(peer_id)
+    peer = _peer_record(system, peer_id)
+    if peer is not None:
+        # A pending reconnect restore must not outlive an explicit 4000.
+        peer['_STICKY_RESTORE'] = False
     if peer_id:
         changed, dropped = deactivate_peer_dynamic_bridges(
             BRIDGES, SUB_MAP, system, peer_id)
@@ -5796,7 +5800,12 @@ class routerHBP(HBSYSTEM):
                     _existing_tg = None  # Old format, no TG
             except (TypeError, IndexError):
                 _existing_tg = None
-        SUB_MAP[_rf_src] = (self._system, _slot, _existing_tg, pkt_time, _peer_id)
+        # Service destinations are control operations, not subscriber routing
+        # destinations. In particular, a group-call 4000 must not overwrite the
+        # parked TG before the disconnect path clears it.
+        if not is_dial_service_code(_int_dst_id):
+            SUB_MAP[_rf_src] = (
+                self._system, _slot, _existing_tg, pkt_time, _peer_id)
         
         def resetallStarMode():
             self.STATUS[_slot]['_allStarMode'] = False
@@ -6007,6 +6016,14 @@ class routerHBP(HBSYSTEM):
         
         #Handle  private voice calls (for reflectors and parrot)
         elif _call_type == 'unit' and not _data_call:
+            # Handle disconnect independently of reflector/AllStar mode. Some
+            # radios send PC 4000 while AllStar mode is active; it must still
+            # clear every UA/sticky state owned by this hotspot.
+            if (_int_dst_id == 4000
+                    and _stream_id != self.STATUS[_slot]['RX_STREAM_ID']):
+                disconnect_dial_reflectors(self._system)
+                clear_subscriber_on_disconnect(
+                    self._system, _rf_src, _peer_id)
             if self._system == 'PARROT':
                 _parrot_delivered = self._relay_unit_voice_packet(
                     _dst_id, _slot, _bits, _data, dmrpkt, _peer_id)
@@ -6063,9 +6080,6 @@ class routerHBP(HBSYSTEM):
                     self._cancel_reflector_timers(_slot)
                 
                     logger.info('(%s) Reflector: Private call from %s to %s',self._system, int_id(_rf_src), _int_dst_id)
-                    if _int_dst_id == 4000:
-                        disconnect_dial_reflectors(self._system)
-                        clear_subscriber_on_disconnect(self._system, _rf_src, _peer_id)
                     if _int_dst_id >= 5 and _int_dst_id != 8  and _int_dst_id != 9 and _int_dst_id <= 999999:
                         _bridgename = ''.join(['#',str(_int_dst_id)])
                         if _bridgename not in BRIDGES and not (_int_dst_id >= 4000 and _int_dst_id <= 5000) and not (_int_dst_id >=9991 and _int_dst_id <= 9999):
@@ -6269,6 +6283,19 @@ class routerHBP(HBSYSTEM):
                     logger.warning('(%s) Packet received with STREAM ID: %s <FROM> SUB: %s PEER: %s <TO> TGID %s, SLOT %s collided with existing call', self._system, int_id(_stream_id), int_id(_rf_src), int_id(_peer_id), int_id(_dst_id), _slot)
                     return
 
+                # BM-style disconnect is accepted as either a private or group
+                # call. A group-call 4000 used to hit only bridge OFF rules,
+                # leaving per-peer sticky membership alive for the timer loop
+                # to reactivate a few minutes later.
+                if _call_type == 'group' and _int_dst_id == 4000:
+                    disconnect_dial_reflectors(self._system)
+                    clear_subscriber_on_disconnect(
+                        self._system, _rf_src, _peer_id)
+                    logger.info(
+                        '(%s) Group-call 4000 cleared UA/sticky state for '
+                        'subscriber %s (peer %s)',
+                        self._system, int_id(_rf_src), int_id(_peer_id))
+
                 self.STATUS[_slot]['packets'] = 0
                 self.STATUS[_slot]['loss'] = 0
                 self.STATUS[_slot]['crcs'] = set()
@@ -6315,7 +6342,10 @@ class routerHBP(HBSYSTEM):
                         and (str(int_id(_dst_id)) not in BRIDGES)):
                     logger.info('(%s) Bridge for TG %s does not exist. Creating as User Activated. Timeout %s',self._system, int_id(_dst_id),_ua_timer)
                     make_single_bridge(_dst_id,self._system,_slot,_ua_timer)
-                elif is_routing_master(CONFIG['SYSTEMS'][self._system]['MODE']) and str(int_id(_dst_id)) in BRIDGES:
+                elif (not is_dial_service_code(_int_dst_id)
+                        and is_routing_master(
+                            CONFIG['SYSTEMS'][self._system]['MODE'])
+                        and str(int_id(_dst_id)) in BRIDGES):
                     activate_ua_bridge_source(str(int_id(_dst_id)), self._system, _slot, peer_id=_peer_id)
                 if (should_remember_peer_dynamic_tg(
                         CONFIG['SYSTEMS'][self._system], _int_dst_id)
@@ -6328,7 +6358,8 @@ class routerHBP(HBSYSTEM):
                 
                 # Update SUB_MAP with the TG for this call
                 # This enables sticky TG functionality - subscriber is now associated with this TG
-                if _rf_src in SUB_MAP:
+                if (_rf_src in SUB_MAP
+                        and not is_dial_service_code(_int_dst_id)):
                     # BACKWARDS COMPATIBILITY: Handle 3, 4, and 5-element formats
                     _sub_peer_id = None  # Initialize for backwards compatibility
                     try:
@@ -6547,7 +6578,11 @@ class routerHBP(HBSYSTEM):
 
                             # TGID matches an ACTIVATION trigger
                             # Dial-a-tg # reflectors link via private call only — not group PTT
-                            if (_bridge[0:1] != '#' and (_dst_id in _system['ON'] or _dst_id in _system['RESET']) and _slot == _system['TS']):
+                            if (_bridge[0:1] != '#'
+                                    and not is_dial_service_code(_int_dst_id)
+                                    and (_dst_id in _system['ON']
+                                         or _dst_id in _system['RESET'])
+                                    and _slot == _system['TS']):
                                 # Set the matching rule as ACTIVE
                                 if _dst_id in _system['ON']:
                                     if not peer_has_static_tg(
