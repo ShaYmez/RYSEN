@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from rysen_trace import get_install_id, install_id_path, persist_reactor_status, persist_runtime_version, ping_version_async, post_version_ping, reactor_status_path, runtime_version_path
+from rysen_trace import SERVER_STARTED_AT, get_install_id, install_id_path, persist_reactor_status, persist_runtime_version, ping_version_async, post_version_ping, reactor_status_path, runtime_version_path
 from rysen_version import __version__, user_agent
 
 
@@ -54,9 +54,11 @@ class TestVersionPing(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             post_version_ping(tmp)
         request = mock_urlopen.call_args[0][0]
+        body = json.loads(request.data.decode('utf-8'))
         self.assertEqual(request.get_method(), 'POST')
         self.assertEqual(request.get_full_url(), 'https://api.freestar.network/v1/rysen/ping.php')
         self.assertEqual(request.get_header('User-agent'), user_agent())
+        self.assertEqual(body['started_at'], SERVER_STARTED_AT)
 
     @mock.patch('rysen_trace.post_version_ping', side_effect=OSError('network down'))
     def test_ping_async_silent_on_failure(self, _mock_post):

@@ -4,7 +4,7 @@ import json
 import unittest
 
 from reporting_const import REPORT_OPCODES
-from rysen_trace import REPORT_PROTOCOL, server_info_message, server_info_payload
+from rysen_trace import REPORT_PROTOCOL, SERVER_STARTED_AT, server_info_message, server_info_payload
 from rysen_version import __version__
 
 
@@ -29,6 +29,12 @@ class TestReportServerInfo(unittest.TestCase):
         data = json.loads(server_info_message().decode('utf-8'))
         self.assertIn('rysen_version', data)
         self.assertEqual(data['rysen_version'], __version__)
+
+    def test_started_at_stays_at_process_start(self):
+        first = json.loads(server_info_message().decode('utf-8'))
+        second = json.loads(server_info_message().decode('utf-8'))
+        self.assertEqual(first['started_at'], SERVER_STARTED_AT)
+        self.assertEqual(second['started_at'], SERVER_STARTED_AT)
 
     def test_bridge_master_sends_server_info(self):
         with open('bridge_master.py', encoding='utf-8') as fh:

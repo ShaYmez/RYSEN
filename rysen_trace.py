@@ -98,11 +98,16 @@ def get_install_id(log_dir='/opt/rysen/log'):
     return install_id
 
 
+# Captured once at import. The report loop and the daily API ping both
+# reuse this, so started_at stays the process start rather than the send time.
+SERVER_STARTED_AT = int(time())
+
+
 def server_info_payload(hostname=None, started_at=None):
     if hostname is None:
         hostname = socket.gethostname()
     if started_at is None:
-        started_at = int(time())
+        started_at = SERVER_STARTED_AT
     return {
         'rysen_version': __version__,
         'report_protocol': REPORT_PROTOCOL,
@@ -120,7 +125,7 @@ def post_version_ping(log_dir='/opt/rysen/log'):
     payload = json.dumps({
         'version': __version__,
         'install_id': get_install_id(log_dir),
-        'started_at': int(time()),
+        'started_at': SERVER_STARTED_AT,
     }).encode('utf-8')
     request = urllib.request.Request(
         PING_URL,
