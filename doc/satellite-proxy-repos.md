@@ -7,6 +7,7 @@ Publish-only repos build slim Docker images; **all proxy development stays in RY
 | [RYSEN-SP-IPSC](https://github.com/ShaYmez/RYSEN-SP-IPSC) | `shaymez/rysen-sp-ipsc:latest` | `master` |
 | [RYSEN-SP](https://github.com/ShaYmez/RYSEN-SP) | `shaymez/rysen-sp:latest` | `master` |
 | [RYSEN-SP-SELFCARE](https://github.com/ShaYmez/RYSEN-SP-SELFCARE) | `shaymez/rysen-sp-selfcare:latest` | `master` |
+| [RYSEN-SP-HYT](https://github.com/ShaYmez/RYSEN-SP-HYT) | `shaymez/rysen-sp-hyt:latest` | `master` |
 
 ## Flow
 
@@ -30,6 +31,7 @@ Publish-only repos build slim Docker images; **all proxy development stays in RY
 | **RYSEN-SP-IPSC** | **`RYSEN_SYNC_REF`** = `master` | `DOCKER_USERNAME`, `DOCKER_PASSWORD` |
 | **RYSEN-SP** | **`RYSEN_SYNC_REF`** = `master` | `DOCKER_USERNAME`, `DOCKER_PASSWORD` |
 | **RYSEN-SP-SELFCARE** | **`RYSEN_SYNC_REF`** = `master` | `DOCKER_USERNAME`, `DOCKER_PASSWORD` |
+| **RYSEN-SP-HYT** | **`RYSEN_SYNC_REF`** = `master` | `DOCKER_USERNAME`, `DOCKER_PASSWORD` |
 
 Push-triggered sync always uses the branch that was pushed. Manual sync uses **`RYSEN_SYNC_REF`** (or the workflow input) when no ref is passed.
 
@@ -64,3 +66,12 @@ Standalone proxy — no MariaDB / `proxy_db.py`.
 | `tests/test_hotspot_proxy.py` | `tests/test_hotspot_proxy.py` (imports rewritten to `hotspot_proxy_v2`) |
 
 Keep `docker-configs/config/proxy-SAMPLE.cfg` in sync with the selfcare sample in RYSEN only.
+
+## Hytera proxy — RYSEN-SP-HYT
+
+| RYSEN | Satellite |
+|-------|-----------|
+| `hytera_proxy.py` | `sync/hytera_proxy.py` |
+| `hytera_const.py` | `sync/hytera_const.py` |
+| `hytera-proxy-SAMPLE.cfg` | `sync/hytera-proxy-SAMPLE.cfg` |
+| `tests/test_hytera_proxy.py` | `tests/test_hytera_proxy.py` |

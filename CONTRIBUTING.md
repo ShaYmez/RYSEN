@@ -50,7 +50,7 @@ python tools/validate_bridge_index.py
 
 ## Proxy / satellite workflow
 
-Proxy code (`hotspot_proxy_v2.py`, `ipsc_proxy.py`) is developed **in this repo**. Docker images are published via satellite repos — see [doc/satellite-proxy-repos.md](doc/satellite-proxy-repos.md).
+Proxy code (`hotspot_proxy_v2.py`, `ipsc_proxy.py`, `hytera_proxy.py`) is developed **in this repo**. Docker images are published via satellite repos — see [doc/satellite-proxy-repos.md](doc/satellite-proxy-repos.md).
 
 ## Ops scripts
 

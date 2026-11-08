@@ -69,7 +69,7 @@ clients onto these backend slots.
 | Component | Image | Public port | Backends |
 |-----------|-------|-------------|----------|
 | `ipsc_proxy.py` | `shaymez/rysen-sp-ipsc` | 56002 (CPS Master) | 56003–56202 |
-| `hytera_proxy.py` | local build (`Dockerfile.hytera-proxy`, compose profile `hytera`) | `50000/50001/50002` for every repeater | generated `HYTERA-N` triples |
+| `hytera_proxy.py` | `shaymez/rysen-sp-hyt` | `50000/50001/50002` for every repeater | generated `HYTERA-N` triples |
 | `hotspot_proxy_v2.py` | `shaymez/rysen-sp` | configurable | `SYSTEM-N` ports |
 | `hotspot_proxy_v2_sc.py` | `shaymez/rysen-sp-selfcare` | configurable | + MariaDB selfcare poll |
 

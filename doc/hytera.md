@@ -169,10 +169,12 @@ or blacklisted ID is released. A fresh P2P registration clears stale
 DMR/RDAC endpoints before renegotiation.
 
 Run the proxy with `python3 hytera_proxy.py -c hytera-proxy.cfg`, using
-[hytera-proxy-SAMPLE.cfg](../hytera-proxy-SAMPLE.cfg). From a source checkout,
-`docker compose --profile hytera -f docker-configs/docker-compose-stack.yml`
-builds the local image `rysen-hytera-proxy:1.6.4`. That image is not on
-Docker Hub.
+[hytera-proxy-SAMPLE.cfg](../hytera-proxy-SAMPLE.cfg). The published image is
+[RYSEN-SP-HYT](https://github.com/ShaYmez/RYSEN-SP-HYT)
+(`shaymez/rysen-sp-hyt:latest`), synced from this repo. See
+[satellite-proxy-repos.md](satellite-proxy-repos.md). A source checkout can
+also build the local image `rysen-hytera-proxy:1.6.4` with
+`docker compose --profile hytera -f docker-configs/docker-compose-stack.yml`.
 
 Generated backends set `PROXY_CONTROL: True` and `PROXY_CONTROL_IP` to the
 sidecar's trusted address. Control from any other source is ignored.

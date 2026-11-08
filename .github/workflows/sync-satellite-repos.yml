@@ -19,6 +19,10 @@ on:
       - proxy_db.py
       - hotspot_proxy_v2_sc-SAMPLE.cfg
       - tests/test_hotspot_proxy.py
+      - hytera_proxy.py
+      - hytera_const.py
+      - hytera-proxy-SAMPLE.cfg
+      - tests/test_hytera_proxy.py
   workflow_dispatch:
     inputs:
       target:
@@ -28,6 +32,7 @@ on:
           - ipsc
           - sp
           - selfcare
+          - hyt
           - all
         default: all
 
@@ -77,5 +82,21 @@ jobs:
           token: ${{ secrets.SATELLITE_DISPATCH_TOKEN }}
           repository: ShaYmez/RYSEN-SP-SELFCARE
           event-type: rysen-selfcare-updated
+          client-payload: |
+            {"ref": "${{ github.ref_name }}", "sha": "${{ github.sha }}"}
+
+  dispatch-sp-hyt:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' &&
+       (inputs.target == 'hyt' || inputs.target == 'all'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger RYSEN-SP-HYT sync
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.SATELLITE_DISPATCH_TOKEN }}
+          repository: ShaYmez/RYSEN-SP-HYT
+          event-type: rysen-hyt-updated
           client-payload: |
             {"ref": "${{ github.ref_name }}", "sha": "${{ github.sha }}"}
