@@ -1,6 +1,6 @@
 # The current recommended way of installing RYSEN Master+ is in Docker
 
-Docker is the fastest way to having a running system, complete with proxy and echo, ready to serve repeaters and hotspots. The Docker image can be run on any system that can run Linux docker containers. We recommend Debian 11.
+Docker is the fastest way to having a running system, complete with proxy and echo, ready to serve repeaters and hotspots. The Docker image can be run on any system that can run Linux docker containers. Tested hosts are Debian 10 or newer, Pi OS, and recent Ubuntu.
 
 Not convinced? Read [why-docker.md](why-docker.md)
 

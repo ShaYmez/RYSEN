@@ -46,7 +46,15 @@ A single **`bridge_master.py`** process handles all routing. It loads `rysen.cfg
 
 Optional **`playback.py`** (loro/parrot) runs alongside for echo testing.
 
-Docker entrypoint: [entrypoint](../entrypoint) — starts `bridge_master.py -c rysen.cfg -r rules.py`.
+Docker entrypoint: [entrypoint](../entrypoint). The image copies that root file. A normal start runs `playback.py` beside `bridge_master.py -c rysen.cfg -r rules.py`. `BRIDGE_SERVER=1` starts `bridge.py` instead (no parrot).
+
+**`bridge.py`** is the conference-bridge process. Systems share group voice when `rules.py` puts them on the same bridge. Run it with `BRIDGE_SERVER=1`, or directly:
+
+```bash
+python bridge.py -c rysen.cfg -r rules.py
+```
+
+One bridge with every Homebrew system joined to it is the all-to-all link. That replaces the old `bridge_all.py` and `bridge_all_master.py` fan-out, which forwarded every Homebrew system to every other system and ignored `rules.py`. Those two programs have been removed.
 
 ## System slots
 
@@ -119,8 +127,14 @@ Optional host helpers in [scripts/](../scripts/) (`systemx-start`, `menu`, etc.)
 | File | Role |
 |------|------|
 | `bridge_master.py` | Routing, bridges, OPTIONS, selfcare poll |
+| `bridge.py` | Conference bridge (`BRIDGE_SERVER=1`). `rules.py` decides which systems share traffic |
+| `playback.py` | Parrot / loro echo, started beside the master |
 | `hblink.py` | HBP master/peer protocol |
 | `ysf_protocol.py` / `ysf_voice.py` | YSF reflector peer and DN AMBE packing |
+| `nxdn_protocol.py` / `nxdn_voice.py` | NXDN reflector peer |
+| `talker_alias.py` | Callsign embedded in bridged voice |
+| `control_api.py` | Device control HTTP API |
+| `unit_hub.py` | Optional fleet unit-call hop |
 | `ipsc_master.py` | IPSC registration and opcode dispatch |
 | `ipsc_voice.py` | IPSC voice encode/decode + jitter buffer |
 | `ipsc_proxy.py` | Public 56002 front-end |

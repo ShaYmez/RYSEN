@@ -47,6 +47,7 @@ Config reference: [RYSEN-SAMPLE-commented.cfg](../RYSEN-SAMPLE-commented.cfg).
 ### Bridges and reflectors
 
 - **`rules.py`** — Static conference bridges between systems/timeslots/TGs
+- **`bridge.py`** — Dedicated conference-bridge process (`BRIDGE_SERVER=1`, or `python bridge.py -c rysen.cfg -r rules.py`). Systems share group voice only inside a bridge named in `rules.py`. One bridge that lists every Homebrew system is the all-to-all link. This replaces the removed `bridge_all.py` / `bridge_all_master.py` fan-out.
 - **YSFPEER** — One stanza logs into one YSF reflector (DN / V/D mode 2). A rules leg on TS 2 / TG 9 ties that room to a talkgroup, the same way an XLX leg does. Voice FR is not bridged.
 - **NXDNPEER** — One stanza logs into one NXDN reflector. A rules leg on TS 2 / TG 9 ties that room to a talkgroup. `TALKGROUP` in the stanza is the reflector room. RadioID `nxdn.csv` is downloaded with the other `[ALIASES]` tables and joined to `subscriber_ids.json` by callsign, the same way YSF maps DMR IDs. `NXDN_ID` is only the fallback source when that join misses. When a callsign has more than one DMR ID, the lower one is used. Voice is paced on a fixed 80 ms / 60 ms clock. Data calls are not bridged.
 - **UA bridges** — Created on first PTT to a talkgroup

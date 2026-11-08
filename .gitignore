@@ -44,6 +44,7 @@ nosetests.xml
 coverage.xml
 *,cover
 .hypothesis/
+.pytest_cache/
 
 # Translations
 *.mo
@@ -104,3 +105,6 @@ talkgroup_ids.*
 
 # Local captures and field notes (live network metadata; not published)
 _cmp/
+
+# Personal fleet helper; not part of the published tree
+scripts/setup-ssh-keys.sh
