@@ -77,6 +77,8 @@ Voice stream timeout watchdog, IPSC bridge report events, reflector timeout inte
 
 - XCMP/XNL (`0x70`)
 - CPS remote programming (`0xE0`–`0xE1`)
+- Dialling out to a repeater left as Master. Reprogram that site as Peer so
+  it registers here. See [ipsc.md](ipsc.md).
 
 ## Ops reminder
 

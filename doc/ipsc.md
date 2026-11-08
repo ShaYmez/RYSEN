@@ -104,6 +104,13 @@ Docker install ships:
 | `TS_PREFER_CALL_INFO` | Use call_info byte for TS on SLOT_VOICE if burst_type disagrees (DMRlink confbridge workaround) |
 | `KEEPALIVE_WATCHDOG` | Drop IPSC peers with no keepalive (default 60 s) |
 
+## RYSEN is the master
+
+RYSEN is the IPSC master. An existing IPSC network moves its Master repeater
+to **Peer** and points every site at this server (Master IP and Master UDP
+port). RYSEN then owns registration and routing. A repeater left as **Master**
+stays out of scope.
+
 ### Motorola CPS (e.g. DR3000 peer)
 
 - Link type: **Peer**

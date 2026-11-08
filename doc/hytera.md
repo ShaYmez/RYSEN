@@ -99,6 +99,15 @@ timer used to log every inactive bridge each tick and that delayed the
   general Hytera data gateway (TMS-style services).
 - Transcoding SMS between Hytera 3/4-rate SAP 3 and other vendors' formats.
 - Enabling Hytera's paid IP Multi-site feature in CPS (operator responsibility).
+- Dialling out to a repeater left as `Master`. Reprogram that site as `Slave`
+  so it registers here.
+
+## RYSEN is the master
+
+RYSEN is the IP Multi-site master. An existing Hytera network moves its
+Master repeater to `Slave` and points every site at this server. RYSEN then
+owns registration, redirects, and routing. A repeater left as `Master` stays
+out of scope.
 
 ## CPS programming
 
