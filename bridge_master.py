@@ -76,6 +76,7 @@ from selfcare_db import (
     effective_master_options,
     ensure_master_default_options,
     master_has_peer_options,
+    peer_counts_for_live_statics,
     peer_own_options,
     store_peer_options,
     ts_lists_from_options,
@@ -1540,6 +1541,96 @@ def _complete_sticky_login_restore(system, peer_id):
     return restored
 
 
+def _static_group_ids(value):
+    """Talkgroup numbers from a published static list. Drops blanks and 0."""
+    if value in (None, False, ''):
+        return []
+    parts = value if isinstance(value, (list, tuple)) else str(value).split(',')
+    groups = []
+    for part in parts:
+        text = str(part).strip()
+        if not text.isdigit():
+            continue
+        tgid = int(text)
+        if tgid <= 0 or tgid >= 16777215:
+            continue
+        groups.append(tgid)
+    return groups
+
+
+def _release_slot_hangtime(system, slot):
+    """Let the next voice frame onto a slot that just changed statics."""
+    registry = globals().get('systems')
+    if not isinstance(registry, dict):
+        return
+    inst = registry.get(system)
+    status = getattr(inst, 'STATUS', None)
+    if not isinstance(status, dict):
+        return
+    slot_status = status.get(slot)
+    if not isinstance(slot_status, dict):
+        return
+    slot_status['RX_TIME'] = 0
+    slot_status['TX_TIME'] = 0
+
+
+def publish_master_static_bridges(system):
+    """Build or drop static legs now, instead of waiting for the 26s options pass.
+
+    A hotspot such as Z3DMR subscribes by replacing TS2_1. The options string is
+    stored on the RPTO, but the bridge stayed down until options_config(). On a
+    single-peer slot, group hangtime is cleared too, so audio already in
+    progress on the new talkgroup is admitted on the next frame.
+    """
+    _ensure_runtime_globals()
+    if not isinstance(globals().get('BRIDGES'), dict):
+        return False
+    cfg = _runtime_config()
+    syscfg = (cfg.get('SYSTEMS') or {}).get(system)
+    if not isinstance(syscfg, dict) or syscfg.get('MODE') != 'MASTER':
+        return False
+    ensure_master_default_options(syscfg)
+    raw1, raw2 = union_peer_static_lists(syscfg)
+    want1 = _static_group_ids(raw1)
+    want2 = _static_group_ids(raw2)
+    have1 = _static_group_ids(syscfg.get('TS1_STATIC'))
+    have2 = _static_group_ids(syscfg.get('TS2_STATIC'))
+    if set(want1) == set(have1) and set(want2) == set(have2):
+        return False
+    try:
+        tmout = int(syscfg.get('DEFAULT_UA_TIMER') or 10)
+    except (TypeError, ValueError):
+        tmout = 10
+    for tgid in have1:
+        if tgid not in want1:
+            reset_static_tg(tgid, 1, tmout, system)
+    for tgid in want1:
+        if tgid not in have1:
+            make_static_tg(tgid, 1, tmout, system)
+    for tgid in have2:
+        if tgid not in want2:
+            reset_static_tg(tgid, 2, tmout, system)
+    for tgid in want2:
+        if tgid not in have2:
+            make_static_tg(tgid, 2, tmout, system)
+    syscfg['TS1_STATIC'] = ','.join(str(tgid) for tgid in want1) if want1 else False
+    syscfg['TS2_STATIC'] = ','.join(str(tgid) for tgid in want2) if want2 else False
+    connected = [
+        peer for peer in (syscfg.get('PEERS') or {}).values()
+        if isinstance(peer, dict) and peer_counts_for_live_statics(syscfg, peer)
+    ]
+    if len(connected) <= 1:
+        if set(want1) != set(have1):
+            _release_slot_hangtime(system, 1)
+        if set(want2) != set(have2):
+            _release_slot_hangtime(system, 2)
+    notify_bridge_table_updated()
+    logger.info(
+        '(OPTIONS) %s statics live now TS1=%s TS2=%s',
+        system, syscfg['TS1_STATIC'] or '', syscfg['TS2_STATIC'] or '')
+    return True
+
+
 def apply_selfcare_options(source_system, peer_id, options_str):
     """Process DISC=1 immediately; return remaining OPTIONS text (without DISC)."""
     _ensure_runtime_globals()
@@ -1567,6 +1658,7 @@ def apply_selfcare_options(source_system, peer_id, options_str):
                     or peer_sticky_tg_enabled(source_system, peer_id)
                     or not sticky_last_tgs(peer_id)):
                 peer['_STICKY_RESTORE'] = False
+        publish_master_static_bridges(source_system)
     return remaining, _had_disc
 
 
