@@ -1558,17 +1558,56 @@ def _static_group_ids(value):
     return groups
 
 
-def _release_slot_hangtime(system, slot):
-    """Let the next voice frame onto a slot that just changed statics."""
+def _slot_status(system, slot):
     registry = globals().get('systems')
     if not isinstance(registry, dict):
-        return
+        return None
     inst = registry.get(system)
     status = getattr(inst, 'STATUS', None)
     if not isinstance(status, dict):
-        return
+        return None
     slot_status = status.get(slot)
     if not isinstance(slot_status, dict):
+        return None
+    return slot_status
+
+
+def _release_slot_hangtime(system, slot):
+    """Let the next voice frame onto a slot that just changed statics."""
+    slot_status = _slot_status(system, slot)
+    if slot_status is None:
+        return
+    slot_status['RX_TIME'] = 0
+    slot_status['TX_TIME'] = 0
+
+
+def _hung_talkgroups(slot_status):
+    """Talkgroups this slot is still holding in RX or TX hangtime."""
+    found = []
+    for key in ('RX_TGID', 'TX_TGID'):
+        raw = slot_status.get(key)
+        if raw in (None, b'', b'\x00', b'\x00\x00\x00'):
+            continue
+        try:
+            tgid = int(int_id(raw))
+        except (TypeError, ValueError):
+            continue
+        if tgid > 0:
+            found.append(tgid)
+    return found
+
+
+def _release_obsolete_hangtime(system, slot, still_wanted):
+    """Clear hangtime only when the held talkgroup is no longer a static.
+
+    A shared master must keep hangtime for a talkgroup another hotspot still
+    has. A talkgroup nobody wants any more should not block the new one.
+    """
+    slot_status = _slot_status(system, slot)
+    if slot_status is None:
+        return
+    hung = _hung_talkgroups(slot_status)
+    if not hung or any(tgid in still_wanted for tgid in hung):
         return
     slot_status['RX_TIME'] = 0
     slot_status['TX_TIME'] = 0
@@ -1595,8 +1634,6 @@ def publish_master_static_bridges(system):
     want2 = _static_group_ids(raw2)
     have1 = _static_group_ids(syscfg.get('TS1_STATIC'))
     have2 = _static_group_ids(syscfg.get('TS2_STATIC'))
-    if set(want1) == set(have1) and set(want2) == set(have2):
-        return False
     connected = [
         peer for peer in (syscfg.get('PEERS') or {}).values()
         if isinstance(peer, dict) and peer_counts_for_live_statics(syscfg, peer)
@@ -1611,7 +1648,11 @@ def publish_master_static_bridges(system):
         peer_minutes = ua_timer_minutes_from_options(connected[0].get('OPTIONS'))
         if peer_minutes is not None:
             tmout = peer_minutes
-    if tmout != stanza_minutes:
+    statics_changed = set(want1) != set(have1) or set(want2) != set(have2)
+    timer_changed = tmout != stanza_minutes
+    if not statics_changed and not timer_changed:
+        return False
+    if timer_changed:
         update_system_bridge_timeouts(system, tmout)
         syscfg['DEFAULT_UA_TIMER'] = tmout
     for tgid in have1:
@@ -1626,17 +1667,25 @@ def publish_master_static_bridges(system):
     for tgid in want2:
         if tgid not in have2:
             make_static_tg(tgid, 2, tmout, system)
-    syscfg['TS1_STATIC'] = ','.join(str(tgid) for tgid in want1) if want1 else False
-    syscfg['TS2_STATIC'] = ','.join(str(tgid) for tgid in want2) if want2 else False
-    if len(connected) <= 1:
-        if set(want1) != set(have1):
-            _release_slot_hangtime(system, 1)
-        if set(want2) != set(have2):
-            _release_slot_hangtime(system, 2)
+    if statics_changed:
+        syscfg['TS1_STATIC'] = ','.join(str(tgid) for tgid in want1) if want1 else False
+        syscfg['TS2_STATIC'] = ','.join(str(tgid) for tgid in want2) if want2 else False
+        if len(connected) <= 1:
+            if set(want1) != set(have1):
+                _release_slot_hangtime(system, 1)
+            if set(want2) != set(have2):
+                _release_slot_hangtime(system, 2)
+        else:
+            if set(want1) != set(have1):
+                _release_obsolete_hangtime(system, 1, set(want1))
+            if set(want2) != set(have2):
+                _release_obsolete_hangtime(system, 2, set(want2))
+        logger.info(
+            '(OPTIONS) %s statics live now TS1=%s TS2=%s',
+            system, syscfg['TS1_STATIC'] or '', syscfg['TS2_STATIC'] or '')
+    elif timer_changed:
+        logger.info('(OPTIONS) %s RelinkTime live now %s min', system, tmout)
     notify_bridge_table_updated()
-    logger.info(
-        '(OPTIONS) %s statics live now TS1=%s TS2=%s',
-        system, syscfg['TS1_STATIC'] or '', syscfg['TS2_STATIC'] or '')
     return True
 
 

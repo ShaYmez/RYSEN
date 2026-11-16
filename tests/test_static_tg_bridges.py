@@ -166,9 +166,27 @@ class TestImmediateStaticSubscribe(unittest.TestCase):
         self.assertEqual(
             bm.CONFIG['SYSTEMS']['SYSTEM-95']['DEFAULT_UA_TIMER'], 60)
 
+    def test_timer_only_updates_live_static_timeout(self):
+        bm.apply_selfcare_options('SYSTEM-95', self.peer, 'TS2_1=2350;')
+        leg = _leg('2350', 'SYSTEM-95', 2)
+        self.assertEqual(leg['TIMEOUT'], 600)
+        self.slot['RX_TIME'] = 77
+        self.slot['TX_TIME'] = 77
+        bm.apply_selfcare_options(
+            'SYSTEM-95', self.peer, 'TS2_1=2350;RelinkTime=15;')
+        self.assertEqual(leg['TIMEOUT'], 900)
+        self.assertTrue(leg['ACTIVE'])
+        self.assertEqual(leg['TO_TYPE'], 'OFF')
+        self.assertEqual(
+            bm.CONFIG['SYSTEMS']['SYSTEM-95']['DEFAULT_UA_TIMER'], 15)
+        self.assertEqual(self.slot['RX_TIME'], 77)
+        self.assertEqual(self.slot['TX_TIME'], 77)
+
     def test_shared_master_keeps_another_peers_static(self):
         peers = bm.CONFIG['SYSTEMS']['SYSTEM-95']['PEERS']
         peers[self.other] = {'CONNECTION': 'YES', 'OPTIONS': 'TS2_1=2350;'}
+        self.slot['RX_TGID'] = bytes_3(2350)
+        self.slot['TX_TGID'] = bytes_3(2350)
         bm.apply_selfcare_options(
             'SYSTEM-95', self.peer, 'TS2_1=31320;TIMER=60;')
         kept = _leg('2350', 'SYSTEM-95', 2)
@@ -180,6 +198,31 @@ class TestImmediateStaticSubscribe(unittest.TestCase):
         self.assertEqual(added['TIMEOUT'], 600)
         self.assertEqual(
             bm.CONFIG['SYSTEMS']['SYSTEM-95']['DEFAULT_UA_TIMER'], 10)
+
+    def test_shared_master_drops_hangtime_for_a_removed_talkgroup(self):
+        peers = bm.CONFIG['SYSTEMS']['SYSTEM-95']['PEERS']
+        peers[self.peer]['OPTIONS'] = 'TS2_1=23426;'
+        peers[self.other] = {'CONNECTION': 'YES', 'OPTIONS': 'TS2_1=2350;'}
+        system = bm.CONFIG['SYSTEMS']['SYSTEM-95']
+        system['_default_options'] = 'TS1_STATIC=;TS2_STATIC=;'
+        system['TS2_STATIC'] = '2350,23426'
+        bm.BRIDGES['23426'] = [{
+            'SYSTEM': 'SYSTEM-95', 'TS': 2, 'TGID': bytes_3(23426),
+            'ACTIVE': True, 'TIMEOUT': 600, 'TO_TYPE': 'OFF',
+            'OFF': [], 'ON': [bytes_3(23426)], 'RESET': [], 'TIMER': 0,
+        }]
+        bm.BRIDGES['2350'] = [{
+            'SYSTEM': 'SYSTEM-95', 'TS': 2, 'TGID': bytes_3(2350),
+            'ACTIVE': True, 'TIMEOUT': 600, 'TO_TYPE': 'OFF',
+            'OFF': [], 'ON': [bytes_3(2350)], 'RESET': [], 'TIMER': 0,
+        }]
+        self.slot['RX_TGID'] = bytes_3(23426)
+        self.slot['TX_TGID'] = bytes_3(23426)
+        bm.apply_selfcare_options('SYSTEM-95', self.peer, 'TS2_1=31320;')
+        self.assertEqual(self.slot['RX_TIME'], 0)
+        self.assertEqual(self.slot['TX_TIME'], 0)
+        self.assertTrue(_leg('2350', 'SYSTEM-95', 2)['ACTIVE'])
+        self.assertTrue(_leg('31320', 'SYSTEM-95', 2)['ACTIVE'])
 
 
 if __name__ == '__main__':
