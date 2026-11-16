@@ -1597,10 +1597,23 @@ def publish_master_static_bridges(system):
     have2 = _static_group_ids(syscfg.get('TS2_STATIC'))
     if set(want1) == set(have1) and set(want2) == set(have2):
         return False
-    try:
-        tmout = int(syscfg.get('DEFAULT_UA_TIMER') or 10)
-    except (TypeError, ValueError):
-        tmout = 10
+    connected = [
+        peer for peer in (syscfg.get('PEERS') or {}).values()
+        if isinstance(peer, dict) and peer_counts_for_live_statics(syscfg, peer)
+    ]
+    # Match options_config(): one connected hotspot may set TIMER/RelinkTime.
+    # A shared master keeps the stanza timer.
+    stanza_minutes = ua_timer_minutes(syscfg)
+    if stanza_minutes is None:
+        stanza_minutes = 10
+    tmout = stanza_minutes
+    if len(connected) == 1:
+        peer_minutes = ua_timer_minutes_from_options(connected[0].get('OPTIONS'))
+        if peer_minutes is not None:
+            tmout = peer_minutes
+    if tmout != stanza_minutes:
+        update_system_bridge_timeouts(system, tmout)
+        syscfg['DEFAULT_UA_TIMER'] = tmout
     for tgid in have1:
         if tgid not in want1:
             reset_static_tg(tgid, 1, tmout, system)
@@ -1615,10 +1628,6 @@ def publish_master_static_bridges(system):
             make_static_tg(tgid, 2, tmout, system)
     syscfg['TS1_STATIC'] = ','.join(str(tgid) for tgid in want1) if want1 else False
     syscfg['TS2_STATIC'] = ','.join(str(tgid) for tgid in want2) if want2 else False
-    connected = [
-        peer for peer in (syscfg.get('PEERS') or {}).values()
-        if isinstance(peer, dict) and peer_counts_for_live_statics(syscfg, peer)
-    ]
     if len(connected) <= 1:
         if set(want1) != set(have1):
             _release_slot_hangtime(system, 1)

@@ -158,16 +158,28 @@ class TestImmediateStaticSubscribe(unittest.TestCase):
         self.assertEqual(old['TO_TYPE'], 'ON')
         self.assertEqual(self.slot['RX_TIME'], 0)
 
+    def test_single_peer_timer_is_used_immediately(self):
+        bm.apply_selfcare_options(
+            'SYSTEM-95', self.peer, 'TS2_1=2350;TIMER=60;')
+        leg = _leg('2350', 'SYSTEM-95', 2)
+        self.assertEqual(leg['TIMEOUT'], 3600)
+        self.assertEqual(
+            bm.CONFIG['SYSTEMS']['SYSTEM-95']['DEFAULT_UA_TIMER'], 60)
+
     def test_shared_master_keeps_another_peers_static(self):
         peers = bm.CONFIG['SYSTEMS']['SYSTEM-95']['PEERS']
         peers[self.other] = {'CONNECTION': 'YES', 'OPTIONS': 'TS2_1=2350;'}
-        bm.apply_selfcare_options('SYSTEM-95', self.peer, 'TS2_1=31320;')
+        bm.apply_selfcare_options(
+            'SYSTEM-95', self.peer, 'TS2_1=31320;TIMER=60;')
         kept = _leg('2350', 'SYSTEM-95', 2)
         added = _leg('31320', 'SYSTEM-95', 2)
         self.assertTrue(kept['ACTIVE'])
         self.assertEqual(kept['TO_TYPE'], 'OFF')
         self.assertTrue(added['ACTIVE'])
         self.assertEqual(self.slot['RX_TIME'], 12345)
+        self.assertEqual(added['TIMEOUT'], 600)
+        self.assertEqual(
+            bm.CONFIG['SYSTEMS']['SYSTEM-95']['DEFAULT_UA_TIMER'], 10)
 
 
 if __name__ == '__main__':
