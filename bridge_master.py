@@ -229,6 +229,7 @@ def config_reports(_config, _factory):
             logger.debug('(REPORT) Periodic reporting loop started')
             _t0 = time()
             _server.send_config()
+            cancel_pending_bridge_table_update()
             _server.send_bridge()
             if hasattr(_server, 'send_server_info'):
                 _server.send_server_info()
@@ -279,6 +280,16 @@ def config_reports(_config, _factory):
 #     to the full scan and schedules a rebuild (belt-and-suspenders safety).
 # ---------------------------------------------------------------------------
 BRIDGE_IDX = {}
+# Reverse ownership map used to remove one bridge from BRIDGE_IDX without
+# scanning every routing key.  On a busy master BRIDGE_IDX can contain tens of
+# thousands of keys, while one bridge normally owns only a few hundred.
+_BRIDGE_IDX_KEYS = {}
+
+# Topology updates are routing-critical, but monitor serialization is not.
+# Coalesce BRIDGE_SND notifications so a reconnect burst cannot repeatedly
+# pickle and queue the complete bridge table on the Twisted reactor.
+_BRIDGE_REPORT_DELAY_S = 1.0
+_BRIDGE_REPORT_PENDING = [None]
 
 # Routing statistics counters (reset every _ROUTE_STATS_INTERVAL seconds)
 _ROUTE_STATS = {'packets': 0, 'index_hits': 0, 'index_misses': 0, 'fallbacks': 0}
@@ -423,20 +434,33 @@ def _remember_term(key, data, now):
 
 def _idx_add_bridge(bridge_name):
     """Add all entries for *bridge_name* into BRIDGE_IDX."""
+    keys = set()
     for e in BRIDGES.get(bridge_name, ()):
         _key = (e['SYSTEM'], e['TS'], e['TGID'])
+        keys.add(_key)
         if _key not in BRIDGE_IDX:
             BRIDGE_IDX[_key] = set()
         BRIDGE_IDX[_key].add(bridge_name)
+    _BRIDGE_IDX_KEYS[bridge_name] = keys
 
 
 def _idx_remove_bridge(bridge_name):
     """Remove all BRIDGE_IDX entries that reference *bridge_name*."""
-    empty_keys = [k for k, v in BRIDGE_IDX.items() if bridge_name in v]
-    for _key in empty_keys:
-        BRIDGE_IDX[_key].discard(bridge_name)
-        if not BRIDGE_IDX[_key]:
-            del BRIDGE_IDX[_key]
+    keys = _BRIDGE_IDX_KEYS.pop(bridge_name, None)
+    if keys is None:
+        # Compatibility/self-healing path for an index created by older code or
+        # a test fixture. Normal runtime updates always use the reverse map.
+        keys = {
+            key for key, bridge_names in BRIDGE_IDX.items()
+            if bridge_name in bridge_names
+        }
+    for _key in keys:
+        bridge_names = BRIDGE_IDX.get(_key)
+        if not bridge_names:
+            continue
+        bridge_names.discard(bridge_name)
+        if not bridge_names:
+            BRIDGE_IDX.pop(_key, None)
 
 
 def _idx_replace_bridge(bridge_name):
@@ -447,16 +471,21 @@ def _idx_replace_bridge(bridge_name):
 
 def rebuild_bridge_index():
     """Rebuild BRIDGE_IDX from scratch.  Call after bulk BRIDGES mutations."""
-    global BRIDGE_IDX
+    global BRIDGE_IDX, _BRIDGE_IDX_KEYS
     _t0 = time()
     new_idx = {}
+    new_keys = {}
     for _bname, _entries in BRIDGES.items():
+        bridge_keys = set()
         for e in _entries:
             _key = (e['SYSTEM'], e['TS'], e['TGID'])
+            bridge_keys.add(_key)
             if _key not in new_idx:
                 new_idx[_key] = set()
             new_idx[_key].add(_bname)
+        new_keys[_bname] = bridge_keys
     BRIDGE_IDX = new_idx
+    _BRIDGE_IDX_KEYS = new_keys
     _BRIDGE_IDX_LAST_REBUILD[0] = time()
     _elapsed_ms = (_BRIDGE_IDX_LAST_REBUILD[0] - _t0) * 1000.0
     if _elapsed_ms >= 20.0:
@@ -599,9 +628,9 @@ def make_bridges(_rules):
             if _bridge[0:1] != '#':
                 _tmout = CONFIG['SYSTEMS'][_confsystem]['DEFAULT_UA_TIMER']
                 if ts1 == False:
-                    _rules[_bridge].append({'SYSTEM': _confsystem, 'TS': 1, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
+                    _rules[_bridge].append({'SYSTEM': _confsystem, 'TS': 1, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time(), 'LAZY': True})
                 if ts2 == False:
-                    _rules[_bridge].append({'SYSTEM': _confsystem, 'TS': 2, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time()})
+                    _rules[_bridge].append({'SYSTEM': _confsystem, 'TS': 2, 'TGID': bytes_3(int(_bridge)),'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [bytes_3(int(_bridge)),],'RESET': [], 'TIMER': time(), 'LAZY': True})
             else:
                 _tmout = CONFIG['SYSTEMS'][_confsystem]['DEFAULT_UA_TIMER']
                 if ts2 == False:
@@ -660,13 +689,15 @@ def augment_bridges_for_masters():
                     BRIDGES[_bridge].append({
                         'SYSTEM': _confsystem, 'TS': 1, 'TGID': bytes_3(_bridge_tgid),
                         'ACTIVE': False, 'TIMEOUT': _tmout * 60, 'TO_TYPE': 'ON',
-                        'OFF': [], 'ON': [bytes_3(_bridge_tgid)], 'RESET': [], 'TIMER': time()})
+                        'OFF': [], 'ON': [bytes_3(_bridge_tgid)], 'RESET': [],
+                        'TIMER': time(), 'LAZY': True})
                     _added += 1
                 if not ts2:
                     BRIDGES[_bridge].append({
                         'SYSTEM': _confsystem, 'TS': 2, 'TGID': bytes_3(_bridge_tgid),
                         'ACTIVE': False, 'TIMEOUT': _tmout * 60, 'TO_TYPE': 'ON',
-                        'OFF': [], 'ON': [bytes_3(_bridge_tgid)], 'RESET': [], 'TIMER': time()})
+                        'OFF': [], 'ON': [bytes_3(_bridge_tgid)], 'RESET': [],
+                        'TIMER': time(), 'LAZY': True})
                     _added += 1
             elif not ts2:
                 BRIDGES[_bridge].append({
@@ -699,10 +730,13 @@ def _ensure_master_on_legs(bridge_name, system):
     _tmout = CONFIG['SYSTEMS'][system].get('DEFAULT_UA_TIMER', 10)
     if is_parrot_bridge(bridge_name):
         _tmout = 1
+    # A static OFF leg already owns this system/slot/TG. Adding a parallel ON
+    # leg would make the routing loop fan the same packet out twice. Only add a
+    # UA leg when the slot has no leg of any type.
     _existing = {
         (_e['SYSTEM'], _e['TS'])
         for _e in BRIDGES[bridge_name]
-        if _e['SYSTEM'] == system and _e.get('TO_TYPE') == 'ON'
+        if _e['SYSTEM'] == system
     }
     _added = False
     for _ts in (1, 2):
@@ -712,6 +746,7 @@ def _ensure_master_on_legs(bridge_name, system):
             'SYSTEM': system, 'TS': _ts, 'TGID': _tgid_b,
             'ACTIVE': False, 'TIMEOUT': _tmout * 60, 'TO_TYPE': 'ON',
             'OFF': [], 'ON': [_tgid_b], 'RESET': [], 'TIMER': time(),
+            'LAZY': True,
         })
         _added = True
     if _added:
@@ -757,7 +792,7 @@ def activate_ua_bridge_source(bridge_name, system, slot, tmout=None, peer_id=Non
                 'OFF': [], 'ON': [_tgid], 'RESET': [],
                 'TIMER': time() + _timeout_s,
             })
-            rebuild_bridge_index()
+            _idx_replace_bridge(bridge_name)
             _changed = True
             logger.info('(ROUTER) Bridge %s added UA leg for %s TS%s (parrot)',
                         bridge_name, system, slot)
@@ -800,6 +835,8 @@ def _activate_linked_ipsc_legs(bridge_name, source_system, slot, timeout_s, peer
 #Make a single bridge - used for on-the-fly UA bridges
 def make_single_bridge(_tgid,_sourcesystem,_slot,_tmout):
     _tgid_s = str(int_id(_tgid))
+    if _tgid_s in BRIDGES:
+        _idx_remove_bridge(_tgid_s)
     #Always a 1 min timeout for Echo
     if _tgid_s == '9990':
         _tmout = 1
@@ -867,6 +904,8 @@ def make_stat_bridge(_tgid):
     if is_parrot_talkgroup(int_id(_tgid)):
         return
     _tgid_s = str(int_id(_tgid))
+    if _tgid_s in BRIDGES:
+        _idx_remove_bridge(_tgid_s)
     BRIDGES[_tgid_s] = []
     for _system in CONFIG['SYSTEMS']:
         if _system[0:3] == 'OBP':
@@ -984,6 +1023,32 @@ def update_system_bridge_timeouts(system, tmout_minutes):
     return updated
 
 
+def _make_static_bridge_shell(tgid_b):
+    """Create only the upstream legs needed by a new static talkgroup.
+
+    The old path called make_single_bridge(), which preallocated two inactive
+    legs for every routing master. A few dozen statics therefore left tens of
+    thousands of permanent entries for rule_timer_loop to scan. Static peers
+    are appended by make_static_tg(); any later UA master is added lazily by
+    activate_ua_bridge_source().
+    """
+    tgid_i = int_id(tgid_b)
+    bridge_name = str(tgid_i)
+    if bridge_name in BRIDGES:
+        _idx_remove_bridge(bridge_name)
+    BRIDGES[bridge_name] = []
+    if tgid_i >= 59 and (tgid_i < 9990 or tgid_i > 9999):
+        for system in CONFIG['SYSTEMS']:
+            if not system.startswith('OBP'):
+                continue
+            BRIDGES[bridge_name].append({
+                'SYSTEM': system, 'TS': 1, 'TGID': tgid_b,
+                'ACTIVE': True, 'TIMEOUT': '', 'TO_TYPE': 'NONE',
+                'OFF': [], 'ON': [], 'RESET': [], 'TIMER': time(),
+            })
+    _idx_add_bridge(bridge_name)
+
+
 def make_static_tg(tg, ts, _tmout, system):
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
     tg_s = str(tg)
@@ -995,13 +1060,26 @@ def make_static_tg(tg, ts, _tmout, system):
         'TIMER': time() + (_tmout * 60),
     }
     if tg_s not in BRIDGES:
-        make_single_bridge(tgid_b, system, ts, _tmout)
+        _make_static_bridge_shell(tgid_b)
+    else:
+        # make_bridges()/post-generator augmentation mark their synthetic
+        # inactive master legs LAZY. A configured static owns only the systems
+        # that request it, so discard that startup mesh immediately while
+        # preserving explicit rule legs and any active demand-added route.
+        BRIDGES[tg_s] = [
+            entry for entry in BRIDGES[tg_s]
+            if not (
+                entry.get('LAZY')
+                and entry.get('TO_TYPE') == 'ON'
+                and not entry.get('ACTIVE'))
+        ]
     bridgetemp = deque()
     matched = False
     for bridgesystem in BRIDGES[tg_s]:
         if bridgesystem['SYSTEM'] == system and bridgesystem['TS'] == ts:
-            bridgetemp.append(static_entry)
-            matched = True
+            if not matched:
+                bridgetemp.append(static_entry)
+                matched = True
         else:
             bridgetemp.append(bridgesystem)
     if not matched:
@@ -1031,14 +1109,17 @@ def reset_static_tg(tg,ts,_tmout,system):
          and other_peer_has_sub_map_tg(SUB_MAP, system, ts, tg))
         or other_peer_has_dynamic_tg(system, ts, tg))
     bridgetemp = deque()
+    matched = False
     for bridgesystem in BRIDGES[str(tg)]:
         if bridgesystem['SYSTEM'] == system and bridgesystem['TS'] == ts:
-            bridgetemp.append({
-                'SYSTEM': system, 'TS': ts, 'TGID': bytes_3(tg),
-                'ACTIVE': keep_ua, 'TIMEOUT': _tmout * 60, 'TO_TYPE': 'ON',
-                'OFF': [], 'ON': [bytes_3(tg),], 'RESET': [],
-                'TIMER': time() + (_tmout * 60),
-            })
+            if not matched:
+                bridgetemp.append({
+                    'SYSTEM': system, 'TS': ts, 'TGID': bytes_3(tg),
+                    'ACTIVE': keep_ua, 'TIMEOUT': _tmout * 60, 'TO_TYPE': 'ON',
+                    'OFF': [], 'ON': [bytes_3(tg),], 'RESET': [],
+                    'TIMER': time() + (_tmout * 60),
+                })
+                matched = True
         else:
             bridgetemp.append(bridgesystem)
         
@@ -1149,8 +1230,7 @@ def reset_dynamic_reflectors(system):
                 clear_reflector_link_owner(_sys)
                 _changed = True
                 logger.info('(REFLECTOR) Cleared dynamic dial-a-tg link %s for %s', _bridge, system)
-    if _changed:
-        rebuild_bridge_index()
+    return _changed
 
 
 def disconnect_dial_reflectors(system):
@@ -1168,8 +1248,7 @@ def disconnect_dial_reflectors(system):
                 clear_reflector_link_owner(_sys)
                 _changed = True
                 logger.info('(REFLECTOR) Disconnect (4000): deactivated %s for %s', _bridge, system)
-    if _changed:
-        rebuild_bridge_index()
+    return _changed
 
 
 def deactivate_user_activated_bridges(system):
@@ -1186,8 +1265,7 @@ def deactivate_user_activated_bridges(system):
                 _changed = True
                 logger.info('(UA) Selfcare disconnect: deactivated bridge %s for %s',
                             _bridge, system)
-    if _changed:
-        rebuild_bridge_index()
+    return _changed
 
 
 def selfcare_disconnect(source_system, peer_id=None):
@@ -1199,21 +1277,22 @@ def selfcare_disconnect(source_system, peer_id=None):
     if peer_id:
         changed, dropped = deactivate_peer_dynamic_bridges(
             BRIDGES, SUB_MAP, source_system, peer_id)
-        if changed:
-            rebuild_bridge_index()
         clear_sub_map_for_peer(peer_id)
-        if dropped and deactivate_linked_ipsc_bridge_legs(
-                BRIDGES, CONFIG['SYSTEMS'], source_system, peer_id,
-                bridge_names=dropped):
-            rebuild_bridge_index()
+        if dropped:
+            changed = (
+                deactivate_linked_ipsc_bridge_legs(
+                    BRIDGES, CONFIG['SYSTEMS'], source_system, peer_id,
+                    bridge_names=dropped)
+                or changed)
     else:
-        disconnect_dial_reflectors(source_system)
-        deactivate_user_activated_bridges(source_system)
+        changed = disconnect_dial_reflectors(source_system)
+        changed = deactivate_user_activated_bridges(source_system) or changed
         if deactivate_linked_ipsc_bridge_legs(
                 BRIDGES, CONFIG['SYSTEMS'], source_system, peer_id):
-            rebuild_bridge_index()
+            changed = True
         clear_sub_map_for_system(source_system)
-    notify_bridge_table_updated()
+    if changed:
+        notify_bridge_table_updated()
     logger.info('(SELF SERVICE) Dynamic links cleared for %s (peer %s)',
                 source_system, int_id(peer_id) if peer_id else 'n/a')
 
@@ -1742,8 +1821,7 @@ def sanitize_dial_reflectors(system):
                 _sys['ON'] = [x for x in _sys['ON'] if x != _DIAL_A_TG_BYTES]
                 _changed = True
                 logger.info('(REFLECTOR) Removed dial TG from ON list on %s for %s', _bridge, system)
-    if _changed:
-        rebuild_bridge_index()
+    return _changed
 
 
 def deactivate_other_dynamic_reflectors(system, keep_bridge, slot=2, peer_id=None):
@@ -1777,8 +1855,7 @@ def deactivate_other_dynamic_reflectors(system, keep_bridge, slot=2, peer_id=Non
                 _changed = True
                 logger.info('(REFLECTOR) Single dial-a-tg mode: deactivated %s for %s (keeping %s)',
                             _bridge, system, keep_bridge)
-    if _changed:
-        rebuild_bridge_index()
+    return _changed
 
 
 def clear_sub_map_for_system(system):
@@ -1822,13 +1899,11 @@ def clear_subscriber_on_disconnect(system, subscriber_id, peer_id):
     if peer_id:
         changed, dropped = deactivate_peer_dynamic_bridges(
             BRIDGES, SUB_MAP, system, peer_id)
-        if changed:
-            rebuild_bridge_index()
         systems_cfg = (CONFIG or {}).get('SYSTEMS')
         if dropped and systems_cfg and deactivate_linked_ipsc_bridge_legs(
                 BRIDGES, systems_cfg, system, peer_id,
                 bridge_names=dropped):
-            rebuild_bridge_index()
+            changed = True
     if subscriber_id in SUB_MAP:
         try:
             _entry = SUB_MAP[subscriber_id]
@@ -1839,15 +1914,26 @@ def clear_subscriber_on_disconnect(system, subscriber_id, peer_id):
                     int_id(subscriber_id))
         except (TypeError, IndexError):
             pass
-    if peer_id:
+    if peer_id and changed:
         notify_bridge_table_updated()
 
 
-def notify_bridge_table_updated():
-    """Push fresh bridge table (incl. TIMER) to RYSEN-MONITOR (BRIDGE_SND).
+def cancel_pending_bridge_table_update():
+    """Cancel a queued topology report when a periodic report supersedes it."""
+    pending = _BRIDGE_REPORT_PENDING[0]
+    _BRIDGE_REPORT_PENDING[0] = None
+    if pending is None:
+        return
+    try:
+        if pending.active():
+            pending.cancel()
+    except Exception:
+        pass
 
-    Used after dial-a-tg timer changes and dynamic UA bridge create/activate.
-    """
+
+def _send_pending_bridge_table_update():
+    """Send the latest topology after a reconnect/update burst settles."""
+    _BRIDGE_REPORT_PENDING[0] = None
     if not CONFIG.get('REPORTS', {}).get('REPORT'):
         return
     _server = globals().get('report_server')
@@ -1857,6 +1943,33 @@ def notify_bridge_table_updated():
         _server.send_bridge()
     except Exception as exc:
         logger.debug('(REPORT) send_bridge after dial-a-tg timer reset failed: %s', exc)
+
+
+def notify_bridge_table_updated():
+    """Queue one fresh BRIDGE_SND without delaying routing changes.
+
+    BRIDGES and BRIDGE_IDX are updated synchronously before this is called, so
+    audio routing remains immediate. Only the monitor snapshot is delayed and
+    coalesced; this keeps reconnect storms from blocking the reactor with a
+    full-table pickle/send for every hotspot.
+    """
+    if not CONFIG.get('REPORTS', {}).get('REPORT'):
+        return
+    if globals().get('report_server') is None:
+        return
+    pending = _BRIDGE_REPORT_PENDING[0]
+    if pending is not None:
+        try:
+            if pending.active():
+                return
+        except Exception:
+            _BRIDGE_REPORT_PENDING[0] = None
+    try:
+        _BRIDGE_REPORT_PENDING[0] = reactor.callLater(
+            _BRIDGE_REPORT_DELAY_S, _send_pending_bridge_table_update)
+    except Exception as exc:
+        logger.debug('(REPORT) bridge update scheduling failed: %s', exc)
+        _send_pending_bridge_table_update()
 
 
 # Run this every minute for rule timer updates
@@ -1994,8 +2107,8 @@ def rule_timer_loop():
         _changed = True
         logger.debug('(ROUTER) Unused conference bridge %s removed',_bridgerem)
 
-    if _changed and CONFIG['REPORTS']['REPORT']:
-        report_server.send_clients(b'bridge updated')
+    if _changed:
+        notify_bridge_table_updated()
 
     _elapsed_ms = (time() - _t0) * 1000.0
     if _elapsed_ms >= 50.0:
@@ -2011,7 +2124,9 @@ def statTrimmer():
     _changed = False
     for _bridge in list(BRIDGES.keys()):
         _entries = BRIDGES[_bridge]
-        if not bridge_has_stat_legs(_entries):
+        _is_stat_bridge = bridge_has_stat_legs(_entries)
+        if (not _is_stat_bridge
+                and not any(entry.get('LAZY') for entry in _entries)):
             continue
         _pruned, _removed = prune_idle_stat_on_legs(_entries, _now)
         if _removed:
@@ -2022,7 +2137,7 @@ def statTrimmer():
             logger.info(
                 '(ROUTER) STAT trimmer pruned %d idle ON leg(s) from bridge %s',
                 _removed, _bridge)
-        if stat_bridge_should_remove(BRIDGES[_bridge], _now):
+        if _is_stat_bridge and stat_bridge_should_remove(BRIDGES[_bridge], _now):
             _remove_bridges.append(_bridge)
     for _bridgerem in _remove_bridges:
         _idx_remove_bridge(_bridgerem)
@@ -2034,8 +2149,8 @@ def statTrimmer():
             '(ROUTER) STAT trimmer pass complete: %d ON leg(s) pruned, '
             '%d bridge(s) removed, idx_keys=%d bridges=%d',
             _on_legs_pruned, len(_remove_bridges), len(BRIDGE_IDX), len(BRIDGES))
-    if _changed and CONFIG['REPORTS']['REPORT']:
-        report_server.send_clients(b'bridge updated')
+    if _changed:
+        notify_bridge_table_updated()
 
 def kaReporting():
     logger.debug('(ROUTER) KeepAlive reporting loop started')
@@ -2530,6 +2645,7 @@ def options_config():
     logger.debug('(OPTIONS) Running options parser')
     _t0 = time()
     _need_idx = False
+    _static_changed = False
     for _system in CONFIG['SYSTEMS']:
         if '_reset' in  CONFIG['SYSTEMS'][_system] and CONFIG['SYSTEMS'][_system]['_reset']:
             logger.debug('(OPTIONS) Bridge reset for %s - no peers',_system)
@@ -2847,6 +2963,7 @@ def options_config():
                     
                     ts1 = []
                     if _options['TS1_STATIC'] != CONFIG['SYSTEMS'][_system]['TS1_STATIC']:
+                        _static_changed = True
                         _tmout = int(_options['DEFAULT_UA_TIMER'])
                         logger.debug('(OPTIONS) %s TS1 static TGs changed, updating',_system)
                         ts1 = []
@@ -2866,6 +2983,7 @@ def options_config():
                                 make_static_tg(tg,1,_tmout,_system)
                     ts2 = []
                     if _options['TS2_STATIC'] != CONFIG['SYSTEMS'][_system]['TS2_STATIC']:
+                        _static_changed = True
                         _tmout = int(_options['DEFAULT_UA_TIMER'])
                         logger.debug('(OPTIONS) %s TS2 static TGs changed, updating',_system)
                         if CONFIG['SYSTEMS'][_system]['TS2_STATIC']:
@@ -2895,6 +3013,8 @@ def options_config():
 
     if _need_idx:
         rebuild_bridge_index()
+    if _static_changed:
+        notify_bridge_table_updated()
 
     _elapsed_ms = (time() - _t0) * 1000.0
     if _elapsed_ms >= 50.0:
@@ -6759,8 +6879,7 @@ class routerHBP(HBSYSTEM):
                                         if _bridge[0:1] == '#':
                                             set_reflector_link_owner(_system, _rf_src, _peer_id)
                                         logger.info('(%s) [2] Bridge: %s, connection changed to state: %s', self._system, _bridge, _system['ACTIVE'])
-                                        if _system['TO_TYPE'] == 'ON':
-                                            notify_bridge_table_updated()
+                                        notify_bridge_table_updated()
                                         # Cancel the timer if we've enabled an "OFF" type timeout
                                         if _system['TO_TYPE'] == 'OFF':
                                             _system['TIMER'] = pkt_time

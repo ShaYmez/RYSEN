@@ -19,7 +19,7 @@ _SERVICE_TG_RANGE = range(9991, 10000)
 
 RSSI_REPORT_INTERVAL = 1.0
 _RUNTIME_SHARED_NAMES = (
-    'CONFIG', 'BRIDGES', 'BRIDGE_IDX', 'SUB_MAP', 'systems',
+    'CONFIG', 'BRIDGES', 'BRIDGE_IDX', '_BRIDGE_IDX_KEYS', 'SUB_MAP', 'systems',
     'report_server', '_selfcare_db',
 )
 
@@ -1741,16 +1741,20 @@ def touch_stat_bridge_activity(entries, now=None):
 
 
 def prune_idle_stat_on_legs(entries, now=None):
-    """Drop idle UA ON legs from a stat bridge after STAT_ON_LEG_IDLE_TTL_S.
+    """Drop idle demand-added ON legs after STAT_ON_LEG_IDLE_TTL_S.
 
-    Returns (new_entries, removed_count). Master ON legs are added on demand and
-    otherwise never pruned — this is the main BRIDGE_IDX bloat fix.
+    Legacy STAT bridges did not mark demand-added legs, so all of their idle ON
+    legs remain eligible. Other bridge types prune only entries explicitly
+    marked LAZY, preserving configured rule legs.
     """
     _now = now if now is not None else time.time()
+    _stat_bridge = bridge_has_stat_legs(entries)
     kept = []
     removed = 0
     for entry in entries:
-        if entry.get('TO_TYPE') == 'ON' and not entry.get('ACTIVE'):
+        if (entry.get('TO_TYPE') == 'ON'
+                and not entry.get('ACTIVE')
+                and (_stat_bridge or entry.get('LAZY'))):
             timer = entry.get('TIMER', 0)
             if isinstance(timer, (int, float)):
                 idle_s = (_now - timer) if timer <= _now else 0.0

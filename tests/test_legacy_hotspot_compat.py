@@ -116,9 +116,11 @@ class TestLegacyMasterOptions(unittest.TestCase):
             patch.object(bm, 'words', {'en_GB': {}}, create=True),
             patch.object(bm, 'make_static_tg') as make_static,
             patch.object(bm, 'reset_static_tg'),
+            patch.object(bm, 'notify_bridge_table_updated') as notify,
         ):
             bm.options_config()
 
+        notify.assert_called_once_with()
         self.assertEqual(cfg['TS1_STATIC'], '91,9')
         self.assertEqual(cfg['TS2_STATIC'], '2350,235')
         self.assertIn(
