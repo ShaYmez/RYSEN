@@ -1969,7 +1969,6 @@ def stream_trimmer_loop():
                 if _slot['RX_TIME'] >= _now - _dash_idle:
                     _slot['_dash_end'] = False
                 elif (not _slot.get('_dash_end')
-                      and _slot['RX_TYPE'] != HBPF_SLT_VTERM
                       and _slot['RX_TIME'] < _now - _dash_idle):
                     _slot['_dash_end'] = True
                     if CONFIG['REPORTS']['REPORT']:
@@ -6283,6 +6282,9 @@ class routerHBP(HBSYSTEM):
                 or (_hbp_idle >= STREAM_TO and not _hbp_short_resume)
                 or (_hbp_is_vhead and _hbp_active_finished))
             if _hbp_new_stream:
+                # A dashboard START always owns a fresh end lifecycle. Do not
+                # inherit the previous stream's completed fallback state.
+                self.STATUS[_slot]['_dash_end'] = False
                 if (self.STATUS[_slot]['RX_TYPE'] != HBPF_SLT_VTERM) and (pkt_time < (self.STATUS[_slot]['RX_TIME'] + STREAM_TO)) and (_rf_src != self.STATUS[_slot]['RX_RFS']):
                     logger.warning('(%s) Packet received with STREAM ID: %s <FROM> SUB: %s PEER: %s <TO> TGID %s, SLOT %s collided with existing call', self._system, int_id(_stream_id), int_id(_rf_src), int_id(_peer_id), int_id(_dst_id), _slot)
                     return
@@ -6546,6 +6548,10 @@ class routerHBP(HBSYSTEM):
                         self._system, int_id(_stream_id), get_alias(_rf_src, subscriber_ids), int_id(_rf_src), get_alias(_peer_id, peer_ids), int_id(_peer_id), get_alias(_dst_id, talkgroup_ids), int_id(_dst_id), _slot, call_duration, packet_rate, loss)
                 if CONFIG['REPORTS']['REPORT']:
                    self._report.send_bridgeEvent('GROUP VOICE,END,RX,{},{},{},{},{},{},{:.2f}'.format(self._system, int_id(_stream_id), int_id(_peer_id), int_id(_rf_src), _slot, int_id(_dst_id), call_duration).encode(encoding='utf-8', errors='ignore'))
+                # The regular terminator path completed the dashboard lifecycle.
+                # The idle fallback may still recover a missed path, but must not
+                # duplicate this event.
+                self.STATUS[_slot]['_dash_end'] = True
                 
                 #Reset back to False  
                 self.STATUS[_slot]['lastSeq'] = False

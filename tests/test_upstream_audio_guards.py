@@ -224,6 +224,30 @@ class TestPacketControlSourceGuards(unittest.TestCase):
         self.assertIn("self.STATUS[_slot]['lastSeq'] = False", new_stream)
         self.assertIn("self.STATUS[_slot]['lastData'] = False", new_stream)
 
+    def test_dashboard_end_lifecycle_covers_missed_terminators(self):
+        trimmer = self.bridge_source[
+            self.bridge_source.index('def stream_trimmer_loop():'):
+            self.bridge_source.index('def sendVoicePacket(')
+        ]
+        self.assertNotIn(
+            "and _slot['RX_TYPE'] != HBPF_SLT_VTERM", trimmer)
+
+        hbp_start = self.bridge_source.index('class routerHBP')
+        hbp = self.bridge_source[hbp_start:]
+        new_stream = hbp[
+            hbp.index('# Is this a new call stream?'):
+            hbp.index('#Create default bridge for unknown TG')
+        ]
+        self.assertIn(
+            "self.STATUS[_slot]['_dash_end'] = False", new_stream)
+
+        call_end = hbp[
+            hbp.index('# Final actions - Is this a voice terminator?'):
+            hbp.index('# Begin in-band signalling for call end.')
+        ]
+        self.assertIn(
+            "self.STATUS[_slot]['_dash_end'] = True", call_end)
+
     def test_hbp_and_obp_use_modular_sequence_delta(self):
         self.assertEqual(self.bridge_source.count('_seq_delta = dmr_seq_delta('), 2)
         self.assertNotIn("_seq < self.STATUS[_slot]['lastSeq']", self.bridge_source)
