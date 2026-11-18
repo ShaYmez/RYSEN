@@ -1,5 +1,35 @@
 # RYSEN DMRMaster+ Changelog
 
+## Version 1.6.5 (2026-11-18)
+
+RapidStatic: immediate, efficient static-talkgroup replacement.
+
+Released on **`master`** — `shaymez/rysen:1.6.5` and `:latest`.
+
+### Immediate static routing
+
+- Hotspot RPTO, selfcare, control, disconnect, and timer changes now reconcile
+  static talkgroups synchronously. Replacing `TS1_1=2350` with
+  `TS1_1=23516` removes 2350 and activates 23516 before the OPTIONS update
+  returns, without waiting for the periodic options timer.
+- A replaced static can route the next call immediately. A bounded, one-shot
+  hangtime bypass applies only to the newly routed static and never preempts
+  an active call.
+- Shared MASTER slots retain statics still owned by another peer. Peer
+  disconnect and control kick remove only the departed peer's unique statics,
+  and per-peer `TIMER` / `RelinkTime` changes take effect immediately.
+
+### Static bridge efficiency
+
+- Static bridges are built lazily instead of preallocating a leg for every
+  master. Legs are added on demand, duplicate system/slot legs are collapsed,
+  and idle lazy legs and cold removed statics are pruned safely.
+- `BRIDGE_IDX` now has a reverse ownership index, allowing one changed bridge
+  to update its routing keys without scanning the global index. Routing keeps
+  the existing guarded miss recovery.
+- Bursts of topology changes coalesce monitor snapshots, reducing redundant
+  reporting work while preserving the existing dashboard protocol.
+
 ## Version 1.6.4 (2026-11-02)
 
 Per-peer sticky last-TG, persisted across Pi-Star reconnect.

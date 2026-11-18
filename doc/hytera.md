@@ -1,6 +1,6 @@
 # Native Hytera IP Multi-site Connect
 
-**Status (1.6.4, November 2026):** RD985 and RD625 support remains
+**Status (1.6.5, November 2026):** RD985 and RD625 support remains
 production-ready. HR1065 firmware `A3.0.20.010` adds field-validated HMTP
 group voice, private voice, and SMS.
 
@@ -173,7 +173,7 @@ Run the proxy with `python3 hytera_proxy.py -c hytera-proxy.cfg`, using
 [RYSEN-SP-HYT](https://github.com/ShaYmez/RYSEN-SP-HYT)
 (`shaymez/rysen-sp-hyt:latest`), synced from this repo. See
 [satellite-proxy-repos.md](satellite-proxy-repos.md). A source checkout can
-also build the local image `rysen-hytera-proxy:1.6.4` with
+also build the local image `rysen-hytera-proxy:1.6.5` with
 `docker compose --profile hytera -f docker-configs/docker-compose-stack.yml`.
 
 Generated backends set `PROXY_CONTROL: True` and `PROXY_CONTROL_IP` to the

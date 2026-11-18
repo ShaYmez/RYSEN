@@ -44,6 +44,12 @@ DMR+ style uses separate keys per TG position. RYSEN joins them into a comma-sep
 
 Up to `TS1_9` / `TS2_9` are supported.
 
+In v1.6.5 and later, a static-list change is reconciled synchronously. For
+example, replacing `TS1_1=2350` with `TS1_1=23516` removes the peer's
+ownership of 2350 and activates 23516 before the RPTO/selfcare update returns;
+audio routing does not wait for the periodic options timer. If another peer
+on the same MASTER still owns 2350, that shared static remains active for it.
+
 ### Timer aliases
 
 | Alias | Maps to | Notes |

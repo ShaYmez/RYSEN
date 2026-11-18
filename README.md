@@ -1,6 +1,6 @@
 # RYSEN DMRMaster+
 
-RYSEN DMR Master+ (A FreeSTAR SystemX DMR Master Server). One Twisted process routes Homebrew, OpenBridge, Motorola IP Site Connect, and Hytera IP Multi-site Connect, with talkgroup bridges, private unit calls, and local dashboard selfcare. **Version 1.6.4** on `master`.
+RYSEN DMR Master+ (A FreeSTAR SystemX DMR Master Server). One Twisted process routes Homebrew, OpenBridge, Motorola IP Site Connect, and Hytera IP Multi-site Connect, with talkgroup bridges, private unit calls, and local dashboard selfcare. **Version 1.6.5** on `master`.
 
 ## Quick start
 
@@ -60,7 +60,7 @@ Sample configs: [RYSEN-SAMPLE-commented.cfg](RYSEN-SAMPLE-commented.cfg), [docke
 
 ## Docker image
 
-CI builds and publishes `shaymez/rysen:1.6.4` and `shaymez/rysen:latest` from the root [Dockerfile](Dockerfile) on push to `master`.
+CI builds and publishes `shaymez/rysen:1.6.5` and `shaymez/rysen:latest` from the root [Dockerfile](Dockerfile) on push to `master`.
 
 ## Credits
 

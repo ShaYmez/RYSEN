@@ -1,11 +1,12 @@
 # RYSEN Features
 
-Version history and feature reference for RYSEN DMRMaster+ (SystemX). Current release: **1.6.4** on `master`.
+Version history and feature reference for RYSEN DMRMaster+ (SystemX). Current release: **1.6.5** on `master`.
 
 Maintained by **Shane Daley M0VUB** (aka **ShaYmez**) — primary RYSEN / SystemX development since v1.3.9. Lineage: HBlink3 (N0MJS) → FreeDMR (G7RZU) → RYSEN.
 
 | Version | Date | Summary |
 |---------|------|---------|
+| 1.6.5 | 2026-11-18 | RapidStatic immediate static replacement and lazy indexed bridge topology |
 | 1.6.4 | 2026-11-02 | Per-peer sticky last-TG, persisted across Pi-Star reconnect |
 | 1.6.3 | 2026-10-31 | Talker Alias on bridged voice, with per-master and per-hotspot switches |
 | 1.6.2 | 2026-10-27 | HR1065 HMTP voice/SMS, RD625 validation, Hytera pacing under jitter |
@@ -78,6 +79,22 @@ Config reference: [RYSEN-SAMPLE-commented.cfg](../RYSEN-SAMPLE-commented.cfg).
 - One-shot install: [install.md](install.md)
 - Images: `shaymez/rysen:latest`, `shaymez/rysen-sp-ipsc:latest`
 - Config on host: `/etc/rysen/`
+
+---
+
+## v1.6.5 — RapidStatic
+
+Static OPTIONS changes are applied synchronously, so the old talkgroup stops
+and the replacement can route immediately without waiting for a timer pass.
+
+| Feature | Detail |
+|---------|--------|
+| Immediate replace | RPTO, selfcare, control, disconnect, and timer changes reconcile static ownership before returning |
+| Shared masters | Each peer owns its statics; replacing or disconnecting one peer preserves talkgroups still owned by another |
+| Hangtime | A bounded one-shot bypass admits the newly selected static without interrupting an active call |
+| Lazy topology | Static bridges add master legs only when needed instead of preallocating every master |
+| Indexed updates | Reverse `BRIDGE_IDX` ownership updates only the changed bridge; idle lazy legs and cold statics are pruned |
+| Reporting | Rapid topology bursts coalesce monitor snapshots; the dashboard wire format is unchanged |
 
 ---
 
