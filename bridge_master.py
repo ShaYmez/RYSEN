@@ -877,14 +877,14 @@ def make_single_bridge(_tgid,_sourcesystem,_slot,_tmout):
     for _system in iter_routing_master_systems():
         if _system == _sourcesystem:
             if _slot == 1:
-                BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time() + (_tmout * 60)})
-                BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time()})
+                BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time() + (_tmout * 60), 'LAZY': True})
+                BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time(), 'LAZY': True})
             else:
-                BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time() + (_tmout * 60)})
-                BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time()})
+                BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': True,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time() + (_tmout * 60), 'LAZY': True})
+                BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time(), 'LAZY': True})
         else:
-            BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time()})
-            BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time()})
+            BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 1, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time(), 'LAZY': True})
+            BRIDGES[_tgid_s].append({'SYSTEM': _system, 'TS': 2, 'TGID': _tgid,'ACTIVE': False,'TIMEOUT': _tmout * 60,'TO_TYPE': 'ON','OFF': [],'ON': [_tgid,],'RESET': [], 'TIMER': time(), 'LAZY': True})
 
     for _system in CONFIG['SYSTEMS']:
         if _system[0:3] == 'OBP' and (int_id(_tgid) >= 59 and (int_id(_tgid) < 9990 or int_id(_tgid) > 9999)):
@@ -1057,7 +1057,7 @@ def make_static_tg(tg, ts, _tmout, system):
         'SYSTEM': system, 'TS': ts, 'TGID': tgid_b,
         'ACTIVE': True, 'TIMEOUT': _tmout * 60, 'TO_TYPE': 'OFF',
         'OFF': [], 'ON': [tgid_b], 'RESET': [],
-        'TIMER': time() + (_tmout * 60),
+        'TIMER': time() + (_tmout * 60), 'LAZY': True,
     }
     if tg_s not in BRIDGES:
         _make_static_bridge_shell(tgid_b)
@@ -1078,7 +1078,9 @@ def make_static_tg(tg, ts, _tmout, system):
     for bridgesystem in BRIDGES[tg_s]:
         if bridgesystem['SYSTEM'] == system and bridgesystem['TS'] == ts:
             if not matched:
-                bridgetemp.append(static_entry)
+                replacement = dict(static_entry)
+                replacement['LAZY'] = bridgesystem.get('LAZY', False)
+                bridgetemp.append(replacement)
                 matched = True
         else:
             bridgetemp.append(bridgesystem)
@@ -1118,6 +1120,7 @@ def reset_static_tg(tg,ts,_tmout,system):
                     'ACTIVE': keep_ua, 'TIMEOUT': _tmout * 60, 'TO_TYPE': 'ON',
                     'OFF': [], 'ON': [bytes_3(tg),], 'RESET': [],
                     'TIMER': time() + (_tmout * 60),
+                    'LAZY': bridgesystem.get('LAZY', True),
                 })
                 matched = True
         else:
@@ -1381,6 +1384,7 @@ def kick_hotspot_peer(system, peer_id):
             syscfg.pop('OPTIONS', None)
         syscfg['_reset'] = True
         reset_slot_voice_ident(syscfg)
+    publish_master_static_bridges(system)
     logger.warning('(CONTROL) Kicked hotspot peer %s from %s',
                    int_id(peer_id), system)
     return True
@@ -1651,13 +1655,59 @@ def _slot_status(system, slot):
     return slot_status
 
 
-def _release_slot_hangtime(system, slot):
-    """Let the next voice frame onto a slot that just changed statics."""
+def _release_slot_hangtime(system, slot, next_groups=()):
+    """Allow the next wanted static frame without falsifying stream timestamps."""
     slot_status = _slot_status(system, slot)
     if slot_status is None:
         return
-    slot_status['RX_TIME'] = 0
-    slot_status['TX_TIME'] = 0
+    syscfg = _runtime_config().get('SYSTEMS', {}).get(system, {})
+    try:
+        group_hangtime = max(0.0, float(syscfg.get('GROUP_HANGTIME', 0)))
+    except (TypeError, ValueError):
+        group_hangtime = 0.0
+    # Long enough to outlive the slot's normal hold, but never a permanent
+    # contention exemption if no audio arrives for the new subscription.
+    deadline = time() + min(max(group_hangtime + STREAM_TO + 1.0, 2.0), 30.0)
+    wanted = {
+        bytes_3(int(tgid)): deadline
+        for tgid in next_groups if int(tgid) > 0
+    }
+    if wanted:
+        slot_status['_STATIC_HANGTIME_BYPASS'] = wanted
+    else:
+        slot_status.pop('_STATIC_HANGTIME_BYPASS', None)
+
+
+def _static_hangtime_bypass(slot_status, tgid, now=None):
+    """Bypass ended-call hangtime once, never an actively transmitting slot."""
+    now = time() if now is None else now
+    armed = slot_status.get('_STATIC_HANGTIME_BYPASS')
+    if not isinstance(armed, dict):
+        return False
+    for armed_tgid, deadline in list(armed.items()):
+        if deadline < now:
+            armed.pop(armed_tgid, None)
+    if not armed:
+        slot_status.pop('_STATIC_HANGTIME_BYPASS', None)
+        return False
+    if tgid not in armed:
+        return False
+    # RX_TYPE/TX_TYPE hold DMR dtype/voice-sequence values. A normal voice
+    # burst can numerically equal HBPF_SLT_VTERM, so recency—not packet type—
+    # is the safe indication that the slot is still carrying audio.
+    rx_active = now - slot_status.get('RX_TIME', 0) < STREAM_TO
+    tx_active = now - slot_status.get('TX_TIME', 0) < STREAM_TO
+    return not (rx_active or tx_active)
+
+
+def _consume_static_hangtime_bypass(slot_status, tgid):
+    """Consume only the static TG whose first replacement frame routed."""
+    armed = slot_status.get('_STATIC_HANGTIME_BYPASS')
+    if not isinstance(armed, dict):
+        return
+    armed.pop(tgid, None)
+    if not armed:
+        slot_status.pop('_STATIC_HANGTIME_BYPASS', None)
 
 
 def _hung_talkgroups(slot_status):
@@ -1676,7 +1726,8 @@ def _hung_talkgroups(slot_status):
     return found
 
 
-def _release_obsolete_hangtime(system, slot, still_wanted):
+def _release_obsolete_hangtime(
+        system, slot, still_wanted, next_groups=()):
     """Clear hangtime only when the held talkgroup is no longer a static.
 
     A shared master must keep hangtime for a talkgroup another hotspot still
@@ -1688,8 +1739,7 @@ def _release_obsolete_hangtime(system, slot, still_wanted):
     hung = _hung_talkgroups(slot_status)
     if not hung or any(tgid in still_wanted for tgid in hung):
         return
-    slot_status['RX_TIME'] = 0
-    slot_status['TX_TIME'] = 0
+    _release_slot_hangtime(system, slot, next_groups)
 
 
 def publish_master_static_bridges(system):
@@ -1719,7 +1769,11 @@ def publish_master_static_bridges(system):
     ]
     # Match options_config(): one connected hotspot may set TIMER/RelinkTime.
     # A shared master keeps the stanza timer.
-    stanza_minutes = ua_timer_minutes(syscfg)
+    current_minutes = ua_timer_minutes(syscfg)
+    stanza_minutes = ua_timer_minutes_from_options(
+        syscfg.get('_default_options'))
+    if stanza_minutes is None:
+        stanza_minutes = current_minutes
     if stanza_minutes is None:
         stanza_minutes = 10
     tmout = stanza_minutes
@@ -1728,7 +1782,7 @@ def publish_master_static_bridges(system):
         if peer_minutes is not None:
             tmout = peer_minutes
     statics_changed = set(want1) != set(have1) or set(want2) != set(have2)
-    timer_changed = tmout != stanza_minutes
+    timer_changed = tmout != current_minutes
     if not statics_changed and not timer_changed:
         return False
     if timer_changed:
@@ -1751,14 +1805,18 @@ def publish_master_static_bridges(system):
         syscfg['TS2_STATIC'] = ','.join(str(tgid) for tgid in want2) if want2 else False
         if len(connected) <= 1:
             if set(want1) != set(have1):
-                _release_slot_hangtime(system, 1)
+                _release_slot_hangtime(
+                    system, 1, set(want1) - set(have1))
             if set(want2) != set(have2):
-                _release_slot_hangtime(system, 2)
+                _release_slot_hangtime(
+                    system, 2, set(want2) - set(have2))
         else:
             if set(want1) != set(have1):
-                _release_obsolete_hangtime(system, 1, set(want1))
+                _release_obsolete_hangtime(
+                    system, 1, set(want1), set(want1) - set(have1))
             if set(want2) != set(have2):
-                _release_obsolete_hangtime(system, 2, set(want2))
+                _release_obsolete_hangtime(
+                    system, 2, set(want2), set(want2) - set(have2))
         logger.info(
             '(OPTIONS) %s statics live now TS1=%s TS2=%s',
             system, syscfg['TS1_STATIC'] or '', syscfg['TS2_STATIC'] or '')
@@ -3360,7 +3418,11 @@ class routerOBP(OPENBRIDGE):
                     # Hang time of zero does not reserve the slot, but a stream
                     # that is still transmitting does. Private calls are not
                     # this talkgroup, so the hang-time test below would miss them.
-                    if (_target_system['GROUP_HANGTIME'] <= 0 and (
+                    _target_slot_status = _target_status[_target['TS']]
+                    _static_bypass = _static_hangtime_bypass(
+                        _target_slot_status, _target['TGID'])
+                    if (not _static_bypass
+                            and _target_system['GROUP_HANGTIME'] <= 0 and (
                             (_target_status[_target['TS']]['RX_TYPE'] != HBPF_SLT_VTERM
                              and _target['TGID'] != _target_status[_target['TS']]['RX_TGID']
                              and (pkt_time - _target_status[_target['TS']]['RX_TIME']) < STREAM_TO)
@@ -3371,17 +3433,22 @@ class routerOBP(OPENBRIDGE):
                             self.STATUS[_stream_id]['CONTENTION'] = True
                             logger.info('(%s) Call not routed to TGID %s, target slot is in a call: HBSystem: %s, TS: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'])
                         continue
-                    if ((_target['TGID'] != _target_status[_target['TS']]['RX_TGID']) and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < _target_system['GROUP_HANGTIME'])):
+                    if (not _static_bypass
+                            and (_target['TGID'] != _target_status[_target['TS']]['RX_TGID'])
+                            and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < _target_system['GROUP_HANGTIME'])):
                         if self.STATUS[_stream_id]['CONTENTION'] == False:
                             self.STATUS[_stream_id]['CONTENTION'] = True
                             logger.info('(%s) Call not routed to TGID %s, target active or in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
                         continue
-                    if ((_target['TGID'] != _target_status[_target['TS']]['TX_TGID']) and ((pkt_time - _target_status[_target['TS']]['TX_TIME']) < _target_system['GROUP_HANGTIME'])):
+                    if (not _static_bypass
+                            and (_target['TGID'] != _target_status[_target['TS']]['TX_TGID'])
+                            and ((pkt_time - _target_status[_target['TS']]['TX_TIME']) < _target_system['GROUP_HANGTIME'])):
                         if self.STATUS[_stream_id]['CONTENTION'] == False:
                             self.STATUS[_stream_id]['CONTENTION'] = True
                             logger.info('(%s) Call not routed to TGID%s, target in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']))
                         continue
                     if (not _late_join
+                            and not _static_bypass
                             and (_target['TGID'] == _target_status[_target['TS']]['RX_TGID'])
                             and _target_status[_target['TS']]['RX_TYPE'] != HBPF_SLT_VTERM
                             and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < STREAM_TO)):
@@ -3390,6 +3457,7 @@ class routerOBP(OPENBRIDGE):
                             logger.info('(%s) Call not routed to TGID%s, matching call already active on target: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
                         continue
                     if (not _late_join
+                            and not _static_bypass
                             and (_target['TGID'] == _target_status[_target['TS']]['TX_TGID'])
                             and _target_status[_target['TS']]['TX_TYPE'] != HBPF_SLT_VTERM
                             and (_rf_src != _target_status[_target['TS']]['TX_RFS'])
@@ -3398,6 +3466,10 @@ class routerOBP(OPENBRIDGE):
                             self.STATUS[_stream_id]['CONTENTION'] = True
                             logger.info('(%s) Call not routed for subscriber %s, call route in progress on target: HBSystem: %s, TS: %s, TGID: %s, SUB: %s', self._system, int_id(_rf_src), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']), int_id(_target_status[_target['TS']]['TX_RFS']))
                         continue
+
+                    if _static_bypass:
+                        _consume_static_hangtime_bypass(
+                            _target_slot_status, _target['TGID'])
 
                     # Is this a new call stream?
                     if (_new_generation
@@ -4317,16 +4389,21 @@ class routerHBP(HBSYSTEM):
         _ping_deadline = (
             self._CONFIG['GLOBAL']['PING_TIME'] * self._CONFIG['GLOBAL']['MAX_MISSED'])
         _now = time()
+        _publish_statics = False
         for _peer_id in list(self._peers):
             _this_peer = self._peers[_peer_id]
             if _this_peer['LAST_PING'] + _ping_deadline < _now:
                 selfcare_disconnect(self._system, _peer_id)
                 _block_peer_active_streams(self._system, _peer_id)
                 mark_options_dirty(CONFIG)
+                _publish_statics = True
         HBSYSTEM.master_maintenance_loop(self)
+        if _publish_statics:
+            publish_master_static_bridges(self._system)
 
     def master_datagramReceived(self, _data, _sockaddr):
         _command = _data[:4]
+        _publish_statics = False
         if _command == RPTL and len(_data) >= 8:
             _peer_id = _data[4:8]
             _ban = CONTROL_BANS.get(int_id(_peer_id))
@@ -4345,6 +4422,7 @@ class routerHBP(HBSYSTEM):
                 _block_peer_active_streams(self._system, _peer_id)
                 forget_peer_rx_state(self._system, _peer_id)
                 mark_options_dirty(CONFIG)
+                _publish_statics = True
         if _command == RPTC:
             if _data[:5] == RPTCL and len(_data) >= 9:
                 _peer_id = _data[5:9]
@@ -4354,6 +4432,7 @@ class routerHBP(HBSYSTEM):
                     selfcare_disconnect(self._system, _peer_id)
                     _block_peer_active_streams(self._system, _peer_id)
                     mark_options_dirty(CONFIG)
+                    _publish_statics = True
             elif len(_data) >= 8:
                 _peer_id = _data[4:8]
                 if (_peer_id in self._peers
@@ -4370,6 +4449,8 @@ class routerHBP(HBSYSTEM):
             if _peer and _peer.get('CONNECTION') == 'WAITING_CONFIG':
                 _restore_peer = _peer_id
         HBSYSTEM.master_datagramReceived(self, _data, _sockaddr)
+        if _publish_statics:
+            publish_master_static_bridges(self._system)
         if _restore_peer:
             _peer = self._peers.get(_restore_peer)
             if _peer and _peer.get('CONNECTION') == 'YES':
@@ -4521,7 +4602,12 @@ class routerHBP(HBSYSTEM):
                         # that over, or a different TG inside hangtime.
                         _parrot_echo = (
                             self._system == 'PARROT' and is_parrot_bridge(_bridge))
-                        if (not _parrot_echo and _target_system['GROUP_HANGTIME'] <= 0 and (
+                        _target_slot_status = _target_status[_target['TS']]
+                        _static_bypass = _static_hangtime_bypass(
+                            _target_slot_status, _target['TGID'])
+                        if (not _parrot_echo
+                                and not _static_bypass
+                                and _target_system['GROUP_HANGTIME'] <= 0 and (
                                 (_target_status[_target['TS']]['RX_TYPE'] != HBPF_SLT_VTERM
                                  and _target['TGID'] != _target_status[_target['TS']]['RX_TGID']
                                  and (pkt_time - _target_status[_target['TS']]['RX_TIME']) < STREAM_TO)
@@ -4531,15 +4617,22 @@ class routerHBP(HBSYSTEM):
                             if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
                                 logger.info('(%s) Call not routed to TGID %s, target slot is in a call: HBSystem: %s, TS: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'])
                             continue
-                        if (not _parrot_echo and (_target['TGID'] != _target_status[_target['TS']]['RX_TGID']) and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < _target_system['GROUP_HANGTIME'])):
+                        if (not _parrot_echo
+                                and not _static_bypass
+                                and (_target['TGID'] != _target_status[_target['TS']]['RX_TGID'])
+                                and ((pkt_time - _target_status[_target['TS']]['RX_TIME']) < _target_system['GROUP_HANGTIME'])):
                             if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
                                 logger.info('(%s) Call not routed to TGID %s, target active or in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
                             continue
-                        if (not _parrot_echo and (_target['TGID'] != _target_status[_target['TS']]['TX_TGID']) and ((pkt_time - _target_status[_target['TS']]['TX_TIME']) < _target_system['GROUP_HANGTIME'])):
+                        if (not _parrot_echo
+                                and not _static_bypass
+                                and (_target['TGID'] != _target_status[_target['TS']]['TX_TGID'])
+                                and ((pkt_time - _target_status[_target['TS']]['TX_TIME']) < _target_system['GROUP_HANGTIME'])):
                             if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
                                 logger.info('(%s) Call not routed to TGID%s, target in group hangtime: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']))
                             continue
                         if (not _parrot_echo
+                                and not _static_bypass
                                 and not _late_join
                                 and (_target['TGID'] == _target_status[_target['TS']]['RX_TGID'])
                                 and _target_status[_target['TS']]['RX_TYPE'] != HBPF_SLT_VTERM
@@ -4548,6 +4641,7 @@ class routerHBP(HBSYSTEM):
                                 logger.info('(%s) Call not routed to TGID%s, matching call already active on target: HBSystem: %s, TS: %s, TGID: %s', self._system, int_id(_target['TGID']), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['RX_TGID']))
                             continue
                         if (not _parrot_echo
+                                and not _static_bypass
                                 and not _late_join
                                 and (_target['TGID'] == _target_status[_target['TS']]['TX_TGID'])
                                 and _target_status[_target['TS']]['TX_TYPE'] != HBPF_SLT_VTERM
@@ -4556,6 +4650,10 @@ class routerHBP(HBSYSTEM):
                             if _frame_type == HBPF_DATA_SYNC and _dtype_vseq == HBPF_SLT_VHEAD and self.STATUS[_slot]['RX_STREAM_ID'] != _stream_id:
                                 logger.info('(%s) Call not routed for subscriber %s, call route in progress on target: HBSystem: %s, TS: %s, TGID: %s, SUB: %s', self._system, int_id(_rf_src), _target['SYSTEM'], _target['TS'], int_id(_target_status[_target['TS']]['TX_TGID']), int_id(_target_status[_target['TS']]['TX_RFS']))
                             continue
+
+                        if _static_bypass:
+                            _consume_static_hangtime_bypass(
+                                _target_slot_status, _target['TGID'])
 
                         # Initialize TX state from the destination, not the source.
                         # A target can reject the first frames during hangtime while

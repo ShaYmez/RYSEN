@@ -102,6 +102,8 @@ class TestLazyStaticBridge(unittest.TestCase):
         self.old_bridges = getattr(bm, 'BRIDGES', None)
         self.old_idx = bm.BRIDGE_IDX
         self.old_keys = bm._BRIDGE_IDX_KEYS
+        self.had_sub_map = hasattr(bm, 'SUB_MAP')
+        self.old_sub_map = getattr(bm, 'SUB_MAP', None)
         systems = {
             'SYSTEM-%s' % i: {
                 'MODE': 'MASTER',
@@ -115,12 +117,17 @@ class TestLazyStaticBridge(unittest.TestCase):
         bm.BRIDGES = {}
         bm.BRIDGE_IDX = {}
         bm._BRIDGE_IDX_KEYS = {}
+        bm.SUB_MAP = {}
 
     def tearDown(self):
         bm.CONFIG = self.old_config
         bm.BRIDGES = {} if self.old_bridges is None else self.old_bridges
         bm.BRIDGE_IDX = self.old_idx
         bm._BRIDGE_IDX_KEYS = self.old_keys
+        if self.had_sub_map:
+            bm.SUB_MAP = self.old_sub_map
+        elif hasattr(bm, 'SUB_MAP'):
+            del bm.SUB_MAP
 
     def test_new_static_does_not_preallocate_every_master(self):
         bm.make_static_tg(2350, 2, 10, 'SYSTEM-1')
@@ -181,6 +188,52 @@ class TestLazyStaticBridge(unittest.TestCase):
         self.assertEqual(len(bm.BRIDGES['2350']), 3)
         self.assertEqual(len(bm.BRIDGE_IDX), 3)
 
+    def test_removed_cold_static_becomes_prunable_lazy_leg(self):
+        bm.make_static_tg(2350, 2, 10, 'SYSTEM-1')
+        bm.reset_static_tg(2350, 2, 10, 'SYSTEM-1')
+        removed = next(
+            entry for entry in bm.BRIDGES['2350']
+            if entry['SYSTEM'] == 'SYSTEM-1' and entry['TS'] == 2)
+        self.assertEqual(removed['TO_TYPE'], 'ON')
+        self.assertTrue(removed['LAZY'])
+        removed['ACTIVE'] = False
+        removed['TIMER'] = time.time() - STAT_ON_LEG_IDLE_TTL_S - 1
+
+        bm.statTrimmer()
+
+        self.assertFalse(any(
+            entry['SYSTEM'] == 'SYSTEM-1' and entry['TS'] == 2
+            for entry in bm.BRIDGES['2350']))
+
+    def test_explicit_rule_leg_survives_static_add_and_remove(self):
+        explicit = _entry('SYSTEM-1', 2, 2350)
+        explicit.update({'ACTIVE': False, 'TO_TYPE': 'ON'})
+        bm.BRIDGES['2350'] = [explicit]
+        bm.rebuild_bridge_index()
+
+        bm.make_static_tg(2350, 2, 10, 'SYSTEM-1')
+        static = bm.BRIDGES['2350'][0]
+        self.assertFalse(static['LAZY'])
+        bm.reset_static_tg(2350, 2, 10, 'SYSTEM-1')
+        restored = bm.BRIDGES['2350'][0]
+        self.assertFalse(restored['LAZY'])
+        restored['ACTIVE'] = False
+        restored['TIMER'] = time.time() - STAT_ON_LEG_IDLE_TTL_S - 1
+
+        bm.statTrimmer()
+
+        self.assertIn(restored, bm.BRIDGES['2350'])
+
+    def test_on_demand_bridge_master_legs_are_lazy(self):
+        bm.make_single_bridge(bytes_3(2350), 'SYSTEM-1', 2, 10)
+
+        master_entries = [
+            entry for entry in bm.BRIDGES['2350']
+            if entry['SYSTEM'].startswith('SYSTEM-')
+        ]
+        self.assertTrue(master_entries)
+        self.assertTrue(all(entry.get('LAZY') for entry in master_entries))
+
     def test_static_apply_collapses_legacy_duplicate_slot_legs(self):
         bm.make_static_tg(2350, 2, 10, 'SYSTEM-1')
         duplicate = dict(next(
@@ -213,7 +266,11 @@ class TestLazyStaticBridge(unittest.TestCase):
         bm.make_static_tg(2350, 2, 10, 'SYSTEM-1')
 
         entries = bm.BRIDGES['2350']
-        self.assertFalse(any(entry.get('LAZY') for entry in entries))
+        self.assertFalse(any(
+            entry.get('LAZY')
+            and entry.get('TO_TYPE') == 'ON'
+            and not entry.get('ACTIVE')
+            for entry in entries))
         self.assertIn(explicit, entries)
         static = [
             entry for entry in entries
