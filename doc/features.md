@@ -1,11 +1,12 @@
 # RYSEN Features
 
-Version history and feature reference for RYSEN DMRMaster+ (SystemX). Current release: **1.6.5** on `master`.
+Version history and feature reference for RYSEN DMRMaster+ (SystemX). Current release: **1.6.6** on `master`.
 
 Maintained by **Shane Daley M0VUB** (aka **ShaYmez**) — primary RYSEN / SystemX development since v1.3.9. Lineage: HBlink3 (N0MJS) → FreeDMR (G7RZU) → RYSEN.
 
 | Version | Date | Summary |
 |---------|------|---------|
+| 1.6.6 | 2026-11-18 | Replaced static audio stops immediately for the peer that left it |
 | 1.6.5 | 2026-11-18 | RapidStatic immediate static replacement and lazy indexed bridge topology |
 | 1.6.4 | 2026-11-02 | Per-peer sticky last-TG, persisted across Pi-Star reconnect |
 | 1.6.3 | 2026-10-31 | Talker Alias on bridged voice, with per-master and per-hotspot switches |
@@ -79,6 +80,12 @@ Config reference: [RYSEN-SAMPLE-commented.cfg](../RYSEN-SAMPLE-commented.cfg).
 - One-shot install: [install.md](install.md)
 - Images: `shaymez/rysen:latest`, `shaymez/rysen-sp-ipsc:latest`
 - Config on host: `/etc/rysen/`
+
+---
+
+## v1.6.6 — Replaced static audio stops
+
+A peer that replaces its static talkgroup stops hearing the old one on the next frame. Its stale dynamic membership and subscriber route are removed. Another peer that still owns that talkgroup keeps receiving it, and keying the old talkgroup again restores audio for the returning peer.
 
 ---
 

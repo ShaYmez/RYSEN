@@ -1,5 +1,15 @@
 # RYSEN DMRMaster+ Changelog
 
+## Version 1.6.6 (2026-11-18)
+
+Stop audio on a static talkgroup as soon as that peer replaces it.
+
+Released on **`master`** — `shaymez/rysen:1.6.6` and `:latest`.
+
+- Replacing a static, such as `TS2_1=2350` with `TS2_1=23516`, mutes the removed talkgroup for that peer on the next voice frame, including audio already in progress.
+- The peer's stale dynamic membership and subscriber route for the removed talkgroup are cleared, so the old talkgroup cannot be reactivated later by that route.
+- Another peer that still owns the talkgroup keeps it. Keying the removed talkgroup again hears it immediately.
+
 ## Version 1.6.5 (2026-11-18)
 
 RapidStatic: immediate, efficient static-talkgroup replacement.

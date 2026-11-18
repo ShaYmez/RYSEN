@@ -49,6 +49,8 @@ example, replacing `TS1_1=2350` with `TS1_1=23516` removes the peer's
 ownership of 2350 and activates 23516 before the RPTO/selfcare update returns;
 audio routing does not wait for the periodic options timer. If another peer
 on the same MASTER still owns 2350, that shared static remains active for it.
+From v1.6.6, audio already in progress on the removed talkgroup stops for the
+peer that left it. Keying that talkgroup again hears it immediately.
 
 ### Timer aliases
 

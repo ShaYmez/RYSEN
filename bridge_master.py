@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# RYSEN DMRMaster+ Version 1.6.5
+# RYSEN DMRMaster+ Version 1.6.6
 ###############################################################################
 # Copyright (C) 2020 Simon Adlem, G7RZU <g7rzu@gb7fr.org.uk>  
 # Copyright (C) 2016-2019 Cortney T. Buffington, N0MJS <n0mjs@me.com>
@@ -138,6 +138,7 @@ from bridge_helpers import (
     stream_is_dropped,
     release_dropped_stream,
     prune_dropped_streams,
+    mute_peer_tgs,
     unmute_peer_tg,
     forget_peer_rx_state,
     _DROPPED_STREAMS as _CONTROL_DROPPED_STREAMS,
@@ -1091,7 +1092,7 @@ def make_static_tg(tg, ts, _tmout, system):
     BRIDGES[tg_s] = bridgetemp
     _idx_replace_bridge(tg_s)
 
-def reset_static_tg(tg,ts,_tmout,system):
+def reset_static_tg(tg,ts,_tmout,system,except_peer_id=None):
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
     if str(tg) not in BRIDGES:
         logger.debug('(OPTIONS) reset_static_tg skipped, missing bridge %s for %s TS%s', tg, system, ts)
@@ -1108,8 +1109,10 @@ def reset_static_tg(tg,ts,_tmout,system):
         if isinstance(_runtime_config, dict) else None)
     keep_ua = (
         (_system_mode != 'HYTERA'
-         and other_peer_has_sub_map_tg(SUB_MAP, system, ts, tg))
-        or other_peer_has_dynamic_tg(system, ts, tg))
+         and other_peer_has_sub_map_tg(
+             SUB_MAP, system, ts, tg, except_peer_id=except_peer_id))
+        or other_peer_has_dynamic_tg(
+            system, ts, tg, except_peer_id=except_peer_id))
     bridgetemp = deque()
     matched = False
     for bridgesystem in BRIDGES[str(tg)]:
@@ -1742,7 +1745,7 @@ def _release_obsolete_hangtime(
     _release_slot_hangtime(system, slot, next_groups)
 
 
-def publish_master_static_bridges(system):
+def publish_master_static_bridges(system, changed_peer_id=None):
     """Build or drop static legs now, instead of waiting for the 26s options pass.
 
     A hotspot such as Z3DMR subscribes by replacing TS2_1. The options string is
@@ -1790,13 +1793,15 @@ def publish_master_static_bridges(system):
         syscfg['DEFAULT_UA_TIMER'] = tmout
     for tgid in have1:
         if tgid not in want1:
-            reset_static_tg(tgid, 1, tmout, system)
+            reset_static_tg(
+                tgid, 1, tmout, system, except_peer_id=changed_peer_id)
     for tgid in want1:
         if tgid not in have1:
             make_static_tg(tgid, 1, tmout, system)
     for tgid in have2:
         if tgid not in want2:
-            reset_static_tg(tgid, 2, tmout, system)
+            reset_static_tg(
+                tgid, 2, tmout, system, except_peer_id=changed_peer_id)
     for tgid in want2:
         if tgid not in have2:
             make_static_tg(tgid, 2, tmout, system)
@@ -1838,11 +1843,30 @@ def apply_selfcare_options(source_system, peer_id, options_str):
         selfcare_disconnect(source_system, peer_id)
     remaining = strip_disc_from_options(options_str) if _had_disc else options_str
     ts1, ts2 = ts_lists_from_options(remaining)
+    syscfg = _runtime_config().get('SYSTEMS', {}).get(source_system, {})
+    old_ts1, old_ts2 = ts_lists_from_options(
+        peer_own_options(syscfg, peer_id))
+    # A static replacement is also an unsubscribe for this destination peer.
+    # Drop its remembered UA ownership and mute the removed TG immediately so
+    # an in-progress source stream cannot continue through a shared MASTER leg.
+    # Other peers' static/dynamic ownership is retained during reconciliation.
+    removed = []
+    for slot, old_groups, new_groups in (
+            (1, old_ts1, ts1), (2, old_ts2, ts2)):
+        new_set = {int(tgid) for tgid in new_groups}
+        for tgid in old_groups:
+            tgid = int(tgid)
+            if tgid in new_set:
+                continue
+            forget_peer_dynamic_tg(source_system, peer_id, slot, tgid)
+            removed.append((slot, tgid))
+    if removed:
+        clear_peer_sub_map_tgs(source_system, peer_id, removed)
+        mute_peer_tgs(source_system, peer_id, removed)
     for slot, groups in ((1, ts1), (2, ts2)):
         for tgid in groups:
             forget_peer_dynamic_tg(source_system, peer_id, slot, tgid)
             unmute_peer_tg(source_system, peer_id, slot, tgid)
-    syscfg = _runtime_config().get('SYSTEMS', {}).get(source_system, {})
     if peer_id:
         store_peer_options(syscfg, peer_id, remaining)
         _apply_peer_sticky_from_options(source_system, peer_id, remaining)
@@ -1853,7 +1877,8 @@ def apply_selfcare_options(source_system, peer_id, options_str):
                     or peer_sticky_tg_enabled(source_system, peer_id)
                     or not sticky_last_tgs(peer_id)):
                 peer['_STICKY_RESTORE'] = False
-        publish_master_static_bridges(source_system)
+        publish_master_static_bridges(
+            source_system, changed_peer_id=peer_id)
     return remaining, _had_disc
 
 
@@ -1945,6 +1970,36 @@ def clear_sub_map_for_peer(peer_id):
         SUB_MAP.pop(_subscriber, None)
     if _remove:
         logger.info('(SUBSCRIBER) Cleared %s SUB_MAP entries for peer %s', len(_remove), int_id(peer_id))
+
+
+def clear_peer_sub_map_tgs(system, peer_id, tgs):
+    """Remove only this peer's subscriber rows for unsubscribed slot/TGs."""
+    wanted = {(int(slot), int(tgid)) for slot, tgid in tgs}
+    if not wanted:
+        return 0
+    remove = []
+    for subscriber, entry in list(SUB_MAP.items()):
+        try:
+            if (len(entry) < 5 or entry[0] != system
+                    or entry[4] != peer_id):
+                continue
+            slot = int(entry[1] or 2)
+            raw_tgid = entry[2]
+            tgid = (
+                int_id(raw_tgid)
+                if isinstance(raw_tgid, (bytes, bytearray))
+                else int(raw_tgid))
+            if (slot, tgid) in wanted:
+                remove.append(subscriber)
+        except (TypeError, ValueError, IndexError):
+            continue
+    for subscriber in remove:
+        SUB_MAP.pop(subscriber, None)
+    if remove:
+        logger.info(
+            '(SUBSCRIBER) Cleared %s removed static SUB_MAP entries for peer %s',
+            len(remove), int_id(peer_id))
+    return len(remove)
 
 
 def clear_subscriber_on_disconnect(system, subscriber_id, peer_id):

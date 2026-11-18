@@ -5,6 +5,12 @@ from types import SimpleNamespace
 from unittest import mock
 
 import bridge_master as bm
+from bridge_helpers import (
+    dest_peer_rx_blocked,
+    peer_remembered_dynamic_tgs,
+    remember_peer_dynamic_tg,
+    reset_peer_rx_filters,
+)
 from dmr_utils3.utils import bytes_3
 
 
@@ -98,6 +104,7 @@ class TestImmediateStaticSubscribe(unittest.TestCase):
         bm.BRIDGES = {}
         bm.BRIDGE_IDX.clear()
         bm.SUB_MAP = {}
+        reset_peer_rx_filters()
         self.slot = {
             'RX_TIME': 12345,
             'TX_TIME': 12345,
@@ -135,6 +142,7 @@ class TestImmediateStaticSubscribe(unittest.TestCase):
         else:
             bm.BRIDGES = self.prev_bridges
         bm.BRIDGE_IDX.clear()
+        reset_peer_rx_filters()
         if self.had_systems:
             bm.systems = self.prev_systems
         else:
@@ -195,6 +203,8 @@ class TestImmediateStaticSubscribe(unittest.TestCase):
         self.assertFalse(old['ACTIVE'])
         self.assertEqual(old['TO_TYPE'], 'ON')
         self.assertEqual(bm.BRIDGE_IDX.get(key_2350), {'2350'})
+        self.assertFalse(dest_peer_rx_blocked(
+            'SYSTEM-95', self.peer, bytes_3(103), 2, 2350))
 
         for bridge in ('2350', '23516'):
             matches = [
@@ -202,6 +212,93 @@ class TestImmediateStaticSubscribe(unittest.TestCase):
                 if entry['SYSTEM'] == 'SYSTEM-95' and entry['TS'] == 2
             ]
             self.assertEqual(len(matches), 1)
+
+    def test_replacement_stops_old_audio_after_peer_keyed_old_static(self):
+        """The reporting peer's stale UA/SUB_MAP row must not retain its old TG."""
+        stream = bytes_3(101)
+        radio = bytes_3(2345875)
+        other_radio = bytes_3(2345876)
+        bm.apply_selfcare_options('SYSTEM-95', self.peer, 'TS2_1=2350;')
+        remember_peer_dynamic_tg(
+            'SYSTEM-95', self.peer, 2, 2350, expires_at=bm.time() + 600)
+        bm.SUB_MAP[radio] = [
+            'SYSTEM-95', 2, bytes_3(2350), bm.time(), self.peer]
+        bm.SUB_MAP[other_radio] = [
+            'SYSTEM-95', 1, bytes_3(91), bm.time(), self.peer]
+
+        self.assertFalse(dest_peer_rx_blocked(
+            'SYSTEM-95', self.peer, stream, 2, 2350))
+        bm.apply_selfcare_options(
+            'SYSTEM-95', self.peer, 'TS2_1=23516;')
+
+        old = _leg('2350', 'SYSTEM-95', 2)
+        current = _leg('23516', 'SYSTEM-95', 2)
+        self.assertFalse(old['ACTIVE'])
+        self.assertEqual(old['TO_TYPE'], 'ON')
+        self.assertTrue(current['ACTIVE'])
+        self.assertNotIn(
+            (2, 2350),
+            peer_remembered_dynamic_tgs('SYSTEM-95', self.peer))
+        self.assertNotIn(radio, bm.SUB_MAP)
+        self.assertIn(other_radio, bm.SUB_MAP)
+        self.assertTrue(dest_peer_rx_blocked(
+            'SYSTEM-95', self.peer, stream, 2, 2350))
+        self.assertFalse(dest_peer_rx_blocked(
+            'SYSTEM-95', self.peer, stream, 2, 23516))
+        remember_peer_dynamic_tg(
+            'SYSTEM-95', self.peer, 2, 2350, expires_at=bm.time() + 600)
+        self.assertFalse(dest_peer_rx_blocked(
+            'SYSTEM-95', self.peer, stream, 2, 2350))
+
+    def test_stale_sub_map_cannot_reactivate_old_static_for_third_peer(self):
+        third = (235211731).to_bytes(4, 'big')
+        radio = bytes_3(2345875)
+        peers = bm.CONFIG['SYSTEMS']['SYSTEM-95']['PEERS']
+        peers[self.other] = {
+            'CONNECTION': 'YES', 'OPTIONS': 'TS2_1=2350;'}
+        peers[third] = {'CONNECTION': 'YES', 'OPTIONS': ''}
+        bm.apply_selfcare_options('SYSTEM-95', self.peer, 'TS2_1=2350;')
+        bm.SUB_MAP[radio] = [
+            'SYSTEM-95', 2, bytes_3(2350), bm.time(), self.peer]
+
+        bm.apply_selfcare_options(
+            'SYSTEM-95', self.peer, 'TS2_1=23516;')
+        self.assertNotIn(radio, bm.SUB_MAP)
+        self.assertTrue(_leg('2350', 'SYSTEM-95', 2)['ACTIVE'])
+
+        bm.apply_selfcare_options(
+            'SYSTEM-95', self.other, 'TS2_1=31320;')
+
+        old = _leg('2350', 'SYSTEM-95', 2)
+        self.assertFalse(old['ACTIVE'])
+        self.assertEqual(old['TO_TYPE'], 'ON')
+        self.assertFalse(dest_peer_rx_blocked(
+            'SYSTEM-95', third, bytes_3(104), 2, 2350))
+
+    def test_replacement_mutes_only_changed_peer_on_shared_old_static(self):
+        """Another peer may retain 2350 without leaking it to the peer on 23516."""
+        stream = bytes_3(102)
+        peers = bm.CONFIG['SYSTEMS']['SYSTEM-95']['PEERS']
+        peers[self.other] = {
+            'CONNECTION': 'YES', 'OPTIONS': 'TS2_1=2350;'}
+        bm.apply_selfcare_options('SYSTEM-95', self.peer, 'TS2_1=2350;')
+        remember_peer_dynamic_tg(
+            'SYSTEM-95', self.peer, 2, 2350, expires_at=bm.time() + 600)
+        remember_peer_dynamic_tg(
+            'SYSTEM-95', self.other, 2, 2350, expires_at=bm.time() + 600)
+
+        bm.apply_selfcare_options(
+            'SYSTEM-95', self.peer, 'TS2_1=23516;')
+
+        retained = _leg('2350', 'SYSTEM-95', 2)
+        self.assertTrue(retained['ACTIVE'])
+        self.assertEqual(retained['TO_TYPE'], 'OFF')
+        self.assertTrue(dest_peer_rx_blocked(
+            'SYSTEM-95', self.peer, stream, 2, 2350))
+        self.assertFalse(dest_peer_rx_blocked(
+            'SYSTEM-95', self.other, stream, 2, 2350))
+        self.assertFalse(dest_peer_rx_blocked(
+            'SYSTEM-95', self.peer, stream, 2, 23516))
 
     def test_ts1_numbered_replacement_has_same_immediate_semantics(self):
         bm.apply_selfcare_options('SYSTEM-95', self.peer, 'TS1_1=2350;')
