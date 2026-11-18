@@ -83,6 +83,30 @@ class TestPruneIdleStatOnLegs(unittest.TestCase):
         self.assertEqual(removed, 0)
         self.assertEqual(len(pruned), 2)
 
+    def test_prunes_marked_lazy_leg_from_static_bridge(self):
+        now = 5000.0
+        lazy = _on_leg(timer=now - STAT_ON_LEG_IDLE_TTL_S - 1)
+        lazy['LAZY'] = True
+        static = {
+            'SYSTEM': 'SYSTEM-2', 'TS': 2, 'TGID': bytes_3(67498),
+            'ACTIVE': True, 'TIMEOUT': 600, 'TO_TYPE': 'OFF',
+            'OFF': [], 'ON': [bytes_3(67498)], 'RESET': [], 'TIMER': now,
+        }
+
+        pruned, removed = prune_idle_stat_on_legs([static, lazy], now)
+
+        self.assertEqual(removed, 1)
+        self.assertEqual(pruned, [static])
+
+    def test_keeps_configured_nonlazy_leg_on_nonstat_bridge(self):
+        now = 5000.0
+        configured = _on_leg(timer=now - STAT_ON_LEG_IDLE_TTL_S - 1)
+
+        pruned, removed = prune_idle_stat_on_legs([configured], now)
+
+        self.assertEqual(removed, 0)
+        self.assertEqual(pruned, [configured])
+
 
 class TestStatBridgeShouldRemove(unittest.TestCase):
 

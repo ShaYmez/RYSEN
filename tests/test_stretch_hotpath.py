@@ -164,7 +164,7 @@ class TestObpEmptyFiOwner(unittest.TestCase):
             source.index('def statTrimmer():')
         ]
         self.assertIn('_changed = False', block)
-        self.assertIn('if _changed and CONFIG[\'REPORTS\'][\'REPORT\']:', block)
+        self.assertIn('if _changed:\n        notify_bridge_table_updated()', block)
         self.assertNotIn(
             "    if CONFIG['REPORTS']['REPORT']:\n        report_server.send_clients(b'bridge updated')",
             block)

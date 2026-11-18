@@ -132,6 +132,27 @@ class TestRouterHbpTimeoutCleanup(unittest.TestCase):
         self.assertIn('selfcare_disconnect(self._system, _peer_id)', source)
         self.assertNotIn('clear_sub_map_for_system(self._system)', source)
 
+    def test_peer_removal_publishes_statics_after_base_deletes_peer(self):
+        with open('bridge_master.py', encoding='utf-8') as fh:
+            source = fh.read()
+        router = source[source.index('class routerHBP'):]
+        maintenance = router[
+            router.index('def master_maintenance_loop(self):'):
+            router.index('def master_datagramReceived(self, _data, _sockaddr):')
+        ]
+        self.assertLess(
+            maintenance.index('HBSYSTEM.master_maintenance_loop(self)'),
+            maintenance.index('publish_master_static_bridges(self._system)'))
+
+        datagram = router[
+            router.index('def master_datagramReceived(self, _data, _sockaddr):'):
+            router.index('def to_target(')
+        ]
+        self.assertLess(
+            datagram.index(
+                'HBSYSTEM.master_datagramReceived(self, _data, _sockaddr)'),
+            datagram.index('publish_master_static_bridges(self._system)'))
+
 
 class TestDial9SanitizeIsPerPeer(unittest.TestCase):
 
