@@ -509,6 +509,98 @@ class TestImmediateStaticSubscribe(unittest.TestCase):
         self.assertTrue(retained['ACTIVE'])
         self.assertEqual(retained['TO_TYPE'], 'OFF')
 
+    def test_static_9990_indexes_parrot_return_leg(self):
+        """Z3DMR group parrot subscribes before it keys, so the shell needs PARROT."""
+        bm.CONFIG['SYSTEMS']['PARROT'] = {
+            'MODE': 'PEER', 'ENABLED': True,
+        }
+        bm.apply_selfcare_options('SYSTEM-95', self.peer, 'TS2_1=9990;')
+
+        parrot = _leg('9990', 'PARROT', 2)
+        hotspot = _leg('9990', 'SYSTEM-95', 2)
+        self.assertIsNotNone(parrot)
+        self.assertTrue(parrot['ACTIVE'])
+        self.assertEqual(parrot['TO_TYPE'], 'NONE')
+        self.assertEqual(parrot['TGID'], bytes_3(9990))
+        self.assertTrue(hotspot['ACTIVE'])
+        self.assertEqual(hotspot['TO_TYPE'], 'OFF')
+        self.assertIn('9990', bm.BRIDGE_IDX[('PARROT', 2, bytes_3(9990))])
+
+        bm.BRIDGES['9990'] = [
+            entry for entry in bm.BRIDGES['9990']
+            if entry['SYSTEM'] != 'PARROT'
+        ]
+        bm._idx_replace_bridge('9990')
+        bm.activate_ua_bridge_source('9990', 'SYSTEM-95', 2, peer_id=self.peer)
+        self.assertIn('9990', bm.BRIDGE_IDX[('PARROT', 2, bytes_3(9990))])
+
+    def test_switching_static_drops_talkgroup_the_peer_keyed(self):
+        """A keyed TG is not the old static, and it still has to go quiet."""
+        stream = bytes_3(234)
+        radio = bytes_3(2345875)
+        bm.apply_selfcare_options('SYSTEM-95', self.peer, 'TS2_1=9990;')
+        bm.BRIDGES['23426'] = [{
+            'SYSTEM': 'SYSTEM-95', 'TS': 2, 'TGID': bytes_3(23426),
+            'ACTIVE': True, 'TIMEOUT': 600, 'TO_TYPE': 'ON',
+            'OFF': [], 'ON': [bytes_3(23426)], 'RESET': [],
+            'TIMER': bm.time() + 600,
+        }]
+        bm._idx_add_bridge('23426')
+        remember_peer_dynamic_tg(
+            'SYSTEM-95', self.peer, 2, 23426, expires_at=bm.time() + 600)
+        bm.SUB_MAP[radio] = [
+            'SYSTEM-95', 2, bytes_3(23426), bm.time(), self.peer]
+
+        bm.apply_selfcare_options('SYSTEM-95', self.peer, 'TS2_1=235;')
+
+        keyed = _leg('23426', 'SYSTEM-95', 2)
+        current = _leg('235', 'SYSTEM-95', 2)
+        self.assertFalse(keyed['ACTIVE'])
+        self.assertTrue(current['ACTIVE'])
+        self.assertEqual(current['TO_TYPE'], 'OFF')
+        self.assertNotIn(radio, bm.SUB_MAP)
+        self.assertNotIn(
+            (2, 23426), peer_remembered_dynamic_tgs('SYSTEM-95', self.peer))
+        self.assertTrue(dest_peer_rx_blocked(
+            'SYSTEM-95', self.peer, stream, 2, 23426))
+        self.assertFalse(dest_peer_rx_blocked(
+            'SYSTEM-95', self.peer, stream, 2, 235))
+
+    def test_repeat_of_same_static_keeps_keyed_talkgroup(self):
+        bm.apply_selfcare_options('SYSTEM-95', self.peer, 'TS2_1=235;')
+        remember_peer_dynamic_tg(
+            'SYSTEM-95', self.peer, 2, 23426, expires_at=bm.time() + 600)
+        bm.apply_selfcare_options('SYSTEM-95', self.peer, 'TS2_1=235;')
+        self.assertIn(
+            (2, 23426), peer_remembered_dynamic_tgs('SYSTEM-95', self.peer))
+        self.assertFalse(dest_peer_rx_blocked(
+            'SYSTEM-95', self.peer, bytes_3(235), 2, 23426))
+
+    def test_other_peer_keeps_keyed_talkgroup_when_one_hotspot_switches(self):
+        stream = bytes_3(236)
+        peers = bm.CONFIG['SYSTEMS']['SYSTEM-95']['PEERS']
+        peers[self.other] = {'CONNECTION': 'YES', 'OPTIONS': ''}
+        bm.apply_selfcare_options('SYSTEM-95', self.peer, 'TS2_1=9990;')
+        bm.BRIDGES['23426'] = [{
+            'SYSTEM': 'SYSTEM-95', 'TS': 2, 'TGID': bytes_3(23426),
+            'ACTIVE': True, 'TIMEOUT': 600, 'TO_TYPE': 'ON',
+            'OFF': [], 'ON': [bytes_3(23426)], 'RESET': [],
+            'TIMER': bm.time() + 600,
+        }]
+        bm._idx_add_bridge('23426')
+        remember_peer_dynamic_tg(
+            'SYSTEM-95', self.peer, 2, 23426, expires_at=bm.time() + 600)
+        remember_peer_dynamic_tg(
+            'SYSTEM-95', self.other, 2, 23426, expires_at=bm.time() + 600)
+
+        bm.apply_selfcare_options('SYSTEM-95', self.peer, 'TS2_1=235;')
+
+        self.assertTrue(_leg('23426', 'SYSTEM-95', 2)['ACTIVE'])
+        self.assertTrue(dest_peer_rx_blocked(
+            'SYSTEM-95', self.peer, stream, 2, 23426))
+        self.assertFalse(dest_peer_rx_blocked(
+            'SYSTEM-95', self.other, stream, 2, 23426))
+
 
 if __name__ == '__main__':
     unittest.main()

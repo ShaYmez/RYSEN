@@ -9,6 +9,8 @@ Released on **`master`** — `shaymez/rysen:1.6.6` and `:latest`.
 - Replacing a static, such as `TS2_1=2350` with `TS2_1=23516`, mutes the removed talkgroup for that peer on the next voice frame, including audio already in progress.
 - The peer's stale dynamic membership and subscriber route for the removed talkgroup are cleared, so the old talkgroup cannot be reactivated later by that route.
 - Another peer that still owns the talkgroup keeps it. Keying the removed talkgroup again hears it immediately.
+- A talkgroup the peer keyed on that slot, while a different static was selected, stops when the static is replaced. Another peer that still has it keeps hearing it.
+- Group parrot on TG 9990 routes the echo back when a hotspot subscribes to 9990 before it transmits.
 
 ## Version 1.6.5 (2026-11-18)
 

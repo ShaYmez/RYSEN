@@ -85,7 +85,7 @@ Config reference: [RYSEN-SAMPLE-commented.cfg](../RYSEN-SAMPLE-commented.cfg).
 
 ## v1.6.6 — Replaced static audio stops
 
-A peer that replaces its static talkgroup stops hearing the old one on the next frame. Its stale dynamic membership and subscriber route are removed. Another peer that still owns that talkgroup keeps receiving it, and keying the old talkgroup again restores audio for the returning peer.
+A peer that replaces its static talkgroup stops hearing the old one on the next frame, including a talkgroup it keyed on that slot while a different static was selected. Its stale dynamic membership and subscriber route are removed. Another peer that still owns that talkgroup keeps receiving it, and keying the old talkgroup again restores audio for the returning peer. A group call to parrot TG 9990 routes the echo back when the hotspot subscribes to 9990 before it transmits.
 
 ---
 

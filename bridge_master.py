@@ -116,6 +116,7 @@ from bridge_helpers import (
     forget_peer_dynamic_tg,
     remember_peer_dynamic_tg,
     peer_remembered_dynamic_tgs,
+    peer_sub_map_tgs,
     remember_sticky_last_tg,
     forget_sticky_last_tg,
     sticky_last_tgs,
@@ -778,6 +779,13 @@ def activate_ua_bridge_source(bridge_name, system, slot, tmout=None, peer_id=Non
     _timeout_s = tmout * 60
     _changed = False
 
+    # A static subscribe creates bridge 9990 with only the hotspot leg. The
+    # echo arrives later as a group call from PARROT and needs this return leg
+    # before the first playback frame.
+    if is_parrot_bridge(bridge_name) and _ensure_parrot_return_leg(bridge_name):
+        _idx_replace_bridge(bridge_name)
+        _changed = True
+
     # Parrot bridges are not pre-filled with every master — ensure the caller has a UA leg.
     if is_parrot_bridge(bridge_name):
         _has_leg = any(
@@ -1090,7 +1098,81 @@ def make_static_tg(tg, ts, _tmout, system):
         logger.info('(OPTIONS) Added static TG %s TS%s leg for %s (bridge existed without slot)',
                     tg_s, ts, system)
     BRIDGES[tg_s] = bridgetemp
+    if is_parrot_talkgroup(tg):
+        _ensure_parrot_return_leg(tg_s)
     _idx_replace_bridge(tg_s)
+
+
+def _ensure_parrot_return_leg(bridge_name):
+    """Index an active PARROT TS2 leg so a group-call echo can route back.
+
+    make_single_bridge() adds this leg only when bridge 9990 does not exist.
+    Z3DMR subscribes with TS2_1=9990 first, and that static shell has no
+    PARROT source, so every echo frame misses (PARROT, 2, 9990).
+    """
+    if bridge_name not in BRIDGES:
+        return False
+    parrot = (CONFIG.get('SYSTEMS') or {}).get('PARROT') or {}
+    if not parrot.get('ENABLED'):
+        return False
+    try:
+        tgid = bytes_3(int(str(bridge_name).lstrip('#')))
+    except (TypeError, ValueError):
+        tgid = bytes_3(PARROT_TG)
+    for entry in BRIDGES[bridge_name]:
+        if entry.get('SYSTEM') != 'PARROT' or int(entry.get('TS') or 0) != 2:
+            continue
+        changed = False
+        if entry.get('TGID') != tgid:
+            entry['TGID'] = tgid
+            changed = True
+        if not entry.get('ACTIVE'):
+            entry['ACTIVE'] = True
+            changed = True
+        if entry.get('TO_TYPE') != 'NONE':
+            entry['TO_TYPE'] = 'NONE'
+            changed = True
+        return changed
+    BRIDGES[bridge_name].append({
+        'SYSTEM': 'PARROT', 'TS': 2, 'TGID': tgid, 'ACTIVE': True,
+        'TIMEOUT': 15, 'TO_TYPE': 'NONE', 'OFF': [], 'ON': [], 'RESET': [],
+        'TIMER': time(),
+    })
+    return True
+
+
+def _drop_unsubscribed_ua_legs(system, peer_id, removed):
+    """Deactivate this peer's keyed UA leg when nobody else still owns it.
+
+    A rules or shared static leg (TO_TYPE OFF) stays up. The departing peer is
+    muted separately, so a shared talkgroup does not go silent for everyone.
+    """
+    if not removed or peer_id is None or not isinstance(globals().get('BRIDGES'), dict):
+        return
+    now = time()
+    touched = set()
+    for slot, tgid in removed:
+        name = str(int(tgid))
+        entries = BRIDGES.get(name)
+        if not entries or name[:1] == '#':
+            continue
+        sub_map = globals().get('SUB_MAP') or {}
+        if (other_peer_has_sub_map_tg(
+                sub_map, system, slot, tgid, except_peer_id=peer_id)
+                or other_peer_has_dynamic_tg(
+                    system, slot, tgid, except_peer_id=peer_id)):
+            continue
+        for entry in entries:
+            if (entry.get('SYSTEM') != system
+                    or int(entry.get('TS') or 2) != int(slot)):
+                continue
+            if entry.get('TO_TYPE') != 'ON' or not entry.get('ACTIVE'):
+                continue
+            entry['ACTIVE'] = False
+            entry['TIMER'] = now
+            touched.add(name)
+    for name in touched:
+        _idx_replace_bridge(name)
 
 def reset_static_tg(tg,ts,_tmout,system,except_peer_id=None):
     #_tmout = CONFIG['SYSTEMS'][system]['DEFAULT_UA_TIMER']
@@ -1851,18 +1933,37 @@ def apply_selfcare_options(source_system, peer_id, options_str):
     # an in-progress source stream cannot continue through a shared MASTER leg.
     # Other peers' static/dynamic ownership is retained during reconciliation.
     removed = []
+    seen = set()
     for slot, old_groups, new_groups in (
             (1, old_ts1, ts1), (2, old_ts2, ts2)):
         new_set = {int(tgid) for tgid in new_groups}
-        for tgid in old_groups:
+        old_set = {int(tgid) for tgid in old_groups}
+        candidates = list(old_groups)
+        # Z3DMR keeps one group on the slot. A talkgroup it keyed while the
+        # previous static was selected is a dynamic, not the old static, and
+        # must stop when that static is replaced. A peer gaining its first
+        # static still has a RelinkTime on any sticky dynamic.
+        sub_map = globals().get('SUB_MAP') or {}
+        if old_set and old_set != new_set and peer_id:
+            for dyn_slot, dyn_tg in peer_remembered_dynamic_tgs(
+                    source_system, peer_id):
+                if int(dyn_slot) == slot:
+                    candidates.append(dyn_tg)
+            for sub_slot, sub_tg in peer_sub_map_tgs(
+                    sub_map, source_system, peer_id):
+                if int(sub_slot) == slot:
+                    candidates.append(sub_tg)
+        for tgid in candidates:
             tgid = int(tgid)
-            if tgid in new_set:
+            if tgid in new_set or (slot, tgid) in seen:
                 continue
+            seen.add((slot, tgid))
             forget_peer_dynamic_tg(source_system, peer_id, slot, tgid)
             removed.append((slot, tgid))
     if removed:
         clear_peer_sub_map_tgs(source_system, peer_id, removed)
         mute_peer_tgs(source_system, peer_id, removed)
+        _drop_unsubscribed_ua_legs(source_system, peer_id, removed)
     for slot, groups in ((1, ts1), (2, ts2)):
         for tgid in groups:
             forget_peer_dynamic_tg(source_system, peer_id, slot, tgid)
